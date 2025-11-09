@@ -30,7 +30,7 @@ The dataset is organized as follows:
 ### Structure Details
 
 1. **Paper ID**  
-   Each file follows a naming convention such as `W1490478993`, corresponding to the paper’s ID in **OpenAlex**. (e.g., W1490478993.tei.xml -> the paper text of the paper with the ID of W1490478993)
+   Each file follows a naming convention such as `W1490478993`, corresponding to the paper’s ID in [OpenAlex](https://openalex.org/). (e.g., W1490478993.tei.xml -> the paper text of the paper with the ID of W1490478993)
 
 2. **Keyword and Batches**  
    The top directory of this dataset starts with `{keyword}`. Approximately eight keywords will be provided in the final dataset.
