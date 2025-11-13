@@ -1,0 +1,1233 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">ProTracer: Towards Practical Provenance Tracing by Alternating Between Logging and Tainting</title>
+				<funder ref="#_h5rem32">
+					<orgName type="full">ONR</orgName>
+				</funder>
+				<funder>
+					<orgName type="full">Cisco Systems</orgName>
+				</funder>
+				<funder ref="#_5CuHPw3">
+					<orgName type="full">DARPA</orgName>
+				</funder>
+				<funder ref="#_car4bgC">
+					<orgName type="full">National Science Foundation</orgName>
+					<orgName type="abbreviated">NSF</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Shiqing</forename><surname>Ma</surname></persName>
+							<email>shiqingma@purdue.edu</email>
+							<affiliation key="aff0">
+								<orgName type="institution" key="instit1">Purdue University</orgName>
+								<orgName type="institution" key="instit2">Purdue University</orgName>
+								<orgName type="institution" key="instit3">Purdue University</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Xiangyu</forename><surname>Zhang</surname></persName>
+							<email>xyzhang@cs.purdue.edu</email>
+							<affiliation key="aff0">
+								<orgName type="institution" key="instit1">Purdue University</orgName>
+								<orgName type="institution" key="instit2">Purdue University</orgName>
+								<orgName type="institution" key="instit3">Purdue University</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Dongyan</forename><surname>Xu</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution" key="instit1">Purdue University</orgName>
+								<orgName type="institution" key="instit2">Purdue University</orgName>
+								<orgName type="institution" key="instit3">Purdue University</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">ProTracer: Towards Practical Provenance Tracing by Alternating Between Logging and Tainting</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+					<idno type="DOI">10.14722/ndss.2016.23350</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-14T18:23+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Provenance tracing is a very important approach to Advanced Persistent Threat (APT) attack detection and investigation. Existing techniques either suffer from the dependence explosion problem or have non-trivial space and runtime overhead, which hinder their application in practice. We propose ProTracer, a lightweight provenance tracing system that alternates between system event logging and unit level taint propagation. The technique is built on an on-the-fly system event processing infrastructure that features a very lightweight kernel module and a sophisticated user space daemon that performs concurrent and out-of-order event processing. The evaluation with different realistic system workloads and a number of attack cases show that ProTracer only produces 13MB log data per day, and 0.84GB(Server)/2.32GB(Client) in 3 months without losing any important information. The space consumption is only &lt; 1.28% of the state-of-the-art, 7 times smaller than an off-line garbage collection technique. The run-time overhead averages &lt;7% for servers and &lt;5% for regular applications. The generated attack causal graphs are a few times smaller than those by existing techniques while they are equally informative.</p><p>Permission to freely reproduce all or part of this paper for noncommercial purposes is granted provided that copies bear this notice and the full citation on the first page. Reproduction for commercial purposes is strictly prohibited without the prior written consent of the Internet Society, the first-named author (for reproduction of an entire paper only), and the author's employer if the paper was prepared within the scope of employment.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>I. INTRODUCTION</head><p>There is an increasing need of detecting and investigating APT attacks in an enterprise environment. A very important approach to addressing this problem is provenance tracking. According to previous works <ref type="bibr" target="#b14">[17]</ref>, <ref type="bibr" target="#b29">[32]</ref>, provenance captures multiple aspects of information about an entity in a system: what the entity's origin is; how the entity is derived; and when it originated. In the context of APT defense, entities with trackable provenance information are of various granularity, such as processes, network connections, files, and data items within files. Correspondingly, the what-provenance of such an entity e is the set of external entities that have causally influenced e's value or state (e.g., if one file's content comes from a number of network connections, then its what-provenance contains the IDs of the corresponding sessions); whereas, the how-provenance of entity e consists of events and their causal ordering -which can be organized as a causal graph -that demonstrates how (and when) other entities influence e's value or state.</p><p>Existing Approaches. Existing techniques fall into two categories: audit logging and provenance propagation (or tainting). Audit logging <ref type="bibr" target="#b13">[16]</ref>, <ref type="bibr" target="#b18">[21]</ref>, <ref type="bibr" target="#b22">[25]</ref>, <ref type="bibr" target="#b24">[27]</ref>, <ref type="bibr" target="#b26">[29]</ref>, <ref type="bibr" target="#b31">[34]</ref>- <ref type="bibr" target="#b33">[36]</ref>, <ref type="bibr" target="#b36">[39]</ref> records events during system execution and then causally connects events during attack investigation. They treat processes as subjects; files, sockets, and other passive entities as objects; and assume causality between subjects and objects involved in the same syscall event (e.g., a process reading a file). In general, audit logging incurs much lower overhead than per-instruction provenance propagation. Causal graphs can be constructed to denote both what-and how-provenance. Provenance propagation, or tainting <ref type="bibr" target="#b5">[8]</ref>, <ref type="bibr" target="#b8">[11]</ref>, <ref type="bibr" target="#b19">[22]</ref>, <ref type="bibr" target="#b20">[23]</ref>, <ref type="bibr" target="#b28">[31]</ref>, <ref type="bibr" target="#b34">[37]</ref>, <ref type="bibr" target="#b37">[40]</ref>, <ref type="bibr" target="#b48">[51]</ref> works by first assigning IDs/tags to provenance sources (e.g., network sessions), and then propagating the IDs through program dependencies captured during execution. Provenance propagation usually entails set operations at the instruction level. Eventually, the set of provenance IDs that reaches a sink (e.g., a socket for send) denotes the sink's provenance. Provenance propagation usually only captures the what-provenance.</p><p>Consider the example in Figure <ref type="figure" target="#fig_0">1</ref>. Figure <ref type="figure" target="#fig_0">1</ref> (a) denotes a simple attack. The user received a phishing email from attacker "Yellow Spring" and opened the URL in the email through Firefox. Upon visiting the website, a Trojan executable for task management was saved on the local disk. Later, the malware is executed and sends some secret to a remote host. Fig. <ref type="bibr">1 (b)</ref> shows the events captured by audit logging. Causality can be derived from events. Depending on the precision demanded and the scope of the analysis, events can be captured at different granularity (e.g., syscalls or memory accesses) and different scopes (e.g., host or whole enterprise). Fig. <ref type="figure" target="#fig_0">1 (c</ref>) shows the provenance propagation approach. IDs ys and x denote the different provenance sources. Observe that when pine spawns Firefox, the latter inherits the provenance of the former. The malware taskman's provenance is the union of the provenance set of Firefox and the download URL x. At the end, we know the origins of the stolen secret, but we do not know its history. Such propagation can be exhibited within an application, across applications, and across hosts.</p><p>Both approaches have pros and cons, and neither meets the requirements for enterprise-wide APT detection/forensics. Logging has the following limitations:</p><p>(1) Dependence explosion is a major limitation of most audit logging. For a long-running process, an output event is assumed to be causally dependent on all preceding input events, and an input event is assumed to have causal influence on all subsequent output events. Such conservative assumptions create excessive false positive causal relations, making it difficult to reveal the true causality. In our previous work, we proposed to divide an execution to autonomous units <ref type="bibr" target="#b24">[27]</ref> such that an output is only dependent on the preceding inputs within the same unit.</p><p>(2) High storage overhead. According to <ref type="bibr" target="#b25">[28]</ref>, audit logging easily generates gigabytes of log data per host every day. This is particularly problematic for APT defense, as APT malware tends to lurk in the victim host for a long time.</p><p>(3) Non-trivial run-time overhead. Although logging has relatively lower run-time overhead compared to provenance propagation because it does not require expensive per-instruction set operations, many existing logging systems <ref type="bibr" target="#b24">[27]</ref>, <ref type="bibr" target="#b25">[28]</ref> are built on the default Linux audit logging infrastructure that can cause up to 40% slow-down to the whole system due to its poor design (Section V). This makes it undesirable in a production environment. Researchers have proposed advanced infrastructures <ref type="bibr" target="#b31">[34]</ref>- <ref type="bibr" target="#b33">[36]</ref> that can achieve much lower overhead. However, to achieve the low overhead, these systems usually do not perform any online event processing, but rather just record the events, leading to substantial space consumption and dependence explosion.</p><p>The propagation-based approach features much lower space overhead compared to logging as it does not generate log. It also has higher precision due to its fine-grained instrumentation. However it has many limitations that hinder its application in the real world:</p><p>(1) Substantial run-time overhead. Because propagation based techniques track individual instructions' execution and propagate (potentially) large provenance sets (Fig. <ref type="figure" target="#fig_0">1 (c</ref>)), they usually incur substantial run-time overhead. State-of-the-art implementations without hardware support incur multiple factor of slow-down <ref type="bibr" target="#b20">[23]</ref>.</p><p>(2) Lack of implicit flow handling. Many propagation based techniques have difficulty handling implicit flow, which is information flow through control dependencies <ref type="bibr" target="#b27">[30]</ref> (usually induced by program predicates).</p><p>(3) Complexity in implementation. Developers have to define provenance propagation logic for each instruction, a task which is tedious and error-prone. This problem is exacerbated when programs rely on third-party libraries; internal runtime engines (e.g., VMs); and various languages and their run-times, which all require specific instrumentation/tracking mechanisms.</p><p>In this paper, we develop ProTracer that leverages the advantages of both approaches and overcomes their respective limitations. It collects system events and processes them on the fly. The cost-effective online processing filters out events that are redundant or irrelevant for provenance analysis, substantially reducing the space consumption and the size of the generated causal graphs without affecting effectiveness.</p><p>System Goals. The goal of ProTracer is to provide efficient support for both the what-provenance and the how-provenance queries on any system objects such as processes and files. For example, given a corrupted file x, two what-provenance queries are: (1) "What is the source/entry point of x?" and (2) "which other files in the enterprise were derived from (and corrupted by) x?" A sample how-provenance query is: "Construct a causal graph showing the events/entities that led to the corruption of x and those that have been further corrupted by x." We aim to achieve completeness. In particular, the result of a what-provenance query on x must include all the external entities that directly/transitively affected x; the result of a how-provenance query must capture the set of internal and external entities that affected x and their causal relations with x.</p><p>The technique works as follows. It first leverages a selective instrumentation technique similar to BEEP <ref type="bibr" target="#b24">[27]</ref> to partition an execution to units, by emitting special syscalls denoting the unit boundaries. Intuitively, an unit is an iteration of the event handling loop that processes an external request or a UI event. Different from <ref type="bibr" target="#b24">[27]</ref>, ProTracer does not simply log all the syscalls and the unit related events. Instead, it alternates between logging and provenance propagation. Logging is conducted when changes are made to the permanent storage or the external environment such as writing a file and sending a packet. For other events such as file reads and network receives, ProTracer performs coarse-grained provenance propagation (tainting), which taints at the level of a unit and an system object (e.g. file) instead of an instruction and a memory byte. For example, if a unit receives packets from two network sessions x 1 and x 2 , the unit is tainted with both sources. If later the same unit writes to a file on disk, a log entry is emitted containing the two sources. Then if the file is read by another unit, the unit is tainted with the two sources too. Note that avoiding logging as much as possible reduces the space overhead, and performing unit level and system object level taint propagation substantially reduces the run-time overhead compared to instruction level tainting. Unit level tainting does not lose any precision compared to a log-all-events strategy. Furthermore, ProTracer decouples its implementation from the expensive Linux audit logging system. It builds from scratch a highly optimized system. It has a lightweight kernel module that simply saves events to a ring buffer. The buffer is shared with a user space daemon that retrieves these events and processes them using a thread pool. ProTracer features out-oforder event processing, meaning that the event processing order does not need to be identical to the event order, maximizing concurrency.</p><p>Our contributions are summarized as follows.</p><p>• We propose the novel idea of combining both logging and unit level tainting to achieve cost-effective provenance tracing. • We develop an efficient run-time that features on-thefly event processing. It not only collects system events, but also filters out the redundant and irrelevant events on the fly. It achieves low run-time overhead by outof-order event processing through a thread pool. • We build a prototype and evaluate it on different systems with various users and workloads for over 3 months, and on a number of real-world attacks that we reproduce. Our results show that the space consumption of ProTracer is &lt;1.28% of BEEP's on average, and about 7 times smaller than our previous offline log garbage collection technique LogGC <ref type="bibr" target="#b25">[28]</ref>. The log generated per day is roughly 13MB without losing precision compared to BEEP. The run-time overhead averages &lt;7% for servers and &lt;5% for user systems, which is 4-10 times lower than the default Linux Audit Logging system, on which many techniques including BEEP were built, and comparable to lightweight logging systems such as Hi-Fi <ref type="bibr" target="#b31">[34]</ref>- <ref type="bibr" target="#b33">[36]</ref> that simply record events without processing them.</p><p>Like most existing audit logging systems <ref type="bibr" target="#b12">[15]</ref>, <ref type="bibr" target="#b24">[27]</ref>, <ref type="bibr" target="#b25">[28]</ref>, ProTracer trusts the kernel and any user space daemon associated with the provenance tracing system. More discussion about the assumptions, limitations and security analysis of ProTracer can be found in Section VI.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>II. MOTIVATION</head><p>Scenario: We will use a cyber attack scenario to motivate our technique. It is a phishing attack, in which an employee received an phishing email with a malicious link via pine, an email client. The email mentions that a free beta version of a costly program that the employee has been hoping to own is released on the Internet. The employee was excited and decided to try it out. He clicked the link; a new tab in Firefox was opened; he then downloaded the file to the local machine. However, the file is actually a back-door malware. Later when it is executed, a back-door process is started and sends some local file to a remote IP address.</p><p>State-of-The-Art: In BEEP <ref type="bibr" target="#b24">[27]</ref>, we observed that many programs share a common property: their execution is dominated by event handling loops. More importantly, individual iterations of these loops tend to handle relatively independent tasks such as serving a client request or handling a UI event. These observations were made by a study of more than 100 widely used open-source applications such as servers, browsers, and social networking applications. It was then proposed to partition an execution to autonomous units, each corresponding to an iteration of some event handling loop. In particular, program analysis was developed in <ref type="bibr" target="#b24">[27]</ref> to recognize the unitinducing loops, leveraging the following three observations:</p><p>(1) such loops tend to be at the top level; (2) their loop bodies must make some I/O syscalls; and (3) their loop bodies dominate the execution time. Binary instrumentation is hence used to instrument the loop entry and exit points such that special syscalls are generated to indicate unit boundaries. An output syscall is considered only dependent on the preceding input syscalls in the same unit, whereas in other logging techniques <ref type="bibr" target="#b12">[15]</ref>, <ref type="bibr" target="#b13">[16]</ref>, <ref type="bibr" target="#b22">[25]</ref>, it is dependent on all the preceding input syscalls in the whole execution, leading to dependence explosion.</p><p>In some cases, a unit by itself may not fully cover the subexecution that handles an independent input. Instead, a few inter-dependent units together constitute a semantically independent sub-execution. In practice, there are memory dependencies across unit boundaries. However, only some of them -called workflow dependencies -are helpful in connecting units that belong to the same sub-execution. Examples include the dependencies caused by the enqueue and dequeue operations of a task queue. In <ref type="bibr" target="#b24">[27]</ref>, inter-unit dependencies are identified via program analysis. A small number of memory operations that induce inter-unit dependencies are instrumented to emit special syscalls that help constructing the dependencies during off-line processing. An email is further processed by a separate thread, whose unit is the one on the right of the dashed circle. The email is further filtered by procmail before it is opened by pine. Inside pine, the user clicks the phishing link, which triggers Firefox. Firefox uses multiple threads to process a request. The units in the dashed area correspond to units of the main thread and the tab thread, which uses an IPC channel i.i.i.i to communicate with a worker thread that downloads the backdoor file from d.d.d.d. The malware is later executed through bash and sends a file f to e.e.e.e.</p><p>Limitations of the State-of-the-Art. Although the causal graphs generated by BEEP (e.g. Fig. <ref type="figure" target="#fig_1">2</ref>) are usually precise and concise, there are a few critical limitations that hinder the application of BEEP in practice.</p><p>(1) Substantial space overhead. BEEP generates a few GB log per-day for a system with a normal workload. This is because it logs all the provenance related syscalls including those generated by instrumentation. In <ref type="bibr" target="#b25">[28]</ref>, an offline garbage collection (GC) technique LogGC was proposed to prune redundant events from BEEP logs. However, it still requires storing all the events before pruning them. During pruning, it traverses the large log file back and forth in order to identify the redundant events. Due to the high cost of processing large files, one cannot afford running the GC technique frequently.</p><p>(2) Non-trivial run-time overhead. Although BEEP's instrumentation is lightweight, like many other audit logging systems (e.g. <ref type="bibr" target="#b12">[15]</ref>) it is unfortunately built on the Linux Audit system that has non-trivial run-time overhead by itself. According to our experiment (Section V), the overhead can be as high as 43%.</p><p>A further inspection reveals that the Linux Audit logging system is unnecessarily heavy-weight. Fig. <ref type="figure">3</ref> illustrates the architecture of the Linux Audit logging system. It consists of two main parts: a kernel module for system call processing and a few audit applications that process/store auditing events, managed by an dispatcher daemon audisp. The kernel module receives syscalls from Linux programs. A syscall first goes through the user filter that decides if the syscall will be further sent to the other kernel modules for further processing. The user filter also forwards the syscall to the exclude filter to determine if the syscall should be prevented from being sent to the audit apps. After the syscall is processed (by other modules), the return state needs to go through the exit filter and then the exclude filter to determine if the state is interesting for auditing. The control is only given back to the Linux program after all these activities.</p><p>Note that most of the filtering work is done on the kernel side, which blocks the application execution for a long time. Second, all types of syscalls have to go through filters even if they are not interesting. It uses netlink to send data from the kernel to the user-space daemon, which is slow. Finally, the audit applications write to the log file, which also generates a lot of events that need to go through the costly procedure.</p><p>In Hi-Fi <ref type="bibr" target="#b33">[36]</ref>, researchers have developed a more advanced logging infrastructure with a substantially lower run-time overhead (3% in a representative workload). They leverage the Linux Security Modules (LSM) that allow adding light-weight hooks before accesses to kernel objects such as inodes, and use a high performance buffer to deliver kernel object access events to a user space logging application. Despite its low overhead, Hi-Fi does not perform event processing on the fly hence it records all events. Furthermore, kernel object access events are at a level lower than syscalls. As a result, some commonly used syscalls such as file read may lead to many kernel object accesses, which induce additional overhead. Finally, LSM hooks may have difficulty handling customized syscalls introduced by BEEP as those syscalls do not lead to any kernel object accesses. As such, the capability of solving dependence explosion cannot be easily ported to Hi-Fi.</p><p>The Basic Idea of ProTracer. We improve the practicality of provenance tracing by the following two aspects.</p><p>In the first aspect, We develop a lightweight kernel module. We will leverage a kernel facility called Tracepoints <ref type="bibr" target="#b2">[5]</ref>. A tracepoint can be placed in both user and kernel code to provide a hook to call a kernel function (probe). In ProTracer, we will insert tracepoints to kernel functions that process provenance related syscalls (e.g., sys_clone). The tracepoint driver is extremely lightweight and simply stores the events to a ring buffer, which will be processed by the user space daemon through a pool of threads. More details can be found in Section III.</p><p>In the second aspect, we avoid logging as much as possible by alternating between tainting and logging. We only log when files are written to the disk or packets are sent through sockets for either IPC or real network communication. For other syscalls that only lead to intra-process information flow such as file reads and network receives, we perform unit level taint propagation. Tainting has the following benefits:</p><p>(1) Avoid logging redundant events. Consider the dashed area for Firefox in the middle of Fig. <ref type="figure" target="#fig_1">2</ref>. At the entry point to the area on the left, ProTracer will introduce a new taint to represent the provenance of the hyper link, which is essentially the sub-graph to the left of the area. The taint is further propagated through the nodes inside the dashed area. Note that since no external accesses are performed inside the area, the taint remains the same until it gets out the area. As such, we avoids logging events in that duration without losing any provenance information. The same applies to the dashed box for sendmail. Similarly, consider an FTP server. Each unit of the server corresponds to processing a client request. Assume the client request is to upload a large file, which entails many network receive syscalls. In a pure logging system such as <ref type="bibr" target="#b24">[27]</ref>, all the syscalls need to be logged. In ProTracer, logging these events is avoided by taint propagation. In fact, all these syscalls have the same taint and do not add to the taint set.</p><p>(2) Avoid logging dead events. Tainting also allows ProTracer to handle the large number of syscalls that do not have any permanent effects on the system. We call them the dead events. For example, syscalls related to temporary files represent a large portion of a raw audit log <ref type="bibr" target="#b25">[28]</ref>. However, since these files are just used internally and never accessed by others, their taint propagation usually does not reach any other file writes or network sends and hence does not trigger any logging. Lets consider the FTP server example again. Assume during the processing of the file upload request, the connection is lost. The FTP server will eventually timeout and exit the execution unit without writing any data. In this case, the taint source representing the data session with the client IP is not propagated to any updates on the storage. Thus nothing needs to be logged.</p><p>Note that the aforementioned two kinds of reductions are different from the reduction in LogGC <ref type="bibr" target="#b25">[28]</ref>, which is an offline log garbage collection technique. LogGC is based on reachability so that all the events in the dashed area of Fig. <ref type="figure" target="#fig_1">2</ref> cannot be pruned as they are reachable from the backdoor process. Furthermore, it requires first acquiring the entire log file and then traversing the large file back and forth to identify unreachable items, incurring high cost.</p><p>(3) Allow concurrent event processing. Introducing a new taint to represent a provenance set allows out-of-order event processing. For example, by introducing a new taint when the dashed region of Firefox in Fig. <ref type="figure" target="#fig_1">2</ref> is entered, the processing of the Firefox events does not have to wait for the processing of the events in the sub-graph on the left of the shaded area. This maximizes the utilization of the thread pool. More details can be found in Section IV.  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>III. SYSTEM ARCHITECTURE</head><p>The architecture of ProTracer is shown in Fig. <ref type="figure" target="#fig_4">4</ref>. The system consists of two main parts: a kernel module and a user space daemon process. The kernel module is responsible for collecting syscall events and writing them to the ring buffer. The user space process fetches and handles these events, including deciding to log the events or perform taint propagation.</p><p>When a Linux application makes a syscall, the execution is trapped to the kernel space and the application is blocked until the kernel finishes processing the syscall. It is hence critical to ensure the kernel module is lightweight. ProTracer makes use of an existing lightweight Linux kernel trace facility, Tracepoints <ref type="bibr" target="#b2">[5]</ref>. In particular, we identify the set of kernel functions that handle syscalls that can induce causality with system objects or other processes. They mainly fall into the following categories.</p><p>• All syscalls that operate on file descriptors (representing regular files, network sockets, device files, pipes and so on), including creation, read, write, and close.</p><p>• Special syscalls that help trace taints on certain types of objects. For example, sys bind for sockets.</p><p>• IPC syscalls operating on pipes, semaphores, message queues, shared memory, and UNIX domain sockets.</p><p>• Process manipulation syscalls including process creation, termination, and privilege changes (escalation or degradation).</p><p>• Syscalls generated by program instrumentation to denote unit boundaries and inter-unit workflow.</p><p>The syscalls that are not monitored are mainly for time management (e.g. timer create), fetching information from file system or kernel (e.g. getpid), and those not implemented (e.g. getpmsg). To our knowledge, the set is complete for provenance tracing with certain assumptions. Detailed discussion can be found in Section VI. Tracepoints are inserted at the entry and exit points of the kernel functions. They are lightweight hooks that can hand over the execution to our kernel module so that the syscall and its context can be copied to the ring buffer. The trace points at the entries are to collect the parameters while those at the exits are to collect the syscall results. We separate the two to allow better concurrency in event processing. Our kernel module is also responsible for managing the ring buffer to avoid any event loss.</p><p>ProTracer uses a user space daemon process to process the syscall events. To increase throughput, the daemon process uses a pool of worker threads, which is different from most existing works. All events are time-stamped so that we do not need to worry about the event order in the buffer and in the log file. A general worker thread assignment policy is that syscalls from the same application cannot be processed by more than one worker thread. In other words, event processing is in order for the same application. But it may be out-of-order for events from different applications. For each event, the daemon process needs to decide to log it or to perform taint propagation. More details are discussed in Section IV. All threads share a log buffer that stores the log records. The log records are written to disk only when the buffer is nearly full or the system is in a relatively idle state so that we can reduce the number of disk I/O operations.</p><p>To achieve good performance, ProTracer uses a ring buffer to share data between the kernel module and the user space daemon. The ring buffer is similar to the high performance buffer in Hi-Fi <ref type="bibr" target="#b33">[36]</ref>, which is also memory-mapped to the user space so that it can be accessed without any copy operations. However, we choose to use tracepoints for syscall interception instead of LSM hooks, to support customized syscalls and to trace at the syscall level instead of the lower kernel object access level. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>IV. TAINTING AND LOGGING IN THE USER SPACE DAEMON</head><p>In this section, we explain the user space daemon that alternates between tainting and logging. The basic scheme is intuitively illustrated by Fig. <ref type="figure" target="#fig_5">5</ref>. When receiving a syscall event, the daemon checks if it is a syscall that makes permanent changes to the external state (e.g., a file write or a socket send). If so, it logs the current taint set of the event to disk, which denotes the provenance of the associated object (e.g., the logging action in red on edge 1). When a new unit starts (i.e., the event handling loop starts to process a new and independent request), the taint set associated with the unit is reset to only containing the process itself (e.g., U T [u 2 ] = {P } to the left of u 2 ), meaning the provenance of the unit only contains the current process.</p><p>Upon an input event, a new taint is created to denote the current provenance set of the input object (e.g., the new taint F 1 on edge 2 denoting the current provenance set of F 1 and ID id 1 on edge 3 denoting the network session). The taint is then added to the taint set of the unit, denoting that now the unit is causally related to the corresponding input source. Input syscalls only trigger taint propagation instead of logging. Upon a memory write representing workflow, the current unit taint set is propagated to the memory (e.g., the highlighted behavior on edge 8). Later, when another unit loads from the same memory location, the memory taint set is propagated to the unit (e.g., the behavior on edge 9). Eventually, when unit u 3 writes to F 3 , the provenance of F 3 is the current unit taint set. Note that F 3 's provenance set contains F 1 , implying a causal edge between this event and the previously logged event about F 1 . In our implementation, we associate timestamps with taints and events to facilitate recovery of such causality. It is worth noting that although there are 10 syscall events, only two entries are logged, which are sufficient to disclose both the what-and how-provenance of F 1 and F 3 . In particular, the how-provenance is represented by the causal graph.</p><p>Next, we discuss the details of our design using an abstraction of the system.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Definitions</head><p>The definitions related to our discussion are presented in Fig. <ref type="figure" target="#fig_6">6</ref>. To support tainting, three data structures are introduced to store taints for objects, units, and memory, respectively. In particular, we use an ObjectTaintStore structure to associate a singleton taint to an object of two possible kinds: Inter-Process Communication objects (IPCs) that are essentially a special kind of sockets, and memory-mapped files. We use a UnitTaintStore structure to associate a process with a set of taints, denoting the taints of the current execution unit, which is usually an iteration of the event handling loop. MemTaintStore associates a set of taints with a memory address, which is to support intra-process taint propagation. ProTracer selectively instruments a very small number of critical memory reads and writes that denote the inter-unit workflow (i.e., high level data flow <ref type="bibr" target="#b24">[27]</ref>) of the application, e.g. the reads and writes of a task queue that is used to pass user requests across execution units. A taint can be a time-stamped IPC, file, or an ID that represents a taint source, which can be either a network session or an email received. In other words, we use IDs to denote external sources. The mapping is maintained by a TaintSource structure. In contrast, for objects internal to the system we may use a taint consisting of the object and a timestamp ts to denote the provenance of that object at ts, which may represent a set of IDs (e.g., in event 2 in Fig. <ref type="figure" target="#fig_5">5</ref> F 1 denotes the current provenance of file F 1 , which contains P and id 0 ).</p><p>As mentioned in Section I, we cannot capture all important provenance by taint propagation alone, which does not record the history of an object or a process. As such, in addition to taint propagation, we also log important events. More specifically, we log all the permanent changes to the system, such as file writes, file deletes, outgoing network traffic, and process creation, together with their taints. LogBuffer is a memory buffer to store these changes. We use a memory buffer to avoid frequent disk accesses. More importantly, the memory buffer allows us to easily avoid logging events related to temporary files, which are often in a large number. More discussion can be found later.</p><p>As mentioned in Section III, ProTracer intercepts all syscalls related to provenance, including those related to units. We abstract these syscalls to a few representatives as shown in Fig. <ref type="figure" target="#fig_6">6</ref>. In particular, they denote file, IPC, network session, process spawn, memory reads/writes denoting inter-unit workflow, unit enter/exit, and taint source related operations. The runtime behavior corresponding to these events will be discussed next. Note that although our implementation intercepts both the entry and the exit of a kernel function that handles a syscall, our abstraction combines the two events into one abstract event for discussion simplicity.   </p><formula xml:id="formula_0">Rule # Event Action 1 F ileOpen(p, f ) OT [f ] = f, getTime() ; 2 F ileRead(p, f ) U T [p]∪ = {OT [f ]} 3 F ileW rite(p, f ) LB = LB + WRITE, f, U T [p] ∪ {OT [f ]}, getTime() 4 F ileDel(p, f ) if (f is owned by p) LB = LB - * , f, * , * ; else LB = LB + DEL, f, U T [p], getTime() ; OT [f ] = nil; 5 IP CRead(p, c) OT [c] = c, getTime() ; U T [p] = U T [p] ∪ {OT [c]} 6 IP CW rite(p, c) LB = LB + WRITE, c, U T [p], getTime()<label>7</label></formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Run-time Operation Rules</head><p>Table I describes the taint propagation and logging operations conducted by the threads in the user space daemon. A worker thread (in the daemon) receives an event from the ring buffer and processes it based on the rules in the table.</p><p>File Operations. Rules 1-4 are for file related event processing. For a file open event with process p opening a file f , ProTracer creates a new taint that consists of the file object and the current timestamp. The taint denotes the provenance set of the file at this moment, which may include multiple external sources. The principle is that ProTracer uses a singleton taint to represent a provenance set for a system object that propagate information across processes, including file and IPC. This is a critical design decision which will be further explained. The taint is then associated with f through the ObjectTaintStore OT . Upon a file read, the taint set of the current execution unit of p is enhanced with the taint of f , meaning the current execution of p is also affected by the provenance of f . Upon a file write, a log entry is inserted to the log buffer denoting the write operation and the associated taint set, which is the union of the current unit taint set and the file taint (Rule 3). Intuitively, after the write, the file inherits the taints of all the preceding input syscalls in the same unit. The design choice of using a singleton taint to denote the provenance (taint) set of an object on external storage has a few critical advantages over the design of directly propagating provenance sets.</p><p>• An object may be transitively dependent on a large set of taint sources. It is expensive to propagate taint sets, which entails allocating space and performing set unions. Hence, ProTracer uses a singleton taint consisting of the object and a timestamp to denote the current taint set of the object and propagates the taint.</p><p>• The design allows out-of-order processing of events in the ring buffer. As mentioned earlier, the kernel inserts events with timestamps to the ring buffer and the user space daemon retrieves and handles these events from the same buffer. Events from different processes may be dispatched to different threads that execute concurrently. As such, event processing across processes may be out-of-order. For example, assume two applications A and B. A writes to a file f and closes it before B reads it. The file read event (in B) may be processed before the file write (in A) is processed. If we directly propagate the taint set of f from A to B, we have to wait for the file write to be processed before processing the file read, substantially limiting concurrency. With the current design, the file read will use a fresh taint, without waiting for the computation of the set. The timestamps of the taint set (recorded to the log buffer at the write event) and the fresh taint (introduced at the file read) would allow ProTracer to infer the proper mapping between the set and the new taint during the offline causal analysis.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>• The design allows us to record not only the what</head><p>provenance, but also the how provenance. Traditional techniques based on standard tainting <ref type="bibr" target="#b18">[21]</ref> can only record the set of taint sources associated with an object, missing the history about how the object was created and updated. With the current design, each time an object is updated (i.e. written to the permanent storage), a log entry representing the set of taints of the object is recorded.</p><p>Upon deleting a file (Rule 4), ProTracer not only resets the taint of f , but also removes all the log entries in the buffer related to f if the process p is the exclusive owner of f , meaning f is a temporary file that does not escape the lifespan of its owner. We say the p is the owner of f if p creates f and f is never read by another process. If p is not the owner, the log entries related to f cannot be removed as the history of f may still be of interest. For example, an APT attack may remove a malicious library generated in an earlier phase of the attack (by another process) to cover its trail. The history of the malicious library is still valuable although it is deleted. In addition, the deletion event itself needs to be logged as it is part of the malicious behavior. The log buffer is flushed to the disk when it is close to full. It often takes a long time for the log buffer to reach its capacity so that most temporary file deletes happen before the buffer is flushed, allowing the pruning of dead log events (Section II) such as temporary file reads and writes.</p><p>IPC Operations. Processes may use IPC (e.g. pipes) to communicate with each other. Upon an IPC write (Rule 6), a log entry is added to denote the write and the provenance of the write, which is essentially the current unit taint set. Following the design policy of using singleton taints to allow out-of-order processing, upon an IPC read a new taint consisting of the IPC object and the current timestamp is created and added to the unit taint set of the receiver process (Rule 5).</p><p>Network Operations and Process Spawn. Network operations are handled similar to file operations. We consider a network session as a unique taint source. As such, each time a session is created, a new taint ID is created and associated with the session. When a process p receives packets from a session, the taint of the session is added to the unit taint set of p (Rule 8). When p sends a packet through a session, the provenance of the network send is denoted by the unit taint set of p. A log entry containing the taint set is recorded. Such entries allow ProTracer to construct causality across hosts. When a process p 1 spawns another process p 2 (Rule 10), the provenance of the child is the unit taint set of its parent. A log entry is added to record the fork and the corresponding taint set.</p><p>Execution Unit Related Operations. These events are generated by selective program instrumentation <ref type="bibr" target="#b24">[27]</ref>. Application executables are instrumented in a very small number of places to emit special syscalls to indicate the beginning and the end of an execution unit, and memory operations that denote the high level workflow between units. ProTracer needs to propagate taints through the memory object involved. Upon a write to a memory object, the unit taint set is propagated to the object (Rule 11). Later, when the same memory object is read in another unit, its taint set is inserted to the taint set of the new unit (Rule 12). As mentioned in Section II, execution units are considered autonomous and their correlations are only through the workflow related memory objects explicitly monitored by ProTracer. Therefore, when the execution leaves a unit and enters a new unit, the unit taint set is reset to only containing the process itself (Rule 13).</p><p>Taint Source Operations. Upon events such as receiving an email, a new ID representing the source is created and inserted to the unit taint set (Rule 14). Note that these events may be at a higher level than syscalls. In our implementation, the corresponding protocol libraries are instrumented to generate these high level events. Example. Consider the example in Fig. <ref type="figure" target="#fig_8">7</ref>. We have two programs running in the system: a browser and a PDF reader. Parts of the code snippets of the two applications are shown. Although the code snippets simulate the workflow in a realworld browser and a real-world PDF reader, they are substantially simplified and abstracted to be consistent with our definitions in Fig. <ref type="figure" target="#fig_6">6</ref>. Specifically, the browser has two threads: the UI thread that handles UI events and the worker thread that performs background operations such as downloading a file. The event handling loop dominates the execution of the UI thread. The beginning of the loop is instrumented by a function UnitEnter() that will produce an event denoting the start of a unit. In lines 8-11, if the UI event is the click of a hyper link, the URL is added to the work queue. Since the queue operations denote the workflow across units, the enqueue operation is instrumented to generate a memory write event (line 9). The worker thread execution is dominated by the loop in lines 22-36, which acquires a request from the work queue and processes it. Lines 23-24 denote the unit instrumentation and the memory read instrumentation. If the request is to access a URL, a temporary file "tmp" is created to store the downloaded content. A session is created and used to download the resource (lines 28-29). The downloaded content is written to the file (line 30). An IPC object is created to communicate with the PDF reader to display the PDF file (lines 32-33). The temporary file is deleted at the end (line 34).</p><p>The PDF reader is also event driven. If it receives an IPC request to render a PDF file, it acquires the file through IPC and saves it to buf (lines 56-57) before rendering it. If it receives a UI request to save the PDF file, it creates a file and writes buf to the file (lines 62-64). ProTracer detects that buf carries workflow across units (i.e. the loop iterations corresponding to UnitEnter (); MemWrite(q.tail( )) UnitEnter( ); MemRead(q.head( )); UnitEnter( ); MemWrite(buf); MemRead(buf); the IPC and the save-as-a-file operations), the read and write of buf are instrumented (lines 58 and 63). Fig. <ref type="figure" target="#fig_8">7</ref> (c) shows a sample execution of the system, in which the user clicks a hyper link denoting a remote PDF file, the file is then downloaded and rendered by the reader, and finally the user further saves the file. The table shows the events generated by ProTracer and how the run-time processes these events. The second column shows the timestamps; the third column shows the events with process b and r denoting the browser and the reader, respectively. The fourth column shows the rules applied and the last three columns show the state of the various data structures.</p><formula xml:id="formula_1">Program TimeStamp Event Rule OT[]/MT[] UT[] LB 1 UnitEnter(b) 13 UT[b]={OT[b]}={&lt;b,-&gt;} 2 MemWrite(b,q[0]) 11 MT[q[0]]=UT[b]={&lt;b,-&gt;} 3 UnitEnter(b) 13 UT[b]={OT[b]}={&lt;b,-&gt;} 4 MemRead(b,q[0]) 12 UT[b]=UT[b] U MT[q[0]]={&lt;b,-&gt;} 5 SessionCreate(b,x) 7 OT[x]=&lt;t 1 ,5&gt; 6 SessionRead(b,x) 8 UT[b]=UT[b] U {OT[x]}={&lt;b,-&gt;, &lt;t 1 ,5&gt;} 7 FileWrite(b,f) 3 LB=&lt;W,f,{&lt;b,-&gt;,&lt;t 1 ,5&gt;},7&gt;<label>8</label></formula><p>Observe that in the first unit corresponding to the click of the hyper link, the UnitEnter event causes the unit taint of b to be reset to { b, -}. Upon the MemWrite at 2, the taint of the queue is updated to contain the taint of the current unit. The execution then proceeds to the unit from the worker thread that downloads the file. At 3, the unit taint set is reset. At 4, the taint set of the queue is unioned with the unit taint set. At 5, since a network session is considered an external source, an ID t 1 is generated to denote the source. The taint of the session is inserted to the unit taint set at 6 due to the SessionRead event. At 7, the downloaded content is saved to the temporary file f , and thus a log entry is inserted to the log buffer LB to denote the write and the provenance. The file is further passed to the reader through an IPC c. The IPCWrite event leads to another log entry at 8. At 9, the deletion of f leads to the removal of the first log entry as f is a temporary file. Timestamps 10-15 correspond to the execution of the reader, which consists of two units. The first one renders the file and the second one saves the file. At 11, a new taint is created to denote the provenance set of the IPC object c at timestamp 11, which essentially denotes the set { b, -, t 1 , 5 }. The taint is inserted to the unit taint set of r. The unit taint set is propagated to buf at 13. In the second unit (timestamps 13-15), the taint set of buf is retrieved and inserted to the unit taint set. When the file is written, another log entry is added to denote the write.</p><p>There are three important things that we need to point out. <ref type="bibr" target="#b0">(1)</ref> Although there are 15 events, ProTracer only needs to log two of them, which are the two in LB at the end. In other words, on-the-fly taint propagation avoids storing a lot of events. (2) ProTracer introduced a new taint c, 11 to denote the provenance set of c at 11 such that the processing of the reader events and the processing of the browser events can be performed concurrently by different threads. And from the timestamp 11 and the log, we know that c, 11 must represent the taint set in the first log entry. (3) The log entries reflect the history of the file, whereas existing techniques only track the sources of the file.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Handling Global File Accesses</head><p>A long running execution can often be divided to three parts. The first one is the start phase, which is responsible for loading configurations, allocating resources like file descriptors for application log files. The second one is the event handling loop, which handles a large number of external requests. The third one is the closing phase, where all resources are deallocated before the process terminates. In the previous sections, we mainly focus on the event handling loops, which dominate and generate units. However, handling the other two phases, especially file operations in those phases, is equally important. Files opened in the start phase are often used throughout the whole execution. For example, the Apache httpd server opens its application log files (e.g. access log and error log) in the start phase. The access log will be written within any unit that handles an external request. This log file is a shared object across most of the units, which would cause unnecessary dependence between units. To address this problem, we apply a special policy to objects opened in the start phase. In particular, these objects are stated as global in the log. During execution, they are not considered as shared objects and operations on these files are not logged.</p><p>Unlike log files, which are opened in the start phase and not closed until the end phase, some objects used in the start phase have a very short life time. They are usually opened, read and then closed. Typical examples include configuration files and libraries used by an application. Our policy is to log these events, because the data read from these files can be possibly utilized for a malicious purpose. An example is that a malicious library downloaded from a remote site is loaded by a normal application in the start phase.</p><p>Discussion: Completeness of ProTracer. As introduced in Section I, we aim to capture all the external and internal entities that affect a system object and their casual relations. With the assumption that all the provenance related syscalls are intercepted by ProTracer, we want to show that the alternation between tainting and logging and the pruning of events (e.g., through file deletions) do not affect completeness. According to the rules in Table <ref type="table" target="#tab_0">I</ref>, within a unit, all input events are captured and propagated to the taint set of the unit. With the assumption that all the inter-unit workflows through memory accesses are captured<ref type="foot" target="#foot_0">foot_0</ref> , the taint set is properly propagated across units. Upon an outgoing syscall, the set is logged. During offline analysis, causal edges are introduced by connecting a log entry containing a taint (of an input file), such as taint F 1 on edge 2 in Fig. <ref type="figure" target="#fig_5">5</ref>, and a preceding log entry containing the provenance set corresponding to the taint (e.g., the log entry generated by the action on edge 1 in Fig. <ref type="figure" target="#fig_5">5</ref>). This ensures not only that the set of external sources is complete, but also the history of the object is captured (by the causal graph). The way that ProTracer prunes log entries related to temporary files is safe because only the log entries related to a file owned by the process are removed. When the file is owned, its information cannot reach other processes. In the case that a temporary file is copied to another permanent file, its provenance is completely inherited by the permanent file so that the temporary file log entries are no longer useful. ProTracer also precludes syscalls caused by application logging as they introduce bogus causality across units. Note that application log usually records a subset of what ProTracer is already recording and is hence redundant.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>V. EVALUATION</head><p>In this section, we will show the evaluation results of ProTracer. The experiments were conducted on five identical machines with four cores and 4GB RAM. Most of the binaries in our experiment machines have been instrumented by BEEP <ref type="bibr" target="#b24">[27]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Effectiveness</head><p>Daily Usage: In the first experiment, we emulated the daily (24 hours including break time) usage of five computer users, and collected logs. To compare the space consumption, we run both ProTracer and BEEP <ref type="bibr" target="#b24">[27]</ref> at the same time during the experiment. After the logs were generated, we also applied LogGC <ref type="bibr" target="#b25">[28]</ref> to garbage collect the BEEP logs to acquire the reduced logs. To create workload diversity, we emulated users exhibiting different usage patterns: User 1 uses the system to run a web server for a group project. An FTP server is also running in the same system; User 2 is new to Linux. He just tries out various applications in the system and accesses his personal emails and the Internet; User 3 is preparing for an exam. She is mainly reading documents and watching video lectures; User 4 uses vim a lot to finish his course project report besides accessing the Internet; User 5 mainly uses the system for watching movies and communicating with friends. In addition, we performed an extended 3-month emulation of user 1, whose machine is used as a server; and user 4, who actively uses client programs.</p><p>We compare the number of log entries and the log file sizes for BEEP, LogGC, and ProTracer. The results are presented in Table . II. Columns 8 and 9 show the ratios between the ProTracer logs and the BEEP logs, whereas the last two columns show the same ratios between the LogGC logs and the BEEP logs. Observe that ProTracer can significantly reduce the number of events that need to be logged. On average, ProTracer only needs to log 1.85%(Daily)/1.45%(3 months) of the entries in BEEP. Since ProTracer records taint IDs, our log file format is slightly more efficient than BEEP and LogGC. On average, ProTracer's disk space consumption is only 1.28%(Daily)/1.02%(3 months) of BEEP's. The results vary for different users because of the different workloads and use patterns. Even in the worst case (user 1 that hosted servers), ProTracer generated less than 4% of the log entries, and consumed less than 2% of the disk space.</p><p>Compared to LogGC, ProTracer has better space efficiency in most cases. This is reasonable because LogGC garbagecollects events based on their reachability from live system objects. In other words, events that do not contribute to any  live system objects are removed. ProTracer not only avoids logging such dead events (Section IV), but also precludes redundant events that affect live system objects (e.g. repetitive socket reads from the same session and execution units that do not access any taint sources but rather serve as part of the information flow path). In some cases, LogGC is more space efficient (e.g. user 3). This is mainly due to temporary files.</p><p>LogGC is an offline log reduction method, which has sufficient information to precisely decide if a file is temporary. ProTracer uses the log buffer to delay writing log entries to the disk, hoping that the temporary file related entries will be removed by the time the buffer is flushed. However, some temporary files related log entries will be flushed to disk if the files are not deleted by the time the buffer is flushed. Besides, ProTracer also logs events that belong to the start and end phases of an execution, whereas BEEP/LogGC ignores those events. For user 3, MPlayer and Xpdf were frequently used and they produced a large number of temporary files. LogGC was able to remove all the records that belong to these two programs, whereas ProTracer keeps some of them. Also observe that on average, ProTracer only generates 13MB log per day, which is very affordable.</p><p>Application Perspective: We also compare the space consumption of the different systems on various applications. The logs specific to applications are extracted from the whole system logs. The results are presented in the lower half of Table <ref type="table" target="#tab_2">II</ref>. Observe that the ProTracer logs are significantly smaller compared to BEEP Logs. The number of records is reduced to less than 8%, and the log size shrinks to less than 7% for all programs. The results vary across different applications due to the different behavioral patterns of the applications. For browsers like Firefox, accessing a single web page can introduce many taints as it may access the web server, advertisement server, image storage server and so on.</p><p>Since each resource request will cause a log entry, the log buffer is filled up much faster and more frequently, compared to other applications. As a result, ProTracer records more temporary files related events. Programs like Xpdf interact with files and the screen. There is no outgoing information via sockets or other files. ProTracer only needs to record a small number of events in the start and the end phases. For most programs, ProTracer occupies less space than LogGC. But for some of them (e.g. Xpdf), LogGC performs better. This is because LogGC ignores the events in the start and the end phases of a process. However, the results also show that the overhead is minor for these applications.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Logging Overhead and Scalability</head><p>We also perform experiments to study the run-time overhead and scalability of ProTracer. Fig. <ref type="figure" target="#fig_10">8</ref> shows the accumulated log size over time for user 1. The solid line shows the growth of the BEEP log size over time, and the dashed line shows ProTracer's. In general, the growth is similar although the scales of the sizes are different. The sharpest growth occurs in the 15th-20th hour, indicating the user was intensively using the system. Even in this period, the growth of the ProTracer log is about 13MB, suggesting very good scalability. There are some shape differences between the two lines near the 20th hour. This is mainly because ProTracer has better log reduction for the applications used during that time period, compared to other applications.  Fig. <ref type="figure" target="#fig_11">9</ref> and Fig. <ref type="figure" target="#fig_12">10</ref> show the run-time overhead comparison between ProTracer and the default Linux Audit system, with the same set of syscalls monitored. Note BEEP is built on the Linux Audit system and hence more expensive. We perform two sets of experiments. The first one is for server programs. We use the Apache Benchmark <ref type="bibr" target="#b0">[1]</ref> to test two web servers Apache and MiniHttp, and ftpbench to test ProFTPD. We also test different concurrency configurations, with the number of requests sent at the same time being 1, 2, 4, and 8. The results are shown in Fig. <ref type="figure" target="#fig_11">9</ref>. The benchmarks tend to give the system a lot of pressure, which would cause higher overhead than regular usage. The baseline we use is the native Linux system without running the Linux Audit system. Observe that the overhead of ProTracer is less than 7%, whereas the Linux Audit system has a much more significant overhead (more than 5 times larger).  We also perform experiments for client programs. We use standard benchmarks if they are available such as SunSpider for Firefox. Otherwise, we use the batch mode for programs like vim or W3M. We perform the experiments with ProTracer and with the Linux Audit system. The baseline we use here is the native Linux system without any logging system running. The results are shown in Fig. <ref type="figure" target="#fig_12">10</ref>. Observe that ProTracer has less than 3.5% run-time overhead for all these programs, whereas the overhead of the Linux Audit system is 7-8 times larger. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Attack Investigation Cases</head><p>In this section, we use a number of attack cases to show that the causal graphs generated by ProTracer during attack analysis are smaller than those by BEEP, but equally informative, and the time taken to generate the graphs is much less. We reproduce a few realistic attack scenarios for our experiment. With each scenario, we perform two what-provenance queries to understand the sources and the ramifications of the attacks, and also the how-provenance query to understand the attack path (Section I). We compare the query results by BEEP and ProTracer, and also cross-check with our prior knowledge. To emulate real-world attack scenarios, each experiment lasted for a few hours with the attack performed in the middle.</p><p>The first case is a backdoor attack. The attacker detected that the running FTP server was ProFTPD-1.3.3c, which had a backdoor command <ref type="bibr" target="#b1">[3]</ref>. He compromised the server, and was able to get a bash shell. He then downloaded a backdoor program using wget, and started this backdoor to get permanent access. A few days later, the administrator got a warning that the FTP server had a backdoor, and decided to check if the backdoor had been exploited. If so, what damages have been inflicted.</p><p>The second scenario is information theft <ref type="bibr" target="#b24">[27]</ref>. An employee had a under-the-table deal with one competitor of his own company: he copied some information from the company, and leaked it to the competitor by pasting it to a public page via vim. When the company found that the information was leaked, they should be able to pair the file that contained the information with the web page that leaked the information, among thousands of files. ProTracer shall also allow them to prove that the attacker leaked it among all the other employees that have the access to the file.</p><p>The third scenario is illegal storage <ref type="bibr" target="#b13">[16]</ref>. One of the server administrators wanted to store some illegal files on a server. However, he did not want the files to be in his own directory. Instead he created a directory under another user's home directory, and downloaded the illegal files to the directory. He replaced the ls program to hide the existence of this directory. When the files were eventually found, the victim user was considered a suspect because of the presence of those files in his/her directory. The investigator should be able to identify that the administrator was the one that committed the crime. Note here we assume that the administrator cannot tamper with the log file generated by ProTracer.</p><p>The forth scenario is cheating student [4]. An instructor's password was stolen by a student. The student downloaded a file containing midterm scores from Apache, and uploaded a modified version. The instructor noticed that the average score became higher, and started to suspect someone had modified the file. Luckily, students used static IP addresses on campus and off-campus IPs were forbidden to connect to the server. So finding the IP from which the current file was uploaded would help identify the student. Moreover, the administrator should be able to find other suspicious activities of the student. In our case, the student also downloaded a few files containing answers to future quizzes.</p><p>The fifth is phishing email [2] that was discussed in Section II.</p><p>Parts of the results are shown in Table <ref type="table" target="#tab_5">III</ref>. The second column shows the experiment duration. The next three columns show the size of the logs by different systems. Then we show the time it takes to perform the queries. The last two columns show if BEEP and ProTracer produce matched results for the two what-provenance queries (i.e., the backward query for attack sources and the forward query for attack ramifications). For the first scenario, the backward query is not applicable.   To further compare the quality of the query results. We compare the causal graphs generated by BEEP and ProTracer in answering the forward queries. The results are shown in Table <ref type="table" target="#tab_6">IV</ref>, which shows the number of taint sources, the number of processes (i.e. the internal nodes along the attack path), the number of files affected by the attacks, and the number of nodes in the graphs. Note that LogGC would produce the same graphs as BEEP. Observe that the two systems produce the same set of taint sources and processes. The differences in the files are due to the fact that BEEP does not log file accesses in the start and the end phases (e.g. loaded libraries). In this sense, we argue that the ProTracer-induced graphs are more complete. Finally, the ProTracer-induced graphs are much smaller than graphs generated by BEEP, reducing the human inspection efforts.</p><p>To acquire an intuitive understanding of the differences between ProTracer graphs and BEEP graphs, we present parts of the graphs by BEEP and ProTracer for the forward query in the backdoor attack case. The query aims to find all the reachable items from the external IPs connected to the FTP server. There are three connections. The one from a.a.a.a downloaded and uploaded a file, and exploited the backdoor. The one from b.b.b.b simply downloaded and uploaded a file. The one from c.c.c.c lost its connection. Observe that the ProTracer graph is a lot more concise and clear. This is because using tainting, ProTracer avoids logging many events and generating nodes for those events. For example, the box on the bottom of the BEEP graph shows a zoom-in view of part of the graph. It is reduced to a single node (FTP-a0) in our graph. And our graph is still equally informative. Moreover, the events related to c.c.c.c are precluded from our log in the first place as the taints did not propagate to any permanent changes.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>VI. DISCUSSION</head><p>In this section, we will discuss the limitations of ProTracer.</p><p>(1) While the execution of many programs can be divided autonomous units which are only connected through workflow memory dependencies, this may not hold for all programs. For programs that do not have unit structure (i.e., does not have event handling loops), ProTracer treats the entire execution as a unit, which may cause dependence explosion.</p><p>(2) Similar to BEEP <ref type="bibr" target="#b24">[27]</ref>, ProTracer relies on training runs to identify unit loops and workflow dependencies. However, the training may not be complete. If unit loops cannot be properly identified, ProTracer treats the entire execution as a unit. Once a unit loop is identified, the corresponding workflow dependencies can be identified as they rarely change <ref type="bibr" target="#b24">[27]</ref>. In theory, however, ProTracer may miss such dependencies hence the corresponding memory accesses are not instrumented, leading to broken causal paths.</p><p>(3) Just like most audit logging systems, ProTracer requires that the kernel and the user space daemon are not compromised. This limitation can be mitigated by porting ProTracer to a hypervisor. Furthermore, if a system is clean to begin with and an attacker successfully subverts the system at a later time, the initial subversion will be accurately captured by ProTracer. But the log entries after the system's subversion cannot be trusted.</p><p>(4) Similar to most logging systems, ProTracer excels at capturing provenance through benign and commonly used applications, such as browsers and editors, as many attacks leverage these applications. In contrast, malware usually makes use of various methods to protect themselves such as obfuscation and self-modification, which may create trouble for ProTracer's analysis. As a result, ProTracer usually treats malware execution as a single unit. We argue that this is reasonable because all malware actions are -by definitionof interest (instead of noise) to attack investigation.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>VII. RELATED WORK</head><p>System logging: Lots of works <ref type="bibr" target="#b6">[9]</ref>, <ref type="bibr" target="#b7">[10]</ref>, <ref type="bibr" target="#b12">[15]</ref>, <ref type="bibr" target="#b13">[16]</ref>, <ref type="bibr" target="#b18">[21]</ref>, <ref type="bibr" target="#b21">[24]</ref>, <ref type="bibr" target="#b23">[26]</ref>, <ref type="bibr" target="#b26">[29]</ref>, <ref type="bibr" target="#b31">[34]</ref>, <ref type="bibr" target="#b32">[35]</ref>, <ref type="bibr" target="#b32">[35]</ref>, <ref type="bibr" target="#b33">[36]</ref>, <ref type="bibr" target="#b49">[52]</ref> have been done in tracking provenance using system-level audit logs. However, many of them suffer from dependence explosion and have high overhead. BEEP <ref type="bibr" target="#b24">[27]</ref> and LogGC <ref type="bibr" target="#b25">[28]</ref> are the most closely related work. ProTracer uses similar unit partitioning to avoid dependence explosion. Compared to BEEP and LogGC, ProTracer has much lower space and run-time overhead, due to the new infrastructure and the integration of tainting and logging. The graphs by ProTracer are also much more concise. Some of these techniques <ref type="bibr" target="#b31">[34]</ref>- <ref type="bibr" target="#b33">[36]</ref> provide high performance. However, they do not perform any on-the-fly reduction but rather simply store the whole traces. They may also be susceptible to dependence explosion. Dynamic information flow tracking and tainting: Tainting and dynamic information flow tracking <ref type="bibr" target="#b9">[12]</ref>- <ref type="bibr" target="#b11">[14]</ref>, <ref type="bibr" target="#b17">[20]</ref>, <ref type="bibr" target="#b20">[23]</ref>, <ref type="bibr" target="#b30">[33]</ref>, <ref type="bibr" target="#b39">[42]</ref>, <ref type="bibr" target="#b44">[47]</ref>- <ref type="bibr" target="#b47">[50]</ref> have been studied from different aspects (e.g., file system, kernel object level, network flow) on different platforms (e.g., Linux, Android) including some new operating system prototypes like Asbestos <ref type="bibr" target="#b9">[12]</ref> or HiStar <ref type="bibr" target="#b46">[49]</ref> to precisely trace provenance. They can trace provenance with high precision. But their run-time overhead tends to be on the high end, due to the heavy-weight instrumentation. ProTracer borrows the basic concept of tainting, optimizes it at the unit level to avoid the heavy-weight instrumentation used in existing approaches. Moreover, tainting alone cannot answer how-queries.</p><p>Log storage and presentation: Provenance data can be represented as graphs, researchers have done a lot of work <ref type="bibr" target="#b41">[44]</ref>- <ref type="bibr" target="#b43">[46]</ref> on reducing the size of these graphs by borrowing ideas from Web graph compression and dictionary based encoding.</p><p>In <ref type="bibr" target="#b3">[6]</ref>, researchers leverage Mandatory Access Control (MAC) policies to reduce the storage cost of provenance based on the Hi-Fi <ref type="bibr" target="#b33">[36]</ref> system. We envision such policies can also be adopted in ProTracer to achieve more sophisticated reduction.</p><p>G 2 <ref type="bibr" target="#b15">[18]</ref> stores logs in databases, and provides execution graphs that can be analyzed using LINQ queries or user-defined programs. However, it depends on printed messages by the applications. Some techniques <ref type="bibr" target="#b6">[9]</ref>, <ref type="bibr" target="#b25">[28]</ref> try to reduce events offline. Since ProTracer performs online reduction, the whole trace is not visible to ProTracer. Some reduction that is easy for offline analysis cannot be applied online. In other words, these offline reduction techniques are complementary to ProTracer.</p><p>Log integrity: In <ref type="bibr" target="#b16">[19]</ref>, researchers proposed a real-time server/client audit model. The client sends integrity-assured log to the server side for post-mortem detection of infections.</p><p>ProTracer can provide pre-analyzed logs with small size, which help <ref type="bibr" target="#b16">[19]</ref> gain more accurate results and better performance with lower network traffic. In <ref type="bibr" target="#b40">[43]</ref>, researchers proposed a primitive that provides the integrity of execution trace. It works on instruction-level execution traces. The same idea can be applied in ProTracer to guarantee the integrity of the log and provide better attack resilience. Recently in <ref type="bibr" target="#b4">[7]</ref>, researchers propose a novel generic framework for the development of provenance-aware systems based on LSM to secure such systems. Other researchers also try to enhance the storage system to provide the integrity of the provenance data. For example, <ref type="bibr" target="#b38">[41]</ref> suggests using an isolated versioning systemworking at the disk level -to store provenance; <ref type="bibr" target="#b35">[38]</ref> develops a storage system that allows repetitive reads but only a single write to guarantee data integrity.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>VIII. CONCLUSION</head><p>We develop ProTracer, a cost-effective provenance tracing system that features the capabilities of alternating between logging and unit-level taint propagation, and event processing through a lightweight kernel module and a sophisticated concurrent user space daemon. Our evaluation results show that ProTracer substantially improves the state-of-the-art. In our experiments, it only generates 13MB audit log per day, and 0.84GB(Server)/2.32GB(Client) in 3 months with less than 7% overhead, while the generated logs do not lose any attackrelated information.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Fig. 1 :</head><label>1</label><figDesc>Fig. 1: Basic approaches to provenance tracing. (a) Actual executions in a top-down order; (b) Approach I: audit logging; (c) Approach II: provenance propagation.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Fig. 2</head><label>2</label><figDesc>Fig. 2 shows the causal graph constructed by BEEP. The ovals on the left represent the units of sendmail, which checks the IP address through the Domain Name System (DNS) (a.a.a.a), and then interacts with the authentication server (b.b.b.b) and mail server (c.c.c.c) to fetch all emails.An email is further processed by a separate thread, whose unit is the one on the right of the dashed circle. The email is further filtered by procmail before it is opened by pine. Inside pine, the user clicks the phishing link, which triggers Firefox. Firefox uses multiple threads to process a request. The units in the dashed area correspond to units of the main thread and the tab thread, which uses an IPC channel i.i.i.i to communicate with a worker thread that downloads the backdoor file from d.d.d.d. The malware is later executed through bash and sends a file f to e.e.e.e.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Fig. 2 :Fig. 3 :</head><label>23</label><figDesc>Fig. 2: The simplified causal graph of a phishing attack generated by BEEP [27]. The ovals represent execution units; the diamonds represent network sessions; the rectangles represent files. The nodes inside the dashed areas are those pruned away by ProTracer.</figDesc><graphic coords="4,96.72,217.32,156.60,86.76" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head></head><label></label><figDesc>-&gt; kernal functoin 3. kernal module -&gt; syscall 2. Copy syscall information to buffer ring 4. Handle syscall events 5. Write records to log file</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Fig. 4 :</head><label>4</label><figDesc>Fig. 4: System architecture overview, dashed lines denote control flow, solid lines denote data flow, and numbers denote the order of the events.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Fig. 5 :</head><label>5</label><figDesc>Fig. 5: An abstract diagram to illustrate the logging and tainting run-time. The numbers represent the order of the events. The logging/tainting behavior is highlighted in red on edges.U T (u) and M T (a) are simplified representations of the taint set of a unit u and address a, respectively. P denotes the current process and id 0 an ID denoting a network session.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>OT∈Fig. 6 :</head><label>6</label><figDesc>Fig. 6: Definitions for Logging and Tainting.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head></head><label></label><figDesc>SessionCreate(p, x) t = newSource(); OT [x] = t, gettime() 8 SessionRead(p, x) U T [p] = U T [p] ∪ {OT [x]} 9 SessionW rite(p, x) LB = LB + WRITE, x, U T [p], getTime() 10 F ork(p 1 , p 2 ) LB = LB + FORK, p 2 , U T [p 1 ], getTime() 11 M emW rite(p, a) M T [a] = U T [p]; 12 M emRead(p, a) U T [p]∪ = M T [a] 13 U nitEnter(p) U T [p] = { p, -} 14 EmailRecv(p, m) t = newSource(); U T [p] = U T [p] + { t, getTime() }</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head>Fig. 7 :</head><label>7</label><figDesc>Fig. 7: Example for the logging and tainting run-time. The shaded statements correspond to syscalls. The statements in red are those instrumented by ProTracer to generate special events.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_10"><head>Fig. 8 :</head><label>8</label><figDesc>Fig. 8: Accumulated log size from the one-day execution of BEEP and ProTracer. Note the size of BEEP log is measured by megabytes, whereas the ProTracer log is measured by kilobytes.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_11"><head>Fig. 9 :</head><label>9</label><figDesc>Fig.9: Run-time overhead with different concurrent thread(s) for server programs.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_12"><head>Fig. 10 :</head><label>10</label><figDesc>Fig. 10: Run-time overhead for client programs.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_13"><head>Fig. 11 :</head><label>11</label><figDesc>Fig. 11: Part of the graphs generated by BEEP and ProTracer for the backdoor case.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>TABLE I :</head><label>I</label><figDesc>Logging and Tainting Rules.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>TABLE II :</head><label>II</label><figDesc>Comparison of effectiveness of various systems with different duration (3 months and 24 hours); users, and applications.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>TABLE III :</head><label>III</label><figDesc>Attack scenarios. Backward means backward what-provenance query; and forward means forward query; match means ProTracer is able to precisely and concisely uncover the attack path.</figDesc><table><row><cell cols="5">Observe that ProTracer produces much smaller logs and the</cell></row><row><cell cols="5">query processing time is much shorter. The query results</cell></row><row><cell cols="5">show no qualitative differences and precisely disclose the</cell></row><row><cell>provenance.</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>Scenario</cell><cell>#source</cell><cell>#process</cell><cell>#file</cell><cell>#nodes</cell></row><row><cell>Backdoor</cell><cell>33/33</cell><cell>23/23</cell><cell>37/66</cell><cell>580/128</cell></row><row><cell>Infor theft</cell><cell>1/1</cell><cell>4/4</cell><cell>21/36</cell><cell>148/82</cell></row><row><cell>Illegal storage</cell><cell>24/24</cell><cell>6/6</cell><cell>56/72</cell><cell>388/208</cell></row><row><cell>Student hacker</cell><cell>2/2</cell><cell>2/2</cell><cell>67/85</cell><cell>432/226</cell></row><row><cell>Phishing email</cell><cell>5/5</cell><cell>8/8</cell><cell>12/12</cell><cell>864/305</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>TABLE IV :</head><label>IV</label><figDesc>Causal graph comparison (BEEP/ProTracer).</figDesc><table /></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>We will discuss situations where our assumptions may not hold in Section VI.</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>ACKNOWLEDGMENTS</head><p>We thank the anonymous reviewers for their constructive comments. This research was supported, in part, by <rs type="funder">DARPA</rs> under contract <rs type="grantNumber">FA8650-15-C-7562</rs>, <rs type="funder">NSF</rs> under award <rs type="grantNumber">1409668</rs>, <rs type="funder">ONR</rs> under contract <rs type="grantNumber">N000141410468</rs>, and <rs type="funder">Cisco Systems</rs> under an unrestricted gift. Any opinions, findings, and conclusions in this paper are those of the authors only and do not necessarily reflect the views of our sponsors.</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funding" xml:id="_5CuHPw3">
+					<idno type="grant-number">FA8650-15-C-7562</idno>
+				</org>
+				<org type="funding" xml:id="_car4bgC">
+					<idno type="grant-number">1409668</idno>
+				</org>
+				<org type="funding" xml:id="_h5rem32">
+					<idno type="grant-number">N000141410468</idno>
+				</org>
+			</listOrg>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<title/>
+		<author>
+			<persName><surname>Apache</surname></persName>
+		</author>
+		<ptr target="https://httpd.apache.org/docs/2.2/programs/ab.html" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<ptr target="http://www.osvdb.org/69562" />
+		<title level="m">Proftp backdoor</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<monogr>
+		<title/>
+		<author>
+			<persName><surname>Tracepoints</surname></persName>
+		</author>
+		<ptr target="https://www.kernel.org/doc/Documentation/trace/tracepoints.txt" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<title level="m" type="main">Take only what you need: Leveraging mandatory access control policy to reduce provenance storage costs</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bates</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">R</forename><surname>Butler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Moyer</surname></persName>
+		</author>
+		<imprint>
+			<biblScope unit="page">15</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<monogr>
+		<title level="m" type="main">Trustworthy whole-system provenance for the linux kernel</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bates</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">J</forename><surname>Tian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">R</forename><surname>Butler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Moyer</surname></persName>
+		</author>
+		<imprint/>
+	</monogr>
+	<note>Usenix Security&apos;15</note>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<monogr>
+		<title level="m" type="main">The world&apos;s fastest taint tracker</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>Bosman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Slowinska</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Bos</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Minemu</surname></persName>
+		</author>
+		<imprint>
+			<biblScope unit="page">11</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Issues in automatic provenance collection</title>
+		<author>
+			<persName><forename type="first">U</forename><surname>Braun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Garfinkel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">A</forename><surname>Holland</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K.-K</forename><surname>Muniswamy-Reddy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">I</forename><surname>Seltzer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Provenance and annotation of data</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<title level="m" type="main">Understanding data lifetime via whole system simulation</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Chow</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Pfaff</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Garfinkel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Christopher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Rosenblum</surname></persName>
+		</author>
+		<idno>USENIX SSYM&apos;04</idno>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<monogr>
+		<title level="m" type="main">Dytan: A generic dynamic taint analysis framework</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Clause</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Orso</surname></persName>
+		</author>
+		<idno>ISSTA &apos;07</idno>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Labels and event processes in the asbestos operating system</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Efstathopoulos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Krohn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Vandebogart</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Frey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Ziegler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Kohler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Mazieres</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Kaashoek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Morris</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">SOSP &apos;05</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<title level="m" type="main">Taintdroid: An information-flow tracking system for realtime privacy monitoring on smartphones</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Enck</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Gilbert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B.-G</forename><surname>Chun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">P</forename><surname>Cox</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Jung</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Mc-Daniel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">N</forename><surname>Sheth</surname></persName>
+		</author>
+		<imprint>
+			<biblScope unit="page">10</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Taintdroid: an information-flow tracking system for realtime privacy monitoring on smartphones</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Enck</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Gilbert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Han</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Tendulkar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B.-G</forename><surname>Chun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">P</forename><surname>Cox</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Jung</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Mcdaniel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">N</forename><surname>Sheth</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Transactions on Computer Systems (TOCS)</title>
+		<imprint>
+			<biblScope unit="page">32</biblScope>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<monogr>
+		<title level="m" type="main">Spade: Support for provenance auditing in distributed environments</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Gehani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Tariq</surname></persName>
+		</author>
+		<idno>Middleware&apos;12</idno>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<monogr>
+		<author>
+			<persName><forename type="first">A</forename><surname>Goel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Po</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Farhadi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>De Lara</surname></persName>
+		</author>
+		<title level="m">The taser intrusion recovery system. SOSP &apos;05</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">P</forename><surname>Groth</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Miles</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Fang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">C</forename><surname>Wong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">P</forename><surname>Zauner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Moreau</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Hpdc</surname></persName>
+		</author>
+		<imprint>
+			<biblScope unit="page">5</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<monogr>
+		<title level="m" type="main">G 2 : A graph processing system for diagnosing distributed systems</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Long</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Zhou</surname></persName>
+		</author>
+		<idno>USENIX ATC&apos;11</idno>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<monogr>
+		<title level="m" type="main">Server-side detection of malware infection</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Jakobsson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Juels</surname></persName>
+		</author>
+		<idno>NSPW &apos;09</idno>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<monogr>
+		<title level="m" type="main">A general approach for effciently accelerating software-based dynamicdata flow tracking on commodity hardware</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Jee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Portokalidis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">P</forename><surname>Kemerlis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ghosh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">I</forename><surname>August</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">D</forename><surname>Keromytis</surname></persName>
+		</author>
+		<imprint>
+			<biblScope unit="page">12</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<monogr>
+		<title level="m" type="main">Provenance-aware tracing ofworm break-in and contaminations: A process coloring approach</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Walters</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">H</forename><surname>Spafford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Buchholz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y.-M</forename><surname>Wang</surname></persName>
+		</author>
+		<imprint>
+			<biblScope unit="page">6</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<monogr>
+		<title level="m" type="main">Dta++: Dynamic taint analysis with targeted control-flow propagation</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">G</forename><surname>Kang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Mccamant</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Poosankam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Song</surname></persName>
+		</author>
+		<imprint>
+			<biblScope unit="page">11</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<monogr>
+		<title level="m" type="main">Libdft: Practical dynamic data flow tracking for commodity systems</title>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">P</forename><surname>Kemerlis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Portokalidis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Jee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">D</forename><surname>Keromytis</surname></persName>
+		</author>
+		<imprint>
+			<biblScope unit="page">12</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<monogr>
+		<title level="m" type="main">Intrusion recovery using selective re-execution</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Zeldovich</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">F</forename><surname>Kaashoek</surname></persName>
+		</author>
+		<imprint>
+			<biblScope unit="page">10</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<monogr>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">T</forename><surname>King</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">M</forename><surname>Chen</surname></persName>
+		</author>
+		<title level="m">Backtracking intrusions. SOSP &apos;03</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<monogr>
+		<title level="m" type="main">Enriching intrusion alerts through multi-host causality</title>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">T</forename><surname>King</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><forename type="middle">M</forename><surname>Mao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">G</forename><surname>Lucchetti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">M</forename><surname>Chen</surname></persName>
+		</author>
+		<imprint>
+			<biblScope unit="page">5</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<monogr>
+		<title level="m" type="main">High accuracy attack provenance via binary-based execution partition</title>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">H</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Xu</surname></persName>
+		</author>
+		<imprint>
+			<biblScope unit="page">13</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<monogr>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">H</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Xu</surname></persName>
+		</author>
+		<title level="m">Loggc: garbage collecting audit log. CCS &apos;13</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<monogr>
+		<title level="m" type="main">Accurate, low cost and instrumentation-free security audit logging for windows</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">H</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">H</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Rhee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Xu</surname></persName>
+		</author>
+		<imprint>
+			<biblScope unit="page">15</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<monogr>
+		<title level="m" type="main">Detecting and debugging insecure information flows</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Masri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Podgurski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Leon</surname></persName>
+		</author>
+		<imprint/>
+	</monogr>
+	<note>ISSRE &apos;04</note>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<monogr>
+		<title level="m" type="main">Quantitative information flow as network flow capacity</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Mccamant</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">D</forename><surname>Ernst</surname></persName>
+		</author>
+		<imprint>
+			<biblScope unit="page">8</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">The requirements of recording and using provenance in e-science experiments</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Miles</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Groth</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Branco</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Moreau</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Grid Computing</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<monogr>
+		<title level="m" type="main">Layering in provenance systems</title>
+		<author>
+			<persName><forename type="first">K.-K</forename><surname>Muniswamy-Reddy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">U</forename><surname>Braun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">A</forename><surname>Holland</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Macko</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Maclean</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Margo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Seltzer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Smogor</surname></persName>
+		</author>
+		<idno>USENIX ATC&apos;09</idno>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Provenance-aware storage systems</title>
+		<author>
+			<persName><forename type="first">K.-K</forename><surname>Muniswamy-Reddy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">A</forename><surname>Holland</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">U</forename><surname>Braun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">I</forename><surname>Seltzer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Usenix ATC &apos;06</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<monogr>
+		<title level="m" type="main">Dynamic taint analysis for automatic detection, analysis, and signaturegeneration of exploits on commodity software</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Newsome</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">X</forename><surname>Song</surname></persName>
+		</author>
+		<imprint>
+			<biblScope unit="page">5</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<monogr>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">J</forename><surname>Pohly</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Mclaughlin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Mcdaniel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Butler</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Hi-Fi</surname></persName>
+		</author>
+		<title level="m">Collecting high-fidelity whole-system provenance. ACSAC &apos;12</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<monogr>
+		<title level="m" type="main">Lift: A low-overhead practical information flow tracking system for detecting security attacks</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Qin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H.-S</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wu</surname></persName>
+		</author>
+		<idno>MICRO 39</idno>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<monogr>
+		<author>
+			<persName><forename type="first">R</forename><surname>Sion</surname></persName>
+		</author>
+		<title level="m">Strong worm. ICDCS&apos;08</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<monogr>
+		<title level="m" type="main">Forensic analysis of file system intrusions using improved backtracking</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Sitaraman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Venkatesan</surname></persName>
+		</author>
+		<idno>IWIA &apos;05</idno>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<monogr>
+		<title level="m" type="main">Bitblaze: A new approach to computer security via binary analysis</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Brumley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Yin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Caballero</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Jager</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">G</forename><surname>Kang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Newsome</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Poosankam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Saxena</surname></persName>
+		</author>
+		<idno>ICISS &apos;08</idno>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Selective versioning in a secure disk system</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Sundararaman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Sivathanu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Zadok</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Usenix Security&apos;08</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<monogr>
+		<title level="m" type="main">vpath: precise discovery of request processing paths from black-box observations of thread and network activities</title>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">C</forename><surname>Tak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Govindan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Urgaonkar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">N</forename><surname>Chang</surname></persName>
+		</author>
+		<idno>USENIX ATC&apos;09</idno>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<monogr>
+		<title level="m" type="main">Xtrec: Secure real-time execution trace recording on commodity platforms</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Vasudevan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Qu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Perrig</surname></persName>
+		</author>
+		<idno>HICSS&apos;11</idno>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<monogr>
+		<title level="m" type="main">A hybrid approach for efficient provenance storage</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Tan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K.-K</forename><surname>Muniswamy-Reddy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">D</forename><surname>Long</surname></persName>
+		</author>
+		<idno>CIKM &apos;12</idno>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">Evaluation of a hybrid approach for efficient provenance storage</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K.-K</forename><surname>Muniswamy-Reddy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">D</forename><surname>Long</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Transactions on Storage (TOS)</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="page">14</biblScope>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title/>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K.-K</forename><surname>Muniswamy-Reddy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">D</forename><surname>Long</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Amer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Tan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Z. Compressing provenance graphs</title>
+		<imprint>
+			<biblScope unit="page">11</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">Dataprovenance verification for secure hosts. Dependable and Secure Computing</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Stefan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Yao</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<monogr>
+		<title level="m" type="main">Panorama: capturing system-wide information flow for malware detection and analysis</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Yin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Egele</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Kruegel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Kirda</surname></persName>
+		</author>
+		<imprint>
+			<biblScope unit="page">7</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<monogr>
+		<title level="m" type="main">Making information flow explicit in histar</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Zeldovich</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Boyd-Wickizer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Kohler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Mazi Ères</surname></persName>
+		</author>
+		<imprint>
+			<biblScope unit="page">6</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<monogr>
+		<title level="m" type="main">Detection of stealthy malware activities with traffic causality and scalable triggering relation discovery</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">D</forename><surname>Yao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Ramakrishnan</surname></persName>
+		</author>
+		<idno>ACSAC&apos;14</idno>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<monogr>
+		<title level="m" type="main">Tracing lineage beyond relational operators</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Prabhakar</surname></persName>
+		</author>
+		<imprint>
+			<biblScope unit="page">7</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<monogr>
+		<title level="m" type="main">AND CHIUEH, T.-C. Design, implementation, and evaluation of repairable file service</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Zhu</surname></persName>
+		</author>
+		<imprint>
+			<biblScope unit="page">13</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

@@ -1,0 +1,655 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Automatic Throughput and Critical Path Analysis of x86 and ARM Assembly Kernels</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Jan</forename><surname>Laukemann</surname></persName>
+							<email>jan.laukemann@fau.de</email>
+							<affiliation key="aff0">
+								<orgName type="institution">Erlangen Regional Computing Center Friedrich-Alexander-Universität Erlangen-Nürnberg</orgName>
+								<address>
+									<settlement>Erlangen</settlement>
+									<country key="DE">Germany</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Julian</forename><surname>Hammer</surname></persName>
+							<email>julian.hammer@fau.de</email>
+							<affiliation key="aff0">
+								<orgName type="institution">Erlangen Regional Computing Center Friedrich-Alexander-Universität Erlangen-Nürnberg</orgName>
+								<address>
+									<settlement>Erlangen</settlement>
+									<country key="DE">Germany</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Georg</forename><surname>Hager</surname></persName>
+							<email>georg.hager@fau.de</email>
+							<affiliation key="aff0">
+								<orgName type="institution">Erlangen Regional Computing Center Friedrich-Alexander-Universität Erlangen-Nürnberg</orgName>
+								<address>
+									<settlement>Erlangen</settlement>
+									<country key="DE">Germany</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Gerhard</forename><surname>Wellein</surname></persName>
+							<email>gerhard.wellein@fau.de</email>
+							<affiliation key="aff0">
+								<orgName type="institution">Erlangen Regional Computing Center Friedrich-Alexander-Universität Erlangen-Nürnberg</orgName>
+								<address>
+									<settlement>Erlangen</settlement>
+									<country key="DE">Germany</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Automatic Throughput and Critical Path Analysis of x86 and ARM Assembly Kernels</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-14T19:12+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<textClass>
+				<keywords>
+					<term>benchmarking</term>
+					<term>performance modeling</term>
+					<term>performance engineering</term>
+					<term>architecture analysis</term>
+					<term>static analysis Throughput Analysis Critical Path Analysis Loop-carried Dependencies Analysis</term>
+				</keywords>
+			</textClass>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Useful models of loop kernel runtimes on out-oforder architectures require an analysis of the in-core performance behavior of instructions and their dependencies. While an instruction throughput prediction sets a lower bound to the kernel runtime, the critical path defines an upper bound. Such predictions are an essential part of analytic (i.e., whitebox) performance models like the Roofline and Execution-Cache-Memory (ECM) models. They enable a better understanding of the performance-relevant interactions between hardware architecture and loop code.</p><p>The Open Source Architecture Code Analyzer (OSACA) is a static analysis tool for predicting the execution time of sequential loops. It previously supported only x86 (Intel and AMD) architectures and simple, optimistic full-throughput execution. We have heavily extended OSACA to support ARM instructions and critical path prediction including the detection of loopcarried dependencies, which turns it into a versatile crossarchitecture modeling tool. We show runtime predictions for code on Intel Cascade Lake, AMD Zen, and Marvell ThunderX2 micro-architectures based on machine models from available documentation and semi-automatic benchmarking. The predictions are compared with actual measurements.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>I. INTRODUCTION</head><p>Analytic performance modeling of compute-intensive applications during development or optimization can be a powerful tool and sheds light on how code executes on modern CPU architectures. Such models are hence not only constructed for the sake of prediction but also to study relevant bottlenecks and to assess the compiler's ability to generate optimal code. However, they require a deep understanding of the underlying micro-architecture in order to yield accurate results. Common (simplified) approaches for numerical kernels are the Roofline <ref type="bibr" target="#b0">[1]</ref> model or the ECM <ref type="bibr" target="#b1">[2]</ref> model, whose construction is supported by the Kerncraft open-source performance modeling tool <ref type="bibr" target="#b2">[3]</ref>. For Roofline, the Roofline Model Toolkit <ref type="bibr" target="#b3">[4]</ref> and Intel's Roofline Advisor 1 are also available.</p><p>In general, there are two approaches to predict runtime and performance behavior: simulation and static analysis. Our work implements the latter. Even though simulators may be more thorough and accurate if comprehensive implementations exist, their usage is complicated by obstacles like finding steady states for throughput analysis and pinpointing the This work was in part funded by the BMBF project METACCA. 1 <ref type="url" target="https://software.intel.com/en-us/advisor-user-guide-roofline-analysis">https://software.intel.com/en-us/advisor-user-guide-roofline-analysis</ref> runtime-defining hardware bottleneck. In addition, their implementation is much more complex. The analysis and modeling process is split into in-core execution time and data transfer time through the memory hierarchy. See <ref type="bibr" target="#b1">[2]</ref>, <ref type="bibr" target="#b2">[3]</ref> for examples on how this is done. For a long time, the only capable tool for static in-core code analysis was Intel's Architecture Code Analyzer (IACA) <ref type="bibr">[5]</ref>, which was employed by Kerncraft. Besides being at end-of-life, there are multiple limitations: Intel-only architectures, undisclosed model and later versions restricted to full-throughput assumption. To improve on this, we develop the Open Source Architecture Code Analyzer (OSACA) <ref type="bibr" target="#b4">[6]</ref>, which has, in addition to the features already known from IACA, extended x86 (Intel Cascade Lake and AMD) and AArch64 ARM support and supports critical path (CP) latency analysis and loop-carried dependency detection. All three predictions can be combined to a more accurate performance model, including the throughput as a lower bound and the critical path as an upper bound of the kernel runtime. Like IACA, OSACA assumes that all data originates from the first-level cache (i.e., L1 cache).</p><p>With OSACA's semi-automatic benchmarking pipeline, compilers can benefit from an automated model construction <ref type="bibr" target="#b2">[3]</ref>, <ref type="bibr" target="#b3">[4]</ref>. The instruction database is dynamically extendable, which enables users to adapt the tool to other application scenarios beyond numerical kernels found in HPC usecases.</p><p>This paper is organized as follows: In Section I-A, we cover related work. Section II details the model assumptions and construction for the underlying architecture and the general methodology of the throughput and critical path analysis as well as the loop-carried dependency detection. In Section III we describe the benchmarking hardware/software environment and validate the methodology against actual measurements and compare with related tools. Section IV summarizes the work and gives an outlook to future developments.</p><p>The OSACA software is available for download under AGPLv3 <ref type="bibr" target="#b5">[7]</ref>. Information about how to reproduce the results in this paper can be found in the artifact description <ref type="bibr" target="#b6">[8]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Related Work</head><p>OSACA was inspired by IACA, the Intel Architecture Code Analyzer <ref type="bibr">[5]</ref>. Developed by Israel Hirsh and Gideon S. [sic], Intel released the tool in 2012 and announced its end-oflife in April 2019. Therefore, no feature enhancements or new microarchitecture support can be expected. It is closed source and the underlying model has neither been published by the authors, nor peer reviewed. The latest version supports throughput analysis on Intel micro-architectures up to Skylake (including AVX-512), but is not capable of critical path analysis or loop-carried dependency detection.</p><p>LLVM Machine Code Analyzer (llvm-mca) <ref type="bibr" target="#b7">[9]</ref> is a performance analysis tool based on LLVM's existing scheduling models. Currently it lacks support for HPC-relevant ARM architectures such as the ThunderX2, and some scheduling models need refinement. Also, llvm-mca cannot analyze CPs, even though one can manually identify a CP by the provided latency analysis. LLVM Machine Instruction Benchmark (llvm-exegesis) <ref type="bibr" target="#b8">[10]</ref> is a micro-benchmarking framework for measuring throughput and latency of instruction forms. It could thus be used as a data source to feed the OSACA instruction database. Mendis et al. <ref type="bibr" target="#b9">[11]</ref> apply a deep neural network approach to estimate block throughput on Intel x86 architectures from Ivy Bridge to Skylake. It is able to use IACA byte markers for indicating the code block to analyze and is currently not capable of detecting CPs or loop-carried dependencies. Code Quality Analyzer (CQA) <ref type="bibr" target="#b10">[12]</ref> is a static performance analysis tool focused on single-core performance of loop-centric x86 code. Unlike OSACA, its goal is not to predict runtime, but rather give the developer a quality estimate of the code based on static binary analysis. Uop Flow Simulation (UFS) <ref type="bibr" target="#b11">[13]</ref> extends CQA with a simulator for the out-of-order execution, modeling aspects OSACA assumes to be based on fixed (non-optimal) probabilities.</p><p>There are a fair number of simulators available: gem5, developed by Binkert et al. <ref type="bibr" target="#b12">[14]</ref>, ZSim by Sanches et al. <ref type="bibr" target="#b13">[15]</ref> and MARSSx86 by Patel et al. <ref type="bibr" target="#b14">[16]</ref>. While gem5 even supports various non-x86 instruction set architectures (ARM, Power, RISC-V among others), all of them are considered as "fullsystem" simulators, going above and beyond the scope of this work. Therefore, they give a coarse overview on complete (multi-or many-core) systems, rather than detailed insights pinpointing a bottleneck.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>II. METHODOLOGY</head><p>When analyzing loop kernels, we assume for each CPU architecture a corresponding "port model": Each assembly instruction is (optionally) split into micro-ops (µ-ops), which get executed by multiple ports. A particular instruction may have multiple ports that can execute it (e.g., two integer ALUs), or -in case of complex instructions -multiple ports that must execute it (e.g., combined load and floating-point addition). Shared resources, such as a divider pipeline or a data load unit, are modelled as additional ports.</p><p>Each port receives at most one instruction per cycle and may be blocked by an instruction for any number of cycles. To model parallel execution of the same instruction form on multiple ports, the cycles may be spread among multiple ports, also allowing the inverse of integers as acceptable cycle throughput of an instruction per port, but always adding up to at least one cycle per instruction over all ports. Both x86 and ARM allow memory references to be used in combination with arithmetic instructions. This is modelled by splitting the instruction in the load and the arithmetic part, and accounting for their respective port pressures and dependencies separately (see below).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>In-Order Out-of-Order</head><note type="other">Memory</note><p>Figure <ref type="figure" target="#fig_0">1</ref> shows a diagram of the generic port model. Cascade Lake would be modeled with eight ports, plus one divider pipeline port and two data ports. A floating-point divide instruction would occupy port 0 for one cycle and the DIV port (i.e., pipeline) for four cycles, while an add instruction would use ports 0 and 1 for each half a cycle, because it may be executed on both.</p><p>We repeat here the assumptions behind our prediction model <ref type="bibr" target="#b4">[6]</ref>:</p><p>• All data accesses hit the first-level cache. This is where the boundary between in-core and data transfer analysis is drawn. If a dataset fits in the first-level cache, no cache misses occur. Replacement strategies, prefetching, line buffering, etc., are insignificant on this level. Behavior beyond L1 can be modeled with Kerncraft <ref type="bibr" target="#b2">[3]</ref>, which relies on an in-core analysis from OSACA and combines it with data analysis to arrive at a unified model prediction. • Multiple available ports per instruction are utilized with fixed probabilities. If the exact amount of µ-ops per port per instruction form is unknown, we assume that all suitable ports for the same instruction are used with fixed probabilities. E.g., an add instruction that may use one out of four possible ports and has a maximum throughput of 1 instr./cy on any unit will be assigned 0.25 cy on each of the four ports. This implies imperfect scheduling if ports are asymmetric. Asymmetry means that multiple ports can handle the same instruction, but other features of those ports differ (e.g., one port supports add and div, while another supports add and mul). This may cause load imbalance since, e.g., a code with only add and mul may be imperfectly scheduled. The consideration of the full kernel for a more realistic port pressure model is currently not supported, but is taken</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Machine Files/ Databases</head><p>-name: vfmadd213pd operands:</p><p>-class: "register" name: "ymm" source: true destination: false -class: "register" name: "ymm" source: true destination: true throughput: 0.5 latency: 4 # 0 DV 1 2 D 3 D 4 5 6 7 port_pressure: [0.5,0,0.5,0.5,0.5,0.5,0.5,0,0,0,0]  into account for future versions.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Port Model Construction</head><p>The overall methodology of OSACA is exemplified using the STREAM triad A(:)=B(:)+s * C(:) loop in Figure <ref type="figure" target="#fig_1">2</ref>. The x86 or AArch64 ARM assembly is parsed and the kernel in between the byte markers is extracted. For convenience, OSACA supports IACA's byte markers for x86 and uses the same instruction pattern for ARM assembly. For each parsed instruction form within the kernel, OSACA obtains the maximum inverse throughput and latency in cycles and the ports it can be scheduled to from its instruction database. Furthermore, it keeps track of source and destination operands for identifying register dependencies.</p><p>Possible sources for OSACA's database are microbenchmark databases like uops.info <ref type="bibr" target="#b15">[17]</ref>, Agner Fog's "Instruction Table " [18], or specific microbenchmarks using our own frameworks asmbench <ref type="bibr" target="#b16">[19]</ref> and ibench <ref type="bibr" target="#b17">[20]</ref>. For the latter, OSACA can automatically create benchmark files and import the output into its database, resulting in a semi-automatic benchmark pipeline.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Instruction Throughput and Latency Analysis</head><p>To obtain the latency and throughput of an instruction, we automatically create assembly benchmarks for use with ibench. It offers the infrastructure to initialize, run and accurately measure the desired parameters. It is also intended to support a python-based approach to micro-benchmarking, using the asmbench framework, which is not yet implemented at the time of writing.</p><p>Synthetic dependency chain generation within the assembly kernel allows measurement of throughput and latency of an instruction form and has been described in our previous work <ref type="bibr" target="#b4">[6]</ref>. As stated in Section II-A, in addition to directly measuring throughput and latency of instruction forms including memory references in combination with register operands, which currently requires manual effort, OSACA is able to dynamically calculate the throughput by taking the maximum of both the load and arithmetic part and the latency by taking the sum of both parts. The throughput prediction assumes a fixed and balanced utilization of all suitable ports for any instruction form and perfect out-of-order scheduling without loop-carried dependencies. It thus yields a lower bound for execution time.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Critical Path Analysis</head><p>The critical path analysis is based on a directed acyclic graph (DAG) constructed from inter-instruction register dependencies following these rules:</p><p>1) A vertex is created for every instruction form in the marked piece of code. 2) From each instruction form's destination operands, edges are drawn to all instruction forms "further down" relying on these outputs, unless a break of dependency is found in between (e.g., by zeroing the register). 3) All edges are weighted with their source instruction's latency. 4) If a source memory reference has a dependency, an intermediate load-vertex is added along this edge and the additional edge weighted with the load latency. After creating the DAG, the longest path within it is determined by using a weighted topological sort based on the approach of Manber <ref type="bibr" target="#b18">[21]</ref>. The CP is thus an upper bound for the execution time of a single instance of the loop body.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D. Loop-Carried Dependency Detection</head><p>Dependencies in between iterations, i.e., loop-carried dependencies (LCDs), can drastically influence the runtime prediction of loop kernels: Even with sufficient out-of-order execution resources, overlap of successive iterations is only possible up to the limit set by the LCD. The actual runtime is thus limited from below by the length of the LCD chain. OSACA can detect LCDs by creating a DAG of a code comprising two back-to-back copies of the loop body. It can thus analyze paths from each vertex of the first kernel section and detect most cyclic LCDs if there exists a dependency chain observable by register dependencies from one instruction form to its corresponding duplicate in the next iteration.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>III. RESULTS</head><p>The CP and LCD detection described in Section II are included in OSACA's analysis of loop code and presented together with the "classic" throughput results. For validation we will use assembly representations generated by the Intel Fortran Compiler for x86 and the GNU Fortran Compiler for ARM, respectively. In case of CLX we also compare to the IACA and LLVM-MCA predictions for Skylake-X, which does not differ in terms of the port model. Due to the proprietary nature of IACA, we cannot use it on any AMD-or ARM-based system; hence, we compare against LLVM-MCA on AMD Zen. For lack of other tools, on TX2 OSACA's prediction can only be compared to measurements.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Example: Gauss-Seidel method on CSX, ZEN and TX2</head><p>An interesting floating-point benchmark for comparing predictions with the measured runtime is a 2D version of the "Gauss-Seidel" sweep <ref type="bibr" target="#b19">[22]</ref>:</p><formula xml:id="formula_0">do it=1,itmax do k=1,kmax-1 do i=1,imax-1 phi(i,k,t0) = 0.25 * ( phi(i,k-1,t0) + phi(i+1,k,t0) + phi(i,k+1,t0) + phi(i-1,k,t0)) enddo enddo enddo</formula><p>It has one multiplication and three additions per iteration. As the update of the matrix happens in-place, each iteration is dependent on the previously calculated value of its "left" (i-1) and "bottom" (k-1) neighbor. This is the basic LCD that should govern the code's runtime; the CP may be longer since it may contain instructions that are not part of the LCD. If the hardware has sufficient out-of-order capabilities, it should be able to overlap that "extra" part across successive loop iterations. And finally, the pure throughput prediction (TP) should be much too optimistic since it ignores all dependencies.</p><p>Since we have demonstrated OSACA's TP analysis in previous work <ref type="bibr" target="#b4">[6]</ref>, we will focus here on the refinement of runtime predictions via CP and LCD analysis. The total runtime is measured and combined with the number of iterations to get lattice site updates per second [LUP/s] and cycles per iteration [cy/it] in columns 3-4 of Table <ref type="table" target="#tab_2">I</ref>.</p><p>Unrolling by the compiler must be considered when interpreting OSACA predictions since they strictly pertain to the assembly level. E.g., if a loop was unrolled four times, as it is the case for our Gauss-Seidel examples, the prediction by OSACA will be for four original (high-level) iterations. This also applies to unrolling for SIMD vectorization, which is not possible here, however. In this paper, OSACA and IACA predictions in cycles are given for one assembly code iteration, whereas the unit "cy/it" always refers to high-level source code iterations. The total unrolling factor chosen by the compilers has been 4x for all architectures. Table <ref type="table" target="#tab_3">II</ref> shows the condensed OSACA output for the TX2. Predictions by OSACA, IACA, and LLVM-MCA can be found in Table <ref type="table" target="#tab_2">I</ref>.</p><p>The predicted block throughput of all three analysis tools is far from the measurements, as expected. Even though IACA is not capable of detecting CPs and analysing the latency of kernels anymore, its block throughput in the analysis report states 14 cy/it, contrary to the pure port binding of 2 cy/it. No explanation for this behavior can be found in the output although it matches exactly the LCD and the measurement.</p><p>Using the additional -timeline flag, LLVM-MCA provides a timeline view showing for a various number of cycles or iterations the expected cycle of dispatching, execution and retirement. Since it models register dependencies, we assume this to be its CP analysis and expect the time from the beginning of the first iteration to the retirement of its jump instruction to be the CP length, while all further executions have the length of the LCD. Both numbers can be found in the last column of Tab. I. While we can observe that LLVM-MCA overestimates the execution on ZEN by almost 50%, it predicts the runtime on CLX nearly exactly. For the ThunderX2, LLVM-MCA is neither capable of analyzing throughput nor latency at the time of writing.</p><p>OSACA provides a runtime bracket determined by the CP (upper bound) and the length of the longest cyclic LCD path (lower bound). The measured execution time should usually lie between these limits unless bottlenecks apply that are beyond our model (e.g., instruction cache misses, bank conflicts, etc.). As seen in column 6 of Table <ref type="table" target="#tab_2">I</ref>, the actual measurement lies within the prediction frame in every analysis case, and the measurement is very close to the longest LCD path for this kernel. As expected, the runtime is faster than the pure CP length, since instructions that are not part of the LCD path can overlap across iterations.</p><p>The detailed OSACA analysis for ThunderX2 can be found in Table <ref type="table" target="#tab_3">II</ref>. The LCD and CP columns show latency values for instruction forms along the CP and the longest cyclic LCD path, respectively. Fig. <ref type="figure" target="#fig_2">3</ref> depicts the graph generated by OSACA from the assembly.</p><p>Note that in cases where the LCD is very short or zero, the throughput prediction applies, and a deviation of the measurement from this lower limit points to either a shortage of OoO resources (physical registers, reorder buffer) or an architectural effect not covered by the machine model.     <ref type="table" target="#tab_3">II</ref>, and weights along the edges are latency cycles.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Validation</head><p>Cascade Lake: Intel Xeon Gold 6248 with Cascade Lake X micro-architecture at 2.5 GHz (CLX), ifort, options -funroll-loops -xCASCADELAKE -Ofast Zen: AMD EPYC 7451 with Zen micro-architecture at 2.3 GHz (ZEN), gfortran, options -funroll-loops -mavx2 -mfma -Ofast</p><p>The process was always bound to a physical core. In effect, statistical runtime variations were small enough to be ignored.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>IV. CONCLUSION</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Summary</head><p>We have shown that automatic extraction, throughput, and critical path analysis of assembly loop kernels is feasible using our cross-platform tool OSACA. OSACAs results are accurate and sometimes even more precise and versatile than predictions of comparable tools like IACA and LLVM-MCA. Additionally, direct critical path analysis including loop-carried dependencies is not supported by any other tool to date, although it can be inferred manually from LLVM-MCA's timeline information.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Future Work</head><p>In the future we intend to extend OSACA to support hidden dependencies, i.e., instructions accessing resources not named specifically in the assembly, such as status flags and loadafter-store dependencies, including stack operations. The LCD analysis is not perfect and may miss dependencies in some special cases, which can be improved by taking more than two iterations into account. Furthermore, we plan to increase the number of micro-benchmark interfaces and to support the semi-automatic usage of asmbench in the OSACA toolchain. Beyond the even distribution of µ-ops across multiple ports, we want to implement a more realistic scheduling scheme that takes port utilization into account. Support for new microarchitectures like AMD's Zen 2 and eventually IBM's Power9 is also planned. Another topic is the overlap of latency in complex instructions, which can change the outcome of the analysis slightly but may be significant in pathological cases (e.g., in a = a + b × c with an FMA instruction, the multiplication may already execute before a becomes available). The split, as well as the fusion, of µ-ops is currently not considered, but can be achieved with replacement rules in the architecture model description.</p><p>Accurately modeling the performance characteristics of the decode, reorder buffer, register allocation/renaming, retirement and other stages, which all may limit the execution throughput and impose latency penalties, is currently out of scope for OSACA.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Fig. 1 :</head><label>1</label><figDesc>Fig. 1: Assumed generic out-of-order port model. Other shared resources (e.g., DIV pipeline) are modeled as additional ports.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Fig. 2 :</head><label>2</label><figDesc>Fig. 2: Structural design of OSACA and its workflow, for STREAM triad (A(:)=B(:)+s * C(:)) loop.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Fig. 3 :</head><label>3</label><figDesc>Fig. 3: (Compressed) dependency graph of the Gauss-Seidel code on TX2, created by OSACA. Orange nodes are on the longest LCD, including the backedge. Pink dashed lines and outlined nodes make up the CP. Numbers in nodes are line numbers, as found in TableII, and weights along the edges are latency cycles.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head></head><label></label><figDesc>Hardware, Software, and Runtime Environment OSACA (version 0.3.1.dev0) was run with Python v3.6.8 and benchmarks were compiled using Intel ifort v19.0.2 and GNU Fortran (ARM-build-8) 8.2.0, respectively. All results presented were gathered on three machines, with fixed clock frequency and disabled turbo mode:</figDesc><table><row><cell>Architecture</cell><cell>Unroll</cell><cell cols="2">Measured</cell><cell></cell><cell></cell><cell></cell><cell cols="3">Prediction [cy/it]</cell></row><row><cell></cell><cell>factor</cell><cell></cell><cell></cell><cell></cell><cell>OSACA</cell><cell></cell><cell></cell><cell>IACA</cell><cell></cell><cell>LLVM-MCA</cell></row><row><cell></cell><cell></cell><cell>MLUP/s</cell><cell>cy/it</cell><cell>TP</cell><cell>LCD</cell><cell>CP</cell><cell cols="2">TP LCD</cell><cell>CP</cell><cell>TP</cell><cell>LCD</cell><cell>CP</cell></row><row><cell>Marvel ThunderX2</cell><cell>4x</cell><cell cols="2">118.9 18.50</cell><cell cols="3">2.46 18.00 25.00</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell></row><row><cell>Intel Cascade Lake X</cell><cell>4x</cell><cell cols="2">178.3 14.02</cell><cell cols="3">2.19 14.00 18.00</cell><cell>14.00</cell><cell>-</cell><cell>-</cell><cell>2.00 14.75 19.00</cell></row><row><cell>AMD Zen</cell><cell>4x</cell><cell cols="2">194.4 11.83</cell><cell cols="3">2.00 11.50 15.00</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>3.00 18.00 24.00</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>TABLE I :</head><label>I</label><figDesc>Analysis and measurement of the Gauss-Seidel code on three architectures with OSACA, IACA, and LLVM-MCA predictions. Dashes denote unsupported analysis types or architectures. TP is the throughput prediction, a lower runtime bound. LCD is the loop carried dependency prediction, an expected runtime. CP is the critical path prediction, an upper runtime bound.</figDesc><table><row><cell cols="3">P0 P1 P2 P3 P4 P5 LCD CP LN Assembly Instructions</cell></row><row><cell></cell><cell></cell><cell>519 .L20:</cell></row><row><cell>0.50 0.50</cell><cell></cell><cell>4.0 520 ldr d31, [x15, x18, lsl 3]</cell></row><row><cell>0.50 0.50</cell><cell></cell><cell>521 ldr d0, [x15, 8]</cell></row><row><cell>0.50 0.50</cell><cell></cell><cell>522 mov x14, x15</cell></row><row><cell>0.33 0.33 0.33</cell><cell></cell><cell>523 add x16, x15, 24</cell></row><row><cell>0.50 0.50</cell><cell></cell><cell>524 ldr d2, [x15, x30, lsl 3]</cell></row><row><cell>0.33 0.33 0.33</cell><cell></cell><cell>525 add x15, x15, 32</cell></row><row><cell>0.50 0.50</cell><cell></cell><cell>6.0 526 fadd d1, d31, d0</cell></row><row><cell>0.50 0.50</cell><cell>6.0</cell><cell>6.0 527 fadd d3, d1, d30</cell></row><row><cell>0.50 0.50</cell><cell>6.0</cell><cell>6.0 528 fadd d4, d3, d2</cell></row><row><cell>0.50 0.50</cell><cell>6.0</cell><cell>6.0 529 fmul d5, d4, d9</cell></row><row><cell>0.50 0.50 1.00</cell><cell></cell><cell>4.0 530 str d5, [x14], 8</cell></row><row><cell>0.50 0.50</cell><cell></cell><cell>4.0 531 ldr d6, [x14, x18, lsl 3]</cell></row><row><cell>0.50 0.50</cell><cell></cell><cell>532 ldr d16, [x14, 8]</cell></row><row><cell>0.33 0.33 0.33</cell><cell></cell><cell>533 add x13, x14, 8</cell></row><row><cell>0.50 0.50</cell><cell></cell><cell>534 ldr d7, [x14, x30, lsl 3]</cell></row><row><cell>0.50 0.50</cell><cell></cell><cell>6.0 535 fadd d17, d6, d16</cell></row><row><cell>0.50 0.50</cell><cell>6.0</cell><cell>6.0 536 fadd d18, d17, d5</cell></row><row><cell>0.50 0.50</cell><cell>6.0</cell><cell>6.0 537 fadd d19, d18, d7</cell></row><row><cell>0.50 0.50</cell><cell>6.0</cell><cell>6.0 538 fmul d20, d19, d9</cell></row><row><cell>0.50 0.50 1.00</cell><cell></cell><cell>539 str d20, [x15, -24]</cell></row><row><cell>0.50 0.50</cell><cell></cell><cell>540 ldr d21, [x13, x18, lsl 3]</cell></row><row><cell>0.50 0.50</cell><cell></cell><cell>541 ldr d23, [x14, 16]</cell></row><row><cell>0.50 0.50</cell><cell></cell><cell>542 ldr d22, [x13, x30, lsl 3]</cell></row><row><cell>0.50 0.50</cell><cell></cell><cell>543 fadd d24, d21, d23</cell></row><row><cell>0.50 0.50</cell><cell>6.0</cell><cell>6.0 544 fadd d25, d24, d20</cell></row><row><cell>0.50 0.50</cell><cell>6.0</cell><cell>6.0 545 fadd d26, d25, d22</cell></row><row><cell>0.50 0.50</cell><cell>6.0</cell><cell>6.0 546 fmul d27, d26, d9</cell></row><row><cell>0.50 0.50 1.00</cell><cell></cell><cell>547 str d27, [x14, 8]</cell></row><row><cell>0.50 0.50</cell><cell></cell><cell>548 ldr d30, [x15]</cell></row><row><cell>0.50 0.50</cell><cell></cell><cell>549 ldr d28, [x16, x18, lsl 3]</cell></row><row><cell>0.50 0.50</cell><cell></cell><cell>550 ldr d29, [x16, x30, lsl 3]</cell></row><row><cell>0.50 0.50</cell><cell></cell><cell>551 fadd d31, d28, d30</cell></row><row><cell>0.50 0.50</cell><cell>6.0</cell><cell>6.0 552 fadd d2, d31, d27</cell></row><row><cell>0.50 0.50</cell><cell>6.0</cell><cell>6.0 553 fadd d0, d2, d29</cell></row><row><cell>0.50 0.50</cell><cell>6.0</cell><cell>6.0 554 fmul d30, d0, d9</cell></row><row><cell>0.50 0.50 1.00</cell><cell></cell><cell>4.0 555 str d30, [x15, -8]</cell></row><row><cell>0.33 0.33</cell><cell></cell><cell>556 cmp x7, x15</cell></row><row><cell></cell><cell></cell><cell>557 bne .L20</cell></row><row><cell cols="3">9.83 9.83 1.33 8.00 8.00 4.00 72.0 100.0 sum (4x unrolled)</cell></row><row><cell cols="3">2.46 2.46 0.33 2.00 2.00 1.00 18.0 25.0 per high-level iteration</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>TABLE II :</head><label>II</label><figDesc>(Condensed) OSACA analysis of Gauss-Seidel assembly code for ARM-based ThunderX2 architecture. The LN column are line numbers.</figDesc><table><row><cell>ThunderX2: ARM-based Marvell ThunderX2 9980</cell></row><row><cell>with ThunderX2 micro-architecture (formerly known as</cell></row><row><cell>Cavium Vulcan) at 2.2 GHz (TX2), gfortran, options</cell></row><row><cell>-mcpu=thunderx2t99+simd+fp -fopenmp-simd</cell></row><row><cell>-funroll-loops -Ofast</cell></row></table></figure>
+		</body>
+		<back>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Roofline: An insightful visual performance model for multicore architectures</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Williams</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Waterman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Patterson</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Commun. ACM</title>
+		<imprint>
+			<biblScope unit="volume">52</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="65" to="76" />
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Quantifying Performance Bottlenecks of Stencil Computations Using the Execution-Cache-Memory Model</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Stengel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Treibig</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Hager</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Wellein</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/2751205.2751240</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 29th ACM International Conference on Supercomputing, ser. ICS &apos;15</title>
+		<meeting>the 29th ACM International Conference on Supercomputing, ser. ICS &apos;15<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="207" to="216" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Kerncraft: A Tool for Analytic Performance Modeling of Loop Kernels</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Hammer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Eitzinger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Hager</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Wellein</surname></persName>
+		</author>
+		<idno type="DOI">10.1007/978-3-319-56702-01</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Tools for High Performance Computing</title>
+		<editor>
+			<persName><forename type="first">C</forename><surname>Niethammer</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">J</forename><surname>Gracia</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">T</forename><surname>Hilbrich</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">A</forename><surname>Knüpfer</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">M</forename><forename type="middle">M</forename><surname>Resch</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">W</forename><forename type="middle">E</forename><surname>Nagel</surname></persName>
+		</editor>
+		<meeting><address><addrLine>Cham</addrLine></address></meeting>
+		<imprint>
+			<publisher>Springer International Publishing</publisher>
+			<date type="published" when="2016">2016. 2017</date>
+			<biblScope unit="page" from="1" to="22" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Roofline Model Toolkit: A Practical Tool for Architectural and Program Analysis</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Lo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Williams</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Van Straalen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">J</forename><surname>Ligocki</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">J</forename><surname>Cordery</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">J</forename><surname>Wright</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">W</forename><surname>Hall</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Oliker</surname></persName>
+		</author>
+		<idno type="DOI">10.1007/978-3-319-17248-47</idno>
+	</analytic>
+	<monogr>
+		<title level="m">High Performance Computing Systems. Performance Modeling, Benchmarking, and Simulation, ser</title>
+		<title level="s">Lecture Notes in Computer Science</title>
+		<editor>
+			<persName><forename type="first">S</forename><forename type="middle">A</forename><surname>Jarvis</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">S</forename><forename type="middle">A</forename><surname>Wright</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">S</forename><forename type="middle">D</forename><surname>Hammond</surname></persName>
+		</editor>
+		<imprint>
+			<publisher>Springer International Publishing</publisher>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="volume">8966</biblScope>
+			<biblScope unit="page" from="129" to="148" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Automated instruction stream throughput prediction for intel and amd microarchitectures</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Laukemann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Hammer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Hofmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Hager</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Wellein</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2018 IEEE/ACM Performance Modeling, Benchmarking and Simulation of High Performance Computer Systems (PMBS)</title>
+		<imprint>
+			<date type="published" when="2018-11">Nov 2018</date>
+			<biblScope unit="page" from="121" to="131" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<monogr>
+		<title level="m" type="main">OSACA -Open Source Architecture Code Analyzer</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Laukemann</surname></persName>
+		</author>
+		<ptr target="https://github.com/RRZE-HPC/OSACA" />
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="volume">12</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<monogr>
+		<title level="m" type="main">Artifact description: Automatic throughput and critical path analysis of x86 and arm assembly kernels</title>
+		<ptr target="https://github.com/RRZE-HPC/OSACA-CP-2019" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<title level="m" type="main">RFC] llvm-mca: a static performance analysis tool</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Andric</surname></persName>
+		</author>
+		<ptr target="http://llvm.1065342.n5.nabble.com/llvm-dev-RFC-llvm-mca-a-static-performance-analysis-tool-td117477.html" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<monogr>
+		<ptr target="https://llvm.org/docs/CommandGuide/llvm-exegesis.html" />
+		<title level="m">LLVM Machine Instruction Benchmark</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Ithemal: Accurate, portable and fast basic block throughput estimation using deep neural networks</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Mendis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Renda</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Amarasinghe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Carbin</surname></persName>
+		</author>
+		<ptr target="http://proceedings.mlr.press/v97/mendis19a.html" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 36th International Conference on Machine Learning (ICML), ser. Proceedings of Machine Learning</title>
+		<editor>
+			<persName><forename type="first">K</forename><surname>Research</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">R</forename><surname>Chaudhuri</surname></persName>
+		</editor>
+		<editor>
+			<persName><surname>Salakhutdinov</surname></persName>
+		</editor>
+		<meeting>the 36th International Conference on Machine Learning (ICML), ser. Machine Learning<address><addrLine>Long Beach, California, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>PMLR</publisher>
+			<date type="published" when="2019-06">Jun 2019</date>
+			<biblScope unit="volume">97</biblScope>
+			<biblScope unit="page" from="4505" to="4515" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">CQA: A code quality analyzer tool at binary level</title>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">S</forename><surname>Charif-Rubial</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Oseret</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Noudohouenou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Jalby</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Lartigue</surname></persName>
+		</author>
+		<idno type="DOI">10.1109/HiPC.2014.7116904</idno>
+	</analytic>
+	<monogr>
+		<title level="m">2014 21st International Conference on High Performance Computing (HiPC)</title>
+		<imprint>
+			<date type="published" when="2014-12">Dec 2014</date>
+			<biblScope unit="page" from="1" to="10" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Evaluating outof-order engine limitations using uop flow simulation</title>
+		<author>
+			<persName><forename type="first">V</forename><surname>Palomares</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">C</forename><surname>Wong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">J</forename><surname>Kuck</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Jalby</surname></persName>
+		</author>
+		<idno type="DOI">10.1007/978-3-319-39589-013</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Tools for High Performance Computing</title>
+		<editor>
+			<persName><forename type="first">A</forename><surname>Knüpfer</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">T</forename><surname>Hilbrich</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">C</forename><surname>Niethammer</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">J</forename><surname>Gracia</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">W</forename><forename type="middle">E</forename><surname>Nagel</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">M</forename><forename type="middle">M</forename><surname>Resch</surname></persName>
+		</editor>
+		<meeting><address><addrLine>Cham</addrLine></address></meeting>
+		<imprint>
+			<publisher>Springer International Publishing</publisher>
+			<date type="published" when="2015">2015. 2016</date>
+			<biblScope unit="page" from="161" to="181" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">The gem5 simulator</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Binkert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Sardashti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Sen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Sewell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Shoaib</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Vaish</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">D</forename><surname>Hill</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">A</forename><surname>Wood</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Beckmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Black</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/2024716.2024718</idno>
+		<ptr target="http://dx.doi.org/10.1145/2024716.2024718" />
+	</analytic>
+	<monogr>
+		<title level="j">ACM SIGARCH Computer Architecture News</title>
+		<imprint>
+			<biblScope unit="volume">39</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page">2011</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">ZSim: Fast and Accurate Microarchitectural Simulation of Thousand-Core Systems</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Sanchez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Kozyrakis</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/2485922.2485963</idno>
+		<ptr target="http://dx.doi.org/10.1145/2485922.2485963" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 40th Annual International Symposium on Computer Architecture -ISCA &apos;13</title>
+		<meeting>the 40th Annual International Symposium on Computer Architecture -ISCA &apos;13</meeting>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Marss-x86: A qemu-based microarchitectural and systems simulator for x86 multicore processors</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Patel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Afram</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Ghose</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">1st International Qemu Users&apos; Forum</title>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="page" from="29" to="30" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<monogr>
+		<author>
+			<persName><forename type="first">A</forename><surname>Abel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Reineke</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3297858.3304062</idno>
+		<ptr target="http://doi.acm.org/10.1145/3297858.3304062" />
+		<title level="m">Proceedings of the Twenty-Fourth International Conference on Architectural Support for Programming Languages and Operating Systems, ser. ASPLOS &apos;19</title>
+		<meeting>the Twenty-Fourth International Conference on Architectural Support for Programming Languages and Operating Systems, ser. ASPLOS &apos;19<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="673" to="686" />
+		</imprint>
+	</monogr>
+	<note>uops.info: Characterizing latency, throughput, and port usage of instructions on intel microarchitectures</note>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">OoO Instruction Benchmarking Framework on the Back of Dragons</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Hammer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Hager</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Wellein</surname></persName>
+		</author>
+		<ptr target="https://sc18.supercomputing.org/proceedings/srcposter/srcposterpages/spost115.html" />
+	</analytic>
+	<monogr>
+		<title level="m">SC18 ACM SRC Poster</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<monogr>
+		<title level="m" type="main">1) ibench -Measure Instruction Latency and Throughput</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Hofmann</surname></persName>
+		</author>
+		<ptr target="https://github.com/hofm/ibench" />
+		<imprint>
+			<date type="published" when="2018">2018,</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<monogr>
+		<title level="m" type="main">Introduction to algorithms -a creative approach</title>
+		<author>
+			<persName><forename type="first">U</forename><surname>Manber</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1989">1989</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<monogr>
+		<author>
+			<persName><forename type="first">R</forename><surname>Barrett</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Berry</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">F</forename><surname>Chan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Demmel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Donato</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Dongarra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Eijkhout</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Pozo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Romine</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><forename type="middle">V</forename><surname>Der Vorst</surname></persName>
+		</author>
+		<title level="m">Templates for the Solution of Linear Systems: Building Blocks for Iterative Methods, 2nd Edition</title>
+		<meeting><address><addrLine>Philadelphia, PA</addrLine></address></meeting>
+		<imprint>
+			<publisher>SIAM</publisher>
+			<date type="published" when="1994">1994</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

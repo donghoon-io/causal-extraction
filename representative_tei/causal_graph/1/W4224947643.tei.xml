@@ -1,0 +1,1747 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Reinforced Causal Explainer for Graph Neural Networks</title>
+				<funder ref="#_djxY3aQ">
+					<orgName type="full">National Key Research and Development Program of China</orgName>
+				</funder>
+				<funder ref="#_Q8B4Kmd #_cEgx5kU">
+					<orgName type="full">National Natural Science Foundation of China</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability  status="unknown">
+					<licence/>
+				</availability>
+				<date type="published" when="2022-04-27">27 Apr 2022</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Xiang</forename><surname>Wang</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Yingxin</forename><surname>Wu</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">An</forename><surname>Zhang</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Fuli</forename><surname>Feng</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Xiangnan</forename><surname>He</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Tat-Seng</forename><surname>Chua</surname></persName>
+						</author>
+						<title level="a" type="main">Reinforced Causal Explainer for Graph Neural Networks</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2022-04-27">27 Apr 2022</date>
+						</imprint>
+					</monogr>
+					<idno type="arXiv">arXiv:2204.11028v2[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-14T18:26+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<textClass>
+				<keywords>
+					<term>Graph Neural Networks</term>
+					<term>Feature Attribution</term>
+					<term>Explainable Methods</term>
+					<term>Cause-Effect</term>
+				</keywords>
+			</textClass>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Explainability is crucial for probing graph neural networks (GNNs), answering questions like "Why the GNN model makes a certain prediction?". Feature attribution is a prevalent technique of highlighting the explanatory subgraph in the input graph, which plausibly leads the GNN model to make its prediction. Various attribution methods have been proposed to exploit gradient-like or attention scores as the attributions of edges, then select the salient edges with top attribution scores as the explanation. However, most of these works make an untenable assumption -the selected edges are linearly independent -thus leaving the dependencies among edges largely unexplored, especially their coalition effect. We demonstrate unambiguous drawbacks of this assumptionmaking the explanatory subgraph unfaithful and verbose. To address this challenge, we propose a reinforcement learning agent, Reinforced Causal Explainer (RC-Explainer). It frames the explanation task as a sequential decision process -an explanatory subgraph is successively constructed by adding a salient edge to connect the previously selected subgraph. Technically, its policy network predicts the action of edge addition, and gets a reward that quantifies the action's causal effect on the prediction. Such reward accounts for the dependency of the newly-added edge and the previously-added edges, thus reflecting whether they collaborate together and form a coalition to pursue better explanations. It is trained via policy gradient to optimize the reward stream of edge sequences. As such, RC-Explainer is able to generate faithful and concise explanations, and has a better generalization power to unseen graphs. When explaining different GNNs on three graph classification datasets, RC-Explainer achieves better or comparable performance to state-of-the-art approaches w.r.t. two quantitative metrics: predictive accuracy, contrastivity, and safely passes sanity checks and visual inspections. Codes and datasets are available at <ref type="url" target="https://github.com/xiangwang1223/reinforcedcausalexplainer">https://github.com/xiangwang1223/reinforced causal explainer</ref>.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">INTRODUCTION</head><p>G Raph neural networks (GNNs) [1], [2] have exhibited impressive performance in a variety of tasks, where the data are graph-structured. Their success comes mainly from the powerful representation learning, which incorporates graph structure in an end-to-end fashion. Alongside performance, explainability becomes central to the practical impact of GNNs, especially in real-world applications on fairness, security, and robustness <ref type="bibr" target="#b2">[3]</ref>, <ref type="bibr" target="#b3">[4]</ref>, <ref type="bibr" target="#b4">[5]</ref>. Aiming to answer questions like "Why the GNN model made a certain prediction?", we focus on post-hoc <ref type="bibr" target="#b5">[6]</ref>, local <ref type="bibr" target="#b6">[7]</ref>, modelagnostic <ref type="bibr" target="#b7">[8]</ref> explainability -that is, considering the target GNN model as a black-box (i.e., post-hoc), an explainer interprets its predictions of individual instances (i.e., local), which is applicable to any GNNs (i.e., model-agnostic). Towards this end, a prevalent paradigm is feature attribution and selection <ref type="bibr" target="#b8">[9]</ref>, <ref type="bibr" target="#b9">[10]</ref>, <ref type="bibr" target="#b10">[11]</ref>, <ref type="bibr" target="#b11">[12]</ref>. Typically, given an input graph, it distributes the model's outcome prediction to the input features (i.e., edges), and then selects the salient substructure (i.e., the subset of edges) as an explanatory subgraph. Such an explanatory subgraph is expected to provide insight into the model workings.</p><p>Towards high-quality feature attribution, it is essential to uncover the relationships between the input features • X. Wang, Y. Wu, F. Feng, X. He are with University of Science and Technology of China; CCCD Key Lab of Ministry of Culture and Tourism. E-mail: xiangwang1223@gmail.com, wuyxin@mail.ustc.edu.cn, fulifeng93@gmail.com, xiangnanhe@gmail.com.</p><p>• A. Zhang and T. Chua are with National University of Singapore. E-mail: an zhang@nus.edu.sg, dcscts@nus.edu.sg. A. Zhang is the corresponding author.</p><p>and outcome predictions underlying the GNN model. Most existing explainers reveal the relationships via (1) gradientlike signals w.r.t. edges <ref type="bibr" target="#b12">[13]</ref>, <ref type="bibr" target="#b13">[14]</ref>, <ref type="bibr" target="#b14">[15]</ref>, which are obtained by backpropagating the model outcome to the graph structure;</p><p>(2) masks or attention scores of edges <ref type="bibr" target="#b15">[16]</ref>, <ref type="bibr" target="#b16">[17]</ref>, <ref type="bibr" target="#b17">[18]</ref>, which are derived from the masking functions or attention networks to approximate the target prediction via the fractional (masked or attentive) graph; or (3) prediction changes on perturbed edges <ref type="bibr" target="#b3">[4]</ref>, <ref type="bibr" target="#b18">[19]</ref>, <ref type="bibr" target="#b19">[20]</ref>, which are fetched by perturbing the graph structure, such as leaving subgraphs out and auditing the outcome change <ref type="bibr" target="#b18">[19]</ref> or computing the Shapley values <ref type="bibr" target="#b3">[4]</ref>. Subsequently, the subset of edges with top attributions composes an explanatory subgraph most influential to the model's decision.</p><p>Nonetheless, we argue that these explainers are prone to generating suboptimal explanations since two key factors remain largely unexplored:</p><p>• Causal effects of edges. It is crucial to specify the edges that are the plausible causation of the model outcome, rather than the edges irrelevant or spuriously correlated with the outcome <ref type="bibr" target="#b20">[21]</ref>, <ref type="bibr" target="#b21">[22]</ref>. However, as the explainers using gradient-and attention-like scores typically approach the input-outcome relationships from an associational standpoint, they hardly distinguish causal from noncausal effects of edges. Take Figure <ref type="figure" target="#fig_0">1</ref> as a running example, where SA <ref type="bibr" target="#b12">[13]</ref> and GNNExplainer <ref type="bibr" target="#b15">[16]</ref> explain why the GIN model <ref type="bibr" target="#b22">[23]</ref> predicts the molecule graph as mutagenic. As the nitrogen-carbon (N-C) bond often connects with the nitro group (NO 2 ), it is spuriously correlated with the mutagenic property, thus ranked top by SA. Feeding such spurious edges solely into the model, however, hardly recovers the target prediction, thus unfaithfully reflect the model's decision. • Dependencies among edges. Most explainers ignore the edge dependencies when probing the edge attributions and constructing the explanatory subgraph. One key reason is that they draw attributions of edges independently <ref type="bibr" target="#b18">[19]</ref>, <ref type="bibr" target="#b23">[24]</ref>, <ref type="bibr" target="#b24">[25]</ref>. In fact, edges usually collaborate and cooperate with other edges to approach the decision boundary instead. Such highly-dependent edges form a coalition that can frame a prototype memorized in the model to make decisions. Considering SA's explanation, compared to the individual N-C bond, its combination with the carbon-carbon (C=C) bond brings no unique information about the model prediction, as only a marginal improvement on predictive accuracy is achieved 1 . In contrast, two nitrogen-oxygen (N=O) bonds form a nitro group (NO 2 ), which is a typical coalition responsible for the mutagenic property <ref type="bibr" target="#b2">[3]</ref> and purses a higher influence on the prediction than individuals 2 . Clearly, the N=O bonds within NO 2 ought to be better post-hoc explanations. In this work, we explore the edges' causal effects and dependencies, in order to generate explanations that are faithful to the model's decision-making process and consistent to human cognition. Indeed, it is challenging but can be solved after we introduce the screening strategy <ref type="bibr" target="#b25">[26]</ref> equipped with causality <ref type="bibr" target="#b26">[27]</ref>. Specifically, the screening strategy frames the explanation task as sequentially adding edges -that is, it starts from an empty set as the explanatory subgraph, and incrementally adds edges into the subgraph, one edge at a time step. During the screening, causality gifts us the manner to assess the dependencies of the previously added edges and the edge candidate being selected, answering the "What would happen to the prediction, if we add this edge into the GNN's input?" question. The basis is doing causal attribution on the edge candidate as its individual causal effect (ICE) <ref type="bibr" target="#b26">[27]</ref>, <ref type="bibr" target="#b27">[28]</ref>, given the previous selections. Formally, 1. When removing the counterparts, the single N-C bond and its combination with the C=C bond are predicted as mutagenic with probability of 0.31 and 0.35, respectively.</p><p>2. The probability of being mutagenic increases from 0.72 (feeding the first N=O bond solely into GIN) to 0.95 (feeding the first two N=O bonds together into GIN).</p><p>it compares the model outcomes under treatment (i.e., the GNN takes the coalition of the edge and the previous selection as input) and control (i.e., the GNN tasks the previous selection only). Positive causal attribution indicates the edge coalition offers unique information strongly relevant to the prediction; otherwise, the edge is redundant or irrelevant.</p><p>Towards this end, we propose a reinforcement learning (RL) agent, Reinforced Causal Explainer (RC-Explainer), to achieve the causal screening strategy. The insight is that the RL agent with the stochastic policy can determine automatically where to search, given the uncertainty information of the learned policy, which can be updated promptly by the stream of reward signals. Technically, RC-Explainer uses a simple neural network as the policy network to learn the probability of edge candidates being selected, and then select one potential edge as the action, at each step. Such a sequence of edges forms the policy, and gets rewards that consist of the causal attributions of each compositional edge and subgraphs. As such, we can to exhibit the dependencies of explained edges, and highlight the influence of edge coalition. We resort to policy gradient to optimize the policy network. With a global understanding of the GNN, our RC-Explainer is able to offer model-level explanations for each graph instance, and generalize to unseen graphs. Experiments on three datasets showcase the effectiveness of our explanations, which are more consistent, concise, and faithful to the predictions compared with existing methods.</p><p>Contributions of this work are summarized as follows:</p><p>• We emphasize the importance of edges' causal effects and dependencies to reveal the edge attributions and build the explanatory subgraph, so as to interpret the GNN predictions faithfully and concisely.</p><p>• We frame the explanation as a sequential decision process and develop an RL agent, RC-Explainer, to take the cause-effect look at the edge dependencies. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">RELATED WORK</head><p>In the literature of explainers, there are many dichotomies approaching explanations -between post-hoc and intrinsic <ref type="bibr" target="#b5">[6]</ref>, <ref type="bibr" target="#b28">[29]</ref>, <ref type="bibr" target="#b29">[30]</ref> (i.e., the target model is explained post hoc by an additional explainer method or is inherently interpretable), between local and global <ref type="bibr" target="#b6">[7]</ref> (i.e., the explainer offers explanations for data instances individually or holistically), between model-agnostic and model-specific <ref type="bibr" target="#b7">[8]</ref> (i.e., the explainer is comparable across model types or customized for a specific model). We focus on post-hoc, local, and model-agnostic explainability in this work.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.1">Explainability in Non-Graph Neural Networks</head><p>As a prevalent technique, feature attribution <ref type="bibr" target="#b8">[9]</ref>, <ref type="bibr" target="#b9">[10]</ref>, <ref type="bibr" target="#b10">[11]</ref>, <ref type="bibr" target="#b11">[12]</ref> has shown great potential to generate post-hoc explanations for neural networks, especially convolutional neural networks (CNNs). In general, the existing attribution methods roughly fall into three groups:</p><p>• One research line <ref type="bibr" target="#b7">[8]</ref>, <ref type="bibr" target="#b8">[9]</ref>, <ref type="bibr" target="#b9">[10]</ref>, <ref type="bibr" target="#b30">[31]</ref>, <ref type="bibr" target="#b31">[32]</ref> decomposes the model outcome to the input features via backpropagation, such that the gradient-like signals are viewed as the importance of input features. For example, Gradient <ref type="bibr" target="#b30">[31]</ref> uses pure gradients w.r.t. input features. Grad-CAM <ref type="bibr" target="#b8">[9]</ref> additionally leverages the layer-wise context to improve gradients. • Another research line <ref type="bibr" target="#b32">[33]</ref>, <ref type="bibr" target="#b33">[34]</ref> introduces the trainable attention or masking networks and generates attention scores on input features. The networks are trained to approximate the decision boundary of the model via the attentive or masked features. For example, L2X <ref type="bibr" target="#b32">[33]</ref> learns to generate feature masks, with the aim of maximizing the mutual information between the masked features and the target predictions. • Some works <ref type="bibr" target="#b6">[7]</ref>, <ref type="bibr" target="#b19">[20]</ref> perform the input perturbations and monitor the changes on model behaviors (e.g., prediction, loss), so as to reveal the input-outcome relationships. The basic idea is that the model outcomes are highly likely to significantly change if essential features are occluded. For example, CXPlain <ref type="bibr" target="#b19">[20]</ref> learns the marginal effect of a feature by occluding it.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.2">Explainability in Graph Neural Networks</head><p>Compared to the extensive studies in CNNs, explainability in GNNs is less explored and remains a challenging open problem. Inspired by the methods devised for CNNs, recent works explaining GNNs by:</p><p>• Gradient-like signals w.r.t. the graph structure <ref type="bibr" target="#b12">[13]</ref>, <ref type="bibr" target="#b13">[14]</ref>, <ref type="bibr" target="#b14">[15]</ref>: For example, SA <ref type="bibr" target="#b12">[13]</ref> adopts gradients of GNN's loss w.r.t. adjacency matrix as edge scores, while Grad-CAM <ref type="bibr" target="#b13">[14]</ref> is extended on GNNs. • Masks or attention scores of structural features <ref type="bibr" target="#b15">[16]</ref>, <ref type="bibr" target="#b16">[17]</ref>, <ref type="bibr" target="#b17">[18]</ref>: The basic idea is to maximize the mutual information between the fractional (attentive) graph and the target prediction. For instance, GNNExplainer <ref type="bibr" target="#b15">[16]</ref> customizes masks on the adjacency matrix for each graph independently. Later, PGExplainer <ref type="bibr" target="#b16">[17]</ref> trains a neural network to generate masks for multiple graphs collectively. More recently, ReFine <ref type="bibr" target="#b17">[18]</ref> first pre-trains an attention network over class-wise graphs to latch on the global explanation view, and then fine-tunes the local explanations for individual graphs. • Prediction changes on structure perturbations <ref type="bibr" target="#b3">[4]</ref>, <ref type="bibr" target="#b18">[19]</ref>, <ref type="bibr" target="#b19">[20]</ref>, <ref type="bibr" target="#b34">[35]</ref>: To get the node attributions, PGM-Explainer <ref type="bibr" target="#b18">[19]</ref> applies random perturbations on nodes and learns a Bayesian network upon the perturbation-prediction data to identify significant nodes. More recently, Sub-graphX <ref type="bibr" target="#b3">[4]</ref> employs the Monte Carlo tree search algorithm to explore different subgraphs and uses Shapley values to measure each subgraph's importance. Note that XGNN <ref type="bibr" target="#b2">[3]</ref> focuses on model-level explanations, rather than local explanations for individual predictions. Moreover, it fails to preserve the local fidelity of individual graphs, as its explanation may not be a substructure existing in the input graph. In contrast, our RC-Explainer explains each graph with a global view of the GNN model, which can preserve the local fidelity.</p><p>As suggested in the previous work <ref type="bibr" target="#b18">[19]</ref>, most of these works assume that the features are attributed indepen-dently, but ignore their dependencies, especially the coalition effect. Our work differs from them -we reformulate the explanation generation as a sequential decision process, accounting for the edge relationships and causal effects at each step, towards more faithful and concise explanations.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">PRELIMINARIES</head><p>We first summarize the background of GNNs, and then describe the task of generating local, post-hoc explanations.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Background of GNNs</head><p>Let represent a graph-structured data instance as G = {e|e ∈ E}, where one edge e = (v, u) ∈ E involves two nodes v and u ∈ V, to highlight the structural features (i.e., the presence of an edge and its endpoints). Typically, each node v is assigned with a d-dimensional feature x v ∈ R d .</p><p>Various GNNs <ref type="bibr" target="#b0">[1]</ref>, <ref type="bibr" target="#b1">[2]</ref>, <ref type="bibr" target="#b35">[36]</ref>, <ref type="bibr" target="#b36">[37]</ref> have been proposed to incorporate such structural features into the representation learning in an end-to-end fashion, so as to facilitate the downstream prediction tasks. Following the supervised learning paradigm, we can systematize the GNN model f as a combination of two modules f 2 • f 1 , where f 1 is the encoder to generate representations and f 2 is the predictor to output the predictions. Clearly, representation learning in the encoder is at the core of GNNs, which typically involves two crucial components:</p><p>• Representation aggregation, which distills the vectorized information from the adjacent nodes to update the representations of ego nodes recursively:</p><formula xml:id="formula_0">a (l) v = AGGREGATE (l) ({z (l-1) u |u ∈ N v }), z (l) v = UPDATE (l) (z (l-1) v , a (l) v ),<label>(1)</label></formula><p>where a</p><formula xml:id="formula_1">(l)</formula><p>v is the aggregation of information propagated from v's neighbors</p><formula xml:id="formula_2">N v = {u|(v, u) ∈ E}; z (0) v is initialized with x v , and z (l)</formula><p>v is v's representation after l layers; AGGREGATE (l) (•) and UPDATE (l) (•) denote the aggregation and update functions, respectively.</p><p>• Representation readout, which finalizes the representations of node v or graph G for the prediction tasks:</p><formula xml:id="formula_3">z v = EDGE-READOUT({z (l) v |l = [0, • • • , L]}), (2) z G = GRAPH-READOUT({z v |v ∈ V}),<label>(3)</label></formula><p>where z v is used for the node-level tasks (e.g., node classification, link prediction), while z G is used for the graph-level tasks (e.g., graph classification, graph regression, graph matching); EDGE-READOUT(•) and GRAPH-READOUT(•) represent readout functions of nodes and graphs, respectively. Having obtained the powerful representations, the predictor performs predictions, such as hiring inner product over two node representations to do link prediction, or employing neural networks on a single node representation to perform node classification.</p><p>Without loss of generality, we consider the graph classification problem in this work. Let f :</p><formula xml:id="formula_4">G → {1, • • • , C} be a trained GNN model, which classifies a graph instance G ∈ G into C classes: ŷc = f (G) = f 2 • f 1 (G), (<label>4</label></formula><formula xml:id="formula_5">)</formula><p>where ŷc is the predicted class being explained, which is assigned with the largest probability p θ (ŷ c |G); f is parameterized by θ including parameters of encoder and predictor.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Task Description</head><p>Explainability of GNNs aims to answer the questions like "Given a graph instance G of interest, what determines the GNN model f to making a certain output ŷc ?". A preva- lent technique to offer local, post-hoc, and model-agnostic explanations is feature attribution <ref type="bibr" target="#b8">[9]</ref>, <ref type="bibr" target="#b9">[10]</ref>, <ref type="bibr" target="#b10">[11]</ref>, <ref type="bibr" target="#b11">[12]</ref>, which decomposes the prediction to the input features. As such, each input feature of graph is associated with an attribution score to indicate how much it contributes to the prediction. Formally, the task of an explainer is to derive the top K important edges and construct a faithful explanatory subgraph</p><formula xml:id="formula_6">G * K = {e * 1 , • • • , e * K } ⊆ G, such that G * K offers evidence supporting f 's prediction ŷc . Wherein, e *</formula><p>k is the edge ranked at the k-th position. In this work, we follow the prior studies <ref type="bibr" target="#b13">[14]</ref>, <ref type="bibr" target="#b15">[16]</ref>, <ref type="bibr" target="#b16">[17]</ref> and focus mainly on the structural features (i.e., the existence of an edge and its endpoints), leaving the identification of salient content features (i.e., node features) in future work.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">METHODOLOGY</head><p>Towards generating an explanatory subgraph, we first frame the attribution of the holistic subgraph from the causality standpoint and emphasize its limitations. We then propose the attribution of the edge sequence (termed causal screening), which sequentially selects one edge by measuring its causal effect on the target prediction and its dependencies on the previously-selected edges. To efficiently achieve the idea of causal screening, we devise a reinforcement learning agent, Reinforced Causal Explainer (RC-Explainer).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Causal Attribution of A Holistic Subgraph</head><p>Formally, we can construct the explanatory subgraph G * K by maximizing an attribution metric A(•):</p><formula xml:id="formula_7">G * K = arg max G K ⊆G A(G K |ŷ c ),<label>(5)</label></formula><p>which is optimized over all possible combinations of K edges:</p><formula xml:id="formula_8">{G K |G K ⊆ G, |G K |= K}; A : G → R measures the contribution of each candidate subgraph G K to the target prediction ŷc = f (G).</formula><p>Towards causal explainability, A(G K |ŷ c ) needs to quantify the causal effect of G K . We can directly manipulate the value of the input graph variable and investigate how the model prediction would be going on. Such an operation is the intervention in causal inference <ref type="bibr" target="#b26">[27]</ref>, <ref type="bibr" target="#b37">[38]</ref>, which is founded on the do(•) calculus. It cuts off all the incoming links of a variable and forcefully assigns a variable with a certain value, which is no longer affected by its causal parents. For instance, do(G = G) fixes the value of graph variable G as a specific graph instance G, short for do(G).</p><p>Through interventions, we formulate individual causal effect (ICE) <ref type="bibr" target="#b26">[27]</ref>, <ref type="bibr" target="#b37">[38]</ref> in the attribution function A(G K |ŷ c ). In particular, we view the input graph variable G as our control variable and conduct two interventions: do(G = G K ) and do(G = ∅), which separately indicate that the input receives treatment (i.e., feeding G K into the GNN) and control (i.e., feeding uninformative reference into the GNN). The ICE is the difference between potential outcomes under treatment and control: Y (do(G K )) -Y (do(∅)), where Y is the prediction variable. However, this difference does leaves the target prediction ŷc untouched, thus easily distills degenerated explanation from G. Hence, we introduce a variable I(G; Y ) to estimate the mutual information <ref type="bibr" target="#b38">[39]</ref>, <ref type="bibr" target="#b39">[40]</ref> between G and Y , which is defined as:</p><formula xml:id="formula_9">I(G; Y ) = H(Y ) -H(Y |G),</formula><p>where H(Y ) and H(Y |G) are the entropy and conditional entropy terms, respectively. Involving the target prediction ŷc , we reformulate the ICE of G K as:</p><formula xml:id="formula_10">A(G K |ŷ c ) = I(do(G K ); ŷc ) -I(do(∅); ŷc ),<label>(6)</label></formula><p>where I(do(G K ); ŷc ) = I(G K ; ŷc ) is to quantify the amount of information pertinent to the target prediction ŷc held in the intervened graph G K ; analogously, I(do(∅); ŷc ) = I(∅; ŷc ).</p><p>Limitations. Nonetheless, directly optimizing Equation ( <ref type="formula" target="#formula_7">5</ref>) faces two obstacles: (1) This optimization is generally NPhard <ref type="bibr" target="#b32">[33]</ref>, <ref type="bibr" target="#b40">[41]</ref>, since the constraint |G K |= K casts the task as a combinatorial optimization problem, where the number of possible subgraphs {G K ⊆ G} is super-exponential with the number of edges; and (2) it only exhibits the contribution of a subgraph to the prediction holistically. However, highlighting the importance of each componential edge is more preferred than showing a holistic subgraph solely.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Causal Screening of An Edge Sequence</head><p>To address these limitations, we propose the causal screening strategy to assess the causal effect of an edge sequence instead. The basic idea is integrating the screening strategy <ref type="bibr" target="#b25">[26]</ref> with the cause-effect estimation of edges. Specifically, the explanatory subgraph starts from the empty set, and incorporates the salient edges incrementally, one edge at a time. Formally, the objective function is:</p><formula xml:id="formula_11">e * k = arg max e k ∈O k A(e k |G * k-1 , ŷc ), k = 1, 2, • • • , K,<label>(7)</label></formula><p>where</p><formula xml:id="formula_12">G * k-1 = {e * 1 , • • • , e * k-1 }</formula><p>is the set of the first (k -1) added edges after (k -1) steps, and G 0 = ∅ at the initial step; at the k-th step, e * k is the edge selected from the pool of edge candidates</p><formula xml:id="formula_13">O k = G \G * k-1 . Having established G * k by merging G *</formula><p>k-1 and e * k , we repeat this procedure until finding all top-K edges as the final explanatory subgraph.</p><p>At each step, A(e k |G * k-1 , ŷc ) guides the edge selection, which estimates the causal effect of e k , conditioning on the previously selected edges</p><formula xml:id="formula_14">G * k-1 . Specifically, given G * k-1 , we perform two interventions: do(G * k-1 ∪ {e k })</formula><p>represents that the input graph receives treatment (i.e., the GNN takes the combination of e k and G * k-1 as input); whereas, do(G * k-1 ) denotes that the input graph is under control (i.e., the GNN takes G * k-1 solely). Afterward, we define the ICE of e k as:  where</p><formula xml:id="formula_15">A(e k |G * k-1 , ŷc ) = I(do(G * k-1 ∪ {e k }); ŷc ) -I(do(G * k-1 ); ŷc ) = -H(ŷ c |G * k-1 ∪ {e k }) + H(ŷ c |G * k-1 ) = -p θ (ŷ c |G) log p θ (ŷ c |G * k-1 ) p θ (ŷ c |G * k-1 ∪ {e k }) ,<label>(8)</label></formula><formula xml:id="formula_16">= {𝒆 𝟏 , 𝒆 𝟐 , 𝒆 𝟑 , … } O N O C C C C C C N O O H H H H O N O C C C C C C N O O H H H H O N O C C C C C C N O O H H H H O N O C C C C C C N O O H H H H O N O C C C C C C N O O H H H H O N O C C C C C C N O O H H H H O N O C C C C C C N O O H H H H 0.</formula><formula xml:id="formula_17">H(ŷ c |G * k-1 ) = -p θ (ŷ c |G) log p θ (ŷ c |G * k-1 ) is the term of conditional entropy; analogously, H(ŷ c |G * k-1 ∪ {e k }) = -p θ (ŷ c |G) log p θ (ŷ c |G * k-1 ∪ {e k }); p θ (ŷ c |G), p θ (ŷ c |G * k-1</formula><p>), and p θ (ŷ c |G * k-1 ∪{e k }) are the prediction probabilities of the target class ŷc , when feeding G, G * k-1 , and G * k-1 ∪ {e k } into the model f , respectively. As a result, Equation <ref type="bibr" target="#b7">(8)</ref> explicitly assesses e k 's interactions with the previously added edges. One positive influence will be assigned with e k , if it can collaborate with G * k-1 and pursue a prediction more similar with ŷc ; otherwise, a negative influence indicates that e k is not suitable to participate in the interpretation at step k. Hence, it allows us to answer causality-related questions like "Given the previously selected edges, what is the causal effect of an edge on the target prediction?".</p><p>One straightforward solution to optimizing Equation ( <ref type="formula" target="#formula_11">7</ref>) is through greedy sequential exhaustive search. One step consists of first calculating the ICE scores of all edge candidates, and then adding the edge with the most significant score to connect the previously added edges. This step is iteratively repeated for K times. The greedy sequential exhaustive search is at the core of many feature selection algorithms <ref type="bibr" target="#b41">[42]</ref>, having shown great success.</p><p>Limitations. However, there are two inherent limitations in the exhaustive search: (1) This parameter-free approach explains every graph instance individually, hence is insufficient to offer a global understanding of the GNN, such as class-wise explanations <ref type="bibr" target="#b16">[17]</ref>, <ref type="bibr" target="#b17">[18]</ref>. (2) The computational complexity of interpreting a graph is O(2(|G|-K) × K/2)). This will be a bottleneck when explaining large-scale graphs that involve massive edges like social networks. As a result, these limitations hinder the exhaustive search from being efficiently and widely used in real-world scenarios.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">Reinforced Causal Explainer (RC-Explainer)</head><p>To remedy the limitations, we revisit the sequential selection of edges from the viewpoint of reinforcement learning (RL) <ref type="bibr" target="#b42">[43]</ref>, <ref type="bibr" target="#b43">[44]</ref>. We then devise a RL agent, RC-Explainer, whose policy network learns how to conduct the causal screening. As the policy network explores the post-hoc explanations over the population of all training graphs, RC-Explainer is able to systematize the global view of important patterns and hold the global understanding of the model's workings. Moreover, benefiting from the RL scheme, RC-Explainer can efficiently determine the edge sequence with the significant causal attributions.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3.1">Causal Screening as Reinforcement Learning</head><p>Following previous work <ref type="bibr" target="#b42">[43]</ref>, we frame the causal screening process as a Markov Decision Process (MDP) M = {S, A, P, R}. Herein, S = {s k } is the set of states abstracting edge sequences during exploration, and A = {a k } is the set of actions, which adds an edge to the current edge sequences at each step. Under the Markov property <ref type="bibr" target="#b42">[43]</ref>, <ref type="bibr" target="#b44">[45]</ref>, P (s k |s k-1 , a k ) is the transition dynamics that specifies the new edge sequence s k after making an action of edge addition a k on the prior state s k-1 . R(s k-1 , a k ) is to quantify the reward after making the action a k from the prior state s k-1 . As such, the trajectory (s 0 , a 1 , r 1 , s 1 , • • • , a K , r K , s K ) naturally depicts the generation of an edge sequence, where the step-wise reward r K reflects a K 's causal effect and coalition effect with the previously-added edges. Note that, various graphs with the model predictions describe different environments being explored by the RL agent. Here we elaborate the foregoing key elements for one target graph G and its prediction ŷc as follows.</p><p>State Space. At step k, the state s k indicates the subgraph G k consisting of the explored edges: s k = G k , where the initial state s 0 = G 0 = ∅. Figure <ref type="figure">2</ref> illustrates the changes in varying states.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Action Space. Observing the state s</head><formula xml:id="formula_18">k-1 = G k-1 , the avail- able action space A k is the complement of G k-1 , formally A k = G \G k-1 .</formula><p>The RL agent picks up a salient edge e k from A k and connects it to the previous selection G k-1 . That is, this action of edge addition can be represented as a k = e k for simplicity.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>State Transition Dynamics.</head><p>Having made the action a k = e k at step k, the transition of the state s k is merging e k into the previous state</p><formula xml:id="formula_19">s k-1 : G k = G k-1 ∪ {e k }.</formula><p>Reward Design. To measure the quality of the action a k at step k and guide the further explorations, we consider two factors into the reward design:</p><p>• Validity of action a k = e k , which reflects the ICE of e k (cf. Equation ( <ref type="formula" target="#formula_15">8</ref>)). A positive attribution suggests that the newly-added edge e k contributes uniquely and positively to the explanation -that is, it not only serves as the plausible causal determinant to the target prediction ŷc , but also cooperates with the previous edges G k-1 as an effective coalition. In contrast, a vanishing (nearto-zero) or negative attribution reveals that the edge is redundant to the previous edges or fails to explain the target prediction. • Validity of state s k = G k , which justifies the predictive ability of the current explanatory subgraph. Here we assign a positive score <ref type="bibr" target="#b0">(1)</ref> to G k that can successfully explain the target prediction, while we use a negative score (-1) to penalize G k for the wrong prediction. In a nutshell, the reward R(s k-1 , a k ) for the intervention action a k = e k at state s k-1 = G k-1 is formulated as:</p><formula xml:id="formula_20">R(G k-1 , e k ) = A(e k |G k-1 , ŷc ) + 1, if f θ (G k-1 ∪ {e k }) = ŷc A(e k |G k-1 , ŷc ) -1, otherwise.</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3.2">Policy Network</head><p>Having outlined the causal screening environment, we now present the policy network q φ of RC-Explainer to explore in the environment. Specifically, it takes the pair of intermediate state G k-1 and the target prediction ŷc as the input, and aims to determine the next action e k :</p><formula xml:id="formula_21">e k ∼ q φ (G k-1 , ŷc ),<label>(9)</label></formula><p>where φ summarizes the trainable parameters of the policy network; e k is yielded with the probability P φ (e k |G k-1 , ŷc ) of being added to the explanatory subgraph. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Representation Learning of Action Candidates. With the space of action candidates</head><formula xml:id="formula_22">A k = G \ G k-1 ,</formula><formula xml:id="formula_23">z e k = MLP 1 ([z v ||z u ||x e k ]),<label>(10)</label></formula><p>where g yields z v ∈ R d and z u ∈ R d to separately represent v and u (cf. Equation (3)); x e ∈ R d2 is the pre-existing feature of e k , which can be ignored when no feature is available; •||• is the concatenation operator. We use a MLP with one hidden layer W (2) σ(W (1) [z v ||z u ||x e k ]) to obtain z e k ∈ R d , where σ is a ReLU nonlinearity. Note that the model parameters µ of g are trainable, while the model parameters θ of the target GNN model f are fixed.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Selection of Action.</head><p>Having established the representations of action candidates, we aim to select one action from the space and perform it. Instead of trying candidates exhaustively, the policy network learns the importance of making an action a k = e k to the current state s k-1 = G k-1 :</p><formula xml:id="formula_24">p e k = MLP 2,c ([z e k ||z G k-1 ]),<label>(11)</label></formula><p>where z G k-1 is the representation of the current explanatory subgraph G k-1 , which aggregates the representations of its compositional nodes via Equation (3). We use a class-specific MLP with one hidden layer W (4,c) σ(W (3) [z e k ||z G k-1 ]) to get the scalar p e k , where c corresponds to the target class ŷc . Thereafter, we apply a softmax function over all action candidates A k to convert their importance scores into the probability distribution. Formally, the probability of e k being selected as the action is as:</p><formula xml:id="formula_25">P φ (e k |G k-1 , ŷc ) = SOFTMAX A k (p e k ),<label>(12)</label></formula><p>where φ collects parameters of g µ , MLP 1 , and {MLP 2,c } C c=1 . It is worth mentioning that the class-wise MLPs latch on class-wise knowledge across the training graphs with the same prediction.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3.3">Policy Gradient Training</head><p>However, SGD cannot be directly used for the optimization, since the discrete sampling within the policy network blocks gradients. To solve this issue, we adopt the policy gradient-based training framework, REINFORCE <ref type="bibr" target="#b42">[43]</ref>, <ref type="bibr" target="#b45">[46]</ref>, to optimize the policy network as follows:</p><formula xml:id="formula_26">max φ E G∈O E k [R(G k-1 , e k ) log P φ (e k |G k-1 , ŷc )].<label>(13)</label></formula><p>Obviously, this training framework encourages the actions with large rewards -sequentially finding the edges with the salient causal attributions to construct the explanatory subgraph.</p><p>As a result, our RC-Explainer inherits the desired characteristics of causal screening, which considers the causal effects of edges and the dependencies among edges. Furthermore, RC-Explainer is optimized on all graphs in the training set; thus, it holds a global view of the target model's inner workings and achieves better generalization ability to generate explanations for unseen graph instances.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.4">Discussion</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.4.1">Time Complexity</head><p>When explaining one graph G, the time cost mainly comes from the two components: (1) the representation learning of node representations, (2) the step-wise representation learning of edge candidates and action prediction. Specifically, using a trainable GNN model g µ to generate node representations has computational complexity O( L l=1 |G|×d l × d l-1 ), where d l is the representation dimension at l-th layer. At each step k, the time cost is O(|A k |×2d ×d ) for creating representations of edge candidates, while being O(|A k |×d ) for predicting one action. As a result, the cost of generating the explanation  </p><formula xml:id="formula_27">G K is O( K k=1 |A k |×(2d × d + d )).</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.4.2">Potential Limitations</head><p>We list two potential limitations RC-Explainer might face, expensive time complexity and out-of-distribution issue:</p><p>• Although RC-Explainer benefits from reinforcement learning and is more efficient than the exhaustive search, it might still suffer from the high computational cost, when generating the sampling probabilities over the large action space. See Section 5.2.4 for the evaluations w.r.t. empirical time complexity. It limits RC-Explainer's development on large scale graphs. Hence we leave the pruning of action space and the improvement of scalability in future work, such as pre-judging the probability of edges being selected and extracting a small set of edges as the action candidates. • The causal attributions of holistic subgraph (cf. Equation ( <ref type="formula" target="#formula_10">6</ref>)) and edge sequence (cf. Equation ( <ref type="formula" target="#formula_15">8</ref>)) are founded upon on the feature removal principle <ref type="bibr" target="#b46">[47]</ref> that is, the complement of the subgraph is discarded, while the target model takes the subgraph as the input only. Nonetheless, feature removal makes subgraphs off the distribution of the full graphs, thus causing the outof-distribution (OOD) issue. The OOD subgraph hardly follows the degree distribution <ref type="bibr" target="#b47">[48]</ref>, graph sizes <ref type="bibr" target="#b48">[49]</ref> or possibly violates constraints <ref type="bibr" target="#b44">[45]</ref>. As a result, the OOD issue could bring a spurious correlation between the true importance of subgraph and the model prediction, making the ICE estimation unfaithful and unreliable. See Section 5.2.5 for the failure cases, where the explanations suffer from the OOD effect. We will explore the solution to the OOD issue in future work, such as using the counterfactual generation to fulfil the subgraph and make it conform to the original distribution</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">EXPERIMENTS</head><p>To demonstrate the effectiveness of RC-Explainer, we investigate the following research question: Can RC-Explainer provide more reasonable explanations than the state-of-theart explainer methods?</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1">Experimental Settings</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1.1">Dataset Description.</head><p>We use three benchmark datasets in the experiments:</p><p>• Mutagenicity <ref type="bibr" target="#b49">[50]</ref>, <ref type="bibr" target="#b50">[51]</ref> has 4, 377 molecule graphs, where each graph is labeled with one of two labels: mutagenic and non-mutagenic, based on the mutagenic effect on a bacterium. We trained a GIN model <ref type="bibr" target="#b22">[23]</ref>, <ref type="bibr" target="#b51">[52]</ref> to perform the binary classification. • REDDIT-MULTI-5K <ref type="bibr" target="#b52">[53]</ref> has 4, 999 social networks labeled with five different classes to indicate the topics of question/answer communities. Upon them, we trained a k-GNN model <ref type="bibr" target="#b53">[54]</ref> as a classifier.</p><p>• Visual Genome <ref type="bibr" target="#b54">[55]</ref> is a collection of images. Each image is coupled with a scene graph, where nodes are the objects with bounding boxes and edges are the relations between objects. Following the previous work <ref type="bibr" target="#b13">[14]</ref>, we extract 4, 443 (images, scene graphs) pairs covering five classes: stadium, street, farm, surfing, forest. A GNN model, APPNP <ref type="bibr" target="#b55">[56]</ref>, is trained as a classifier, where the regional images are treated as the node features.</p><p>Table <ref type="table" target="#tab_5">1</ref> shows the statistics of datasets with the configurations of GNN models. We follow prior studies <ref type="bibr" target="#b13">[14]</ref>, <ref type="bibr" target="#b15">[16]</ref> and partition each dataset into training, validation, and testing sets with the ratio of 80%:10%:10%. Having obtained the trained GNNs on the training sets, we train the parametric explainers on the training sets, and tune their hyperparameters on the validation sets. We run the explainers five times on the testing sets to report the average results.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1.2">Evaluation Metrics.</head><p>It is of crucial importance to evaluate the explanations quantitatively. However, the ground-truth knowledge of explanations is usually unavailable in real-world datasets. Hence, many prior works <ref type="bibr" target="#b11">[12]</ref>, <ref type="bibr" target="#b32">[33]</ref>, <ref type="bibr" target="#b56">[57]</ref>, <ref type="bibr" target="#b57">[58]</ref> have proposed some metrics to assess the explanations without the ground truth. Here we adopt two widely-adopted metrics:</p><p>• Predictive Accuracy <ref type="bibr" target="#b32">[33]</ref>, <ref type="bibr" target="#b56">[57]</ref> (ACC@µ) is to measure whether using the explanatory subgraph can successfully recover the target prediction:</p><formula xml:id="formula_28">ACC(µ) = E G∼G [I(f (G), f (G * K ))],<label>(14)</label></formula><p>where µ is the selection ratio (e.g., 5%), K = µ × |G| is the size of explanatory subgraph; I(•) is the indicator function to check whether f (G) equals to f (G * K ). Moreover, we also report the ACC curve over different selection ratios [0.1, 0.2, • • • , 1.0] and denote the area under curve as ACC-AUC.</p><p>• Contrastivity <ref type="bibr" target="#b13">[14]</ref> (CST) quantifies the invariance between class-discriminative explanations. It is built upon the intuition that a reasonable method should yield differing explanations, in response to the target prediction changes. Here we formulate it as the Spearman rank correlation between class-discriminative edge scores:</p><formula xml:id="formula_29">CST = E G∼G E s =ŷ [|ρ(Φ(G, s), Φ(G, ŷ))|],<label>(15)</label></formula><p>where s means we permute the label ŷ of G being interpreted; Φ(G, ŷ) is the attribution scores of all edges; |ρ(•)| is the Spearman rank correlation with the absolute value to measure the invariance between the edge attributions, in response to the label changes.</p><p>Moreover, as suggested in the prior study <ref type="bibr" target="#b11">[12]</ref>, the explanations generated by a reasonable explainer should be dependent on the target model -that is, presenting a faithful understanding of how the target model works. Hence we also conduct sanity check:</p><p>• Sanity Check on model randomization is to compare the attribution scores on the trained GNN f with that on an untrained GNN f with randomly-initialized parameters. Similar attributions infer that the explainer is insensitive to the model changes, thus fails to pass the check. Here we frame it as the rank correlation between these two attributions:</p><formula xml:id="formula_30">SC = E G∼G [|ρ(Φ(G, f (G)), Φ(G, f (G)))|].<label>(16)</label></formula><p>Similar attributions infer the explainer is insensitive to properties of the model, thus failing to pass the check.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1.3">Baselines.</head><p>We compare RC-Explainer with the state-of-the-art explainers, covering the gradient-based (SA <ref type="bibr" target="#b12">[13]</ref>, Grad-CAM <ref type="bibr" target="#b13">[14]</ref>), masking-based (GNNExplainer <ref type="bibr" target="#b15">[16]</ref>), attention-based (PG-Explainer <ref type="bibr" target="#b16">[17]</ref>), and perturbation-based (CXPlain <ref type="bibr" target="#b19">[20]</ref>, PGM-Explainer <ref type="bibr" target="#b18">[19]</ref>).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1.4">Parameter Settings.</head><p>To facilitate reproducibility, we release codes and datasets at <ref type="url" target="https://github.com/xiangwang1223/reinforcedcausalexplainer">https://github.com/xiangwang1223/reinforced causal explainer</ref>, and summarize the hyperparameter settings in the supplementary material. For nonparametric methods (SA and Grad-CAM), we use the codes released by the original papers <ref type="bibr" target="#b12">[13]</ref>, <ref type="bibr" target="#b13">[14]</ref>. For the other parametric methods, we conduct a grid search to confirm the optimal settings for each method. To be more specific, the optimizer is set as Adam, the learning rate is tuned in {10 -3 , 10 -2 , 10 -1 }, and the weight decay is searched in {10 -5 , 10 -4 , 10 -3 }. Other model-specific hyperparameters are set as follows: For GN-NExplainer, the weight of mutual information is fixed as 0.5; For PGExplainer, the temperature for reparameterization is 0.1; For PGM-Explainer, the number of perturbations is tuned in {10, 100, 1000} with different perturbation modes.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2">Evaluation of Explanations</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2.1">Evaluation w.r.t. Predictive Accuracy</head><p>Table <ref type="table" target="#tab_7">2</ref> reports the empirical results w.r.t. ACC@10% and ACC-AUC, and Figure <ref type="figure" target="#fig_1">3</ref> demonstrates the ACC curves over different selection ratios. We find that:</p><p>• RC-Explainer outperforms the compared baselines by a large margin across all three datasets, when only 10% of edges are selected as the explanatory subgraphs. For example, it achieves significant improvements over the strongest baselines w.r.  <ref type="figure" target="#fig_1">3</ref> shows, increasing the selection ratios might decrease RC-Explainer's predictive accuracy. This again justifies the rationality of our causal screening: when the causal determinants or coalitions have been selected, adding more noncausal or redundant edges has only a negligible impact on the accuracy. • Analyzing the ACC curves and ACC-AUC scores in Visual Genome, we find that RC-Explainer only achieves comparable performance to Grad-CAM. One possible reason is that node features could be more informative about scenes than the existence of edges. Taking Figure <ref type="figure">4</ref> as an example, the visual features of the road node might be sufficient to predict the street scene. Hence, Grad-CAM benefits from the context-enhanced gradients that capture the node features thus achieves highquality explanations. It inspires us to further investigate the cooperation of node feature and graph structure in the explanation generation. • In general, the line of causal explainability (i.e., CXPlain, PGM-Explainer, RC-Explainer) performs better than the line of statistical explainability (i.e., SA, Grad-CAM, GNNExplainer, PGExplainer). Because using gradients, masks, or attentions is prone to capturing the spurious input-output correlations and missing the causation. This is consistent with prior studies <ref type="bibr" target="#b18">[19]</ref>, <ref type="bibr" target="#b19">[20]</ref>. • Within the line of causal explainability, RC-Explainer outperforms CXPlain and PGM-Explainer, suggesting that screening to combine an edge with the previous selection estimates the edges' causal effects more accurately. This emphasizes the effectiveness of considering edge dependencies.   <ref type="figure" target="#fig_1">3</ref>, we observe that RC-Explainer will randomly pick up edges, once the most influential edges have been selected. These randomly-added edges could increase the ranking correlations of class-specific explanations, thus influencing the overall CST scores of RC-Explainer.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2.3">Evaluation w.r.t. Sanity Check</head><p>We then focus on the sanity checks presented in Table <ref type="table" target="#tab_8">3</ref> and find that: (1) RC-Explainer achieves relatively low SC scores and safely passes the checks, indicating that the attributions on the trained and untrained GNNs differ significantly. This evidently shows that our feature attribution is dependent on the target GNN, which is necessary for faithfully interpreting the inner workings of the target model; (2) Jointly analyzing the SC scores across three datasets, we find that RC-Explainer is less sensitive to the target model's status in Visual Genome. We conjecture that the untrained GNN still works as the kernel function to filter some useful information, thus somehow reflects the edge importance. We leave the justification of possible reasons for future work.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2.4">Evaluation w.r.t. Time Complexity</head><p>We present the actual runtime of all approaches in  <ref type="figure">4</ref>, we find that:</p><p>• RC-Explainer is able to capture the edges that plausibly cause the GNN's prediction. For example, when interpreting the prediction of Street in Visual Genome, it assigns the most convincing edges (car, on, road) and (van, in, street) with the largest attribution scores. Whereas, the other methods easily distribute attention on treeor human-related edges, as tree and human frequently occur with street. However, using such spurious correlations as causation fails to interpret the prediction reliably. This again verifies the importance of causal interpretability. • The sequential decision process enables RC-Explainer to measure the relationships of candidate edges and previous selections, thus identifying the coalition of edges and avoiding the redundant edges. For instance, when explaining the prediction of mutagenic in Mutagenicity, RC-Explainer can highlight the functional groups, such as two NO 2 chemical groups, responsible for the mutagenic property <ref type="bibr" target="#b58">[59]</ref>. Whereas, at most one NO 2 is captured by the baselines, as they hardly consider the coalition effect of an edge combination. As for the non-mutagenic molecules, RC-Explainer tends to pick bonds like carbon-hydrogen (C-H). This makes sense because the GNN models will not predict the subgraphs with these chemical bonds as mutagenic.</p><p>• Moreover, we probe the sequential decision process of generating explanations of mutagenic. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">CONCLUSION</head><p>In this work, we focused on explaining the predictions made by graph neural networks. We framed the explanation as a sequential decision process and proposed a novel reinforcement learning agent, RC-Explainer. It approaches better explanations of GNN predictions by considering the causal effect of edges and dependencies among edges. As such, the policy network of RC-Explainer learns the causal screening strategy to efficiently yield the influential sequence of edges. We offered extensive experiments to evaluate the explana- Although doing interventions is effective to evaluate the causal effects of graph structures, the intervened substructures might be outside of the training distribution and cause the out-of-distribution issue <ref type="bibr" target="#b28">[29]</ref>. In the future, we will exploit counterfactual generation and reasoning to solve this issue. Moreover, we will explore the feature coalitions and interactions from the game-theoretic perspective.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Fig. 1 :</head><label>1</label><figDesc>Fig. 1: A real example of explaining the mutagenicity classification of a molecule graph. (a-c) show explanations of SA, GNNExplainer, and RC-Explainer, respectively, where the important edges are highlighted with red color and the top-3 edges are listed. Best viewed in color.</figDesc><graphic coords="2,-11.33,20.12,206.53,134.02" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Fig. 3 :</head><label>3</label><figDesc>Fig. 3: Accuracy curves of all explainers over different selection ratios. Best viewed in color.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 5 Fig. 4 :Fig. 5 :</head><label>545</label><figDesc>Fig.4: Selected explanations for each explainer, where the top 20% edges are highlighted. Note that some edges have the same nodes. In Visual Genome, the objects involved in the edges are blurred based on the edge attributions; meanwhile, in Mutagenicity, a darker color of a bond indicates the larger attribution for the prediction.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Fig. 6 :</head><label>6</label><figDesc>Fig. 6: Showcasing the failure cases of RC-Explainer. tions from different dimensions, such as predictive accuracy, contrastivity, sanity check, and visual inspections.Although doing interventions is effective to evaluate the causal effects of graph structures, the intervened substructures might be outside of the training distribution and cause the out-of-distribution issue<ref type="bibr" target="#b28">[29]</ref>. In the future, we will exploit counterfactual generation and reasoning to solve this issue. Moreover, we will explore the feature coalitions and interactions from the game-theoretic perspective.</figDesc><graphic coords="11,79.38,153.60,83.87,70.08" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>One Step in Sequential Decision Process</head><label></label><figDesc></figDesc><table><row><cell>GNN Prediction: ' 𝒚 𝒄 = mutagenic</cell><cell>Causal Attribution of state 𝓖 𝟐 Reward: 𝑹(𝓖 𝟏 , 𝒆 𝟐 ) Causal Attribution of action 𝒆 𝟐 Subgraph (b) Explanatory 𝓖 𝑲</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head></head><label></label><figDesc>𝒆 𝟐 ~𝒒𝝓 (𝓖 𝟏 , ' 𝒚 𝒄 ) State: 𝓖 𝟐 = 𝓖 𝟏 ∪ {𝒆 𝟐 } Illustration of the proposed RC-Explainer framework. (a) Sequential decision process to generate the explanatory subgraph; (b) One step from the state G 1 to the state G 2 . Best viewed in color.</figDesc><table><row><cell></cell><cell>State: 𝓖 𝟎</cell><cell cols="2">State: 𝓖 𝟏</cell><cell>State: 𝓖 𝟐</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="2">State: 𝓖 𝟑</cell></row><row><cell></cell><cell></cell><cell></cell><cell cols="2">(a) Sequential Decision Process</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>O</cell><cell></cell><cell></cell><cell>O</cell></row><row><cell></cell><cell></cell><cell>72</cell><cell>0.06 0.06</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell>O</cell><cell>O</cell><cell></cell><cell>N</cell><cell></cell><cell></cell><cell>N</cell><cell>O</cell></row><row><cell>State: 𝓖 𝟏</cell><cell cols="4">0.03 0.01 0.00 0.00 Action: Observe 0.02 0.03 0.01 0.00 0.00 0.02 0.02 0.02 Probability of being added N 0.72 • Causal Effect of N=O • Dependency between N=O &amp; N=O Policy Network Sample Generate Probability Distribution:𝒒 𝝓 (𝓖 𝟏 , % 𝒚 𝒄 )</cell><cell>Act</cell><cell>H</cell><cell>C H</cell><cell>C C</cell><cell>C C</cell><cell>C H</cell><cell>H</cell><cell>Guide</cell></row><row><cell>Fig. 2:</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head></head><label></label><figDesc>In total, the time complexity of the whole training episode is O(</figDesc><table /><note><p><p>G∈O ( L l=1 |G|×d l ×d l-1 + K k=1 |A k |×(2d ×d +d )))</p>, where O is the training set.</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>TABLE 1 :</head><label>1</label><figDesc>Dataset statistics with model configurations.</figDesc><table><row><cell></cell><cell>Mutagenicity</cell><cell>REDDIT-MULTI-5K</cell><cell>Visual-Genome</cell></row><row><cell>Graphs#</cell><cell>4,337</cell><cell>4,999</cell><cell>4,443</cell></row><row><cell>Classes#</cell><cell>2</cell><cell>5</cell><cell>5</cell></row><row><cell>Avg. Nodes#</cell><cell>30.32</cell><cell>508.52</cell><cell>35.32</cell></row><row><cell>Avg. Edges#</cell><cell>30.77</cell><cell>594.87</cell><cell>18.04</cell></row><row><cell>Target GNNs</cell><cell>GIN</cell><cell>k-GNN</cell><cell>APPNP</cell></row><row><cell>Layers#</cell><cell>2</cell><cell>3</cell><cell>2</cell></row><row><cell>Accuracy</cell><cell>0.806</cell><cell>0.644</cell><cell>0.640</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head></head><label></label><figDesc>t. ACC@10% by 13.59% and 25.51% in Mutagenicity and REDDIT-MULTI-5K, respectively. This verifies the rationality and effectiveness of RC-Explainer. We ascribe these improvements to two key characteristics of causal screening: (1) Assessing the causal effects of edges enables us to better distinguish the causal relationships from the spurious correlations between input edges and model outputs, thus encouraging causal explainability instead of statistical interpretability; (2) Benefiting from the screening strategy, RC-Explainer can reveal the dependencies of the candidate edges and the previous selections. It allows us to identify and explicit the coalition effect of edges, and reduce the redundancy in explanations.• The explanatory subgraphs derived from RC-Explainer are influential to the model predictions. Especially, in Mutagenicity and REDDIT-MULTI-5K, RC-Explainer's ACC-AUC scores are 0.964 and 0.901, close to the optimal fidelity. This validates that RC-Explainer faithfully reflects the workings of the target GNNs.</figDesc><table /><note><p>• As Figure</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head>TABLE 2 :</head><label>2</label><figDesc>Predictive accuracy of explanations derived from explainers. The best performance is highlighted with * , while the second-best performance is underlined.</figDesc><table><row><cell></cell><cell></cell><cell>SA</cell><cell cols="5">Grad-CAM GNNExplainer PGExplainer CXPlain PGM-Explainer</cell><cell>RC-Explainer</cell></row><row><cell>ACC@10% ↑</cell><cell>Mutagenicity REDDIT-MULTI-5K Visual Genome</cell><cell>0.568 0.158 0.695</cell><cell>0.608 0.158 0.894</cell><cell>0.607 0.125 0.735</cell><cell>0.674 0.175 0.580</cell><cell>0.868 0.279 0.578</cell><cell>0.603 0.300 0.535</cell><cell>0.986  *  0.472  *  0.976  *</cell></row><row><cell>ACC-AUC↑</cell><cell>Mutagenicity REDDIT-MULTI-5K Visual Genome</cell><cell>0.767 0.362 0.829</cell><cell>0.764 0.399 0.917  *</cell><cell>0.872 0.429 0.802</cell><cell>0.899 0.412 0.757</cell><cell>0.886 0.439 0.775</cell><cell>0.737 0.377 0.754</cell><cell>0.964  *  0.521  *  0.901</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_8"><head>TABLE 3 :</head><label>3</label><figDesc>Other quantitative analyses for explainers w.r.t. contrastivity metrics, sanity check, and time complexity. Symbol (•) indicates the rank of RC-Explainer over all methods.</figDesc><table><row><cell></cell><cell></cell><cell>SA</cell><cell cols="5">Grad-CAM GNNExplainer PGExplainer CXPlain PGM-Explainer</cell><cell>RC-Explainer</cell></row><row><cell></cell><cell>Mutagenicity</cell><cell>0.975</cell><cell>0.768</cell><cell>0.690</cell><cell>0.202</cell><cell>0.587</cell><cell>0.343</cell><cell>0.311 (2)</cell></row><row><cell>CST↓</cell><cell>REDDIT-MULTI-5K</cell><cell>0.513</cell><cell>0.211</cell><cell>0.945</cell><cell>0.145</cell><cell>0.664</cell><cell>0.061</cell><cell>0.481 (4)</cell></row><row><cell></cell><cell>Visual Genome</cell><cell>0.462</cell><cell>0.426</cell><cell>0.417</cell><cell>0.421</cell><cell>0.320</cell><cell>0.403</cell><cell>0.306 (1)</cell></row><row><cell></cell><cell>Mutagenicity</cell><cell>0.221</cell><cell>0.254</cell><cell>0.124</cell><cell>0.278</cell><cell>0.327</cell><cell>0.597</cell><cell>0.248 (3)</cell></row><row><cell>SC↓</cell><cell>REDDIT-MULTI-5K</cell><cell>0.183</cell><cell>0.537</cell><cell>0.040</cell><cell>0.123</cell><cell>0.696</cell><cell>0.829</cell><cell>0.465 (4)</cell></row><row><cell></cell><cell>Visual Genome</cell><cell>0.321</cell><cell>0.375</cell><cell>0.676</cell><cell>0.831</cell><cell>0.266</cell><cell>0.588</cell><cell>0.309 (2)</cell></row><row><cell>Time (per graph)</cell><cell>Mutagenicity REDDIT-MULTI-5K Visual Genome</cell><cell>0.011 0.008 0.015</cell><cell>0.010 0.008 0.015</cell><cell>2.57 2.14 2.71</cell><cell>0.026 0.021 0.028</cell><cell>1.74 13.4 1.77</cell><cell>1.19 64.2 1.58</cell><cell>0.680 23.8 0.339</cell></row><row><cell cols="3">5.2.2 Evaluation w.r.t. Contrastivity</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="5">We move on to the contrastivity reported in Table 3 to check</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="5">how explanations differ when the target predictions change.</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="5">We find that: (1) Over all approaches, RC-Explainer achieves</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="5">the lowest and the second-lowest CST scores in Visual</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="5">Genome and Mutagenicity, respectively. This indicates that</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="5">the explanations of RC-Explainer are class-discriminative,</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="5">thus offering an understanding of the decision boundary</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="5">between different classes. For instance, in REDDIT-MULTI-</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="5">5K, different patterns of user behaviors can describe various</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="5">topics of communities. See Section 5.2.5 for more supporting</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="5">pieces of evidence; (2) Jointly inspecting the ACC curves</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>in Figure</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_9"><head>Table 3</head><label>3</label><figDesc></figDesc><table /><note><p><p><p><p><p>, which reports the inference time to generate an explanation. Our findings are:</p><ref type="bibr" target="#b0">(1)</ref> </p>In Mutagenicity and Visual Genome, RC-Explainer computes the attribution scores significantly faster than GNNExplainer and PGM-Explainer. Because the policy network in RC-Explainer is shared across all graph instances, while GNNExplainer needs to retrain the attention network for each instance and PGM-Explainer requires a large number of random perturbations to generate explanations; (2) On REDDIT-MULTI-5K, RC-Explainer is slower on large-scale graphs due to the huge action space. We can solve this issue by pruning the action space, which is left to future work; (3) Gradient-based methods generate much faster than most parametric methods.</p>5.2.5 Evaluation w.r.t. Visual Inspection</p>In this section, we conduct the visual inspections of two examples in Mutagenicity and Visual Genome to give an intuitive impression of explanations. As demonstrated in Figure</p></note></figure>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>ACKNOWLEDGMENTS</head><p>This work is supported by the <rs type="funder">National Key Research and Development Program of China</rs> (<rs type="grantNumber">2020AAA0106000</rs>), the <rs type="funder">National Natural Science Foundation of China</rs> (<rs type="grantNumber">U19A2079</rs>, <rs type="grantNumber">U21B2026</rs>).</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funding" xml:id="_djxY3aQ">
+					<idno type="grant-number">2020AAA0106000</idno>
+				</org>
+				<org type="funding" xml:id="_Q8B4Kmd">
+					<idno type="grant-number">U19A2079</idno>
+				</org>
+				<org type="funding" xml:id="_cEgx5kU">
+					<idno type="grant-number">U21B2026</idno>
+				</org>
+			</listOrg>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>APPENDIX A REPRODUCIBILITY</head><p>We have released our codes and datasets at <ref type="url" target="https://github.com/xiangwang1223/reinforcedcausalexplainer">https://github. com/xiangwang1223/reinforced causal explainer</ref> to ensure the reproducibility.</p><p>We summarize the model architectures in Table <ref type="table">4</ref>, where the target model is being explained via RC-Explainer. Within RC-Explainer, g is the GNN model to perform the representation learning, MLP 1 is the multilayer perceptron to generate the representations for action candidates, while MLP 2,c is the class-specific multilayer perceptron to yield the importance score of each action candidate.</p><p>Moreover, we present the hyperparameter settings of RC-Explainer in Table <ref type="table">5</ref>, where {•} indicates the range of tuning each hyperparameter and the bold numbers are our final settings.</p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<title level="m" type="main">Inductive representation learning on large graphs</title>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">L</forename><surname>Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<editor>NeurIPS</editor>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="1024" to="1034" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Benchmarking graph neural networks</title>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">P</forename><surname>Dwivedi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">K</forename><surname>Joshi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Laurent</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Bresson</surname></persName>
+		</author>
+		<idno>abs/2003.00982</idno>
+	</analytic>
+	<monogr>
+		<title level="j">CoRR</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<monogr>
+		<title level="m" type="main">XGNN: towards model-level explanations of graph neural networks</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Yuan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ji</surname></persName>
+		</author>
+		<editor>KDD, R. Gupta, Y. Liu, J. Tang, and B. A. Prakash</editor>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="430" to="438" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">On explainability of graph neural networks via subgraph explorations</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Yuan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ji</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Shadewatcher: Recommendation-guided cyber threat analysis using system audit records</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zeng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Chua</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><forename type="middle">L</forename><surname>Chua</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE Symposium on Security and Privacy</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Stop explaining black box machine learning models for high stakes decisions and use interpretable models instead</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Rudin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Nature Machine Intelligence</title>
+		<imprint>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="issue">5</biblScope>
+			<biblScope unit="page" from="206" to="215" />
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">why should I trust you?&quot;: Explaining the predictions of any classifier</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">T</forename><surname>Ribeiro</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Singh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Guestrin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">KDD</title>
+		<imprint>
+			<biblScope unit="page" from="1135" to="1144" />
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Learning important features through propagating activation differences</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Shrikumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Greenside</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Kundaje</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="volume">70</biblScope>
+			<biblScope unit="page" from="3145" to="3153" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Grad-cam: Visual explanations from deep networks via gradient-based localization</title>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">R</forename><surname>Selvaraju</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Cogswell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Das</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Vedantam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Parikh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Batra</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICCV</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="618" to="626" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Axiomatic attribution for deep networks</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Sundararajan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Taly</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Yan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="volume">70</biblScope>
+			<biblScope unit="page" from="3319" to="3328" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Neural network attributions: A causal perspective</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Chattopadhyay</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Manupriya</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Sarkar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">N</forename><surname>Balasubramanian</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">97</biblScope>
+			<biblScope unit="page" from="981" to="990" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<title level="m" type="main">Towards better understanding of gradient-based attribution methods for deep neural networks</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Ancona</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Ceolini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Öztireli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Gross</surname></persName>
+		</author>
+		<editor>ICLR</editor>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Explainability techniques for graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Baldassarre</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Azizpour</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">CoRR</title>
+		<imprint>
+			<date type="published" when="1905">1905.13686, 2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Explainability methods for graph convolutional neural networks</title>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">E</forename><surname>Pope</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Kolouri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Rostami</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">E</forename><surname>Martin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Hoffmann</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">CVPR</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">10</biblScope>
+			<biblScope unit="page">781</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Higher-order explanations of graph neural networks via relevant walks</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Schnake</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Eberle</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lederer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Nakajima</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">T</forename><surname>Schutt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K.-R</forename><surname>Muller</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Montavon</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">arXiv</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<monogr>
+		<title level="m" type="main">Gnnexplainer: Generating explanations for graph neural networks</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Bourgeois</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>You</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zitnik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<editor>NeurIPS</editor>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="9240" to="9251" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<monogr>
+		<title level="m" type="main">Parameterized explainer for graph neural network</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Luo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Cheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Zong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhang</surname></persName>
+		</author>
+		<editor>NeurIPS</editor>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Towards multi-grained explainability for graph neural networks</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T.-S</forename><surname>Chua</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">NeurIPS</title>
+		<imprint>
+			<biblScope unit="volume">34</biblScope>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<monogr>
+		<title level="m" type="main">Pgm-explainer: Probabilistic graphical model explanations for graph neural networks</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">N</forename><surname>Vu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">T</forename><surname>Thai</surname></persName>
+		</author>
+		<editor>NeurIPS</editor>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<monogr>
+		<title level="m" type="main">Cxplain: Causal explanations for model interpretation under uncertainty</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Schwab</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Karlen</surname></persName>
+		</author>
+		<editor>NeurIPS</editor>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">10</biblScope>
+			<biblScope unit="page">230</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Causal interpretability for machine learning-problems, methods and evaluation</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Moraffah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Karami</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Raglin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Liu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">SIGKDD Explorations</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">22</biblScope>
+			<biblScope unit="page" from="18" to="33" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Theoretical impediments to machine learning with seven sparks from the causal revolution</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Pearl</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">WSDM</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page">3</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">How powerful are graph neural networks?</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Jegelka</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ICLR</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<monogr>
+		<title level="m" type="main">A unified approach to interpreting model predictions</title>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">M</forename><surname>Lundberg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Lee</surname></persName>
+		</author>
+		<editor>NeurIPS</editor>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="4765" to="4774" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Shapley-based explainability on the data manifold</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Frye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>De Mijolla</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Cowton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Stanley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Feige</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ICLR</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Local causal and markov blanket induction for causal discovery and feature selection for classification part i: Algorithms and empirical evaluation</title>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">F</forename><surname>Aliferis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Statnikov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Tsamardinos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Mani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><forename type="middle">D</forename><surname>Koutsoukos</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">JMLR</title>
+		<imprint>
+			<biblScope unit="volume">11</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<monogr>
+		<title level="m" type="main">Causality</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Pearl</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+			<publisher>Cambridge university press</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<monogr>
+		<title level="m">Causality: Models, Reasoning, and Inference</title>
+		<imprint>
+			<publisher>Cambridge University Press</publisher>
+			<date type="published" when="2000">2000</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Discovering invariant rationales for graph neural networks</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Chua</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ICLR</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Invariant grounding for video question answering</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Xiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Ji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Chua</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">CVPR</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Deep inside convolutional networks: Visualising image classification models and saliency maps</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Simonyan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Vedaldi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Zisserman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ICLR</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">On pixel-wise explanations for non-linear classifier decisions by layer-wise relevance propagation</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Bach</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Binder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Montavon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Klauschen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K.-R</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Samek</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">PloS one</title>
+		<imprint>
+			<biblScope unit="volume">10</biblScope>
+			<biblScope unit="issue">7</biblScope>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Learning to explain: An information-theoretic perspective on model interpretation</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">J</forename><surname>Wainwright</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">I</forename><surname>Jordan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="882" to="891" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<monogr>
+		<title level="m" type="main">Explaining a blackbox using deep variational information bottleneck approach</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Bang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Xing</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv</note>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Graphlime: Local interpretable model explanations for graph neural networks</title>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Yamada</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Tian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Singh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Yin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Chang</surname></persName>
+		</author>
+		<idno>abs/2001.06216</idno>
+	</analytic>
+	<monogr>
+		<title level="j">CoRR</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Neural message passing for quantum chemistry</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Gilmer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">S</forename><surname>Schoenholz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">F</forename><surname>Riley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Vinyals</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><forename type="middle">E</forename><surname>Dahl</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="volume">70</biblScope>
+			<biblScope unit="page" from="1263" to="1272" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Graph attention networks</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Velickovic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Cucurull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Casanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Romero</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ICLR</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<monogr>
+		<title level="m" type="main">Causal inference in statistics: A primer</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Pearl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Glymour</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">P</forename><surname>Jewell</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<publisher>John Wiley &amp; Sons</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<monogr>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">M</forename><surname>Cover</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">A</forename><surname>Thomas</surname></persName>
+		</author>
+		<title level="m">Elements of Information Theory</title>
+		<imprint>
+			<publisher>Wiley</publisher>
+			<date type="published" when="2001">2001</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Mutual information neural estimation</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">I</forename><surname>Belghazi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Baratin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Rajeswar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ozair</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">D</forename><surname>Hjelm</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">C</forename><surname>Courville</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="volume">80</biblScope>
+			<biblScope unit="page" from="530" to="539" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Causal discovery with reinforcement learning</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Ng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICLR</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Algorithms for large scale markov blanket discovery</title>
+		<author>
+			<persName><forename type="first">I</forename><surname>Tsamardinos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">F</forename><surname>Aliferis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">R</forename><surname>Statnikov</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">FLAIRS</title>
+		<imprint>
+			<biblScope unit="page" from="376" to="381" />
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<monogr>
+		<title level="m" type="main">Graph convolutional policy network for goal-directed molecular graph generation</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>You</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">S</forename><surname>Pande</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<editor>NeurIPS</editor>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="6412" to="6422" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">Mastering the game of go with deep neural networks and tree search</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Silver</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">J</forename><surname>Maddison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Guez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Sifre</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Van Den Driessche</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Schrittwieser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Antonoglou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Panneershelvam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Lanctot</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">nature</title>
+		<imprint>
+			<biblScope unit="volume">529</biblScope>
+			<biblScope unit="issue">7587</biblScope>
+			<biblScope unit="page" from="484" to="489" />
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<monogr>
+		<title level="m" type="main">Constrained graph variational autoencoders for molecule design</title>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Allamanis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Brockschmidt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">L</forename><surname>Gaunt</surname></persName>
+		</author>
+		<editor>NeurIPS</editor>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="7806" to="7815" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<monogr>
+		<title level="m" type="main">Policy gradient methods for reinforcement learning with function approximation</title>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">S</forename><surname>Sutton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">A</forename><surname>Mcallester</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">P</forename><surname>Singh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Mansour</surname></persName>
+		</author>
+		<editor>NeurIPS</editor>
+		<imprint>
+			<date type="published" when="1999">1999</date>
+			<biblScope unit="page" from="1057" to="1063" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<analytic>
+		<title level="a" type="main">Feature removal is a unifying principle for model explanation methods</title>
+		<author>
+			<persName><forename type="first">I</forename><surname>Covert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">M</forename><surname>Lundberg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Lee</surname></persName>
+		</author>
+		<idno>abs/2011.03623</idno>
+	</analytic>
+	<monogr>
+		<title level="j">CoRR</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<analytic>
+		<title level="a" type="main">Graphs over time: densification laws, shrinking diameters and possible explanations</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">M</forename><surname>Kleinberg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Faloutsos</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">KDD</title>
+		<imprint>
+			<biblScope unit="page" from="177" to="187" />
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<analytic>
+		<title level="a" type="main">Size-invariant graph representations for graph classification extrapolations</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Bevilacqua</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Ribeiro</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML, ser. Proceedings of Machine Learning Research</title>
+		<imprint>
+			<publisher>PMLR</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="volume">139</biblScope>
+			<biblScope unit="page" from="837" to="851" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<analytic>
+		<title level="a" type="main">Derivation and validation of toxicophores for mutagenicity prediction</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kazius</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Mcguire</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Bursi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of medicinal chemistry</title>
+		<imprint>
+			<biblScope unit="volume">48</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="312" to="320" />
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<analytic>
+		<title level="a" type="main">Iam graph database repository for graph based pattern recognition and machine learning</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Riesen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Bunke</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">SPR and SSPR</title>
+		<imprint>
+			<date type="published" when="2008">2008</date>
+			<biblScope unit="page" from="287" to="297" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b51">
+	<monogr>
+		<title level="m" type="main">Strategies for pre-training graph neural networks</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Gomes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zitnik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">S</forename><surname>Pande</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<editor>ICLR</editor>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b52">
+	<analytic>
+		<title level="a" type="main">Deep graph kernels</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Yanardag</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">V N</forename><surname>Vishwanathan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">KDD</title>
+		<imprint>
+			<biblScope unit="page" from="1365" to="1374" />
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b53">
+	<analytic>
+		<title level="a" type="main">Weisfeiler and leman go neural: Higherorder graph neural networks</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Morris</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Ritzert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">L</forename><surname>Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">E</forename><surname>Lenssen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Rattan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Grohe</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">AAAI</title>
+		<imprint>
+			<biblScope unit="page" from="4602" to="4609" />
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b54">
+	<analytic>
+		<title level="a" type="main">Visual genome: Connecting language and vision using crowdsourced dense image annotations</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Krishna</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Groth</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Johnson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Hata</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kravitz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Kalantidis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">A</forename><surname>Shamma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">S</forename><surname>Bernstein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Fei-Fei</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IJCV</title>
+		<imprint>
+			<biblScope unit="volume">123</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="32" to="73" />
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b55">
+	<analytic>
+		<title level="a" type="main">Predict then propagate: Graph neural networks meet personalized pagerank</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Klicpera</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bojchevski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">G</forename><surname>Ünnemann</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ICLR</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b56">
+	<analytic>
+		<title level="a" type="main">Adversarial infidelity learning for model interpretation</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Bai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Cao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Bai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Wang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">KDD</title>
+		<imprint>
+			<biblScope unit="page" from="286" to="296" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b57">
+	<monogr>
+		<title level="m" type="main">Sanity checks for saliency maps</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Adebayo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Gilmer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><forename type="middle">J</forename><surname>Muelly</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Goodfellow</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Hardt</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Kim</surname></persName>
+		</author>
+		<editor>NeurIPS</editor>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="9525" to="9536" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b58">
+	<analytic>
+		<title level="a" type="main">Structure-activity relationship of mutagenic aromatic and heteroaromatic nitro compounds. correlation with molecular orbital energies and hydrophobicity</title>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">K</forename><surname>Debnath</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">L</forename><surname>Lopez De Compadre</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Debnath</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">J</forename><surname>Shusterman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Hansch</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of medicinal chemistry</title>
+		<imprint>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="786" to="797" />
+			<date type="published" when="1991">1991</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b59">
+	<analytic>
+		<title level="a" type="main">ASAP: adaptive structure aware pooling for learning hierarchical graph representations</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>Ranjan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Sanyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">P</forename><surname>Talukdar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="5470" to="5477" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b60">
+	<analytic>
+		<title level="a" type="main">Semi-supervised classification with graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">N</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+		<idno>of GNN PTGNN [52] ASAP [60] GCN [61</idno>
+	</analytic>
+	<monogr>
+		<title level="m">ICLR, 2017. TABLE 4: Model architectures of target models and RC-explainer Datasets Mutag BA3-motif Reddit-5k Target Model Type</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b61">
+	<monogr>
+		<title/>
+		<author>
+			<persName><surname>Neurons</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Gnn</surname></persName>
+		</author>
+		<imprint>
+			<biblScope unit="volume">75</biblScope>
+		</imprint>
+	</monogr>
+	<note>32,32,32,64,5] RC-Explainer Type of GNN g PTGNN [52] ASAP [60] GCN [61</note>
+</biblStruct>
+
+<biblStruct xml:id="b62">
+	<monogr>
+		<title/>
+		<author>
+			<persName><surname>Neurons</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Gnn</surname></persName>
+		</author>
+		<imprint>
+			<biblScope unit="volume">75</biblScope>
+		</imprint>
+	</monogr>
+	<note>32,32,32,64,5</note>
+</biblStruct>
+
+<biblStruct xml:id="b63">
+	<monogr>
+		<title level="m">#Neurons of MLP 1</title>
+		<imprint>
+			<biblScope unit="volume">64</biblScope>
+			<biblScope unit="page">32</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b64">
+	<monogr>
+		<title level="m" type="main">Hyperparameter settings of RC-explainer Datasets Mutag BA3-motif Reddit-5k RC-Explainer Learning Rate lr {0</title>
+		<author>
+			<persName><surname>Neurons</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Mlp</surname></persName>
+		</author>
+		<imprint>
+			<biblScope unit="volume">32</biblScope>
+		</imprint>
+	</monogr>
+	<note>64,64,3] [32,32,5. .00001, 0.0001, 0.001} {0.00001, 0.0001, 0.001} {0.00001, 0.0001, 0.001}</note>
+</biblStruct>
+
+<biblStruct xml:id="b65">
+	<monogr>
+		<idno>Weight Decay 2 {0.00001, 0.0001, 0.001} {0.00001, 0.0001, 0.001} {0.00001, 0.0001, 0.001</idno>
+		<title level="m">} Reward Mode {MI, Binary, CE} {MI, Binary, CE} {MI, Binary, CE} Beam</title>
+		<imprint/>
+	</monogr>
+	<note>Search {2, 4, 8, 16} {2, 4, 8, 16} {2, 4, 8, 16}</note>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>
