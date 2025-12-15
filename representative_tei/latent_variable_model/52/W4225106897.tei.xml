@@ -1,0 +1,412 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Variational Learning for Unsupervised Knowledge Grounded Dialogs</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Mayank</forename><surname>Mishra</surname></persName>
+							<email>mayank.mishra1@ibm.com</email>
+							<affiliation key="aff0">
+								<orgName type="institution">IBM Research AI</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Dhiraj</forename><surname>Madan</surname></persName>
+							<email>dmadan07@in.ibm.com</email>
+							<affiliation key="aff0">
+								<orgName type="institution">IBM Research AI</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Gaurav</forename><surname>Pandey</surname></persName>
+							<email>gpandey1@in.ibm.com</email>
+							<affiliation key="aff0">
+								<orgName type="institution">IBM Research AI</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Danish</forename><surname>Contractor</surname></persName>
+							<email>danish.contractor@ibm.com</email>
+							<affiliation key="aff0">
+								<orgName type="institution">IBM Research AI</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Variational Learning for Unsupervised Knowledge Grounded Dialogs</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-28T22:39+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Recent methods for knowledge grounded dialogs generate responses by incorporating information from an external textual document. These methods do not require the exact document to be known during training and rely on the use of a retrieval system to fetch relevant documents from a large index. The documents used to generate the responses are modeled as latent variables whose prior probabilities need to be estimated. Models such as RAG and REALM, marginalize the document probabilities over the documents retrieved from the index to define the log likelihood loss function which is optimized end-to-end. In this paper, we develop a variational approach to the above technique wherein, we instead maximize the Evidence Lower bound (ELBO). Using a collection of three publicly available openconversation datasets, we demonstrate how the posterior distribution, that has information from the ground-truth response, allows for a better approximation of the objective function during training. To overcome the challenges associated with sampling over a large knowledge collection, we develop an efficient approach to approximate the ELBO. To the best of our knowledge we are the first to apply variational training for open-scale unsupervised knowledge grounded dialog systems.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>In this paper we focus our attention on the task of generating responses, grounded on information present in a large collection of external textual documents <ref type="bibr" target="#b7">[Lewis et al., 2020]</ref>. In real-world scenarios, the exact document that one must access for generating the response is often unknown and one only has access to conversation logs and a document collection. Hence during training, given a dialog context, the primary challenge is first figuring out the correct document needed to generate the response, and then using that document for generating the actual response. * Contact Author A straightforward baseline approach would be to use an out-of-the-box retriever (for instance, a tf-idf based retriever such as BM25 <ref type="bibr" target="#b14">[Robertson et al., 1994]</ref> or a neural retriever such as DPR <ref type="bibr" target="#b5">[Karpukhin et al., 2020]</ref>) for first retrieving the document and then using a retrieved document for generating the response. While this is fairly easy to implement, it cannot be trained in an end-to-end manner and thus, the retriever never improves as the model learns to generate responses.</p><p>To overcome this limitation, methods such as RAG <ref type="bibr" target="#b7">[Lewis et al., 2020]</ref>, model documents as latent variables and learn a distribution over these variables (Figure <ref type="figure">1a</ref>). This distribution is referred to as the document prior. Specifically, the document-prior distribution is defined by querying a knowledge index <ref type="bibr" target="#b4">[Johnson et al., 2017;</ref><ref type="bibr" target="#b5">Karpukhin et al., 2020]</ref> using the dialog context (history), and then converting the retrieval scores of the top-k<ref type="foot" target="#foot_0">foot_0</ref> documents into a probability distribution. The response-likelihood can be defined using any neural language generator such as GPT2 <ref type="bibr" target="#b13">[Radford et al., 2019]</ref>. It then performs a marginalisation of the latent variable over the retrieved documents to compute the approximate probability of the response, given the context. The negative log likelihood under this approximation forms the loss function to train.</p><p>However, one of the weaknesses of this approach is that, using the document-prior to query the index during training, ignores crucial information present in the ground-truth response which could have aided document retrieval. As a result, the response-likelihood network parameters may receive a weaker signal during training, which, in-turn, can cause models to try reducing their dependence on external knowledge by 'memorizing', especially if the correct document is rarely fetched by the retriever. Variational Retrieval-Augmented Generation (VRAG): In this paper, we propose an approach that overcomes this limitation. We incorporate the ground truth response with the dialog context for retrieving the documents during training in a secondary retriever. This increases the chances of retrieving the correct document during training. The distribution over the documents defined by this retriever is referred to as the document posterior. The document posterior guides the training of the document prior while the documents sampled by the posterior are fed to the decoder for generating the re-sponse. Such a formalism emerges naturally in the variational setting, wherein the evidence lower bound (ELBO) is optimized instead of the maximum likelihood objective. Hence, we refer to the model as Variational Retrieval-Augmented Generation (VRAG).</p><p>One of the advantages of variational training is that it provides a low variance estimate of the objective (as compared to sampling from the document-prior distribution), for the same number of samples. Although this has been used in supervised settings <ref type="bibr" target="#b1">([Chen et al., 2020]</ref> and <ref type="bibr">[Kim et al., 2020a]</ref>), we note that directly training under the variational objective may be prohibitively expensive in case of a very large 2 document collection (sampling an element from the posterior distribution, would require retrieval scores for each document in the index collection). In fact, related approaches for variational training therefore only use a small set of pre-retrieved documents <ref type="bibr" target="#b9">[Lian et al., 2019;</ref><ref type="bibr" target="#b8">Li et al., 2020]</ref> to overcome this bottleneck. In particular, such approaches first use an out-ofthe box retriever to fetch a small set of documents (typically 5-10 documents) from the entire document collection. The methods then learn a prior as well as posterior distribution over the small set of pre-retrieved documents only by optimizing the variational objective.</p><p>A major weakness of this approach is that the out-of-thebox retriever does not benefit from training. As a result, if the recall of the out-of-the box retriever is low, that is, the correct document is not present in the pre-retrieved subset for most of the training data, the mapping from the document to the response learnt will be highly noisy and not very useful (we also demonstrate this experimentally in this paper). Contributions: In this paper we describe our approach called VRAG or Variational Retrieval-Augmented Generation 3 which allows us to extend variational optimization to cases where documents are retrieved from large document collections. Instead of pre-retrieving a small set of documents to facilitate variational training, we retrieve documents from the entire collection but perform a summation over the top-k retrieved documents from the posterior distribution as well as the prior distribution to approximate the variational objective (Figure <ref type="figure">1b</ref>). Top-k retrieval can be performed efficiently using an index for nearest neighbor search such as Faiss <ref type="bibr" target="#b4">[Johnson et al., 2017]</ref>, and we find that this simple trick performs significantly better than other approaches. We present experiments on three, publicly available, conversational QA datasets and we show that variational training helps build better knowledge grounded dialog systems. Our experiments show that not only does VRAG perform better on the end-task, it also learns a better retriever. To the best of our knowledge, we are the first to apply variational training for open-scale unsupervised knowledge grounded dialog systems. 4</p><p>2 Collections can have millions of documents 3 We provide the code and the supplementary material at <ref type="url" target="https://github.com/mayank31398/VRAG">https: //github.com/mayank31398/VRAG</ref> and <ref type="url" target="https://arxiv.org/abs/2112.00653">https://arxiv.org/abs/2112. 00653</ref> respectively. 4 Concurrently, <ref type="bibr" target="#b12">[Paranjape et al., 2022</ref>] also use variational training with RAG to generate responses</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Background</head><p>As is commonly done in dialog modeling tasks, we represent the collection of dialogs as a set of context (dialog history) and response pairs; T = {(x (i) , y (i) )} m i=1 where each context x (i) as well as its response y (i) is a sequence of tokens. Further let D = {d j } N j=1 be a set of documents in the form of a large indexed document collection. We assume that each context-response pair requires exactly 1 document d j ∈ D (where 1 ≤ j ≤ N ) to generate the corresponding response. Let z (i) denote a discrete variable which indicates the document (from the indexed collection) needed for training instance i i.e, d z i ∈ D. We can now model the joint likelihood of a response and document pair (y (i) , z (i) ) as p(y (i) ,</p><formula xml:id="formula_0">z (i) |x (i) ) = p(z (i) |x (i) )p(y (i) |x (i) , z (i) ).</formula><p>In the absence of document-level supervision, the z (i) variables are unknown or 'latent'. Here we will be maximizing log p(y</p><formula xml:id="formula_1">(i) |x (i) ) = z p(z (i) |x (i) )p(y (i) |z (i) , x (i)</formula><p>). However, since an explicit summation over the entire document collection can be computationally intractable, one needs to resort to a few approximation techniques. For ease of notation, we will drop the superscript (i) from now on.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Retrieval based approaches:</head><p>Approaches such as RAG <ref type="bibr" target="#b7">[Lewis et al., 2020]</ref> and REALM <ref type="bibr">[Guu et al., 2020]</ref>, maintain an index which allows one to retrieve the top-k documents with high prior probability. The objective is then approximated as a sum over these retrieved documents.</p><p>Specifically, the document-prior distribution p(z|x) is defined based on scores returned by the Dense Passage Retriever (DPR) <ref type="bibr" target="#b5">[Karpukhin et al., 2020]</ref>.</p><p>The top-k most relevant documents (S p k ) for a query (dialog context) are retrieved from an index that allows efficient retrieval <ref type="bibr" target="#b4">[Johnson et al., 2017]</ref> using MIPS search. We denote the approximate document-prior distribution, normalized over the set S p k , as p(z|x). The overall objective for generating the response can then be written as log z∈S p k p(z|x)p(y|z, x) . RAG suffers from a drawback that it does not use the information from responses in order to retrieve documents for a given training instance. Variational techniques: An alternative approach is to maximize a variational lower bound on the objective. Here we need to define an Evidence Lower Bound (ELBO) on the likelihood as log p(y|x) ≥ E z∼q(z|x,y) log p(y,z|x) q(z|x,y)</p><p>. This lower bound holds for any distribution q. Variational autoencoders <ref type="bibr" target="#b7">[Kingma and Welling, 2013]</ref> define another network to model the distribution q. To train such networks, the ELBO is split as:</p><formula xml:id="formula_2">E z∼q [log p(y|z, x)] -KL [q∥p(z|x)]<label>(1)</label></formula><p>The first term is an expectation that can be estimated by sampling documents from the document-posterior q(z|x, y) distribution. The response-likelihood network is then run only using these sampled documents. One can either use re-parameterization trick (with Gumbel softmax distribution) <ref type="bibr" target="#b4">[Jang et al., 2016;</ref><ref type="bibr" target="#b11">Maddison et al., 2016]</ref> or policy gradient method to back propagate through the sampling step. However, in order to sample a document, one would need to compute the entire distribution over the documents. This can be prohibitively expensive when using a large document collection. The second term (KL-divergence) is also computed as an explicit sum, given access to prior and posterior probability distributions, and is also intractable for large document collections.</p><p>In summary, variational training which uses the posterior distribution to retrieve documents while training, can help retrieve more relevant documents for training the responsegenerator. One of the trivial ways to extend these approaches (for large document corpus) is to identify the candidate knowledge documents for each training instance via an existing out-of-the-box retriever ( <ref type="bibr" target="#b8">[Li et al., 2020]</ref>, <ref type="bibr" target="#b9">[Lian et al., 2019]</ref>). One can then create prior and posterior distributions on the restricted set of documents. However this does not allow us to train the retriever and we also show in our experiments, that the trained distribution in such a setting does a poor job of generalizing as a retriever (Section 4).</p><p>In our approach we generalize the variational technique to open domain setting without fixing or pre-retrieving those candidate documents. In order to do so, we would first need to be able to compute the ELBO objective more efficiently (over the entire document corpus) as described in the next section.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Variational RAG (VRAG)</head><p>Variational training involves using both, the document-prior (p(z|x)) and document-posterior distributions (q(z|x, y)). We model each of these based on scores from a Dense Passage retriever (DPR) <ref type="bibr" target="#b5">[Karpukhin et al., 2020]</ref> i.e.</p><formula xml:id="formula_3">p(z|x) = softmax f (z) T g(x)</formula><p>(2) and q(z|x, y)</p><formula xml:id="formula_4">= softmax f (z) T h(x, y)<label>(3)</label></formula><p>where f and g are parameterized representations of documents (z) and dialog contexts (x). h(x, y) denotes the joint embedding of the context-response pair. These are created using neural models such as BERT <ref type="bibr" target="#b3">[Devlin et al., 2018]</ref>. We use a single network to compute the document embeddings f (z) for both prior and posterior.</p><p>In order to efficiently compute expectation and KL divergence terms in the ELBO objective (Equation <ref type="formula" target="#formula_2">1</ref>), we need to approximate the above distributions. To do so, we maintain an index on document embeddings. This allows us to retrieve the set of top-k documents under prior and posterior distributions (equations 2 and 3) using MIPS search <ref type="bibr" target="#b4">[Johnson et al., 2017]</ref>. Note that since the query embeddings g and h are trainable, the retriever is trained over the epochs as well. We denote the sets of top documents under prior and posterior distributions by S p k and S q k respectively. The overall cost is then computed using Evidence Lower Bound (Equation <ref type="formula" target="#formula_2">1</ref>). Here for the first term, we normalize q over the set of top-k documents (denoted by S q k ) returned by the index when queried using the posterior (i.e, the response and the dialog context). The first term is then approximated as z∈S q k q(z|x, y) log p(y|z, x). To approximate the KLdivergence we use the top-k knowledge instances retrieved by querying the index using the dialog-context (for prior) and the context-response pair (for posterior). We then take union of the two sets S p k and S q k to form the set S KL . We use this set (S KL ) to approximate the KL-divergence. Thus, the KLdivergence in Equation 1 is given by:</p><formula xml:id="formula_5">KL [q||p] = z∈S KL q(z) log q(z) p(z) ,<label>(4)</label></formula><p>where the approximate posterior (q) and prior (p) in this case are obtained by normalizing the retrieval scores on S KL . The intuition behind this approximation is that the documents with low posterior probability do not contribute much to the KL objective and hence, can safely be ignored. Similar to other variational models, VRAG is trained end-to-end.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Architecture</head><p>We now describe the neural networks used to model the prior and posterior distributions, and the response generator.</p><p>Prior Distribution Encoders: We need to create document and context representations defined by functions f and g, respectively for modelling the prior. We pass the input context through BERT model <ref type="bibr" target="#b3">[Devlin et al., 2018]</ref>  Response Likelihood: We use the standard sequence to sequence formulation for response likelihood, where log p(y|z, x) = j log p(y j |y &lt;j , z, x). Here, we use the GPT2 <ref type="bibr" target="#b13">[Radford et al., 2019]</ref> model as our decoder with input sequence consisting of context and response.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Training Details</head><p>We train our network to maximize the ELBO objective (Equation 1). We initialize our document-prior (for both RAG and VRAG) and document-posterior (for VRAG) networks with the pretrained DPR-Multiset model<ref type="foot" target="#foot_2">foot_2</ref> pre-trained using data from the Natural Questions <ref type="bibr" target="#b7">[Kwiatkowski et al., 2019]</ref>, Triv-iaQA <ref type="bibr" target="#b5">[Joshi et al., 2017]</ref> etc.</p><p>During the training of the model, it can be difficult to rebuild the document index after every change to the document representation parameters in f , therefore similar to Lewis et al., the parameters in f are kept constant.</p><p>We used early stopping with patience = 5 on recall of the validation sets to prevent overfitting of models. The loss was optimized using AdamW Optimizer <ref type="bibr" target="#b10">[Loshchilov and Hutter, 2017]</ref>. We also found it useful to continue training the response-likelihood for both RAG and VRAG after the joint training is complete. This is because while training, the decoder-likelihood function often lags behind prior (for RAG) and posterior (for VRAG). </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3">Response Generation</head><p>At test time we need to generate the response for a given context by first retrieving a document -thus, in both RAG and VRAG models we use the trained document-prior model to retrieve the top-k documents using the dialog context as query. We experiment with two different decoding strategies to generate the response:</p><p>1. Top Document Decoding: In this case the document with the highest prior probability is used to condition the generator. The response is then generated using beam search (beam width=3) on the trained GPT-2 response generation model; the most likely beam is taken to be the prediction of the model. We refer to this method as the 'top-1 decoding' in our experiments.</p><p>2. Top-k Documents Decoding: Here top (k=5) documents are retrieved from the prior distribution, say z 1 , ..., z 5 . A beam search is then run to generate the top response from each of these say r 1 , ..., r 5 . We use the estimate of p(r i |x) ≈ p(z|x)p(r i |z, x). The most likely response under the estimated distribution is taken to be the response generated by the model<ref type="foot" target="#foot_3">foot_3</ref> . We refer to this as 'top-5 decoding' in our experiments.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Experiments</head><p>Our experiments aim to answer the following questions: (1) Does Variational RAG (VRAG), which uses samples from the approximated document-posterior distribution, perform better than vanilla RAG? (2) Does the quality of generated responses improve by decoding using the top-k documents?</p><p>(3) How do the trained document retriever modules for RAG and VRAG compare with each other? (4) Are the quality of samples returned by the document-posterior of VRAG better than document-prior of RAG as hypothesized? (5) How does VRAG compare with other approximations for variational training?</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Datasets</head><p>OR <ref type="bibr">-QuAC [Qu et al., 2020]</ref>: This dataset is a modified version of the QuAC <ref type="bibr" target="#b2">[Choi et al., 2018]</ref> dataset. The dataset consists of dialog conversations, where each conversation is associated with the top-5 most relevant documents (retrieved using TF-IDF <ref type="bibr" target="#b14">[Robertson et al., 1994]</ref> based BM25 ranking) from the QuAC dataset.</p><p>To create an open-scale collection for our task, we index the set of all the documents available in the train, validation and test splits. In some cases of the test and validation set, the ground-truth document may be missing in the top-5 list associated with each conversation. In such cases, we obtain the ground-truth document from the original QuAC dataset and add it to the indexed collection.</p><p>DSTC9 <ref type="bibr">[Kim et al., 2020b]</ref>: This dialog dataset was released as part of the DSTC9 challenge. The dataset comprises of dialog conversation turns in which the system: (i) needs to identify the turns in which to consult a collection for textual FAQs, (ii) retrieve the FAQ if required, (iii) and then generate the response based on the retrieved FAQ. The universe of knowledge documents in this dataset is the set of FAQs and each FAQ also includes the entity name because the same question can occur multiple times for different entities (eg: "Is parking available?"). The training dataset consists of conversations based on 4 different domains i.e hotels, restaurants, trains and taxis. The test dataset contains an additional domain, attractions, which is not found in the train and validation splits. DoQA <ref type="bibr" target="#b0">[Campos et al., 2020]</ref>: This dataset comprises of open-ended dialog conversations on different domains like cooking, travel and movies. Unlike, the OR-QuAC and DSTC9 datasets, most questions in this dataset are not factoid/specific questions, and are open-ended. We only use the cooking split for both training and testing. We preprocess all the datasets by removing all the examples if the ground truth response is "CANNOTANSWER" (unanswerable). Each 'instance' refers to a context-response pair.</p><p>Question-Answering Task: The OR-QuAC dataset also contains non-contextual variations of questions at each dialog turn and we use them in a QA setting (referred to as OR-QuAC-QA).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Baselines</head><p>Apart from our approach (VRAG), we also study the performance of RAG, as well as, a pipeline model which uses the pre-trained DPR-Multiset Retriever and a GPT2 based decoder which is fine-tuned to generate responses. We refer to this as the DPR + GPT2 baseline in our experiments. In addition, we also show the importance of using a trainable retriever for variational setting by comparing gainst a variational model where a fixed set of candidate documents are retrieved using a pre-trained DPR as a retriever (conditioned on context and response) during training <ref type="bibr" target="#b9">[Lian et al., 2019</ref>;  <ref type="bibr" target="#b8">Li et al., 2020]</ref>. This model retrieves from the entire document collection using the prior distribution during inference. We refer to this baseline as Variational Model with preretrieval ("pre-VM"). Thus, the distributions being trained do not change the set of candidate documents used as training progresses. All models use their respective document-prior distributions during testing.</p><formula xml:id="formula_6">Dataset Model R@1 R@5 MRR@</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">Evaluation Metrics</head><p>For each of our experimental runs, we report the Mean Reciprocal Rank@5 (MRR@5), Recall@1 (R@1), Recall@5 (R@5) to evaluate prior's performance. We also report BLEU scores (both with top-1 and top-5 decoding) to assess the performance of generator. The BLEU-1 and BLEU-4 scores in our tables are denoted by B-1 and B-4 respectively. We also consider "BLEU-penalized" scores (indicated by BP-1 anad BP-4) which consider the BLEU score at a given test instance as 0 if the document retrieved for the given instance is incorrect. These help ensure that a model is not able to produce a high score by memorizing on a particular given domain.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.4">Results</head><p>As can be seen in Table <ref type="table" target="#tab_1">1</ref>, VRAG outperforms RAG on each dataset for document retrieval. We also note that both RAG and VRAG significantly improve the performance of the initial DPR based retriever. Table <ref type="table" target="#tab_2">2</ref> shows the performance of the models on the response generation task. Note that all results in Table <ref type="table" target="#tab_2">2</ref> are obtained after further fine tuning the generator networks (after joint training is complete). The results show that the VRAG model outperforms the RAG model on language generation tasks (BLEU metrics) on all datasets except DoQA. We believe this difference is due to the nature of documents used in this dataset -other datasets have a lot more fact based questions to be answered using knowledge in documents, while more than 66% of the questions in the DoQA dataset are non-fact based and open-ended.</p><p>In addition, it is also possible that the RAG model is memorizing and overfitting on this dataset. For instance, see gains in penalized BLEU scores (BP-1 and BP-4) of RAG and VRAG over DPR in OR-QuAC and DSTC9 datasets in Table 2 -the relative gain of VRAG (over RAG) is significantly   <ref type="table" target="#tab_2">2</ref> we find that in almost all cases, using top-5 decoding to generate responses performs better than using the single (best scored) document to generate responses. This indicates that models are to able to incorporate information from the correct document even if it is not returned as the top-ranked document.</p><p>Benefit of Document Posterior: In Section 3, we motivated the VRAG model by suggesting that using the posterior to sample documents while training the decoder could help train a better model. We find that recall of the document posterior in VRAG is nearly 14-70% higher than the document prior of RAG (depending on the dataset). Further, we find that the use of the responses by VRAG (posterior), to query the index during training, results in significantly better retrieval accuracy than RAG (prior) at every epoch during training. While this is perhaps intuitive and expected, our results on recall in Table <ref type="table" target="#tab_2">2</ref> demonstrate the VRAG (prior) which is trained indirectly via the KL-divergence with VRAG (posterior) also outperforms the RAG (prior). We attribute this gain to the fact that the generator in VRAG learns to focus well on the generated documents which further reinforces the posterior network (and indirectly the prior network through KL term) to improve. Study of Memorization: One of the issues in such an unsupervised learning is that generator may fail to use the retrieved knowledge. Instead the parameters might have been trained to internally model the external knowledge sources themselves, refered to as 'memorization'. In order to study memorization in the models, we compared the results on response generation of all models in the absence of the correct document -if the correct document is missing, the models should perform very poorly. A good performance even without obtaining correct document, would indicate lesser reliance on external knowledge and hence a higher tendency for 'memorization'. We, thus rebuild the document index without including any of the documents from the test set and then reevaluate the performance of our models. Table <ref type="table" target="#tab_3">3</ref>, shows the drop in BLEU scores for each of the models after removing the correct document on OR-QuAC dataset. As can be seen, the percentage drop is highest in the VRAG model indicating a higher usage of knowledge instance and thus, possibly lesser memorization.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Conclusion</head><p>In this paper we described an approach to run variational training on knowledge grounded dialog with a large corpus.</p><p>Our experiments on three conversational QA datasets indicate that variational training is helpful as it produces better document samples while training. We find that our model, VRAG (having access to superior samples from posterior while training), not only generates better responses, it also learns a better retriever (prior distribution).</p><p>We believe that such sampling approximations could also be helpful in other tasks; for instance, it could also be interesting to apply them to other approaches such as Reinforcement Learning to the setting of a large corpus. This would require overcoming similar challenges in sampling as we did in this paper for variational training.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head></head><label></label><figDesc>Figure 1: (a) RAG does not use information from the responses to retrieve documents. (b) Our approach -VRAG which is trained end-to-end and uses the response to train a posterior distribution which guides the prior distribution</figDesc><graphic coords="4,142.20,244.77,327.61,204.90" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head></head><label></label><figDesc>to create context representation. We use special markers to separate the turns. The embedding at final layer of [CLS] token is passed through a linear layer to create context representation. Similarly the document is passed through (separate) BERT Model to create a document representation at [CLS] token.</figDesc><table /><note><p>Posterior Distribution Encoders: Similar to the modeling of the prior distribution, we use another (separate) BERT to model the posterior. Here we create the input representation of the context-response pair (x, y), where a special marker is used to separate the context and response.</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 1 :</head><label>1</label><figDesc>Comparison of VRAG and RAG models in terms of retrieval accuracy (document recall R@K and MRR scores) on all datasets.</figDesc><table><row><cell>5</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 2 :</head><label>2</label><figDesc>Comparison of VRAG and RAG models in terms of BLEU and BLEU-penalized on all datasets after decoder fine-tuning.</figDesc><table><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="2">top-1 decoding</cell><cell></cell><cell></cell><cell cols="2">top-5 decoding</cell></row><row><cell></cell><cell>Dataset</cell><cell></cell><cell>Model</cell><cell>B-1</cell><cell>B-4</cell><cell>BP-1</cell><cell>BP-4</cell><cell>B-1</cell><cell>B-4</cell><cell>BP-1</cell><cell>BP-4</cell></row><row><cell></cell><cell></cell><cell></cell><cell>DPR + GPT2</cell><cell>13.65</cell><cell>6.11</cell><cell>4.41</cell><cell>3.11</cell><cell>16.06</cell><cell>7.97</cell><cell>11.36</cell><cell>7.37</cell></row><row><cell></cell><cell>OR-QuAC</cell><cell></cell><cell>RAG</cell><cell>12.88</cell><cell>5.94</cell><cell>4.60</cell><cell>3.03</cell><cell>15.39</cell><cell>7.64</cell><cell>11.72</cell><cell>7.21</cell></row><row><cell></cell><cell>[Qu et al., 2020]</cell><cell></cell><cell>pre-VM</cell><cell>11.44</cell><cell>4.87</cell><cell>3.52</cell><cell>2.36</cell><cell>13.55</cell><cell>6.26</cell><cell>9.17</cell><cell>5.89</cell></row><row><cell></cell><cell></cell><cell></cell><cell>VRAG</cell><cell>13.97</cell><cell>7.58</cell><cell>5.61</cell><cell>4.02</cell><cell>16.30</cell><cell>9.11</cell><cell>13.10</cell><cell>8.72</cell></row><row><cell></cell><cell></cell><cell></cell><cell>DPR + GPT2</cell><cell>31.84</cell><cell>7.21</cell><cell>4.37</cell><cell>1.08</cell><cell>31.81</cell><cell>7.17</cell><cell>11.14</cell><cell>2.60</cell></row><row><cell></cell><cell>DSTC9</cell><cell></cell><cell>RAG</cell><cell>33.28</cell><cell>8.26</cell><cell>25.87</cell><cell>6.86</cell><cell>33.30</cell><cell>8.27</cell><cell>28.75</cell><cell>7.45</cell></row><row><cell></cell><cell>[Kim et al., 2020b]</cell><cell></cell><cell>pre-VM</cell><cell>31.57</cell><cell>7.16</cell><cell>9.92</cell><cell>2.66</cell><cell>31.87</cell><cell>7.29</cell><cell>14.7</cell><cell>3.98</cell></row><row><cell></cell><cell></cell><cell></cell><cell>VRAG</cell><cell>33.49</cell><cell>8.70</cell><cell>26.49</cell><cell>7.57</cell><cell>33.51</cell><cell>8.67</cell><cell>29.80</cell><cell>8.03</cell></row><row><cell></cell><cell></cell><cell></cell><cell>DPR + GPT2</cell><cell>21.26</cell><cell>14.31</cell><cell>17.83</cell><cell>14.20</cell><cell>22.60</cell><cell>15.73</cell><cell>20.53</cell><cell>15.62</cell></row><row><cell></cell><cell>DoQA</cell><cell></cell><cell>RAG</cell><cell>23.59</cell><cell>17.04</cell><cell>20.86</cell><cell>16.92</cell><cell>24.27</cell><cell>17.73</cell><cell>22.75</cell><cell>17.60</cell></row><row><cell></cell><cell cols="2">[Campos et al., 2020]</cell><cell>pre-VM</cell><cell>23.33</cell><cell>16.70</cell><cell>20.47</cell><cell>16.5</cell><cell>23.79</cell><cell>17.21</cell><cell>22.24</cell><cell>17.07</cell></row><row><cell></cell><cell></cell><cell></cell><cell>VRAG</cell><cell>23.38</cell><cell>17.02</cell><cell>20.91</cell><cell>16.94</cell><cell>23.29</cell><cell>16.88</cell><cell>21.93</cell><cell>16.80</cell></row><row><cell></cell><cell></cell><cell></cell><cell>DPR + GPT2</cell><cell>9.11</cell><cell>1.88</cell><cell>1.81</cell><cell>1.07</cell><cell>10.18</cell><cell>2.61</cell><cell>4.95</cell><cell>2.38</cell></row><row><cell></cell><cell>OR-QuAC-QA</cell><cell></cell><cell>RAG</cell><cell>9.12</cell><cell>2.31</cell><cell>2.36</cell><cell>1.44</cell><cell>10.39</cell><cell>2.97</cell><cell>5.75</cell></row><row><cell></cell><cell>[Qu et al., 2020]</cell><cell></cell><cell>pre-VM</cell><cell>6.96</cell><cell>1.17</cell><cell>1.11</cell><cell>0.67</cell><cell>7.84</cell><cell>1.75</cell><cell>3.05</cell><cell>1.67</cell></row><row><cell></cell><cell></cell><cell></cell><cell>VRAG</cell><cell>9.64</cell><cell>2.93</cell><cell>2.83</cell><cell>1.66</cell><cell>10.65</cell><cell>3.49</cell><cell>6.73</cell><cell>3.36</cell></row><row><cell></cell><cell>B-1 (top-1 decoding)</cell><cell cols="2">B-1 (top-5 decoding)</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>DPR</cell><cell>-42.28%</cell><cell></cell><cell>-48.64%</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>RAG</cell><cell>-36.77%</cell><cell></cell><cell>-45.19%</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>pre-VM</cell><cell>-41.89%</cell><cell></cell><cell>-44.20%</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>VRAG</cell><cell>-43.22%</cell><cell></cell><cell>-49.88%</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 3 :</head><label>3</label><figDesc>Percentage drop in BLEU score when correct documents have been removed on OR-QuAC [Qu et al., 2020] dataset.higher. This suggests that VRAG model is more likely to generate the response using the correct document and not by merely memorize on a given domain.Alternative approximations for Variational Training:In Table1we see that the recall scores of pre-VM model are much worse than our VRAG model. This observation vali-</figDesc><table><row><cell>dates our hypothesis that, because the retrieved samples are</cell></row><row><cell>not improved during training, the prior and posterior distribu-</cell></row><row><cell>tions in pre-VM end up focusing only on the few (potentially</cell></row><row><cell>incorrect) initially-retrieved documents. This is especially</cell></row><row><cell>problematic if the initial recall is low. As training progresses,</cell></row><row><cell>this may worsen the distributions over the initial model (eg:</cell></row><row><cell>see DSTC9 recall scores for DPR and pre-VM in Table 1)</cell></row><row><cell>because the correct document isn't present in the retrieved</cell></row><row><cell>sample, thus giving it an incorrect signal.</cell></row><row><cell>Effect of Top-5 Decoding: From Table</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>typically k = 5-10.Proceedings of the Thirty-First International Joint Conference on Artificial Intelligence </p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" xml:id="foot_1"><p>Proceedings of the Thirty-First International Joint Conference on Artificial Intelligence </p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="5" xml:id="foot_2"><p>This can be used to initialize a model in Hugging Face, see https://huggingface.co/transformers/model doc/dpr.html Proceedings of the Thirty-First International Joint Conference on Artificial Intelligence (IJCAI-22)</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="6" xml:id="foot_3"><p>This is the same as "Fast Decoding" as defined in<ref type="bibr" target="#b7">[Lewis et al., 2020]</ref>.Proceedings of the Thirty-First International Joint Conference on Artificial Intelligence </p></note>
+		</body>
+		<back>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">DoQA -accessing domain-specific FAQs via conversational QA</title>
+		<author>
+			<persName><surname>Campos</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 58th Annual Meeting of the Association for Computational Linguistics</meeting>
+		<imprint>
+			<date type="published" when="2020-07">2020. July 2020</date>
+			<biblScope unit="page" from="7302" to="7314" />
+		</imprint>
+	</monogr>
+	<note>Association for Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Bridging the gap between prior and posterior knowledge selection for knowledge-grounded dialogue generation</title>
+		<author>
+			<persName><forename type="first">Chen</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)</title>
+		<meeting>the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)</meeting>
+		<imprint>
+			<date type="published" when="2020">2020. 2020</date>
+			<biblScope unit="page" from="3426" to="3437" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">QuAC: Question answering in context</title>
+		<author>
+			<persName><surname>Choi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2018 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2018 Conference on Empirical Methods in Natural Language Processing<address><addrLine>Brussels, Belgium</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2018-10">2018. October-November 2018</date>
+			<biblScope unit="page" from="2174" to="2184" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<author>
+			<persName><surname>Devlin</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1810.04805</idno>
+		<idno>arXiv:2002.08909</idno>
+		<title level="m">Pre-training of deep bidirectional transformers for language understanding</title>
+		<editor>
+			<persName><forename type="first">Kelvin</forename><surname>Guu</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Kenton</forename><surname>Lee</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Zora</forename><surname>Tung</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Panupong</forename><surname>Pasupat</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Ming-Wei</forename><surname>Chang</surname></persName>
+		</editor>
+		<imprint>
+			<date type="published" when="2018">2018. 2018. 2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+	<note>Realm: Retrieval-augmented language model pre-training</note>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Categorical reparameterization with gumbel-softmax</title>
+		<author>
+			<persName><surname>Jang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1611.01144</idno>
+		<idno>arXiv:1702.08734</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Matthijs Douze, and Hervé Jégou. Billion-scale similarity search with gpus</title>
+		<imprint>
+			<date type="published" when="2016">2016. 2016. 2017. 2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Triviaqa: A large scale distantly supervised challenge dataset for reading comprehension</title>
+		<author>
+			<persName><surname>Joshi</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1705.03551</idno>
+		<idno>arXiv:2004.04906</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Dense passage retrieval for open-domain question answering</title>
+		<imprint>
+			<date type="published" when="2017">2017. 2017. 2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+	<note>Karpukhin et al., 2020</note>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<monogr>
+		<title level="m" type="main">Sequential latent knowledge selection for knowledge-grounded dialogue</title>
+		<author>
+			<persName><surname>Kim</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2002.07510</idno>
+		<imprint>
+			<date type="published" when="2020">2020. 2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Beyond domain APIs: Task-oriented conversational modeling with unstructured access</title>
+		<author>
+			<persName><surname>Kim</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1312.6114</idno>
+		<idno>arXiv:2005.11401</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 21th Annual Meeting of SIG-DIAL</title>
+		<meeting>the 21th Annual Meeting of SIG-DIAL<address><addrLine>Patrick Lewis, Ethan Perez, Aleksandra Piktus, Fabio Petroni, Vladimir Karpukhin, Naman</addrLine></address></meeting>
+		<imprint>
+			<publisher>Wen-tau Yih</publisher>
+			<date type="published" when="2013">2020. July 2020. 2013. 2013. 2019. 2019. 2020</date>
+			<biblScope unit="volume">7</biblScope>
+			<biblScope unit="page" from="453" to="466" />
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+	<note>Tim Rocktäschel. et al. Retrieval-augmented generation for knowledge-intensive nlp tasks</note>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Zeroresource knowledge-grounded dialogue generation</title>
+		<author>
+			<persName><surname>Li</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">H</forename><surname>Larochelle</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">M</forename><surname>Ranzato</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">R</forename><surname>Hadsell</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">M</forename><forename type="middle">F</forename><surname>Balcan</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">H</forename><surname>Lin</surname></persName>
+		</editor>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2020">2020. 2020</date>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="8475" to="8485" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<monogr>
+		<title level="m" type="main">Learning to select knowledge for response generation in dialog systems</title>
+		<author>
+			<persName><forename type="first">Lian</forename></persName>
+		</author>
+		<idno type="arXiv">arXiv:1902.04911</idno>
+		<imprint>
+			<date type="published" when="2019">2019. 2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<author>
+			<persName><forename type="first">Hutter</forename><surname>Loshchilov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ilya</forename><surname>Loshchilov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Frank</forename><surname>Hutter</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1711.05101</idno>
+		<title level="m">Decoupled weight decay regularization</title>
+		<imprint>
+			<date type="published" when="2017">2017. 2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<author>
+			<persName><surname>Maddison</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1611.00712</idno>
+		<title level="m">The concrete distribution: A continuous relaxation of discrete random variables</title>
+		<imprint>
+			<date type="published" when="2016">2016. 2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Hindsight: Posterior-guided training of retrievers for improved open-ended generation</title>
+		<author>
+			<persName><surname>Paranjape</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<editor>
+			<persName><forename type="first">Liu</forename><surname>Qu</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Cen</forename><surname>Yang</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Minghui</forename><surname>Chen</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">W</forename><forename type="middle">Bruce</forename><surname>Qiu</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Mohit</forename><surname>Croft</surname></persName>
+		</editor>
+		<editor>
+			<persName><surname>Iyyer</surname></persName>
+		</editor>
+		<meeting><address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computing Machinery</publisher>
+			<date type="published" when="2020">2022. 2022. 2020</date>
+			<biblScope unit="page" from="539" to="548" />
+		</imprint>
+	</monogr>
+	<note>Qu et al., 2020</note>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Language models are unsupervised multitask learners</title>
+		<author>
+			<persName><surname>Radford</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">OpenAI blog</title>
+		<imprint>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="issue">8</biblScope>
+			<biblScope unit="page">9</biblScope>
+			<date type="published" when="2019">2019. 2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Okapi at trec-3</title>
+		<author>
+			<persName><surname>Robertson</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">TREC</title>
+		<imprint>
+			<date type="published" when="1994">1994. 1994</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

@@ -1,0 +1,652 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">A Deep Learning Methodology to Proliferate Golden Signoff Timing</title>
+				<funder>
+					<orgName type="full">CMP</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Seung-Soo</forename><surname>Han</surname></persName>
+							<email>shan@mju.ac.kr</email>
+							<affiliation key="aff1">
+								<orgName type="department">Department of Information and Communication Engineering</orgName>
+								<orgName type="institution">Myongji University</orgName>
+								<address>
+									<country key="KR">Korea</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Andrew</forename><forename type="middle">B</forename><surname>Kahng</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Siddhartha</forename><surname>Nath</surname></persName>
+							<email>sinath@ucsd.edu</email>
+						</author>
+						<author>
+							<persName><forename type="first">Ashok</forename><forename type="middle">S</forename><surname>Vydyanathan</surname></persName>
+						</author>
+						<author>
+							<affiliation key="aff0">
+								<orgName type="laboratory">† CSE and ‡ ECE Departments</orgName>
+								<orgName type="institution">University of California at San Diego</orgName>
+								<address>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">A Deep Learning Methodology to Proliferate Golden Signoff Timing</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-29T00:32+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Signoff timing analysis remains a critical element in the IC design flow. Multiple signoff corners, libraries, design methodologies, and implementation flows make timing closure very complex at advanced technology nodes. Design teams often wish to ensure that one tool's timing reports are neither optimistic nor pessimistic with respect to another tool's reports. The resulting "correlation" problem is highly complex because tools contain millions of lines of black-box and legacy code, licenses prevent any reverse-engineering of algorithms, and the nature of the problem is seemingly "unbounded" across possible designs, timing paths, and electrical parameters.</p><p>In this work, we apply a "big-data" approach to the timer correlation problem. We develop a machine learning-based tool, Golden Timer eXtension (GTX), to correct divergence in flip-flop setup time, cell arc delay, wire delay, stage delay, and path slack at timing endpoints between timers. We propose a methodology to apply GTX to two arbitrary timers, and we evaluate scalability of GTX across multiple designs and foundry technologies / libraries, both with and without signal integrity analysis. Our experimental results show reduction in divergence between timing tools from 139.3ps to 21.1ps (i.e., 6.6×) in endpoint slack, and from 117ps to 23.8ps (4.9× reduction) in stage delay. We further demonstrate the incremental application of our methods so that models can be adapted to any outlier discrepancies when new designs are taped out in the same technology / library. Last, we demonstrate that GTX can also correlate timing reports between signoff and design implementation tools.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>I. INTRODUCTION</head><p>Accurate timing closure is a critical step in signoff flows of all semiconductor companies <ref type="bibr" target="#b9">[10]</ref> and can consume up to 60% of design time <ref type="bibr" target="#b5">[6]</ref>. Multiple static timing analysis (STA) tools exist today and different companies adopt different tools as "golden" or the best-inclass STA tool depending on their requirements and product quality standards. According to the analyst firm Gary Smith EDA <ref type="bibr" target="#b16">[17]</ref>, EDA vendors such as <ref type="bibr">Synopsys [36]</ref>, Cadence <ref type="bibr" target="#b20">[22]</ref>, Atrenta <ref type="bibr">[21]</ref>, CLK Design Automation <ref type="bibr">[25]</ref>, Incentia Design Systems <ref type="bibr">[27]</ref> and Mentor Graphics <ref type="bibr">[31]</ref> provide STA and signal integrity analysis tools for use in IC design. These tools typically have high license fees and long runtimes, and they invariably diverge in their timing reportseven though each is well-calibrated to the latest commercial circuit simulators and "qualified" for signoff at leading foundries. Owing to cost and budget constraints, design teams may have limited or no access to a particular "golden" timing tool, but may be interested in comparing the divergence in timing reports between the timing tool they use and that golden tool. The ability to correlate with another (golden) timing tool helps design teams understand if they have overdesign or underdesign, i.e., when their timing tool's reports are respectively pessimistic or optimistic compared to the golden tool's reports. Another use model may be to estimate, based on the timing reports of design implementation tools, how far the implementation is from signoff after each optimization loop (timing-driven placement, congestion-aware routing, leakage reduction, etc.).</p><p>We use "gt1-gt2" (that is, "golden tool 1 to golden tool 2") to refer to the problem of correlating two signoff timing tools. We estimate the timing reports of one tool based on the reports of another tool. The correlation problem is extremely complex because:</p><p>• tools can suffer from the complexity of millions of lines of blackbox code; • tools can diverge from published user documentation <ref type="bibr" target="#b7">[8]</ref>, and maintain implementation "errors" for legacy reasons; • discrepancies between tools change with releases <ref type="bibr" target="#b17">[18]</ref> (typically 2× per year for mature tools from major EDA providers); • tool licenses explicitly prohibit benchmarking and reverseengineering of internal algorithms; and • the correlation problem is seemingly "unbounded", as the space of possible timing paths, slew times, multiple-input switching events, coupling effects on delay, etc. is essentially infinite. The cost of leaving the gt1-gt2 problem unsolved grows as embedded processor cores reach 3GHz frequencies in 20nm and 16/14nm designs: miscorrelations of &gt;100ps in timing slack correspond to discrepancies of multiple <ref type="bibr">(3 -4</ref>) logic stages at these advanced technology nodes and can strongly impact power and/or area tradeoffs <ref type="bibr">[2] [3] [6]</ref>. Figures <ref type="figure" target="#fig_0">1(a</ref>) and 1(b) respectively show examples of 110ps and 100ps timing miscorrelations between two leading commercial signoff timing tools T 1 and T 2 , as well as between T 1 and a commercial design implementation tool D 1 . According to industry experts, reasons for miscorrelation include the use of multiple engines within tools for optimal accuracy and runtime as well as the effects of net length and long waveform tail <ref type="bibr" target="#b15">[16]</ref> [19] <ref type="bibr" target="#b19">[20]</ref>. Our premise is that the gt1-gt2 problem, while extremely complex, is still treatable as a finite problem that is amenable to big-data mindsets as has been recently seen in highly challenging applications such as natural language processing <ref type="bibr" target="#b23">[26]</ref>  <ref type="bibr" target="#b30">[35]</ref>. Specifically, we identify appropriate modeling parameters and develop a tool, GTX (Golden Timer eXtension), using well-known machine learning techniques<ref type="foot" target="#foot_0">foot_0</ref> to correct<ref type="foot" target="#foot_1">foot_1</ref> setup time, cell delay, wire delay, stage delay, and path slack divergence between tools. Our methodology is properly considered to be deep learning-based because the models in GTX are hierarchical, e.g., the output of the cell and wire delay models are input to the stage delay model <ref type="bibr" target="#b11">[12]</ref>. Our modeling goals for each model are to (1) minimize the sum of squared errors, and (2) minimize the maximum range of errors. We achieve:</p><p>• Correlation of path slack at timing endpoints<ref type="foot" target="#foot_2">foot_2</ref> between two tools within a range of &lt;30ps for designs implemented in 28FDSOI and 45GS foundry libraries<ref type="foot" target="#foot_3">foot_3</ref> using NLDM delay tables; • Strong correlation results independent of whether signal integrity (SI) and on-chip variation (OCV) are enabled or disabled (non-SI, non-OCV); and • Scalability and portability of GTX to design projects in new foundry libraries. Our main contributions are summarized as follows.</p><p>• We develop GTX by identifying appropriate modeling parameters, and by exploiting big-data mindsets and machine learning techniques to correct timing divergence between tools. To the best of our knowledge, our work is the first to attempt timing correlation with a big-data approach. • Our models to correlate path slack between timing tools are accurate across multiple technology nodes and designs. In non-SI mode, our models reduce the range of divergence in path slack between tools from 32.5ps to 5.9ps (i.e., 5.5× reduction) at 28nm. In SI mode, our models reduce the range from 139.3ps to 21.1ps (i.e., 6.6× reduction) at 45nm. We demonstrate that our method applies to small as well as relatively large (leon3mp) designs. • We demonstrate that GTX can reduce the number of outliers (from 407 to 26, i.e., 16× reduction, in the example we study) by incrementally modifying models when new designs are added. • GTX can be applied to multiple designs, implementation flows, and technology nodes. We demonstrate the generality of GTX with two use cases -correlating two signoff tools, and correlating one signoff tool with a design implementation tool. In the remainder of this paper, Section II surveys related work. Section III describes our modeling parameters and methodology for developing machine learning-based models for GTX. Section IV describes circuits used to generate training, validation and test sets used to develop models, and the design of experiments used to validate GTX. We also report results for multiple tools at multiple foundry nodes. Section V outlines future work and concludes this paper.</p><p>II. RELATED WORK Prior works that quantify miscorrelations between signoff STA tools or propose methodologies to minimize tool divergence are limited. Kahng et al. <ref type="bibr" target="#b7">[8]</ref> develop an internal incremental STA tool by using least-squares regression to model wire delay. They then use offsetbased correlation with a signoff timing tool to minimize divergence in path slack estimates of their incremental STA tool, relative to the signoff tool. Their models are developed using the ISPD-2013 <ref type="bibr" target="#b24">[28]</ref> gate-sizing contest library, and do not include any models for stage or cell delays, or for flip-flop setup times.</p><p>To model effects of temporal and spatial manufacturing variations on path delay, Ganapathy et al. <ref type="bibr" target="#b4">[5]</ref> use multivariate regression. They report estimation errors to be within 5% of SPICE simulations. Tetelbaum <ref type="bibr" target="#b13">[14]</ref> uses root-sum-square (RSS) of variations in stage delay and a weighted function of the worst case sum of variations in stage delay to estimate total path delay; path delay estimation errors of less than 5% are reported. Sinha et al. <ref type="bibr" target="#b12">[13]</ref> propose use of RSS for delay variation in their announcement of the TAU-2013 contest to speed up timing analysis by using multicores and parallel computing techniques.</p><p>In correlating STA tools, Mishra et al. <ref type="bibr" target="#b9">[10]</ref> recalculate clock uncertainties based on miscorrelation between two tools and apply the updated uncertainty values to achieve better timing correlation between the tools. They do not empirically demonstrate the accuracy or efficiency of their approach, either in terms of runtime or in terms of the number of iterations taken to achieve acceptable correlation between the tools. Rakheja et al. <ref type="bibr" target="#b10">[11]</ref> demonstrate that timing reports from design implementation tools, such as Synopsys IC Compiler <ref type="bibr" target="#b32">[38]</ref>, and signoff STA tools, such as Cadence Encounter Timing System <ref type="bibr" target="#b21">[23]</ref>, can differ. They propose a manual and iterative approach to fix paths for which the tools have large divergence in timing estimates. For SOCs, manual fixes are infeasible and automated approaches are required.</p><p>Motassadeq <ref type="bibr" target="#b8">[9]</ref> quantifies differences in output slew between Synopsys HSPICE <ref type="bibr" target="#b31">[37]</ref> and PrimeTime <ref type="bibr" target="#b33">[39]</ref> for Nonlinear Delay Model (NLDM) and Composite Current Source (CCS) <ref type="bibr" target="#b22">[24]</ref> delay models, but does not propose a methodology to reduce the divergence in slew estimates in tool reports between CCS and NLDM models.</p><p>III. METHODOLOGY We now describe our methodology to develop flip-flop setup time, cell, wire, and stage delay and path slack models for GTX. We describe parameters used in the models, and then the machine learning methodology used to develop these models.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Parameter Selection</head><p>Signoff timing tools typically differ in path slack due to discrepancies in cell, wire and stage delays. Further, tools differ in their calculations of rise/fall delays across each input-to-output pin arc of cells. Figures <ref type="figure">2</ref><ref type="figure">3</ref><ref type="figure">4</ref><ref type="figure">5</ref>illustrate these discrepancies between two leading commercial signoff timing tools T 1 and T 2 . Figure <ref type="figure">5</ref> in particular highlights the discrepancies between tools across a single MUX21 cell.</p><p>Path slack is calculated from the required setup time at the capture flip-flop of the path and from stage delays; these in turn are calculated from cell and wire delays in each stage. Figures <ref type="figure">2</ref> and<ref type="figure">3</ref> show that one tool (T 1 ) can be optimistic in cell delay reports and pessimistic in wire delay reports as compared to the other tool (T 2 ). There is a "canceling" effect for stage delays <ref type="bibr" target="#b7">[8]</ref>. However, the "canceling" effect does not eliminate stage delay discrepancies between tools, as illustrated in Figure <ref type="figure">4</ref>.</p><p>Table <ref type="table" target="#tab_0">I</ref> lists all parameters used in our models. Note that cell and wire delays include incremental values for SI mode analysis. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Modeling Flow for GTX Models</head><p>To minimize divergence and achieve close correlation between signoff timing tools, we use a big-data approach and machine learning models. We do not reverse-engineer tools as licenses prohibit us from doing so; reverse-engineering can also become intractable because each tool implements millions of lines of legacy and black-box code. Instead, we develop machine learning-based models for GTX to correct the divergence in setup time, cell, wire, and stage delays and apply these models to fit path slack between two STA tools. In the following, we use the latest versions of two widely used commercial signoff tools, and show how reports from a tool T 2 can be used to develop models that estimate a tool T 1 's reports. Our methodology is applicable to any pair of signoff or design implementation tools that can perform STA.</p><p>In non-SI mode, divergence between tools is typically smaller for wire delays than for cell delays, so we develop only a cell delay model. <ref type="foot" target="#foot_4">5</ref> In SI mode, however, wire delay divergence between tools can be significant due to differences in handling of crosstalk effects, so we model both cell and wire delays. Therefore, in both non-SI and SI modes we develop three (path slack, setup, and cell delay) models; additionally, in SI mode, we develop wire and stage delay models. Figure <ref type="figure" target="#fig_1">6</ref> shows the hierarchy of the five models in GTX and why we refer to our methodology as "deep". We use hierarchical rather than flat modeling for improved correlation and decreased range of divergence. Combining individual models of cell delay, wire delay, and setup time in an additive manner to estimate path slack can result in errors being added up as well. For example, Kahng et al. <ref type="bibr" target="#b7">[8]</ref> use additive wire delay models that result in large divergence in path slack. Therefore, they invoke the golden timer at regular intervals to correct the path slack. Hierarchical modeling prevents errors being added linearly by applying an additional layer of modeling that provides a better fit to timing estimates. In the following discussion, T 1 (•) and T 2 (•) refer to values of parameter (•) respectively reported by T 1 and T 2 . Setup time. Our experiments in 28FDSOI indicate that flip-flop setup time reports between timing tools can diverge by up to 17.5ps. To reduce the divergence between tools, we model setup time as Cell delay. Our 28FDSOI studies also indicate that tools can differ in reported cell delays by &gt;300ps (under extreme load and slew conditions). 6 Furthermore, the delay divergence between tools can vary across different input-to-output pin arcs, especially in complex cells such as AOI and MUX. In addition, tool reporting for rise and fall delays can diverge significantly. Figure <ref type="figure">5</ref> illustrates these divergences for rise and fall delays of D0, D1 and S0 pins of a 2:1 MUX. With these considerations, we develop rise and fall delay models of each input-to-output pin arc of each cell in the design as</p><formula xml:id="formula_0">T 1 (d su,ff ) = f T 2 (d su,ff , d tr,c,i )<label>(1)</label></formula><formula xml:id="formula_1">T 1 (d c ) = f (T 2 (d c ), LUT(d c ))<label>(2)</label></formula><p>where Wire delay. We model wire delay, using a similar set of parameters as in <ref type="bibr" target="#b7">[8]</ref>, as</p><formula xml:id="formula_2">T 1 (d c ) is the predicted T 1 cell</formula><formula xml:id="formula_3">T 1 (d w ) = f T 2 (d w , d tr,c,o ), R w • {C w ,C e f f ,C coup } (4)</formula><p>where T 1 (d w ) is the predicted T 1 wire delay and the parameters R w • {C w ,C e f f ,C coup } represent delay due to different capacitances.</p><p>Stage delay. We model stage delay, using a similar set of parameters as in <ref type="bibr" target="#b12">[13]</ref> and <ref type="bibr" target="#b13">[14]</ref>, as</p><formula xml:id="formula_4">T 1 (d stg ) = f T 2 (d stg ), T 1 (d w , d c )<label>(5)</label></formula><p>where T 1 (d stg ) is the predicted T 1 stage delay. Path slack. We develop two path slack models for non-SI and SI modes. The models are different because in SI mode, wire and stage delay models are required to correct large discrepancies in path slack as described above. Our path slack model in non-SI mode is</p><formula xml:id="formula_5">T 1 (d slk,p ) SI = f T 2 (d slk,p , σ μ (d w )), σ μ ( T 1 (d c , d su,ff ))<label>(6)</label></formula><p>where T 1 (d slk,p ) SI is the predicted T 1 path slack in non-SI mode and σ μ (•) is the coefficient of variation of the parameter (•). Our path slack 6 Simulations with HSPICE <ref type="bibr" target="#b31">[37]</ref> indicate that T 1 is accurate to within 0.02ps of HSPICE results, whereas T 2 diverges more substantially from HSPICE. model in SI mode is</p><formula xml:id="formula_6">T 1 (d slk,p ) SI = f T 2 (d slk,p ), σ μ ( T 1 (d w , d c , d stg , d su,ff ))<label>(7)</label></formula><p>where T 1 (d slk,p ) SI is the predicted T 1 path slack in SI mode.</p><p>Besides coefficient of variation, we also try two other normalization techniques, standard score <ref type="bibr" target="#b6">[7]</ref> and variance-to-mean ratio <ref type="bibr" target="#b6">[7]</ref>. We experimentally observe that coefficient of variation and standard score give similar results because they determine the contribution of each wire, cell, or stage delay to the overall delay of all wires, cells, or stages in a path. Variance-to-mean ratio, on the other hand, cannot determine the contribution of an individual (wire, cell, or stage) delay to the corresponding total delay in a given path; hence, it is less accurate. Incremental modeling. Large product organizations often tape out multiple designs in the same technology. A new design can, conceivably, use cells and/or wiring configurations that are "out of scope" for the current fitted models. Such "new" cells/wires can introduce divergence in timing reports. <ref type="foot" target="#foot_5">7</ref> To mitigate these divergences, we propose an incremental modeling flow as follows.</p><p>• Step 1. Add any observations that result in divergence in timing of more than a threshold value (e.g., 10ps) to the existing training sets of each of the GTX models. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Design of Experiments</head><p>We use real-world designs as well as artificial circuits in our experiments. Real-world designs include the leon3mp multicore processor from Aeroflex Gaisler AB <ref type="bibr" target="#b25">[29]</ref>, and aes cipher top, wb dma top and jpeg encoder from Opencores <ref type="bibr" target="#b27">[32]</ref>. We generate artificial training circuits to finely control various aspects of a timing path to verify robustness of our methodology. <ref type="foot" target="#foot_6">8</ref> We synthesize all designs with 45nm bulk triple-Vt and 28nm FDSOI dual-Vt foundry libraries. We perform hierarchical synthesis at 45nm and flat synthesis at 28nm to demonstrate the scalability of GTX across different flows and foundry technologies. We generate verilog netlists, Synopsys Design Constraints (SDC) <ref type="bibr" target="#b0">[1]</ref>, and Standard Parasitic Exchange Format (SPEF) <ref type="bibr" target="#b34">[40]</ref> files as inputs to timing tools. Real-world designs. Table <ref type="table" target="#tab_0">II</ref> shows the post-layout number of standard-cell instances for each design implemented in 45nm and 28nm foundry libraries. At 45nm, we use less strict constraints on timing, maximum fanouts, and transition, and we restrict tools from using cell sizes X0, X1, and ≥ X20. <ref type="foot" target="#foot_7">9</ref> However, at 28nm we allow the tools to use all cells from the library, and apply tight timing constraints but relaxed maximum fanout and transition constraints. <ref type="foot" target="#foot_8">10</ref> Artificial training circuits. We develop generators using custom Tcl scripts to finely control various aspects of a timing path as listed below.</p><p>• Path -#stages and #fanouts.</p><p>• Cell -input slews, types, sizes, and Vt flavors.</p><p>• Wire -parasitics (R w , C w , C c ), #segments, and aggressors. CPU time needed to generate the verilog netlist, SDC, and SPEF files is ∼6s (independent of the number of fanouts and stages) on an Intel Xeon E5-2640 2.5GHz server. The size of each of these files is ∼4KB for a circuit with one stage and a fanout of one. The size of SPEF files can potentially be large (e.g., 232KB for a circuit with 60 stages and four fanouts in each stage) because we do not implement name mapping.</p><p>Each training circuit consists of a chain of driver and driven cells and flip-flops at the beginning (launch) and the end (capture) to create a constrained path. Optionally, cells can be added to achieve multiple fanouts from each driver. Pins that are not on the constrained path are connected to dummy flip-flops and/or ports to ensure that there are no floating pins. An example of a circuit with two stages without SI aggressors is shown in Figure <ref type="figure">7</ref>. The constrained path is from f1/Q to f2/D, through instances u1 and u2. To generate a training circuit with multiple stages, the "repeated unit" in Figure <ref type="figure">7</ref> is replicated between the launch and the capture flip-flops <ref type="foot" target="#foot_9">11</ref> . Figure <ref type="figure">8</ref> illustrates a circuit with one SI aggressor and coupling capacitances. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Data Collection for Modeling</head><p>We generate training, validation, and test datasets in the following way. First, we obtain verilog netlists, SDC, and SPEF files with coupling capacitances for our designs. Second, we use 2013-released versions of two commercial signoff timing tools, commonly adopted as golden tools by design teams, to perform path-based timing analysis of the top 10K worst paths in both SI and non-SI modes. <ref type="foot" target="#foot_10">12</ref> For Experiment 3, we use a commercial design implementation tool D 1 . Last, to compare tools in a fair manner, we ensure that options and global flags for both tools are set to produce similar reports as follows:</p><p>• Timing reports. Each tool reports all parameters from Table <ref type="table" target="#tab_0">I</ref>.</p><p>• Path timing calculation. Each tool performs path-based analysis, i.e., slews are propagated only along "paths-of-interest". • SI and OCV analyses. SI-and OCV-aware analysis modes are enabled, and glitch analysis is disabled.<ref type="foot" target="#foot_11">foot_11</ref> • Parasitic information. In SI mode, each tool uses coupling parasitic information for timing analysis. Detailed cell characterization for the cell delay model. We perform a one-time detailed characterization of each input-to-output pin arc of each cell in a design because our experiments indicate that cell delay requires very detailed modeling to minimize the range of errors. <ref type="foot" target="#foot_12">14</ref>We create a single-stage artificial training circuit for the cell, annotate multiple input slews and capacitances spanning the entire NLDM delay tables in the foundry libraries used by the design, and obtain rise and fall delays for each combination of slews and capacitances and for all rise and fall input transitions. Similar characterization is performed for flip-flops as well. Table <ref type="table" target="#tab_2">III</ref> shows sample resource utilization for cell characterization for a design implemented with 28nm foundry libraries. File size refers to the file with training, validation and test datasets for each cell. We characterize a total of 397 cells at 28nm and 305 cells at 45nm libraries; these contain a total of 1870 input-to-output pin arcs <ref type="foot" target="#foot_13">15</ref> . The characterization time for these cells is 116h per core (a onetime overhead of just under 5 days) on an eight-core Intel Xeon E5-1410 2.8GHz server. Table <ref type="table" target="#tab_2">III</ref> shows resource utilization for cell characterization at 28nm. MUX21 and AOI13 cells have the same runtime and number of training data points because NLDM table sizes vary between these cells, and we use more values of input slews and capacitances from the NLDM tables of MUX21 than of AOI13. Modeling techniques. To develop models, we use training data points from artificial circuits and validation data points from realworld designs. To test the models, we use a separate set of data points from our real-world designs. Table <ref type="table" target="#tab_3">IV</ref> shows the sizes of the training, validation and test sets for each experiment. Extremely large sizes of our training and test sets reflect our "big-data" approach whereby models are derived using ≥200K data points for cell, wire, and stage delays. Thereafter, we may apply our incremental modeling flow for new designs in the same technology/library.</p><p>We apply both linear and nonlinear machine learning techniques (least-square regression (LSQR), artificial neural networks (ANN) <ref type="bibr" target="#b6">[7]</ref>, support vector machines regression (SVMR) <ref type="bibr" target="#b3">[4]</ref> with radial basis function kernel, and random forests (RF) <ref type="bibr" target="#b6">[7]</ref>) to all GTX models. For each model, we choose the technique that best minimizes both mean squared error (MSE) and the range of errors, i.e., the difference between maximum and minimum errors. We observe that LSQR and ANN are not as effective as RF and SVMR in minimizing the range of errors. ANN is effective in modeling setup time and cell delays, SVMR is effective in modeling wire and stage delays, and RF is effective in modeling path slack. We use the built-in Matlab vR2013a <ref type="bibr" target="#b26">[30]</ref> toolbox for ANN, LIBSVM implementation of SVMR in Matlab <ref type="bibr" target="#b3">[4]</ref>, and an open-source Matlab implementation of RF <ref type="bibr" target="#b29">[34]</ref>. 16 Once models are developed, the time to test a model depends on the size of the test dataset. In our experiments, runtime is ∼3.23s for 30K path slack data points in the test set. Figure <ref type="figure" target="#fig_6">9</ref> shows our complete modeling flow for GTX. Note that, by default, model development is a one-time effort. New designs may require incremental modeling to reduce the number of outliers.  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Results for Experiments</head><p>We validate GTX with the four experiments described in Section IV. 17 All experiments are performed on an Intel Xeon E5-2640 2.5GHz server and all reported runtimes are for this platform.</p><p>Results for Experiment 1. We correlate timing between T 1 and T 2 in non-SI mode. Figures <ref type="figure" target="#fig_7">10(a</ref>) and 10(b) show the timing divergence between tools before and after fitting. The total runtime is 38min. 18  For ANN, we use up to five hidden layers to model cell delay and two hidden layers to model setup time. We constrain RF to 200 trees and 5000 observations per leaf node. Our models reduce the range of divergence in path slack from 32.5ps to 5.9ps (i.e., 5.5× reduction) at 28nm, and from 18.8ps to 7.1ps (i.e., 2.6× reduction) at 45nm. 16 ANN uses hidden layers as a modeling parameter. We sweep the number of hidden layers from one to ten and choose the value that achieves minimum MSE and range of errors. RF uses multiple classification trees and applies different models to a set of observations at a leaf node of each tree <ref type="bibr" target="#b6">[7]</ref>. We sweep the number of trees from 50 to 500 in steps of 50, and the number of observations per leaf node ranging from 1000 to 10000 in steps of 1000. For each experiment, we report the number of trees and the number of observations per leaf node that minimizes MSE and the range of errors. 17 We ensure that identical input files (Liberty, netlist, SDC and SPEF) are provided to both tools, such that slack miscorrelation is due to delay and timing calculation only. Thus, in Experiment 3 we do not use, e.g., Cadence Ostrich <ref type="bibr" target="#b28">[33]</ref> to perform parasitic correlation with golden SPEF from Synopsys StarRC [36], in which case the design implementation tool's (D 1 ) parasitic estimation may be another source of miscorrelation. 18 The reported runtimes for experiments do not include cell characterization time, which is separately discussed in Section IV-B. Results for Experiment 2. We correlate timing between T 1 and T 2 in SI mode. Figures <ref type="figure" target="#fig_0">11(a</ref>) and <ref type="bibr">11(b)</ref> show the divergence between tools before and after fitting. The total runtime is 116min. For ANN, we use up to seven hidden layers to model cell delays and two hidden layers for setup time. We constrain RF to 400 trees and 2000 observations per leaf node as we observe that this selection minimizes the range of errors. Our models reduce the range of divergence in path slack from 89.2ps to 22.3ps (i.e., 4× reduction) at 28nm and from 139.3ps to 89.2ps (i.e., 6.6× reduction) at 45nm. The stage delay model in GTX improves accuracy even when path slack diverges by &gt;130ps.</p><p>To confirm the robustness of our approach, we also conduct the inverse experiment, i.e., where we use timing reports of T 1 to estimate timing reports of T 2 . The error metrics are comparable to those shown in Figures <ref type="figure" target="#fig_0">11(a</ref> Results for Experiment 3. We correlate timing between T 1 and a leading design implementation tool D 1 in SI mode at 28nm. Figure <ref type="figure" target="#fig_0">13</ref> shows the divergence between tools before and after fitting. The total runtime is 104min. For ANN, we use up to seven hidden layers to model cell delay and five hidden layers for setup time. We constrain RF to 450 trees and 4000 observations per leaf node. Our models reduce the range of divergence in path slack from 162.8ps to 23.1ps (i.e., 7× reduction). Results for Experiment 4. We incrementally refine our models for a new design with many outliers while correlating timing parameters. A new design, 5× jpeg encoder, is derived from the original jpeg encoder design <ref type="bibr" target="#b27">[32]</ref>. We create a new top module that instantiates the original jpeg encoder module five times to obtain 5× jpeg encoder. The new design is implemented at 28nm and has ∼300K cell instances in the post-layout netlist. We use a tighter timing constraint for this design than with jpeg encoder, which results in different cells and timing paths being used. Change in top-level routing across each jpeg encoder block also changes wire delay due to crosstalk effects. Therefore, 5× jpeg encoder requires modification of the models derived for jpeg encoder. Figure <ref type="figure" target="#fig_10">14</ref> shows the divergence between tools before and after incremental fitting for path slack, cell, wire and stage delays. The total runtime is 87min. For ANN, we use up to seven hidden layers to model cell and stage delays and two hidden layers for setup time. We constrain RF to 400 trees and 2000 observations per leaf node. We do not report setup time because the divergence is &lt;3ps. The total runtime is 177min. In the context of a  new chip design project, this overhead of several hours is negligible. Our models reduce the range of divergence in path slack from 89.2ps to 36ps (2.5×), and the number of outliers from 407 to 26 (i.e., 16× reduction). V. CONCLUSIONS Improvements to timing signoff methodologies can significantly reduce the number of iterations in the IC design flow. Design teams often want to correlate one signoff tool's timing reports with those of another tool to reduce pessimism and/or optimism. We describe a new tool, GTX, that embodies a big-data approach for the correlation problem using a hierarchy of models. We apply machine learning to develop models for path slack, setup time, stage, cell, and wire delays and can "correct" endpoint path slack divergence between two signoff timers from 89.2ps to 22.3ps (i.e., 4× reduction) at 28nm, and from 139.3ps to 21.1ps (i.e., 6.6× reduction) at 45nm with SI and OCV analysis enabled. GTX can also be applied to improve timing correlation between an implementation and a signoff tool; our experiments show 7× reduction of path slack divergence from 162.8ps to 23.1ps. We show that GTX scales to multiple foundry nodes and libraries, and that incremental modeling in GTX provides the capability to adapt to new designs in a given technology. Our ongoing work seeks three improvements: (i) expand GTX to CCS <ref type="bibr" target="#b22">[24]</ref> models and statistical variation-aware analysis <ref type="bibr" target="#b14">[15]</ref>; (ii) develop methodologies to characterize libraries for "ideal" delay and power per unit length; and (iii) develop a methodology to integrate GTX into arbitrary production timing closure flows so as to reduce the amounts of iterations, turnaround time and overdesign needed to achieve final timing signoff.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Fig. 1 .</head><label>1</label><figDesc>Path slack discrepancies.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Fig. 6 .</head><label>6</label><figDesc>Fig.6. Hierarchical GTX models. The models within the dotted lines are used only in SI mode.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Fig. 2 .Fig. 3 .Fig. 4 .Fig. 5 .</head><label>2345</label><figDesc>Fig. 2. Cell delay discrepancy.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head></head><label></label><figDesc>delay, and LUT(d c ) is the cell delay determined using linear interpolation of NLDM delay lookup tables (LUTs) of a given cell<ref type="bibr" target="#b7">[8]</ref>. The inputs for LUT interpolation are T 2 (C e f f ) and T 2 (d tr,c,i ) + ΔSlew, where ΔSlew is the upstream slew correction between the tools. We use d tr,c,i and C e f f because the NLDM delay tables in the foundry libraries are indexed by these. We use ΔSlew to correct upstream slew differences between the tools because our experiments indicate that certain tools always propagate the worst slew in path-based analysis mode. We model ΔSlew asΔSlew = (α(LUT (d tr,c,o ) + β) -T 2 (d tr,c,o )(3)where LUT (d tr,c,o ) is the output slew of the upstream cell calculated using linear interpolation between the library LUTs based on the T 2reported d tr,c,i and C e f f . α and β are regression coefficients determined by fitting T 2 (d tr,c,o ) of the upstream cell to T 1 (d tr,c,o ).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>•</head><label></label><figDesc>Step 2. Re-train GTX models with the training sets from Step 1. • Step 3. Test the updated models on all data points from the new design. IV. VALIDATION AND RESULTS We now present validation of GTX and results of our experiments. First, we describe our design of experiments, including descriptions of designs used and our flow to collect training, validation and testing data for modeling. Second, we conduct four experiments to assess and measure performance of GTX. We use two leading (foundry-qualified) signoff timing tools T 1 and T 2 , and a leading design implementation tool D 1 , in our experiments. All tool versions are 2013 releases. • Experiment 1. Correlate tools T 1 and T 2 in non-SI mode. • Experiment 2. Correlate tools T 1 and T 2 in SI mode. • Experiment 3. Correlate tools T 1 and D 1 in SI mode. • Experiment 4. Validate the incremental modeling flow on a new design with many outliers.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Fig. 7 .Fig. 8 .</head><label>78</label><figDesc>Fig. 7. Example of a non-SI training circuit.</figDesc><graphic coords="4,53.99,551.30,132.44,87.25" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>Fig. 9 .</head><label>9</label><figDesc>Fig. 9. Our modeling flow.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head>Fig. 10 .</head><label>10</label><figDesc>Experiment 1 results at (a) 45nm and (b) 28nm.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head></head><label></label><figDesc>) and 11(b). Figures12(a) and 12(b) depict five stages from a 28-stage path (Path #2197) from jpeg encoder, with cell delays, wire delays and path slack reported by T 1 and T 2 , and their respective fitted values T 1 and T 2 from GTX. The fitted values are within 8ps of the tool-reported values. time Stage delay Cell delay Wire delay Range (Max -Min) (ns) Original GTX (b) Fig. 11. Experiment 2 results at (a) 45nm and (b) 28nm.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_9"><head>(b) T 1 fitted to T 2 Fig. 12 .</head><label>212</label><figDesc>Five sample stages from a 28-stage path in jpeg encoder at 28nm showing cell delay (OUT), wire delay (IN) and path slack reported by T 1 and T 2 . The respective fitted values after using GTX are (a) Delay( T 1 ) and (b) Delay( T 2 ) when T 1 or T 2 is the respective fitted tool. All values are in ns.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_10"><head>Fig. 14 .</head><label>14</label><figDesc>Fig. 13. Expt 3 results at 28nm.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>TABLE I PARAMETERS</head><label>I</label><figDesc>REPORTED BY EACH TOOL IN BOTH SI AND NON-SI MODES.</figDesc><table><row><cell>Parameter</cell><cell>Meaning</cell><cell>Mode</cell></row><row><cell>C e f f</cell><cell>Effective load capacitance</cell><cell>SI, non-SI</cell></row><row><cell>C coup</cell><cell>Total coupling capacitances</cell><cell>SI</cell></row><row><cell>C w</cell><cell>Wire ground capacitance</cell><cell>SI, non-SI</cell></row><row><cell>R w</cell><cell>Wire resistance</cell><cell>SI, non-SI</cell></row><row><cell>d tr,c,i</cell><cell>Cell input slew</cell><cell>SI, non-SI</cell></row><row><cell>d tr,c,o</cell><cell>Cell output slew</cell><cell>SI, non-SI</cell></row><row><cell>d c</cell><cell>Cell delay</cell><cell>SI, non-SI</cell></row><row><cell>d w</cell><cell>Wire delay</cell><cell>SI, non-SI</cell></row><row><cell>d stg</cell><cell>Total stage delay</cell><cell>SI, non-SI</cell></row><row><cell>d su,ff</cell><cell>Flip-flop setup time</cell><cell>SI, non-SI</cell></row><row><cell>d slk,p</cell><cell>Path slack</cell><cell>SI, non-SI</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>TABLE III RESOURCE</head><label>III</label><figDesc>UTILIZATION FOR CELL CHARACTERIZATION AT 28NM.</figDesc><table><row><cell>Cell</cell><cell>#arcs</cell><cell>#data points</cell><cell>Time (min)</cell><cell>File size (KB)</cell></row><row><cell>INV</cell><cell>1</cell><cell>140</cell><cell>20</cell><cell>20</cell></row><row><cell>NAND2</cell><cell>2</cell><cell>280</cell><cell>55</cell><cell>36</cell></row><row><cell>MUX21</cell><cell>3</cell><cell>560</cell><cell>95</cell><cell>68</cell></row><row><cell>AOI13</cell><cell>4</cell><cell>560</cell><cell>95</cell><cell>68</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>TABLE IV TRAINING</head><label>IV</label><figDesc>, VALIDATION AND TEST DATASET SIZES</figDesc><table><row><cell>Experiment #</cell><cell>Module</cell><cell>Training</cell><cell>Validation</cell><cell>Testing</cell></row><row><cell></cell><cell>Path slack</cell><cell>22680</cell><cell>6480</cell><cell>33240</cell></row><row><cell>1</cell><cell>Setup time</cell><cell>21798</cell><cell>6228</cell><cell>33114</cell></row><row><cell></cell><cell>Cell delay</cell><cell>354320</cell><cell>15520</cell><cell>326760</cell></row><row><cell></cell><cell>Path slack</cell><cell>17270</cell><cell>7664</cell><cell>34066</cell></row><row><cell></cell><cell>Setup time</cell><cell>28830</cell><cell>8236</cell><cell>34120</cell></row><row><cell>2</cell><cell>Cell delay</cell><cell>323804</cell><cell>9875</cell><cell>315776</cell></row><row><cell></cell><cell>Wire delay</cell><cell>304108</cell><cell>39788</cell><cell>143941</cell></row><row><cell></cell><cell>Stage delay</cell><cell>323880</cell><cell>39872</cell><cell>184560</cell></row><row><cell></cell><cell>Path slack</cell><cell>21770</cell><cell>1440</cell><cell>35790</cell></row><row><cell></cell><cell>Setup time</cell><cell>21540</cell><cell>1120</cell><cell>35340</cell></row><row><cell>3</cell><cell>Cell delay</cell><cell>320118</cell><cell>11346</cell><cell>332613</cell></row><row><cell></cell><cell>Wire delay</cell><cell>215506</cell><cell>9980</cell><cell>156774</cell></row><row><cell></cell><cell>Stage delay</cell><cell>211736</cell><cell>10553</cell><cell>139327</cell></row><row><cell></cell><cell>Path slack</cell><cell>17554</cell><cell>5166</cell><cell>32616</cell></row><row><cell></cell><cell>Setup time</cell><cell>28840</cell><cell>8237</cell><cell>34989</cell></row><row><cell>4</cell><cell>Cell delay</cell><cell>341042</cell><cell>29972</cell><cell>100387</cell></row><row><cell></cell><cell>Wire delay</cell><cell>344086</cell><cell>29900</cell><cell>100520</cell></row><row><cell></cell><cell>Stage delay</cell><cell>341708</cell><cell>29926</cell><cell>98895</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>Detailed descriptions of the machine learning techniques used in this work can be found in<ref type="bibr" target="#b6">[7]</ref>.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_1"><p>GTX uses the timing reports of T 1 to generate timing values that reduce divergence from T 2 . Of course, GTX can also perform the reverse, i.e., use timing reports of T 2 to reduce divergence from T 1 .</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="3" xml:id="foot_2"><p>We refer to path slacks at timing endpoints as, simply, path slacks.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="4" xml:id="foot_3"><p>Throughout our paper, we refer to 45GS as 45nm, and to 28FDSOI as 28nm.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="5" xml:id="foot_4"><p>Our experimental results indicate that by introducing wire delay models in non-SI mode, GTX results do not change significantly.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="7" xml:id="foot_5"><p>If new cells are not introduced in a design, incremental modeling is not required for GTX.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="8" xml:id="foot_6"><p>We observe that synthesis and implementation tools tend to construct designs that occupy the middle region of delay tables. We create artificial training circuits to define the extreme ranges of timing discrepancies so as to create robust and scalable models.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="9" xml:id="foot_7"><p>We observe that these cell sizes are known for being problematic in designs; some designers commonly use similar restrictions.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="10" xml:id="foot_8"><p>At 45nm, the maximum fanout constraint is set to 20 and the maximum transition time is set to one-sixth of the clock period. At 28nm these values are respectively 40 and one-eighth of the clock period.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="11" xml:id="foot_9"><p>The "repeated unit" contains a dummy flip-flop which is inserted to ensure valid operation of gates, and is not part of the constrained path.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="12" xml:id="foot_10"><p>We use custom Tcl scripts to ensure that the same 10K paths are analyzed by respective tools as we generate our training sets.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="13" xml:id="foot_11"><p>Our experiments indicate that in both OCV and non-OCV modes the divergence in clock-to-Q delay and setup times vary by less than 5ps, and delays for other cells vary by less than 1ps. Therefore, in the following we report results in OCV mode only.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="14" xml:id="foot_12"><p>When signoff involves multiple corners, cell delays need to be characterized for each corner, and the corner-specific timing model must be used.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="15" xml:id="foot_13"><p>We characterize only those cells used in our designs. If necessary, an entire library can be characterized.</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>ACKNOWLEDGMENTS</head><p>We thank <rs type="person">Tom Spyrou</rs>, <rs type="person">Dr. Cho Moon</rs>, <rs type="person">Roger Embree</rs>, and <rs type="person">Dr. Puneet Sharma</rs> for their early feedback on our project. We thank <rs type="person">Gary Smith</rs> of <rs type="affiliation">Gary Smith EDA</rs> for his listing of timing analysis tool providers. We also thank <rs type="funder">CMP</rs> and <rs type="institution">STMicroelectronics</rs> for access to the 28nm FDSOI design kit.</p></div>
+			</div>
+			<listOrg type="funding">
+			</listOrg>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<title level="m" type="main">Static Timing Analysis for Nanometer Designs: A Practical Approach</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Bhasker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Chadha</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+			<publisher>Springer</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<title level="m" type="main">Making 20nm Design Challenges Manageable</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Bansal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Goering</surname></persName>
+		</author>
+		<ptr target="http://www.chipdesignmag.com/pdfs/chipdesignspecialDAC" />
+		<imprint>
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Optimization of Overdrive Signoff</title>
+		<author>
+			<persName><forename type="first">T.-B</forename><surname>Chan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">B</forename><surname>Kahng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Nath</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. ASP-DAC</title>
+		<meeting>ASP-DAC</meeting>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page" from="344" to="349" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">LIBSVM: A Library for Support Vector Machines</title>
+		<author>
+			<persName><forename type="first">C.-C</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C.-J</forename><surname>Lin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Trans. on Intelligent Systems and Technology</title>
+		<imprint>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page">27</biblScope>
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Circuit Propagation Delay Estimation Through Multivariate Regression-Based Modeling Under Spatio-Temporal Variability</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ganapathy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Canal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Gonzalez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Rubio</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. DATE</title>
+		<meeting>DATE</meeting>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+			<biblScope unit="page" from="417" to="422" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">What&apos;s Needed to &quot;Fix&quot; Timing Signoff?</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Goering</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">DAC Panel</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<monogr>
+		<author>
+			<persName><forename type="first">T</forename><surname>Hastie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Tibshirani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">J H</forename><surname>Friedman</surname></persName>
+		</author>
+		<title level="m">The Elements of Statistical Learning: Data Mining, Inference, and Prediction</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Learning-Based Approximation of Interconnect Delay and Slew in Signoff Timing Tools</title>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">B</forename><surname>Kahng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Kang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Nath</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wadhwani</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. SLIP</title>
+		<meeting>SLIP</meeting>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">CCS vs NLDM Comparison Based on a Complete Automated Correlation Flow Between PrimeTime and HSPICE</title>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">El</forename><surname>Motassadeq</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. Saudi International Electronics, Communications and Photonics Conference</title>
+		<meeting>Saudi International Electronics, Communications and Photonics Conference</meeting>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="page" from="1" to="5" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<monogr>
+		<author>
+			<persName><forename type="first">A</forename><surname>Mishra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">U</forename><surname>Singhal</surname></persName>
+		</author>
+		<ptr target="http://www.edn.com/design/integrated-circuit-design/4390721/Resolving-timing-miscorrelation-using-timing-uncertainties" />
+		<title level="m">Resolving Timing Miscorrelation Using Timing Uncertainties</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<author>
+			<persName><forename type="first">S</forename><surname>Rakheja</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">S</forename><surname>Krishna</surname></persName>
+		</author>
+		<ptr target="http://www.edn.com/design/integrated-circuit-design/4313674/Establishing-timing-correlation-between-tools" />
+		<title level="m">Establishing Timing Correlation Between Tools</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Learning with Hierarchical-Deep Models</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Salakhutdinov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">B</forename><surname>Tenenbaum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Torralba</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Trans. on Pattern Analysis and Machine Intelligence</title>
+		<imprint>
+			<biblScope unit="volume">35</biblScope>
+			<biblScope unit="issue">8</biblScope>
+			<biblScope unit="page" from="1958" to="1971" />
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">TAU 2013 Variation Aware Timing Analysis Contest</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Sinha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">G</forename><surname>Silva</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Raghunathan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Netrabile</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Shebaita</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. ISPD</title>
+		<meeting>ISPD</meeting>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page" from="171" to="178" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Method of Estimating a Total Path Delay in an Integrated Circuit Design with Stochastically Weighted Conservatism</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Tetelbaum</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">U.S</title>
+		<imprint>
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+	<note>Patent No. 7,213,223</note>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Fast Statistical Static Timing Analysis Using Smart Monte Carlo Techniques</title>
+		<author>
+			<persName><forename type="first">V</forename><surname>Veetil</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Chopra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Blaauw</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Sylvester</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Trans. on CAD</title>
+		<imprint>
+			<biblScope unit="volume">30</biblScope>
+			<biblScope unit="issue">6</biblScope>
+			<biblScope unit="page" from="852" to="856" />
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<monogr>
+		<title level="m" type="main">Synopsys Inc., personal communication</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Moon</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2013-07">July 2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">G</forename><surname>Smith</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gary</forename><surname>Smith</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eda</forename></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2013-09">September 2013</date>
+		</imprint>
+	</monogr>
+	<note>personal communication</note>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<monogr>
+		<title level="m" type="main">Freescale Inc., personal communication</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Sharma</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2013-07">July 2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">R</forename><surname>Embree</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2013-07">July 2013</date>
+		</imprint>
+	</monogr>
+	<note>personal communication</note>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<monogr>
+		<title level="m" type="main">Altera Corporation, personal communication</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Spyrou</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2013-07">July 2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<monogr>
+		<ptr target="http://www.cadence.com" />
+		<title level="m">Cadence Design Systems</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title/>
+		<ptr target="http://www.cadence.com/products/di/ets/pages/default.aspx" />
+	</analytic>
+	<monogr>
+		<title level="j">Cadence Encounter Timing System</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<monogr>
+		<ptr target="http://www.opensourceliberty.org/ccspaper/ccsbgr.pdf" />
+		<title level="m">CCS</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">Google</forename><surname>Translate</surname></persName>
+		</author>
+		<ptr target="http://translate.google.com" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<monogr>
+		<ptr target="http://www.ispd.cc/contests/13/ispd2013contest.html" />
+		<title level="m">Discrete Gate Sizing Contest</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<monogr>
+		<ptr target="http://www.gaisler.com/index.php/products/processors/leon3" />
+		<title level="m">Leon3 Multicore Processor</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<monogr>
+		<title/>
+		<author>
+			<persName><surname>Matlab</surname></persName>
+		</author>
+		<ptr target="http://www.mathworks.com" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<monogr>
+		<ptr target="http://opencores.org/projects" />
+		<title level="m">OpenCores</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title/>
+		<ptr target="http://www.cadence.com/community/blogs/di/archive/2008/10/15/an-interview-with-global-timing-debug-architect-thad-mccraken.aspx" />
+	</analytic>
+	<monogr>
+		<title level="j">Ostrich</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">Random</forename><surname>Forest</surname></persName>
+		</author>
+		<ptr target="https://code.google.com/randomforest-matlab" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">Apple</forename><surname>Siri</surname></persName>
+		</author>
+		<ptr target="http://www.apple.com/ios/siri" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">Hspice</forename><surname>Synopsys</surname></persName>
+		</author>
+		<author>
+			<persName><surname>User Guide</surname></persName>
+		</author>
+		<ptr target="http://www.synopsys.com/tools/Verification/AMSVerification/CircuitSimulation/HSPICE/Pages/default.aspx" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<monogr>
+		<ptr target="http://www.synopsys.com/Tools/Implementation/PhysicalImplementation/Pages/ICCompiler.aspx" />
+		<title level="m">Synopsys IC Compiler User Guide</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<monogr>
+		<ptr target="http://www.synopsys.com/Tools/Implementation/SignOff/Pages/PrimeTime.aspx" />
+		<title level="m">Synopsys PrimeTime User Guide</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<monogr>
+		<ptr target="http://www.edaboard.com/thread37705.html" />
+		<title level="m">SPEF</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

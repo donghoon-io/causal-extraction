@@ -1,0 +1,1520 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">FairMask: Better Fairness via Model-based Rebalancing of Protected Attributes</title>
+				<funder>
+					<orgName type="full">Meta Inc and the Laboratory for Analytical Sciences, North Carolina State University</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability  status="unknown">
+					<licence/>
+				</availability>
+				<date type="published" when="2022-10-27">27 Oct 2022</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Kewen</forename><surname>Peng</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Joymallya</forename><surname>Chakraborty</surname></persName>
+						</author>
+						<author>
+							<persName><roleName>Fellow, IEEE</roleName><forename type="first">Tim</forename><surname>Menzies</surname></persName>
+						</author>
+						<title level="a" type="main">FairMask: Better Fairness via Model-based Rebalancing of Protected Attributes</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2022-10-27">27 Oct 2022</date>
+						</imprint>
+					</monogr>
+					<idno type="arXiv">arXiv:2110.01109v3[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-21T18:48+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<textClass>
+				<keywords>
+					<term>Software Fairness</term>
+					<term>Explanation</term>
+					<term>Bias Mitigation</term>
+				</keywords>
+			</textClass>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Machine learning software can generate models that inappropriately discriminate against specific protected social groups (e.g., groups based on gender, ethnicity, etc.). Motivated by those results, software engineering researchers have proposed many methods for mitigating those discriminatory effects. While those methods are effective in mitigating bias, few of them can provide explanations on what is the root cause of bias. Objective: We aim to better detect and mitigate algorithmic discrimination in machine learning software problems.</p><p>Method: Here we propose FairMask, a model-based extrapolation method that is capable of both mitigating bias and explaining the cause. In our FairMask approach, protected attributes are represented by models learned from the other independent variables (and these models offer extrapolations over the space between existing examples). We then use the extrapolation models to relabel protected attributes later seen in testing data or deployment time. Our approach aims to offset the biased predictions of the classification model via rebalancing the distribution of protected attributes. Results:The experiments of this paper show that, without compromising (original) model performance, FairMask can achieve significantly better group and individual fairness (as measured in different metrics) than benchmark methods. Moreover, compared to another instance-based rebalancing method, our model-based approach shows faster runtime and thus better scalability. Conclusion: Algorithmic decision bias can be removed via extrapolation that smooths away outlier points. As evidence for this, our proposed FairMask is not only performance-wise better (measured by fairness and performance metrics) than two state-of-the-art fairness algorithms. Reproduction Package:In order to better support open science, all scripts and data used in this study are available on-line at <ref type="url" target="https://github.com/anonymous12138/biasmitigation">https://github.com/anonymous12138/biasmitigation</ref>.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">INTRODUCTION</head><p>Increasingly, machine learning (ML) algorithms are applied in software engineering (SE) to assist decision-making, and some of the decisions take private information (e.g., race, gender, age) of human individuals into consideration. For example, ML models are used in software to assist determine which loan applications should get approved; which citizens should get bail; which patients can be released from the hospital. From an ethical perspective, using private information also puts such software under the exposure to unintentionally algorithmic discrimination, where the benefits of certain social groups are compromised. Many prior cases have shown the existence of such flaws: Google's sentimental analysis model was found to assign negative scores to homosexual or Jewish attributes in a sentence; In machine translation, translators wrongly relabel doctors as male and nurses as female; In credit card applications, applicants with similar conditions are receiving significantly different credit lines based on their genders <ref type="bibr" target="#b0">[1]</ref>.</p><p>Many researchers are endeavoring to resolve the discrimination issue in ML software. Recent success with the Fair-SMOTE <ref type="bibr" target="#b1">[2]</ref> of <ref type="bibr">Chakraborty et al.</ref> shows that it is possible to carefully rebalance the training data in order to mitigate bias in the data. Chakraborty et al. conjectured that models are unfair when the training data does not equally represent all social groups. Fair-SMOTE uses a rebalancing method that adjusts the training data such that all values of "protected attributes" are equally represented in the training data (and by "protected attributes" we mean information • K. Peng, J. Chakraborty and T. Menzies are with the Department of Computer Science, North Carolina State University, Raleigh, USA. E-mail:kpeng@ncsu.edu, jchakra@ncsu.edu, timm@ieee.org about age, gender, racial origins, veteran status, etc. that is used to identify a person as belonging to corresponding groups, some of which have suffered from social injustice in history). While a successful system in its test domain, Fair-SMOTE has problems with procedural justice. By definition <ref type="bibr" target="#b2">[3]</ref>, <ref type="bibr" target="#b3">[4]</ref>, procedural justice requires not only fair results but also transparency of the decision-making process such that ones can verify whether the procedure guarantees fairness. One way to demonstrate procedural justice to a group of users is to ensure that an AI system never asks about protected attributes. Note that this is not the case with Fair-SMOTE since when its models are deployed, all the new examples must have the same format as the data seen during training. Therefore, the protected attributes data must be collected from users. Consequently, users can grow concerned that the model will not mitigate against bias (since it has access to the protected information).</p><p>Accordingly, this paper explores an alternative that, once developed, no longer needs to access protected attributes during real-time deployment. In our concept of operation, our method only collects and uses those protected attributes to initially build its model (which are assessed using widely accepted fairness metrics, see Table <ref type="table" target="#tab_2">2</ref>). After that, during deployment, our method does not demand access to protected attributes in subsequent test data.</p><p>Removing protected attributes must be done carefully. Prior research has shown that it is insufficient to just remove projected attributes from data. If a model merely ignores the protected attributes, then that can either (a) harm the performance of the prediction model due to information loss <ref type="bibr" target="#b4">[5]</ref>, <ref type="bibr" target="#b5">[6]</ref>, or (b) have a trivial influence on improving group fairness due to proxy discrimination <ref type="bibr" target="#b6">[7]</ref>, <ref type="bibr" target="#b7">[8]</ref>, <ref type="bibr" target="#b8">[9]</ref>. Bias can persist due to the correlations between variables. Such correlations indicate that an unwanted bias can persist (even though the protected attribute is removed). For an example of proxy discrimination, consider how residential zip codes can be used to make biased decisions such as granting loans since zip codes might correlate to race given historical causes. <ref type="bibr" target="#b9">[10]</ref>.</p><p>To address these issues, our FairMask works as follows: • The algorithm will avoid inferring protected attributes after a model is initially built. • For new incoming data instances, it then artificially masks those protected attributes via an extrapolation model learned from other non-protected attributes. As shown by the results of this paper, FairMask shows onpar or superior performance compared to the prior state-ofthe art (Reweighing and Fair-SMOTE):</p><p>• FairMask provided better bias reduction with as good or better predictive performance; • FairMask runs much faster (up to 600%) than Fair-SMOTE;</p><p>• FairMask scales better to larger data sets;</p><p>• FairMask handles multiple protected attributes very well (and the Fair-SMOTE paper notes that managing multiple attributes is an Achilles's heel of that algorithm). Importantly, FairMask ensures procedural justice. FairMask needs to access protected attributes during the initial commission stage, but not during deployment. As a result, when this system is placed into production, it needs no access to users' private information when making a prediction.</p><p>The rest of this paper is structured as follows. §2 provides a road-map of background knowledge and related work concerning fairness in ML software. §3 describes the motivation and methodology of our approach in this paper. §4 illustrates the experiment setup used to evaluate our approach along with other benchmarks. §5 shows experiment results. §6 lists external and internal threats to validity in this paper. In §7, we elaborate the reasons why FairMask should be promoted. Finally, §8 presents our conclusions.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">BACKGROUND AND RELATED WORK</head><p>In this section, we introduce fundamental theories about software fairness, metrics to measure it, and related works that attempt to mitigate bias.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.1">Why Software Engineers Care About Fairness</head><p>The rapid development of ML has greatly benefited SE practitioners, and examples of ML-assisted software can be found everywhere: defect prediction models used to locate the most error-prone code files in the upcoming releases; effort estimations tools used to better manage human and capital resources; multi-objective optimizers used to generate configuration solutions for system of enormous configurable options. Meanwhile, ethical concerns have also drawn increasing attention in the ML and SE communities.</p><p>While in many scenarios, the only utility needed to be optimized is the performance of the models (in tasks about prediction, classification, ranking, etc.), other cases where private information of human beings is collected need to be handled more carefully. ML software systems have been deployed in many areas to assist make decisions that affect human individuals: Courts and corrections departments in the US use software to determine sentence length for defendants <ref type="bibr" target="#b16">[17]</ref>; algorithms are used to predict the default payments from credit card users <ref type="bibr" target="#b17">[18]</ref>. During such procedures, private information such as age, ethnicity, and gender are collected. Moreover, it has been revealed in prior studies that models learned from such data may contain algorithmic bias toward certain social groups.</p><p>In response to the above raising issues, IEEE has provoked ethical designs of AI-assisted systems <ref type="bibr" target="#b18">[19]</ref> and the European Union also announced the ethics guidelines for building trustworthy AI <ref type="bibr" target="#b19">[20]</ref>. Fairness has been emphasized in both documents. Big industrial companies such as Facebook <ref type="bibr" target="#b20">[21]</ref>, Microsoft <ref type="bibr" target="#b21">[22]</ref>, and Google <ref type="bibr" target="#b22">[23]</ref> also have begun to invest effort in ensuring fairness of their products. In academia, IEEE and ACM have set specific tracks <ref type="bibr" target="#b23">[24]</ref>, <ref type="bibr" target="#b24">[25]</ref> for papers studying fairness problems.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.2">Fairness in ML Software</head><p>In this work, we study binary classification problems. We define some terms specific to the fairness of binary classification.</p><p>• A favorable label in a binary classification task is the label that grants the instance (usually human individuals) with privilege such as a job offer or being accepted for a loan. • A protected/sensitive attribute reveals the social groups to which data instances belong, such as gender, race, and age. A binary protected attribute will divide the whole population into privileged and unprivileged groups in terms of the difference in receiving the favorable label. The notion of bias rises if the outcome of the classification model gets significantly affected by protected/protected attributes. Table <ref type="table" target="#tab_1">1</ref> shows seven fairness datasets used in this work. These datasets are very popular in the fairness domain and have been widely used by many prior researchers <ref type="bibr" target="#b25">[26]</ref>, <ref type="bibr" target="#b1">[2]</ref>, <ref type="bibr" target="#b26">[27]</ref>, <ref type="bibr" target="#b27">[28]</ref>, <ref type="bibr" target="#b28">[29]</ref>. All of these datasets contain at least one protected attribute. Depending on that, the population is divided into two groups getting different benefits. For example, in the Adult <ref type="bibr" target="#b10">[11]</ref> dataset, there are two protected attributes. Based on "sex", "male" is privileged; Based on "race", "white" is privileged.</p><p>The concept of fairness is complicated and very domainspecific. Narayanan <ref type="bibr" target="#b29">[30]</ref> has defined 21 different versions of fairness. Based on prior literature <ref type="bibr" target="#b28">[29]</ref>, <ref type="bibr" target="#b25">[26]</ref>, <ref type="bibr" target="#b1">[2]</ref>, among these 21 versions, two specific versions of fairness are widely explored and given most importance. We have decided to explore the same two versions and chose different metrics to evaluate them.</p><p>• Group fairness requires the approximate equalization of certain statistical property across groups divided by the protected attribute. In this paper, we use 4 group fairness metrics that were widely used in prior research <ref type="bibr" target="#b6">[7]</ref>, <ref type="bibr" target="#b30">[31]</ref>, <ref type="bibr" target="#b25">[26]</ref>, <ref type="bibr" target="#b1">[2]</ref>, <ref type="bibr" target="#b28">[29]</ref>.   </p><formula xml:id="formula_0">FR = Σ(L|L[PA=0] = L[PA=1])/total</formula><p>The ratio of instances whose predicted label (L) will change when flipping their protected attributes (e.g., PA=1 to PA=0) fairness where they measured the ratio of the population whose prediction outcomes are flipped (e.g., accepted to rejected) when reversing their protected attributes. We decided to use the same metric called Flip Rate (FR). Table <ref type="table" target="#tab_2">2</ref> contains mathematical definitions of all 5 fairness metrics. All the group fairness metrics are calculated based on the confusion matrix of binary classification, which is consisted of four parts: true positive (TP), true negative (TN), false positive (FP), and false negative (FN).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.3">Bias Mitigation</head><p>Many researchers endeavor to ensure fairness within their AI decision-making software. From the literature, one can categorize bias mitigation methods into three major groups, depending on when the mitigation procedure is performed.</p><p>Pre-processing: Pre-processing algorithms attempt to mitigate the bias of the classification model by preprocessing the training data that a model learns from. Reweighing was proposed by Kamiran et al. <ref type="bibr" target="#b6">[7]</ref> to learn a probabilistic threshold that can generate weights to different instances in training samples according to the (protected and class attributes) combination that each of them belongs to. Fair-SMOTE <ref type="bibr" target="#b1">[2]</ref> proposed by Chakraborty et al. re-samples and generates synthetic instances among the training data so that the training data can reach equal distributions not only between different target labels but also among different protected attributes. SRCVAE, a more recent algorithm by Grari et al., uses auto-encoding to generate a sensitive information proxy such that the protected attribute will not be required when training a model <ref type="bibr" target="#b31">[32]</ref>.</p><p>In-processing: In-processing methods generally take the optimization approach to mitigate bias. The dataset is typically divided into three parts: training, validation, and testing set. The learner is fitted on the training set and then optimized on the validation set using both performance and fairness metrics as the objectives. Kamishima et al. <ref type="bibr" target="#b32">[33]</ref> developed Prejudice Remover which adds a discriminationaware regularization to the learning objective of the model. Other recent works also attempt using ensemble learning or multi-task learning to tackle the fairness-performance optimization problem <ref type="bibr" target="#b33">[34]</ref>, <ref type="bibr" target="#b34">[35]</ref>.</p><p>Post-processing: This category of approaches generally believe that bias can be removed by identifying and then reversing the biased outcomes from the classification model, which means that such methods typically only modify outcomes of the model rather than the model itself. The "reject option classification" (ROC) approach was proposed by Kamiran et al. <ref type="bibr" target="#b35">[36]</ref>, <ref type="bibr" target="#b36">[37]</ref> to identify the model's decision boundary with the highest uncertainty. Within that region, the method will separately adjust the classification thresholds for (a) favorable labels on unprivileged groups and (b) unfavorable labels on privileged groups. This paper works under the same assumptions claimed by Chakraborty et al <ref type="bibr" target="#b1">[2]</ref>. That is, one of the major root causes of bias is imbalanced training data. However, different from Fair-SMOTE, which is a pre-processing method, we approach the problem via a hybrid of pre-processing and post-processing methods. Our advantages over a preprocessing method are: (a) Because FairMask does not preprocess the training data, it does not require re-training an already-built model; (b) Hence FairMask can be added to a model during deployment with little effort and cost.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">METHODOLOGY</head><p>This section illustrates the designs of FairMask. Before introducing our approach, we present two essential conjectures made in this paper and the follow-up discussion. Our design of FairMask is based on these conjectures.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Explaining Bias</head><p>Much prior work has searched for a root cause of bias. Creager et al. <ref type="bibr" target="#b38">[39]</ref> proposed to use disentangled represen-tation learning to identify potential bias-introducing latent in training data that contains mutual information of both targets and protected attributes. They then add regularization on the mutual information while also optimizing for the predictive power. Similarly, Park et al. <ref type="bibr" target="#b39">[40]</ref> proposed to disentangle information of the target attribute and protected attribute such that target-related information is preserved while protected-related information is removed. It is noteworthy that while both works were empirically tested effective in bias mitigation, the neural-network-based disentanglement approach is barely interpretable, which means the internal disentanglement process cannot be presented to users in a comprehensible manner. We view this as a transparency issue and propose an alternative approach. One of the most crucial presumptions in this paper (as well as the fairness domain) is that Conjecture I: The protected attribute itself is essentially irrelevant to the classification problem, yet it may indicate a latent correlation with other nonprotected attributes.</p><p>For example, in an ideal case, the gender of an individual should not affect the result of the loan application. Based on this presumption, we can deduce that the protected attributes in the training data of some classification problems are informative only because it is a proxy for other relevant information. In support of our conjecture, prior studies believe that one cause of bias is the negative legacy which means the training data previously collected is either wrongly labeled or it reflects some discriminatory practices in the past <ref type="bibr" target="#b40">[41]</ref>. Either way, when the classification model is trained on such data and negative legacy disappears in data collected later (either because the data is correctly labeled or the discriminatory practices are eliminated), the model will generate biased outcomes that favor the privileged groups. In other words, due to data mislabeling or imbalance among groups, protected attributes can become a proxy that represents the latent correlation of other really informative (nonprotected) attributes <ref type="bibr" target="#b31">[32]</ref>.</p><p>Therefore, to further verify our conjecture, we investigate the negative legacy potentially embedded in the train-ing data. To achieve this, we decided to explore whether we could "reverse engineer" the proxy, which is represented by the protected attribute. Here the base assumption is:</p><p>• All the informative attributes are included in the dataset;</p><p>• Thus, we can infer the protected attributes into some combinations of other non-protected attributes. As shown in Figure <ref type="figure" target="#fig_0">1</ref>, we used linear regression (middle figure) and decision tree (right-hand-side figure) to extrapolate the correlation between the protected and non-protected attributes. In both models, we use the protected attribute (sex) as the dependent feature and other non-protected ones as independent features. For example, as shown on the right-hand side of Figure <ref type="figure" target="#fig_0">1</ref>, the rule list provided in the Adult income problem reveals that the privileged group (male) is more like to possess higher capital gain and working hours within training data. Therefore, it is possible that the classification model values the protected attribute only because it has a positive correlation with "high capital balance" and "more stable job". That means the protected attribute is simply a kernel of a more profound relationship of several actually informative attributes. In that case, we could mitigate bias by decomposing the "proxy" and reemphasizing the importance of those attributes represented by the proxy.</p><p>Admittedly, our approach cannot guarantee the success of explaining bias (e.g., protected attributes show weak correlations with all non-protected attributes). In such a case, we believe that the protected attribute may contain some information that the dataset has not collected so far. That is, the trade-off between fairness and model performance can be insolvable in that scenario. However, within the scope of the empirical study conducted in this paper, our approach is proven to be generally effective as supported by the experiment results.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Using Explanations for Bias Mitigation</head><p>Now as we can extrapolate the cause of bias in terms of the relationship between the protected and non-protected attributes, we seek for means to mitigate such bias. Our intuition is simple: If the prediction model exhibits bias that comes from data imbalance among protected attributes, we should offset such bias by relabeling the protected attributes (either assigned instances from privileged group to unprivileged group or vice versa) on certain instances. In summary, the second conjecture in this paper is:</p><p>Conjecture II: If we can foresee which instances are more likely to be discriminated based on their protected attributes, we can try to offset such bias by masking their actual protected attributes when inferring to a biased model.</p><p>To identify the subset of testing instances that require relabelling on protected attributes, we use the extrapolation model trained on the imbalanced training data. Using the Adult dataset as shown in Figure <ref type="figure" target="#fig_0">1</ref> as an example, we find that one of the specific causes of bias here is that the imbalanced data shows a strong correlation between the privileged group (sex=male) and the number of working hours per week (hours-per-week), which is also positively related to the favorable class label. Now assume a new data instance in testing data possesses high hours-per-week yet an unprivileged protected attribute (sex=f emale). While a high hours-per-week attribute value increases the probability of a favorable label, the unprivileged protected attribute will conversely increase the probability of receiving an unfavorable label. Thus, as we can foresee that this new instance is likely to be discriminated despite a high hoursper-week attribute, we could mask its gender into the privileged group (from female to male), which will increase the probability of favorable label. It is noteworthy that similar conjecture was also mentioned in prior study. Zliobaite et al. introduced the concept of conditional discrimination in their paper, where they argue that if certain decision-making differences across the protected attributes are explainable, that such differences are tolerable <ref type="bibr" target="#b41">[42]</ref>. By distinguishing conditional discrimination, their approach can remove only the bad discrimination while allowing explainable nondiscriminatory differences.</p><p>To examine the applicability of our tactic, we conducted experiments that lead to preliminary results shown in Figure <ref type="figure">2</ref> and Figure <ref type="figure">3</ref>. Figure <ref type="figure">2</ref> plots, within testing data of each dataset, the ratio of unprivileged over privileged groups in receiving favorable labels; Figure <ref type="figure">3</ref> plots the ratio of the same two groups in receiving unfavorable labels. The ideal equilibrium is ratio = 1, where privileged and unprivileged groups are evenly distributed in both classes. However, as revealed in Figure <ref type="figure">2</ref>, the unprivileged group is highly under-represented in 6 out of 9 cases. For the other 3 cases (Compas and Default datasets), Figure <ref type="figure">3</ref> shows that the unprivileged group suffers from an extremely higher probability of receiving unfavorable labels than the privileged group does. Fortunately, such an imbalanced ratio is diminished within the group of instances whose protected attributes are flipped by our extrapolation model (represented as green bars). Presented by both figures, the flipped group shows either (a) an increased ratio of an unprivileged group receiving favorable labels, or (b) a decreased ratio of an unprivileged group receiving unfavorable labels in each dataset. It is especially noteworthy that in certain datasets (Bank and MEPS) where the ratio is below 1 in both scenarios, the flipped group constantly shows a tendency of moving towards the ideal equilibrium. This indicates that our tactic is self-adaptive for efficiently handling various types of imbalance.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3">FairMask Implementation</head><p>FairMask algorithm is a hybrid method of pre-processing and post-processing. Traditional pre-processing methods are usually used to modify the training data such that a fairer model can be trained on the cleaned data. This process usually takes place before the training stage. Post-processing methods, on the other hand, are usually used after the inference stage. Given the prediction outcome from the model, a post-processing method then selectively changes the final predictions on certain instances. However, unlike either genre, FairMask is designed to be applied after the training stage 1 , and before the inference stage. Specifically, FairMask follows the steps below:</p><p>1) FairMask initiates an extrapolation model which is trained on non-protected attributes and uses the protected attribute as the dependent feature. 2) FairMask uses the extrapolation model to predict on the new incoming data (e.g., testing data). 3) Then, if the predictions disagree with the original value, we claim that the new data instance is more likely to be discriminated by the prediction model. 4) Finally, when passing this new instance to the classification model, we mask its original protected attributes by the predicted values from FairMask. The first step is based on our first conjecture, that the cause of bias within a model can be explained, in forms of the latent correlation between protected and non-protected attributes. The second and third steps are based on our second conjecture. These steps aim to forecast, based on the results of explaining bias, which new instances are more likely to suffer from such bias. The difference between the original testing data T test and the testing data T test masked by FairMask is that T test only contains synthetic protected attributes P test , which do not require access of the original and real protected attributes P test . However, P test can still be kept for fairness evaluation purposes.</p><p>The overview of the proposed approach is shown in Fig- <ref type="figure" target="#fig_2">ure 4</ref>. Algorithm 1 describes the pseudocode of FairMask. Please not that the actual protected attributes in testing data remain unknown to the prediction model, which as discussed later, ensures procedural justice.</p><p>The advantages of our approach over prior methods are obvious. By deploying an extrapolation model to both explain and mitigate bias, FairMask can offer concise insights on the potential cause of bias. As provided in Figure <ref type="figure" target="#fig_0">1</ref>, either linear coefficients or rule-based summaries can be used to interpret how the protected attribute "misleads" the classification model into algorithmic discrimination. Moreover, since FairMask does not require generating additional synthetic data samples to distort the original training samples, its runtime is much faster than the benchmark methods. Note that FairMask only uses SMOTE <ref type="bibr" target="#b42">[43]</ref> when training the  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">EXPERIMENT SETUP</head><p>In this section, we describe the data preparation for the experiment as well as the general experiment setup.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Data</head><p>This paper uses collected datasets that are widely used in prior related research (see Table <ref type="table" target="#tab_1">1</ref>). After data collection, we first need to pre-process the data. For most of the datasets used in this paper (German, Bank, Heart, Default, and MEPS15), no feature engineering is required because either the features are all numerical or a standard procedure is adopted by all prior practitioners. For Adult and Compas datasets, there are some variants of pre-processing being proposed by past researchers. Here we did not follow the pre-processing steps mentioned in AIF360 <ref type="bibr" target="#b43">[44]</ref>, which includes one-hot encoding of non-ordinal categorical features. This is because much prior work, including Fair-SMOTE <ref type="bibr" target="#b1">[2]</ref> the benchmark method used in this paper, is only applicable to numerical and ordinal categorical features. For example, Fair-SMOTE applies deferential evolutionary algorithms to generate mutants for the purpose of over-sampling. Such methods cannot cope with the restraints from one-hot encoded features and, therefore, may generate invalid mutants. In short, we removed all non-ordinal categorical features in these two datasets. Similar approaches can also be found in many other previous works <ref type="bibr" target="#b1">[2]</ref>, <ref type="bibr" target="#b30">[31]</ref>, <ref type="bibr" target="#b44">[45]</ref>, <ref type="bibr" target="#b45">[46]</ref>. Finally, we apply min-max scaling (scale numerical values to the range of [0, 1] by the minimum and maximum values in each feature) to transform each dataset. For each experiment trial, we split the data into 80% training data and 20% testing data, using the same set of random seeds on all methods to control the variable of comparison. We repeat this procedure 20 times for statistical analysis.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Model Selection</head><p>In FairMask. we must select a classification model and an extrapolation model: The classification model is used to predict the dependent variable in the task using independent variables. The extrapolation model is used by FairMask to explain and mitigate the bias of the classification model. In Table <ref type="table" target="#tab_5">4</ref>, we explore the interplay of different classification models and extrapolation models in three of the datasets used in this paper. Our initial choices of classification models include random forest (RF), 2-layer neural network (as known as multi-layer perceptron, MLP), and naive Bayes (NB). As for the extrapolation model, we include two highly interpretable models: logistic regression (LR) and classification and regression tree (CART). Indicated by the result, we cannot find an absolute winner among the classification models, which can outperform others in all cases. Moreover, the choice of the extrapolation model has a trivial influence on the final result. In short, our general insight from Table <ref type="table" target="#tab_5">4</ref> is that (a) the choice of the classification model varies among different datasets, and (b) the performance of FairMask is robust regardless of the choice of extrapolation model. Hence, in the following experiment, we will use RF as the classification model and CART as the extrapolation model.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">Evaluation Criteria</head><p>To evaluate the predictive performance of each method, we use metrics computed by the confusion matrix of binary classification: accuracy, precision, recall, and F1 score. These criteria are selected since (a) they are widely used in both software analytics <ref type="bibr" target="#b46">[47]</ref>, <ref type="bibr" target="#b47">[48]</ref> and fairness literature <ref type="bibr" target="#b27">[28]</ref>, <ref type="bibr" target="#b28">[29]</ref>, <ref type="bibr" target="#b48">[49]</ref>, <ref type="bibr" target="#b49">[50]</ref>, <ref type="bibr" target="#b50">[51]</ref> and (b) the latest benchmark method in our experiment, Fair-SMOTE, uses the exact same set of criteria. The definitions of performance metrics are shown in Table <ref type="table" target="#tab_4">3</ref>.</p><p>To assess the effectiveness of mitigating bias, we use fairness metrics as introduced in Table <ref type="table" target="#tab_2">2</ref>, some of which are also computed based on the confusion matrix of binary classification. The group fairness metrics aim to evaluate whether different social groups, as identified by their protected attributes, receive statistically similar prediction outcomes by the classification model. The individual fairness metric, denoted as Flip Rate, is designed based on the intuition of procedural justice. By definition, when individuals that are similar to each other regardless the protected attributes, they shall receive similar prediction outcomes (in this case of binary classification, the same outcome). To assess this criterion, we use the following situation testing tactic:</p><p>• For each instance in testing data, flip the protected attribute.</p><p>• Pass the edited data instances into the classification model • Record the times where the new prediction outcome differs from the original one. It is noteworthy that the situation testing is also used in prior work <ref type="bibr" target="#b1">[2]</ref>. The major difference is that Fair-SMOTE uses situation testing as a technique to identify and remove biasintroducing instances whereas in this paper we only use it to assess the extent of individual fairness for all the methods examined in the experiment.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.4">Statistical Analysis</head><p>To compare the predictive performance and ability in mitigating bias among all algorithms on every dataset, we use a non-parametric significance test along with a nonparametric effect size test. Specifically, we use the Scott-Knott test <ref type="bibr" target="#b51">[52]</ref> that sorts the list of treatments (in this case, the benchmark bias-mitigation methods and our approach) by their median scores. After the sorting, it then splits the list into two sub-lists. The objective for such a split is to maximize the expected value of differences E(∆) in the observed performances before and after division <ref type="bibr" target="#b52">[53]</ref>:</p><formula xml:id="formula_1">E(∆) = |l 1 | |l| abs(E(l 1 )-E(l)) 2 + |l 2 | |l| abs(E(l 2 )-E(l)) 2 (1)</formula><p>where |l 1 | means the size of list l 1 .</p><p>The Scott-Knott test assigns ranks to each result set; the higher the rank, the better the result. Two results will be ranked the same if the difference between the distributions is not significant. In this expression, Cliff's Delta estimates the probability that a value in list A is greater than a value in list B, minus the reverse probability <ref type="bibr" target="#b53">[54]</ref>. A division passes this hypothesis test if it is not a "small" effect (Delta ≥ 0.147). This hypothesis test and its effect sizes are supported by Hess and Kromery <ref type="bibr" target="#b54">[55]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">RESULTS</head><p>To assess the effectiveness of our proposed approach as compared to other benchmark methods, we design the experiment evaluation around 4 research questions (RQs). RQ1: Does FairMask succeed in rebalancing the protected attributes?</p><p>Before assessing the performance of FairMask, we would like to firstly check whether our method actually changes the distribution of protected attributes within the testing data. Figure <ref type="figure">2</ref> and Figure <ref type="figure">3</ref> have shown the preliminary results, where the unprivileged group among the relabeled testing data has an increased possibility of receiving a favorable label, and the gap of the favorable label rates between the privileged and unprivileged group is reduced. Furthermore, in Figure <ref type="figure" target="#fig_3">5</ref>, we compare the percentages of the privileged and unprivileged groups before/after FairMask being applied. The results are twofold:</p><p>• FairMask does change the distribution of protected attributes significantly 2 . • Even if the unprivileged group is not the (quantitatively) minority group, FairMask still achieves the rebalancing by shifting the percentage toward 50. In other words, FairMask is flexible and self-adaptive to various scenarios of unprivileged groups. Our answer to RQ1 is: Yes, FairMask is not only effective but also adaptive in rebalancing the protected attributes. RQ2: How is the performance of our approach compared to other benchmarks, including state-of-the-art algorithms?</p><p>2. The percentages in the figure are mean values from 20 random repeats where the 2-tail paired t-test scores &lt; 0.05 in all cases. Table <ref type="table" target="#tab_6">5</ref> compares FairMask against other baselines. Reweighing <ref type="bibr" target="#b6">[7]</ref> is proposed by Kamiran et al. (introduced in §2.3) to mitigating bias via adjusting the instance weights for training samples in different groups (as determined by both their labels and protected attributes). Fair-SMOTE <ref type="bibr" target="#b1">[2]</ref> is proposed by Chakraborty et al. to reduce bias by not only handling the data imbalance between target labels but also imbalanced distribution among different protected attributes. Reject Option based Classification (ROC) <ref type="bibr" target="#b35">[36]</ref> is a post-processing method that optimizes for fairness by adjusting the classification threshold for the privileged and unprivileged group separately. We chose them as our benchmark methods because (a) as a hybrid of pre-processing  In addition to these state-of-theart methods, we also implement a "naive" baseline in our experiment, denoted as "Random", that randomly shuffles the protected attributes.</p><p>Comparing FairMask against other baselines, we observe that the result is either (a)FairMask outperforms other methods in fairness metrics while maintaining the performance (in most cases, the default learner has top-ranked performance), or (b) FairMask reaches on-par fairness measures with some other baselines but obtains better performance at the same time. The summarized result is presented in Table <ref type="table" target="#tab_7">6</ref>, where we can find that FairMask constantly obtains top ranks in both fairness and performance. It is also noteworthy that FairMask, by its design choices, can achieve perfect individual fairness while other baselines fail to improve it (even worsen in some cases).</p><p>Thus, our answer to RQ2 is FairMask performs better or similar to the two state-of-the-art algorithms in terms of both fairness and performance. RQ3: Is FairMask more scalable than Fair-SMOTE in terms of runtime complexity? FairMask is built upon design choices that avoid synthetic data generation. This not only avoids the potential risk of introducing noise but also makes the whole framework more light-weighted. Figure <ref type="figure" target="#fig_4">6</ref> presents the runtime of FairMask as compared to that of Fair-SMOTE on every dataset. While the datasets are sorted by their sizes, we do not see a proportional relationship between the size and runtime in either method. This could be because the runtime of the model is also influenced by the dimensionality of the training space. Moreover, since Fair-SMOTE requires generating additional data, its runtime also depends on the extent of data imbalance: In cases where the data distribution is severely imbalanced, more synthetic data are required. Nevertheless, despite the variables described above, we can still observe apparent domination that FairMask runs constantly faster than Fair-SMOTE, which aligns with our design expectation. Thus, our answer to RQ3 is FairMask has a significantly shorter runtime, and therefore more scalable than Fair-SMOTE. RQ4: Can FairMask handle multiple protected attributes?</p><p>While under-represented in past research, it is a possible case scenario that a dataset contains more than one protected attributes in a dataset (just like Adult and Compas datasets). Fortunately, design choices of FairMask makes itself extremely easy to be applied to cases with more than one protected attribute.</p><p>To examine the effectiveness of FairMask, we conducted experiments on the Adult and Compas datasets, both of which contain two protected attributes: race and sex. Following our framework described in 4, we now need to build two extrapolation models for the two protected attributes respectively. After that, we will drop both protected attributes from the test data. Since Fair-SMOTE is the only benchmark in this paper that is capable of handling multiple protected attributes, we only compare our approach against it. As shown in Table <ref type="table" target="#tab_8">7</ref>, compared to the default benchmark, FairMask can improve fairness in both protected attributes simultaneously while maintaining the predictive performance. When compared against Fair-SMOTE, FairMask still display better fairness while making less harm to performance.</p><p>It is also noteworthy that Fair-SMOTE uses the oversampling tactic to reduce bias (in order to achieve balance among different combinations of protected and target attributes). Consequentially, the number of samples needed to over-sample explodes exponentially as the dimensionality of protected attributes increases, resulting in larger runtime complexity. FairMask, on the other hand, avoids this obstacle by introducing an extrapolation model rather than over-sampling the data. In general, our answer to RQ4 is FairMask shows effectiveness in bias mitigation when handling multiple protected attributes simultaneously.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">THREATS TO VALIDITY</head><p>Sampling Bias: While experimenting with other datasets may yield different results, we believe our extensive study here has shown the constant effectiveness of FairMask in various cases. Most of the prior works <ref type="bibr" target="#b4">[5]</ref>, <ref type="bibr" target="#b26">[27]</ref>, <ref type="bibr" target="#b36">[37]</ref>, <ref type="bibr" target="#b55">[56]</ref>, <ref type="bibr" target="#b56">[57]</ref> used one or two datasets where we used seven wellknown datasets in our experiments. We have also observed other emerging datasets in the fairness fields, and we will try to extend our research scope once we verify the validity of the new datasets. In the future, we will explore more datasets and more learners. Evaluation Bias: We used the five fairness metrics in this study, covering both definitions of group and individual fairness. Prior works <ref type="bibr" target="#b25">[26]</ref>, <ref type="bibr" target="#b32">[33]</ref>, <ref type="bibr" target="#b48">[49]</ref> used fewer metrics whereas IBM AIF360 <ref type="bibr" target="#b43">[44]</ref> contains more than 50 metrics. More evaluation criteria will be examined in future work.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Conclusion Validity:</head><p>Our experiments are based on the assumption that test data is unbiased and correctly labeled. Prior fairness studies also made the similar assumption <ref type="bibr" target="#b1">[2]</ref>, <ref type="bibr" target="#b28">[29]</ref>, <ref type="bibr" target="#b26">[27]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Internal Validity:</head><p>We used random forest model with mostly off-the-shelf parameters. However, hyperparameters play a crucial role in the performance of ML models. Therefore, we cannot rule out the possibility that other ML models, after fine tuning, can achieve superior results. In the future, we will endeavor to address hyperparameter optimization for performance improvement. Moreover, our feature processing step during the experiment follows procedures found in prior works, especially those that are compared in this paper only in order to make a fair comparison. While other benchmark methods may have certain limitation in selecting features, our approach is actually applicable to all kinds of features. External Validity: Our work is limited to binary classification and tabular data which are very common in AI software. However, all the methods used in this paper can easily be extended in case of multi-class classification, and regression problems. In the future, we will try to extend our work to other domains of SE and ML.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7">DISCUSSION: WHY FAIRMASK?</head><p>In this section, we discuss what makes FairMask novel and distinguishable from prior works in this domain.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7.1">Procedural Justice</head><p>In this paper, our experiment uses different measures to assess both group fairness (aod, eod, etc.) and individual fairness (flip rate). From the perspective of law practice, the notions of group fairness are more likely to reflect distributive justice, which concerns fairness in terms of the distribution of rights <ref type="bibr" target="#b57">[58]</ref> (in our case, the distribution of favorable labels among different social groups). On the other hand, individual fairness tends to emphasize the importance of procedural justice <ref type="bibr" target="#b2">[3]</ref>, <ref type="bibr" target="#b58">[59]</ref>, which requires not only fair results but also transparency of the decision-making process such that ones can verify and monitor whether the procedure constantly guarantees fairness. The notions of procedural justice have recently gained more attention in the discussion of building fairer ML software <ref type="bibr" target="#b3">[4]</ref>, <ref type="bibr" target="#b59">[60]</ref>.</p><p>In this paper, we claim that our design choice of improving individual fairness has made FairMask a suitable fit to satisfy procedural justice (as indicated by the flip rates). A model embedded with FairMask will not access the (actual) protected attributes during deployment time. However, we admit that FairMask is still not a perfect match according to the definition of procedural justice. One of the significant reasons is model degradation. To prevent a model from compromised performance caused by distribution drift, ML models are recommended to be re-fitted periodically to adopt the updated data distribution. More importantly, in our case, we also need to update the extrapolation model within FairMask to better understand if the root cause of bias has also drifted (in different correlation with nonprotected attributes).</p><p>Thus, while FairMask does not use the real protected attributes to make predictions on new data in deployment, those protected attributes are still collected in the background, such that we can still have access to the real protected attributes when re-training the prediction model. We notice that our design may not perfectly fulfill the requirement of procedural justice as we still collect protected information constantly. We believe FairMask has made a significant step toward procedural justice while there is still room for further improvement.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7.2">Ethical Concerns</head><p>We can foresee the potential criticism that our approach might face: does FairMask mitigate bias or merely hide the bias since while the model no longer has access to protected attributes (e.g., gender, race), it still retains the influences of those attributes? We say that this is demonstrably not true, and we would like to respond from two aspects.</p><p>First of all, an important feature of the assessment methodology in this paper is that:</p><p>When we assess the fairness extent of FairMask (in §4), that assessment uses all the protected attributes from the unaltered data. Hence we can assert that our synthesis approach not only enables the procedural justice but it also reduces (but may not completely remove) other measurable effects of bias.</p><p>Moreover, there are many prior works in the literature that attempt to mitigate bias through modifying the protected attributes in their methods <ref type="bibr" target="#b7">[8]</ref>, <ref type="bibr" target="#b30">[31]</ref>, <ref type="bibr" target="#b44">[45]</ref>, <ref type="bibr" target="#b60">[61]</ref>, <ref type="bibr" target="#b61">[62]</ref>, <ref type="bibr" target="#b62">[63]</ref>. For example, many pre-processing methods apply data "distortion/cleaning" on the training data, including the protected attributes, in order to fit a fairer prediction model on the modified. Other post-processing methods, which do not modify the protected attributes, directly change the prediction outcomes to mitigate bias. In short, the motivation and influence of FairMask and these prior works are essentially the same: Assuming or knowing a prediction model is unfair toward certain social groups, given an originally unfair outcome, we want to restore fairness by changing the undesired outcome. The only difference in FairMask is that we believe such undesired outcomes can be changed via properly modifying the protected attributes even after a biased model is trained.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7.3">Why Does FairMask Work?</head><p>One frequently asked question is as follows. What is won by removing an attribute, then recreating its values via extrapolation from other attributes? Surely this extrapolation model just writes back the same values that were removed?</p><p>In reply, we argue that the conclusions drawn from the extrapolated data are actually different, in certain small but crucial aspects, from the conclusions drawn from the raw data. In FairMask, the relation between the protected and non-protected attributes is learned by an extrapolation model. When new data instances arrive during the testing or deployment phase, FairMask generates synthetic values for protected attributes to mask actual values. In that approach, small variations in local data can be "smoothed out" by sampling across all the data through the extrapolation model. In this paper, Figure <ref type="figure">2</ref> and Figure <ref type="figure">3</ref> show that this kind of smoothing has a critical and significant effect on mitigating bias. Specifically, in those two figures, we look at the unfairness suffered by different social groupings: • In the test data, unprivileged groups have a much lower chance of receiving a favorable label while having a much higher chance of receiving an unfavorable label. • But when using our synthesized data generated from FairMask, that bias has been dramatically eliminated, leading the ratio toward an ideal equilibrium between the privileged and unprivileged groups. We argue that biased decisions arise when a model occasionally uses a protected attribute to make a decision while it has no need to. Our experience suggests that we can remove those "occasional mistakes", and thus mitigate bias.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7.4">Does FairMask Handle All Unfairness?</head><p>When discussing this work with colleagues, we are often asked if FairMask can mitigate against all the potential injustices that might be created by AI. In response, we say "no". Mitigating the untoward effects of AI is a much broader problem than just exploring bias in algorithmic decisionmaking (as done in this paper). The general problem of fairness is that influential groups in our society might mandate systems that (deliberately or unintentionally) disadvantage sub-groups within that society. A software system could satisfy all the metrics used to evaluate the extent of fairness (as in Table <ref type="table" target="#tab_2">2</ref>) and still perpetuates social inequities. For example, (a) software license fees might be so expensive that only a tiny monitory of organizations can boast they are "fair"; or (b) the skills required to use a model's API might be so elaborate that even if the model is fair, only an elite group of programmers can use it.</p><p>That said, as software developers, we cannot turn a blind eye to the detrimental social effects of our software. While no single paper can hope to fix all social inequities, this paper shows how to improve the model involved in assessing one particular kind of unfairness (algorithmic decision-making bias). As to other kinds of fairness, they need to be explored and, hopefully, research results like this one will motivate a larger community of researchers to take on the challenge of fairness.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7.5">Explainable Extrapolation: Future Work</head><p>Prior works either (a) do not offer interpretations on the cause of bias <ref type="bibr" target="#b38">[39]</ref>, <ref type="bibr" target="#b39">[40]</ref>, <ref type="bibr" target="#b6">[7]</ref>, or (b) offer instance-based summary <ref type="bibr" target="#b1">[2]</ref> on the cause of bias. Although the latter one is human-comprehensible, we aim for generating more concise and structured interpretations via the extrapolation model. As shown in §3, we proposed an approach that explains the cause of bias in training data by extrapolating the correlation between the protected attributes and nonprotected attributes. The experiment result in this paper has provided evidence that supports the presumption, which is that the privileged group may share a similar latent with the favorable-labeled group <ref type="bibr" target="#b38">[39]</ref>, <ref type="bibr" target="#b39">[40]</ref>, as indicated by the explanations on both the target attribute (label) and the protected attribute. Such similarity within training data may mislead the classification model to wrongly emphasize the importance of the protected attribute, which is essentially a proxy of a combination of other informative attributes.</p><p>For future work, we look forward to formalizing the definition as well measurement for human comprehensibility level regarding group/individual fairness. For example, to verify a ML software to be fair in an "explainable" manner, one may need to provide user-centered experimental study with software stakeholders/users involved (e.g. Can a banker distinguish a de-biased mortgage application model from a biased one?). While this paper lacks the human evaluation part to assert that our approach offers explainable bias mitigation, we believe our conjectures and concepts will inspire more promising work.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="8">CONCLUSION</head><p>Fairness in machine learning software has become a serious concern in the software engineering community. Many fairness methods synthesize new samples <ref type="bibr" target="#b1">[2]</ref>, <ref type="bibr" target="#b62">[63]</ref>, <ref type="bibr" target="#b63">[64]</ref> in order to better balance training data (expecting to remove certain biases). This paper tested an alternative approach, which assumes such synthesis might work better if it was model-based rather than instance-based (since the latter is more susceptible to minor variations in the data).</p><p>We found that we can endorse Chakraborty et al. <ref type="bibr" target="#b1">[2]</ref> findings that bias might come from imbalanced data distributions. Moreover, instead of generating new data samples, we proposed FairMask, a better and faster approach that outperforms Fair-SMOTE. In addition, our approach also guarantees absolute procedural fairness. By avoiding using the actual protected attributes and synthesizing our own ones, our model can ensure that individuals that are only different in protected attributes will receive the same predictions. This is a significant improvement because, as revealed by our situational testing, sometimes such individual unfairness can exist among up to 20% of the test data.</p><p>In experiments, we found that FairMask is performancewise better (measured by fairness and performance metrics) than three state-of-the-art fairness algorithms. When looking at individual fairness (as indicated by the Flip Rates), FairMask can ensure perfect individual fairness while other benchmarks cannot. Based on the above, we conclude that:</p><p>• We can recommend FairMask for faster and more effective bias mitigation.</p><p>• FairMask greatly excludes the risk of individual unfairness: Two individuals who only differ in the protected attributes will always receive the same prediction outcomes.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Fig. 1 :</head><label>1</label><figDesc>Fig. 1: Example based on the Adult Income dataset. The left side is the explanation on the dependent attribute, in form of SHAP explanations [38] of the classification model. The middle and right blocks show two approaches (logistic regression and decision tree, respectively) applied in FairMask to explain the influence of other independent attributes on the protected attribute.</figDesc><graphic coords="4,50.58,546.91,510.84,142.45" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Fig. 2 :Fig. 3 :</head><label>23</label><figDesc>Fig. 2: Ratio for favorable labels. The gray bar shows the ratio of unprivileged instances receiving favorable labels among all testing data; The green bar shows the same ratio, but only among instances whose protected attribute values are flipped.</figDesc><graphic coords="5,73.80,411.69,464.41,115.36" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Fig. 4 :</head><label>4</label><figDesc>Fig. 4: An overview of FairMask and the experiment rig in this paper. Note that the synthesized protected attributes are only used for model prediction whereas the actual protected attributes are used in computing fairness metrics.</figDesc><graphic coords="6,321.90,272.81,232.20,247.68" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Fig. 5 :</head><label>5</label><figDesc>Fig. 5: Result for RQ1. The ratio in percentage between the privileged and unprivileged groups before and after FairMask being applied.</figDesc><graphic coords="8,314.16,375.19,247.68,153.64" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Fig. 6 :</head><label>6</label><figDesc>Fig. 6: Result for RQ3. The ratio is calculated by dividing the runtime of Fair-SMOTE over that of FairMask. A larger ratio means FairMask is faster. The datasets are sorted by the size in an ascending order.</figDesc><graphic coords="10,50.16,43.70,247.67,104.60" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>TABLE 1 : Description of datasets used in this paper.</head><label>1</label><figDesc></figDesc><table><row><cell>Dataset</cell><cell>#Features</cell><cell>#Rows</cell><cell>Domain</cell><cell>Protected Attribute</cell><cell>Favorable Label</cell></row><row><cell>Adult Census [11]</cell><cell>14</cell><cell>48,842</cell><cell>U.S. census information from 1994 to predict personal income</cell><cell>Sex, Race</cell><cell>Income &gt; $50,000</cell></row><row><cell>Compas [12]</cell><cell>28</cell><cell>7,214</cell><cell>Criminal history of defendants to predict re-offending</cell><cell>Sex, Race</cell><cell>Re-offend = false</cell></row><row><cell>German Credit [13]</cell><cell>20</cell><cell>1,000</cell><cell>Personal information to predict good or bad credit</cell><cell>Sex</cell><cell>Credit = good</cell></row><row><cell>Bank Marketing [14]</cell><cell>16</cell><cell>45,211</cell><cell>Marketing data of a Portuguese bank to predict term deposit</cell><cell>Age</cell><cell>Subscription = yes</cell></row><row><cell>Heart Health [15]</cell><cell>14</cell><cell>297</cell><cell>Patient information from Cleveland DB to predict heart disease</cell><cell>Age</cell><cell>Diagnose = yes</cell></row><row><cell>Default Credit [1]</cell><cell>23</cell><cell>30,000</cell><cell>Customer information in Taiwan to predict default payment</cell><cell>Sex</cell><cell>Payment = yes</cell></row><row><cell>MEPS15 [16]</cell><cell>1831</cell><cell>4,870</cell><cell>Surveys of household members and their medical providers</cell><cell>Race</cell><cell>Utilization &gt;= 10</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>TABLE 2 : Definitions and descriptions of fairness metrics used in this paper.</head><label>2</label><figDesc></figDesc><table><row><cell>Metric</cell><cell>Definition</cell><cell>Description</cell></row><row><cell>Average Odds Difference (AOD)</cell><cell>TPR = TP/(TP + FN), FPR = FP/(FP + TN) AOD= ((F P R U -F P R P ) + (T P R U -T P R P ))/2</cell><cell>Average of difference in False Positive Rates(FPR) and True Positive Rates(TPR) for unprivileged and privileged groups</cell></row><row><cell>Equal Opportunity Difference (EOD)</cell><cell>EOD = T P R U -T P R P</cell><cell>Difference of True Positive Rates(TPR) for unprivileged and privileged groups</cell></row><row><cell></cell><cell></cell><cell>Difference between probability of unprivileged group</cell></row><row><cell>Statistical Parity Difference (SPD)</cell><cell>SPD = P (Y = 1|PA = 0) -P (Y = 1|PA = 1)</cell><cell>(protected attribute PA = 0) gets favorable prediction (Y = 1) &amp; probability of privileged group (protected attribute PA = 1)</cell></row><row><cell></cell><cell></cell><cell>gets favorable prediction (Y = 1)</cell></row><row><cell>Disparate Impact (DI)</cell><cell>DI = P (Y = 1-PA = 0]/P [Y = 1-PA = 1)</cell><cell>Similar to SPD but measuring ratio rather than the probability</cell></row><row><cell>Flip Rate (FR)</cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head></head><label></label><figDesc>Ttrain contains training data without dependent attributes; Ttest contains testing data without dependent attributes; budget is the number of extrapolation models that can be used for weighted-vote the synthetic values Result: Testing data with synthetic protected attribute values T test begin Ptrain , N P train ← Ttrain // Divide independent attributes into protected and non-protected attributes M ← InitializeModels(budget) for i ← 0 to budget do (P train , N P train ← SMOTE(Ptrain , N Ptrain ) Mi ← FitModel(P train , N P train ) Ptest , N Ptest ← Ttest P test ← M.weightedVote(N Ptest ) T test ← Append(P test , N Ptest ) return T test</figDesc><table /><note><p>1. In fact, FairMask can be applied parallel to the training phase in deployment since it won't modify the training data. From our implementation, we put FairMask process after the training phase Algorithm 1: FairMask pseudocode Data:</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>TABLE 3 : Performance metrics used in this paper.</head><label>3</label><figDesc></figDesc><table><row><cell>Metrics</cell><cell>Definition</cell></row><row><cell>Accuray</cell><cell>(TP+TN)/(TP+TN+FP+FN)</cell></row><row><cell>Precision</cell><cell>TP/(TP+FP)</cell></row><row><cell>Recall</cell><cell>TP/(TP+FN)</cell></row><row><cell>F1 score</cell><cell>2</cell></row></table><note><p>× (Precision × Recall)/(Precision + Recall)</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>TABLE 4 : Preliminary result on choice of the extrapolation model in FairMask. Here, cells marked in darker colors are better than those marked in lighter colors within the same dataset block. For each dataset, we repeat the experiment for 20 runs and report the median values. The ranks indicated by colors are determined by the Scott-Knott test as described in §4.4.</head><label>4</label><figDesc></figDesc><table><row><cell>Dataset: Protected Attribute</cell><cell>Classification Model</cell><cell>Extrapolation Model</cell><cell>Accuracy</cell><cell>Precision</cell><cell>Recall</cell><cell>F1</cell><cell>AOD</cell><cell>EOD</cell><cell>SPD</cell><cell>DI</cell></row><row><cell></cell><cell>RF</cell><cell>CART LR</cell><cell>83 83</cell><cell>68 68</cell><cell>56 53</cell><cell>61 59</cell><cell>2 2</cell><cell>6 6</cell><cell>11 11</cell><cell>46 47</cell></row><row><cell>Adult: Sex</cell><cell>MLP</cell><cell>CART LR</cell><cell>82 82</cell><cell>65 66</cell><cell>51 48</cell><cell>57 55</cell><cell>3 3</cell><cell>6 7</cell><cell>10 11</cell><cell>48 5</cell></row><row><cell></cell><cell>NB</cell><cell>CART LR</cell><cell>80 80</cell><cell>67 66</cell><cell>30 31</cell><cell>42 42</cell><cell>2 2</cell><cell>1 1</cell><cell>6 6</cell><cell>47 47</cell></row><row><cell></cell><cell>RF</cell><cell>CART LR</cell><cell>82 83</cell><cell>72 71</cell><cell>53 53</cell><cell>61 61</cell><cell>0 1</cell><cell>3 2</cell><cell>7 7</cell><cell>36 35</cell></row><row><cell>Adult: Race</cell><cell>MLP</cell><cell>CART LR</cell><cell>83 83</cell><cell>71 71</cell><cell>48 49</cell><cell>57 58</cell><cell>0 0</cell><cell>2 2</cell><cell>6 6</cell><cell>37 35</cell></row><row><cell></cell><cell>NB</cell><cell>CART LR</cell><cell>80 80</cell><cell>67 67</cell><cell>3 31</cell><cell>42 42</cell><cell>2 2</cell><cell>1 1</cell><cell>3 3</cell><cell>28 3</cell></row><row><cell></cell><cell>RF</cell><cell>CART LR</cell><cell>65 64</cell><cell>66 66</cell><cell>72 74</cell><cell>69 7</cell><cell>0 0</cell><cell>5 3</cell><cell>8 6</cell><cell>12 1</cell></row><row><cell>Compass: Sex</cell><cell>MLP</cell><cell>CART LR</cell><cell>67 68</cell><cell>67 68</cell><cell>79 79</cell><cell>73 73</cell><cell>2 1</cell><cell>6 6</cell><cell>11 11</cell><cell>16 16</cell></row><row><cell></cell><cell>NB</cell><cell>CART LR</cell><cell>67 68</cell><cell>66 67</cell><cell>82 81</cell><cell>73 73</cell><cell>3 1</cell><cell>8 8</cell><cell>14 13</cell><cell>17 17</cell></row><row><cell></cell><cell>RF</cell><cell>CART LR</cell><cell>64 64</cell><cell>66 66</cell><cell>73 72</cell><cell>69 69</cell><cell>2 2</cell><cell>9 9</cell><cell>13 13</cell><cell>19 19</cell></row><row><cell>Compass: Race</cell><cell>MLP</cell><cell>CART LR</cell><cell>69 69</cell><cell>70 70</cell><cell>76 76</cell><cell>73 73</cell><cell>3 3</cell><cell>12 12</cell><cell>18 18</cell><cell>25 25</cell></row><row><cell></cell><cell>NB</cell><cell>CART LR</cell><cell>68 68</cell><cell>68 68</cell><cell>79 78</cell><cell>73 73</cell><cell>4 4</cell><cell>11 11</cell><cell>18 18</cell><cell>24 24</cell></row><row><cell></cell><cell>RF</cell><cell>CART LR</cell><cell>70 69</cell><cell>73 71</cell><cell>92 92</cell><cell>81 80</cell><cell>5 5</cell><cell>4 6</cell><cell>8 9</cell><cell>9 10</cell></row><row><cell>German: Sex</cell><cell>MLP</cell><cell>CART LR</cell><cell>69 69</cell><cell>71 71</cell><cell>93 92</cell><cell>81 80</cell><cell>6 6</cell><cell>4 4</cell><cell>8 9</cell><cell>9 9</cell></row><row><cell></cell><cell>NB</cell><cell>CART LR</cell><cell>60 60</cell><cell>79 79</cell><cell>59 59</cell><cell>67 67</cell><cell>2 2</cell><cell>11 11</cell><cell>11 11</cell><cell>18 18</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>TABLE 5 : Results for RQ2. RF denotes the default random forest learner. For all performance metrics, greater is better; for all fairness metrics, smaller is better. Here, cells marked in darker colors are better than those marked in lighter colors within the same dataset block. For each dataset, we repeat the experiment for 20 runs and report the median values in percentage. The ranks indicated by colors are determined by the Scott-Knott test as described in §4.4.</head><label>5</label><figDesc></figDesc><table><row><cell>Dataset: Protected Attribute</cell><cell>Method</cell><cell>Accuracy</cell><cell>Precision</cell><cell>Recall</cell><cell>F1 score</cell><cell>AOD</cell><cell>EOD</cell><cell>SPD</cell><cell>DI</cell><cell>FR</cell></row><row><cell></cell><cell>RF</cell><cell>83</cell><cell>72</cell><cell>53</cell><cell>61</cell><cell>8</cell><cell>24</cell><cell>18</cell><cell>78</cell><cell>20</cell></row><row><cell></cell><cell>RF+Random</cell><cell>83</cell><cell>75</cell><cell>48</cell><cell>57</cell><cell>1</cell><cell>4</cell><cell>11</cell><cell>52</cell><cell>7</cell></row><row><cell></cell><cell>RF+Reweighing</cell><cell>75</cell><cell>48</cell><cell>71</cell><cell>57</cell><cell>1</cell><cell>7</cell><cell>15</cell><cell>37</cell><cell>2</cell></row><row><cell>Adult: Sex</cell><cell>RF+Fair-SMOTE</cell><cell>79</cell><cell>54</cell><cell>71</cell><cell>61</cell><cell>6</cell><cell>22</cell><cell>20</cell><cell>54</cell><cell>18</cell></row><row><cell></cell><cell>RF+ROC</cell><cell>75</cell><cell>49</cell><cell>76</cell><cell>60</cell><cell>2</cell><cell>11</cell><cell>18</cell><cell>40</cell><cell>24</cell></row><row><cell></cell><cell>RF+FairMask</cell><cell>83</cell><cell>67</cell><cell>56</cell><cell>61</cell><cell>2</cell><cell>6</cell><cell>10</cell><cell>46</cell><cell>0</cell></row><row><cell></cell><cell>RF</cell><cell>84</cell><cell>73</cell><cell>53</cell><cell>61</cell><cell>3</cell><cell>10</cell><cell>9</cell><cell>49</cell><cell>9</cell></row><row><cell></cell><cell>RF+Random</cell><cell>83</cell><cell>70</cell><cell>51</cell><cell>59</cell><cell>0</cell><cell>3</cell><cell>8</cell><cell>43</cell><cell>8</cell></row><row><cell></cell><cell>RF+Reweighing</cell><cell>76</cell><cell>49</cell><cell>72</cell><cell>59</cell><cell>3</cell><cell>5</cell><cell>5</cell><cell>12</cell><cell>4</cell></row><row><cell>Adult: Race</cell><cell>RF+Fair-SMOTE</cell><cell>79</cell><cell>54</cell><cell>72</cell><cell>62</cell><cell>2</cell><cell>7</cell><cell>11</cell><cell>37</cell><cell>16</cell></row><row><cell></cell><cell>RF+ROC</cell><cell>73</cell><cell>45</cell><cell>82</cell><cell>59</cell><cell>2</cell><cell>5</cell><cell>11</cell><cell>25</cell><cell>28</cell></row><row><cell></cell><cell>RF+FairMask</cell><cell>82</cell><cell>72</cell><cell>53</cell><cell>61</cell><cell>0</cell><cell>3</cell><cell>7</cell><cell>36</cell><cell>0</cell></row><row><cell></cell><cell>RF</cell><cell>65</cell><cell>67</cell><cell>73</cell><cell>70</cell><cell>5</cell><cell>10</cell><cell>14</cell><cell>19</cell><cell>28</cell></row><row><cell></cell><cell>RF+Random</cell><cell>64</cell><cell>66</cell><cell>71</cell><cell>68</cell><cell>0</cell><cell>8</cell><cell>11</cell><cell>16</cell><cell>27</cell></row><row><cell></cell><cell>RF+Reweighing</cell><cell>62</cell><cell>64</cell><cell>67</cell><cell>66</cell><cell>3</cell><cell>7</cell><cell>12</cell><cell>18</cell><cell>30</cell></row><row><cell>Compas: Sex</cell><cell>RF+Fair-SMOTE</cell><cell>65</cell><cell>67</cell><cell>70</cell><cell>68</cell><cell>0</cell><cell>6</cell><cell>9</cell><cell>17</cell><cell>21</cell></row><row><cell></cell><cell>RF+ROC</cell><cell>65</cell><cell>66</cell><cell>74</cell><cell>70</cell><cell>1</cell><cell>6</cell><cell></cell><cell>4</cell><cell>36</cell></row><row><cell></cell><cell>RF+FairMask</cell><cell>65</cell><cell>66</cell><cell>72</cell><cell>69</cell><cell>0</cell><cell>6</cell><cell>8</cell><cell>12</cell><cell>0</cell></row><row><cell></cell><cell>RF</cell><cell>65</cell><cell>67</cell><cell>73</cell><cell>70</cell><cell>2</cell><cell>10</cell><cell>14</cell><cell>20</cell><cell>24</cell></row><row><cell></cell><cell>RF+Random</cell><cell>64</cell><cell>66</cell><cell>73</cell><cell>69</cell><cell>2</cell><cell>10</cell><cell>14</cell><cell>20</cell><cell>26</cell></row><row><cell></cell><cell>RF+Reweighing</cell><cell>63</cell><cell>66</cell><cell>66</cell><cell>66</cell><cell>1</cell><cell>2</cell><cell>5</cell><cell>9</cell><cell>19</cell></row><row><cell>Compas: Race</cell><cell>RF+Fair-SMOTE</cell><cell>65</cell><cell>68</cell><cell>70</cell><cell>69</cell><cell>3</cell><cell>4</cell><cell>13</cell><cell>15</cell><cell>18</cell></row><row><cell></cell><cell>RF+ROC</cell><cell>79</cell><cell>54</cell><cell>72</cell><cell>68</cell><cell>1</cell><cell>5</cell><cell>7</cell><cell>12</cell><cell>34</cell></row><row><cell></cell><cell>RF+FairMask</cell><cell>64</cell><cell>67</cell><cell>73</cell><cell>69</cell><cell>2</cell><cell>8</cell><cell>13</cell><cell>19</cell><cell>0</cell></row><row><cell></cell><cell>RF</cell><cell>70</cell><cell>72</cell><cell>93</cell><cell>81</cell><cell>5</cell><cell>7</cell><cell>11</cell><cell>11</cell><cell>14</cell></row><row><cell></cell><cell>RF+Random</cell><cell>67</cell><cell>71</cell><cell>90</cell><cell>79</cell><cell>2</cell><cell>1</cell><cell>8</cell><cell>9</cell><cell>13</cell></row><row><cell></cell><cell>RF+Reweighing</cell><cell>64</cell><cell>77</cell><cell>71</cell><cell>73</cell><cell>8</cell><cell>0</cell><cell>15</cell><cell>26</cell><cell>8</cell></row><row><cell>German: Sex</cell><cell>RF+Fair-SMOTE</cell><cell>58</cell><cell>79</cell><cell>55</cell><cell>65</cell><cell>6</cell><cell>6</cell><cell>9</cell><cell>18</cell><cell>18</cell></row><row><cell></cell><cell>RF+ROC</cell><cell>60</cell><cell>77</cell><cell>56</cell><cell>65</cell><cell>5</cell><cell>4</cell><cell>8</cell><cell>10</cell><cell>44</cell></row><row><cell></cell><cell>RF+FairMask</cell><cell>70</cell><cell>73</cell><cell>92</cell><cell>81</cell><cell>5</cell><cell>4</cell><cell>8</cell><cell>9</cell><cell>0</cell></row><row><cell></cell><cell>RF</cell><cell>80</cell><cell>78</cell><cell>82</cell><cell>80</cell><cell>6</cell><cell>9</cell><cell>26</cell><cell>55</cell><cell>31</cell></row><row><cell></cell><cell>RF+Random</cell><cell>80</cell><cell>77</cell><cell>81</cell><cell>79</cell><cell>7</cell><cell>10</cell><cell>10</cell><cell>21</cell><cell>0</cell></row><row><cell></cell><cell>RF+Reweighing</cell><cell>77</cell><cell>74</cell><cell>79</cell><cell>76</cell><cell>4</cell><cell>2</cell><cell>20</cell><cell>40</cell><cell>3</cell></row><row><cell>Bank: Age</cell><cell>RF+Fair-SMOTE</cell><cell>80</cell><cell>77</cell><cell>82</cell><cell>80</cell><cell>2</cell><cell>6</cell><cell>22</cell><cell>44</cell><cell>13</cell></row><row><cell></cell><cell>RF+ROC</cell><cell>78</cell><cell>80</cell><cell>73</cell><cell>77</cell><cell>4</cell><cell>4</cell><cell>25</cell><cell>59</cell><cell>69</cell></row><row><cell></cell><cell>RF+FairMask</cell><cell>80</cell><cell>78</cell><cell>81</cell><cell>80</cell><cell>5</cell><cell>7</cell><cell>11</cell><cell>22</cell><cell>0</cell></row><row><cell></cell><cell>RF</cell><cell>83</cell><cell>86</cell><cell>78</cell><cell>81</cell><cell>10</cell><cell>6</cell><cell>32</cell><cell>55</cell><cell>7</cell></row><row><cell></cell><cell>RF+Random</cell><cell>83</cell><cell>85</cell><cell>78</cell><cell>81</cell><cell>8</cell><cell>2</cell><cell>24</cell><cell>44</cell><cell>3</cell></row><row><cell></cell><cell>RF+Reweighing</cell><cell>76</cell><cell>71</cell><cell>82</cell><cell>75</cell><cell>11</cell><cell>11</cell><cell>38</cell><cell>54</cell><cell>2</cell></row><row><cell>Health: Age</cell><cell>RF+Fair-SMOTE</cell><cell>84</cell><cell>86</cell><cell>79</cell><cell>82</cell><cell>8</cell><cell>4</cell><cell>28</cell><cell>48</cell><cell>3</cell></row><row><cell></cell><cell>RF+ROC</cell><cell>75</cell><cell>69</cell><cell>77</cell><cell>73</cell><cell>10</cell><cell>2</cell><cell>23</cell><cell>41</cell><cell>97</cell></row><row><cell></cell><cell>RF+FairMask</cell><cell>84</cell><cell>86</cell><cell>79</cell><cell>82</cell><cell>5</cell><cell>4</cell><cell>24</cell><cell>43</cell><cell>0</cell></row><row><cell></cell><cell>RF</cell><cell>82</cell><cell>66</cell><cell>37</cell><cell>47</cell><cell>1</cell><cell>2</cell><cell>2</cell><cell>20</cell><cell>3</cell></row><row><cell></cell><cell>RF+Random</cell><cell>81</cell><cell>65</cell><cell>37</cell><cell>47</cell><cell>1</cell><cell>2</cell><cell>2</cell><cell>18</cell><cell>2</cell></row><row><cell></cell><cell>RF+Reweighing</cell><cell>42</cell><cell>26</cell><cell>88</cell><cell>40</cell><cell>0</cell><cell>0</cell><cell>2</cell><cell>3</cell><cell>0</cell></row><row><cell>Default: Sex</cell><cell>RF+Fair-SMOTE</cell><cell>82</cell><cell>62</cell><cell>42</cell><cell>50</cell><cell>0</cell><cell>2</cell><cell>3</cell><cell>15</cell><cell>2</cell></row><row><cell></cell><cell>RF+ROC</cell><cell>77</cell><cell>49</cell><cell>57</cell><cell>51</cell><cell>0</cell><cell>1</cell><cell>3</cell><cell>13</cell><cell>23</cell></row><row><cell></cell><cell>RF+FairMask</cell><cell>82</cell><cell>65</cell><cell>37</cell><cell>47</cell><cell>0</cell><cell>0</cell><cell>2</cell><cell>16</cell><cell>0</cell></row><row><cell></cell><cell>RF</cell><cell>87</cell><cell>66</cell><cell>39</cell><cell>49</cell><cell>2</cell><cell>7</cell><cell>4</cell><cell>33</cell><cell>1</cell></row><row><cell></cell><cell>RF+Random</cell><cell>86</cell><cell>65</cell><cell>39</cell><cell>49</cell><cell>1</cell><cell>3</cell><cell>2</cell><cell>23</cell><cell>1</cell></row><row><cell></cell><cell>RF+Reweighing</cell><cell>76</cell><cell>40</cell><cell>76</cell><cell>52</cell><cell>1</cell><cell>5</cell><cell>5</cell><cell>14</cell><cell>0</cell></row><row><cell>MEPS: Race</cell><cell>RF+Fair-SMOTE</cell><cell>87</cell><cell>64</cell><cell>47</cell><cell>54</cell><cell>2</cell><cell>5</cell><cell>4</cell><cell>30</cell><cell>2</cell></row><row><cell></cell><cell>RF+ROC</cell><cell>71</cell><cell>35</cell><cell>84</cell><cell>49</cell><cell>1</cell><cell>5</cell><cell>4</cell><cell>13</cell><cell>86</cell></row><row><cell></cell><cell>RF+FairMask</cell><cell>87</cell><cell>67</cell><cell>39</cell><cell>49</cell><cell>1</cell><cell>3</cell><cell>3</cell><cell>25</cell><cell>0</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head>TABLE 6 : Summarized result of RQ2. Each cell is the mean rank across all datasets. Lower ranks are better and highlighted in darker colors. FairMask constantly obtains top ranks in all metrics.</head><label>6</label><figDesc></figDesc><table><row><cell></cell><cell>Accuracy</cell><cell>Precision</cell><cell>Recall</cell><cell>F1 Score</cell><cell>AOD</cell><cell>EOD</cell><cell>SPD</cell><cell>DI</cell><cell>FR</cell></row><row><cell>RF</cell><cell>1.1</cell><cell>1.2</cell><cell>1.9</cell><cell>1.2</cell><cell>2.3</cell><cell>2.8</cell><cell>2.6</cell><cell>3.0</cell><cell>2.9</cell></row><row><cell>RF+Random</cell><cell>1.2</cell><cell>1.2</cell><cell>2.2</cell><cell>1.6</cell><cell>1.6</cell><cell>1.7</cell><cell>1.6</cell><cell>2.3</cell><cell>2.4</cell></row><row><cell>RF+Reweighing</cell><cell>2.3</cell><cell>2.4</cell><cell>1.8</cell><cell>2.2</cell><cell>1.8</cell><cell>1.6</cell><cell>2.1</cell><cell>2.4</cell><cell>2.7</cell></row><row><cell>RF+Fair-SMOTE</cell><cell>1.7</cell><cell>1.6</cell><cell>2.0</cell><cell>1.3</cell><cell>1.7</cell><cell>2.0</cell><cell>2.1</cell><cell>2.4</cell><cell>2.7</cell></row><row><cell>RF+ROC</cell><cell>2.1</cell><cell>2.3</cell><cell>1.9</cell><cell>1.9</cell><cell>1.7</cell><cell>1.9</cell><cell>1.9</cell><cell>1.6</cell><cell>3.4</cell></row><row><cell>RF+FairMask</cell><cell>1.1</cell><cell>1.3</cell><cell>1.9</cell><cell>1.2</cell><cell>1.3</cell><cell>1.4</cell><cell>1.3</cell><cell>1.8</cell><cell>1.0</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_8"><head>TABLE 7 : Result for RQ4: FairMask is designed to be capable of mitigating bias on multiple protected attributes simultaneously. Similar to Table 5, here cells with significantly better results are marked in a darker color.</head><label>7</label><figDesc></figDesc><table><row><cell>Dataset</cell><cell>Method</cell><cell>Protected Attribute</cell><cell>Accuracy</cell><cell>Precision</cell><cell>Recall</cell><cell>F1</cell><cell>AOD</cell><cell>EOD</cell><cell>SPD</cell><cell>DI</cell><cell>FR</cell></row><row><cell></cell><cell>RF</cell><cell>Sex Race</cell><cell>83</cell><cell>72</cell><cell>53</cell><cell>61</cell><cell>8 3</cell><cell>24 10</cell><cell>18 9</cell><cell>78 49</cell><cell>20 9</cell></row><row><cell>Adult</cell><cell>RF+Fair-SMOTE RF+FairMask</cell><cell>Sex Race Sex Race</cell><cell>75 83</cell><cell>49 69</cell><cell>71 52</cell><cell>59 59</cell><cell>6 3 2 0</cell><cell>21 8 6 2</cell><cell>21 10 11 6</cell><cell>54 32 49 34</cell><cell>19 16 0 0</cell></row><row><cell></cell><cell>RF</cell><cell>Sex Race</cell><cell>65</cell><cell>67</cell><cell>73</cell><cell>70</cell><cell>5 2</cell><cell>10 10</cell><cell>14 14</cell><cell>19 20</cell><cell>28 24</cell></row><row><cell>Compas</cell><cell>RF+Fair-SMOTE RF+FairMask</cell><cell>Sex Race Sex Race</cell><cell>65 65</cell><cell>67 66</cell><cell>70 73</cell><cell>68 69</cell><cell>1 3 1 2</cell><cell>6 7 5 9</cell><cell>9 13 9 13</cell><cell>18 17 14 19</cell><cell>20 19 0 0</cell></row></table></figure>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>ACKNOWLEDGEMENTS</head><p>This work was partially funded by a research grant from <rs type="funder">Meta Inc and the Laboratory for Analytical Sciences, North Carolina State University</rs>,</p></div>
+			</div>
+			<listOrg type="funding">
+			</listOrg>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<title level="m" type="main">Uci:default of credit card clients data set</title>
+		<ptr target="https://archive.ics.uci.edu/ml/datasets/default+of+credit+card+clients" />
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Bias in machine learning software: Why? how? what to do</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Chakraborty</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Majumder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Menzies</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3468264.3468537</idno>
+		<ptr target="https://doi.org/10.1145/3468264.3468537" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 29th ACM Joint Meeting on European Software Engineering Conference and Symposium on the Foundations of Software Engineering, ser. ESEC/FSE 2021</title>
+		<meeting>the 29th ACM Joint Meeting on European Software Engineering Conference and Symposium on the Foundations of Software Engineering, ser. ESEC/FSE 2021<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computing Machinery</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="429" to="440" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Procedural justice</title>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">R</forename><surname>Tyler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">A</forename><surname>Lind</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Handbook of justice research in law</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2002">2002</date>
+			<biblScope unit="page" from="65" to="92" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Procedural justice in algorithmic fairness: Leveraging transparency and outcome control for fair algorithmic mediation</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">K</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Jain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><forename type="middle">J</forename><surname>Cha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ojha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Kusbit</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Proceedings of the ACM on Human-Computer Interaction</title>
+		<imprint>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="page" from="1" to="26" />
+			<date type="published" when="2019">2019</date>
+			<publisher>CSCW</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Optimized pre-processing for discrimination prevention</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Calmon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Vinzamuri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">Natesan</forename><surname>Ramamurthy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">R</forename><surname>Varshney ; I. Guyon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">U</forename><forename type="middle">V</forename><surname>Luxburg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Wallach</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Fergus</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Vishwanathan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Garnett</surname></persName>
+		</author>
+		<ptr target="http://papers.nips.cc/paper/6988-optimized-pre-processing-for-discrimination-prevention.pdf" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="volume">30</biblScope>
+			<biblScope unit="page" from="3992" to="4001" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">A survey on bias and fairness in machine learning</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Mehrabi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Morstatter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Saxena</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Lerman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Galstyan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Computing Surveys (CSUR)</title>
+		<imprint>
+			<biblScope unit="volume">54</biblScope>
+			<biblScope unit="issue">6</biblScope>
+			<biblScope unit="page" from="1" to="35" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Data preprocessing techniques for classification without discrimination</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Kamiran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Calders</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Knowledge and Information Systems</title>
+		<imprint>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="1" to="33" />
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<title level="m" type="main">in 2009 2nd international conference on computer, control and communication</title>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+			<publisher>IEEE</publisher>
+			<biblScope unit="page" from="1" to="6" />
+		</imprint>
+	</monogr>
+	<note>Classifying without discriminating</note>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<monogr>
+		<title level="m" type="main">Avoiding discrimination through causal reasoning</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Kilbertus</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Rojas-Carulla</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Parascandolo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Hardt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Janzing</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Sch</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1706.02744</idno>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<monogr>
+		<title level="m" type="main">A causal framework for discovering and removing direct and indirect discrimination</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wu</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1611.07509</idno>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<title level="m" type="main">Uci:adult data set</title>
+		<ptr target="http://mlr.cs.umass.edu/ml/datasets/Adult" />
+		<imprint>
+			<date type="published" when="1994">1994</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<ptr target="https://github.com/propublica/compas-analysis" />
+		<title level="m">propublica/compas-analysis</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<monogr>
+		<title level="m" type="main">Uci:statlog (german credit data) data set</title>
+		<ptr target="https://archive.ics.uci.edu/ml/datasets/Statlog+(German+Credit+Data)" />
+		<imprint>
+			<date type="published" when="2000">2000</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<monogr>
+		<title level="m" type="main">Bank marketing uci</title>
+		<ptr target="https://www.kaggle.com/c/bank-marketing-uci" />
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<title level="m" type="main">Uci:heart disease data set</title>
+		<ptr target="https://archive.ics.uci.edu/ml/datasets/Heart+Disease" />
+		<imprint>
+			<date type="published" when="2001">2001</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<monogr>
+		<title level="m" type="main">Medical expenditure panel survey</title>
+		<ptr target="https://meps.ahrq.gov/mepsweb/" />
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">A computer program used for bail and sentencing decisions was labeled biased against blacks. it&apos;s actually not that clear</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Feller</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Pierson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Corbett-Davies</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Goel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="s">The Washington Post</title>
+		<imprint>
+			<biblScope unit="volume">17</biblScope>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">The comparisons of data mining techniques for the predictive accuracy of probability of default of credit card clients</title>
+		<author>
+			<persName><forename type="first">I.-C</forename><surname>Yeh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C.-H</forename><surname>Lien</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Expert Systems with Applications</title>
+		<imprint>
+			<biblScope unit="volume">36</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="2473" to="2480" />
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Ieee standard review-ethically aligned design: A vision for prioritizing human wellbeing with artificial intelligence and autonomous systems</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Shahriari</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Shahriari</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2017 IEEE Canada International Humanitarian Technology Conference (IHTC)</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="197" to="201" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Directorate-General for Communications Networks, and Technology, Ethics guidelines for trustworthy AI</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>Commission</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Publications Office</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<monogr>
+		<title level="m" type="main">Facebook says it has a tool to detect bias in its artificial intelligence</title>
+		<ptr target="https://qz.com/1268520/facebook-says-it-has-a-tool-to-detect-bias-in-its-artificial-intelligence/" />
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<monogr>
+		<title level="m" type="main">Fate: Fairness, accountability, transparency, and ethics in ai</title>
+		<ptr target="https://www.microsoft.com/en-us/research/group/fate/" />
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Google offers to help others with the tricky ethics of ai</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Simonite</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Ars Technica</title>
+		<imprint>
+			<biblScope unit="volume">29</biblScope>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<monogr>
+		<title level="m" type="main">Acm conference on fairness, accountability, and transparency (acm fat*)</title>
+		<ptr target="https://fatconference.org/" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<monogr>
+		<title level="m" type="main">Explain</title>
+		<ptr target="https://2019.ase-conferences.org/home/explain-2019" />
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Fairway: A way to build fair ml software</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Chakraborty</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Majumder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Menzies</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3368089.3409697</idno>
+		<ptr target="https://doi.org/10.1145/3368089.3409697" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 28th ACM Joint Meeting on European Software Engineering Conference and Symposium on the Foundations of Software Engineering, ser. ESEC/FSE 2020</title>
+		<meeting>the 28th ACM Joint Meeting on European Software Engineering Conference and Symposium on the Foundations of Software Engineering, ser. ESEC/FSE 2020<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computing Machinery</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="654" to="665" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<monogr>
+		<title level="m" type="main">Software engineering for fairness: A case study with hyperparameter optimization</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Chakraborty</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Xia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><forename type="middle">M</forename><surname>Fahid</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Menzies</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Making fair ml software using trustworthy explanation</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Chakraborty</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Peng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Menzies</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3324884.3418932</idno>
+		<ptr target="https://doi.org/10.1145/3324884.3418932" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 35th IEEE/ACM International Conference on Automated Software Engineering, ser. ASE &apos;20</title>
+		<meeting>the 35th IEEE/ACM International Conference on Automated Software Engineering, ser. ASE &apos;20<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computing Machinery</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="1229" to="1233" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Do the machine learning models on a crowd sourced platform exhibit bias? an empirical study on model fairness</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Biswas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Rajan</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3368089.3409704</idno>
+		<ptr target="http://dx.doi.org/10.1145/3368089.3409704" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 28th ACM Joint Meeting on European Software Engineering Conference and Symposium on the Foundations of Software Engineering</title>
+		<meeting>the 28th ACM Joint Meeting on European Software Engineering Conference and Symposium on the Foundations of Software Engineering</meeting>
+		<imprint>
+			<date type="published" when="2020-11">Nov 2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<monogr>
+		<title level="m" type="main">Tl;ds -21 fairness definition and their politics by arvind narayanan</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Narayanan</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Certifying and removing disparate impact</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Feldman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">A</forename><surname>Friedler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Moeller</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Scheidegger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Venkatasubramanian</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">proceedings of the 21th ACM SIGKDD international conference on knowledge discovery and data mining</title>
+		<meeting>the 21th ACM SIGKDD international conference on knowledge discovery and data mining</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="259" to="268" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<monogr>
+		<title level="m" type="main">Fairness without the sensitive attribute via causal variational autoencoder</title>
+		<author>
+			<persName><forename type="first">V</forename><surname>Grari</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Lamprier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Detyniecki</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2109.04999</idno>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Fairness-aware classifier with prejudice remover regularizer</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Kamishima</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Akaho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Asoh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Sakuma</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Machine Learning and Knowledge Discovery in Databases</title>
+		<editor>
+			<persName><forename type="first">P</forename><forename type="middle">A</forename><surname>Flach</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">T</forename><forename type="middle">De</forename><surname>Bie</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">N</forename><surname>Cristianini</surname></persName>
+		</editor>
+		<meeting><address><addrLine>Berlin, Heidelberg; Berlin Heidelberg</addrLine></address></meeting>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2012">2012</date>
+			<biblScope unit="page" from="35" to="50" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Taking advantage of multitask learning for fair classification</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Oneto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Doninini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Elders</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Pontil</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 AAAI/ACM Conference on AI, Ethics, and Society</title>
+		<meeting>the 2019 AAAI/ACM Conference on AI, Ethics, and Society</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="227" to="237" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Maat: A novel ensemble approach to addressing fairness and performance bugs for machine learning software</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">M</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Sarro</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Harman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 30th ACM Joint European Software Engineering Conference and Symposium on the Foundations of Software Engineering (ES-EC/FSE&apos;22)</title>
+		<meeting>the 30th ACM Joint European Software Engineering Conference and Symposium on the Foundations of Software Engineering (ES-EC/FSE&apos;22)</meeting>
+		<imprint>
+			<publisher>ACM Press</publisher>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Decision theory for discriminationaware classification</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Kamiran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Karim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2012 IEEE 12th International Conference on Data Mining</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2012">2012</date>
+			<biblScope unit="page" from="924" to="929" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Exploiting reject option in classification for social discrimination control</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Kamiran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Mansha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Karim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Inf. Sci</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">A unified approach to interpreting model predictions</title>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">M</forename><surname>Lundberg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S.-I</forename><surname>Lee</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="4765" to="4774" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Flexibly fair representation learning by disentanglement</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>Creager</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Madras</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J.-H</forename><surname>Jacobsen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Weis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Swersky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Pitassi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Zemel</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International conference on machine learning</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="1436" to="1445" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<monogr>
+		<title level="m" type="main">Readme: Representation learning by fairness-aware disentangling method</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Park</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Hwang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Byun</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2007.03775</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Fairness-aware learning through regularization approach</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Kamishima</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Akaho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Sakuma</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2011 IEEE 11th International Conference on Data Mining Workshops</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="page" from="643" to="650" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Handling conditional discrimination</title>
+		<author>
+			<persName><forename type="first">I</forename><surname>Žliobaite</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Kamiran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Calders</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2011 IEEE 11th International Conference on Data Mining</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="page" from="992" to="1001" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">Smote: Synthetic minority over-sampling technique</title>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">V</forename><surname>Chawla</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">W</forename><surname>Bowyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">O</forename><surname>Hall</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">P</forename><surname>Kegelmeyer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">J. Artif. Int. Res</title>
+		<imprint>
+			<date type="published" when="2002">2002</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<monogr>
+		<title level="m" type="main">Ai fairness 360: An extensible toolkit for detecting, understanding, and mitigating unwanted algorithmic bias</title>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">K</forename><surname>Bellamy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Dey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Hind</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">C</forename><surname>Hoffman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Houde</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Kannan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Lohia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Martino</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Mehta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Mojsilovic</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1810.01943</idno>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">Optimized pre-processing for discrimination prevention</title>
+		<author>
+			<persName><forename type="first">F</forename><forename type="middle">P</forename><surname>Calmon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Vinzamuri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">N</forename><surname>Ramamurthy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">R</forename><surname>Varshney</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 31st International Conference on Neural Information Processing Systems</title>
+		<meeting>the 31st International Conference on Neural Information Processing Systems</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="3995" to="4004" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<title level="a" type="main">Automated feature engineering for algorithmic fairness</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Salazar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Neutatz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Abedjan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the VLDB Endowment</title>
+		<meeting>the VLDB Endowment</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="volume">14</biblScope>
+			<biblScope unit="page" from="1694" to="1702" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<analytic>
+		<title level="a" type="main">Local versus global lessons for defect prediction and effort estimation</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Menzies</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Butcher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Marcus</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Cok</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Shull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Turhan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Zimmermann</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on software engineering</title>
+		<imprint>
+			<biblScope unit="volume">39</biblScope>
+			<biblScope unit="issue">6</biblScope>
+			<biblScope unit="page" from="822" to="834" />
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<monogr>
+		<title level="m" type="main">Sharing data and models in software engineering</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Menzies</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Kocaguneli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Turhan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Minku</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Peters</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<publisher>Morgan Kaufmann</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<monogr>
+		<title level="m" type="main">Equality of opportunity in supervised learning</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Hardt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Price</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Srebro</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<monogr>
+		<title level="m" type="main">On fairness and calibration</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Pleiss</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Raghavan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kleinberg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">Q</forename><surname>Weinberger</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1709.02012</idno>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<analytic>
+		<title level="a" type="main">White-box fairness testing through adversarial sampling</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">S</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Dai</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the ACM/IEEE 42nd International Conference on Software Engineering</title>
+		<meeting>the ACM/IEEE 42nd International Conference on Software Engineering</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="949" to="960" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b51">
+	<analytic>
+		<title level="a" type="main">Ranking and clustering software cost estimation models through a multiple comparisons algorithm</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Mittas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Angelis</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on software engineering</title>
+		<imprint>
+			<biblScope unit="volume">39</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="537" to="551" />
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b52">
+	<monogr>
+		<author>
+			<persName><forename type="first">T</forename><surname>Xia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Krishna</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Mathew</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Shen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Menzies</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1805.00336</idno>
+		<title level="m">Hyperparameter optimization for effort estimation</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b53">
+	<analytic>
+		<title level="a" type="main">Cliff&apos;s delta calculator: A non-parametric effect size program for two groups of observations</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Macbeth</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Razumiejczyk</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">D</forename><surname>Ledesma</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Universitas Psychologica</title>
+		<imprint>
+			<biblScope unit="volume">10</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="545" to="555" />
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b54">
+	<monogr>
+		<title level="m" type="main">Robust confidence intervals for effect sizes: A comparative study of cohen&apos;sd and cliff&apos;s delta under non-normality and heterogeneous variances</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">R</forename><surname>Hess</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">D</forename><surname>Kromrey</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2004">2004</date>
+			<publisher>American Educational Research Association</publisher>
+			<biblScope unit="page" from="1" to="30" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b55">
+	<analytic>
+		<title level="a" type="main">Fairness testing: testing software for discrimination</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Galhotra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Brun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Meliou</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3106237.3106277</idno>
+		<ptr target="http://dx.doi.org/10.1145/3106237.3106277" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2017 11th Joint Meeting on Foundations of Software Engineering -ESEC/FSE 2017</title>
+		<meeting>the 2017 11th Joint Meeting on Foundations of Software Engineering -ESEC/FSE 2017</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b56">
+	<monogr>
+		<title level="m" type="main">Mitigating unwanted biases with adversarial learning</title>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">H</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Lemoine</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Mitchell</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b57">
+	<analytic>
+		<title level="a" type="main">Distributive justice, equity, and equality</title>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">S</forename><surname>Cook</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">A</forename><surname>Hegtvedt</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Annual review of sociology</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="217" to="241" />
+			<date type="published" when="1983">1983</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b58">
+	<analytic>
+		<title level="a" type="main">Procedural justice</title>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">B</forename><surname>Solum</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">S. CAl. l. reV</title>
+		<imprint>
+			<biblScope unit="volume">78</biblScope>
+			<biblScope unit="page">181</biblScope>
+			<date type="published" when="2004">2004</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b59">
+	<analytic>
+		<title level="a" type="main">The importance of procedural justice in human-machine interactions: Intelligent systems as new decision agents in organizations</title>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">K</forename><surname>Ötting</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><forename type="middle">W</forename><surname>Maier</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Computers in Human Behavior</title>
+		<imprint>
+			<biblScope unit="volume">89</biblScope>
+			<biblScope unit="page" from="27" to="39" />
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b60">
+	<analytic>
+		<title level="a" type="main">Building classifiers with independency constraints</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Calders</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Kamiran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Pechenizkiy</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2009 IEEE International Conference on Data Mining Workshops</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2009">2009</date>
+			<biblScope unit="page" from="13" to="18" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b61">
+	<analytic>
+		<title level="a" type="main">Techniques for discriminationfree predictive models</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Kamiran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Calders</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Pechenizkiy</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Discrimination and privacy in the information society</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page" from="223" to="239" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b62">
+	<analytic>
+		<title level="a" type="main">Parametrised data sampling for fairness optimisation</title>
+		<author>
+			<persName><forename type="first">V</forename><surname>Zelaya</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Missier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Prangle</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">KDD</title>
+		<imprint>
+			<biblScope unit="volume">XAI</biblScope>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b63">
+	<analytic>
+		<title level="a" type="main">Classification with no discrimination by preferential sampling</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Kamiran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Calders</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. 19th Machine Learning Conf. Belgium and The Netherlands. Citeseer</title>
+		<meeting>19th Machine Learning Conf. Belgium and The Netherlands. Citeseer</meeting>
+		<imprint>
+			<biblScope unit="page" from="1" to="6" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

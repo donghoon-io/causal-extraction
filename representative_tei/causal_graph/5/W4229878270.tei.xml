@@ -1,0 +1,775 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Knowledge-Aware Graph-Enhanced GPT-2 for Dialogue State Tracking</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Weizhe</forename><surname>Lin</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Engineering</orgName>
+								<orgName type="institution">University of Cambridge</orgName>
+								<address>
+									<country key="GB">United Kingdom</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Bo-Hsiang</forename><surname>Tseng</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Engineering</orgName>
+								<orgName type="institution">University of Cambridge</orgName>
+								<address>
+									<country key="GB">United Kingdom</country>
+								</address>
+							</affiliation>
+						</author>
+						<author role="corresp">
+							<persName><forename type="first">Bill</forename><surname>Byrne</surname></persName>
+							<email>bill.byrne@eng.cam.ac.uk</email>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Engineering</orgName>
+								<orgName type="institution">University of Cambridge</orgName>
+								<address>
+									<country key="GB">United Kingdom</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Knowledge-Aware Graph-Enhanced GPT-2 for Dialogue State Tracking</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-14T18:25+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Dialogue State Tracking is central to multidomain task-oriented dialogue systems, responsible for extracting information from user utterances. We present a novel hybrid architecture that augments GPT-2 with representations derived from Graph Attention Networks in such a way to allow causal, sequential prediction of slot values. The model architecture captures inter-slot relationships and dependencies across domains that otherwise can be lost in sequential prediction. We report improvements in state tracking performance in Mul-tiWOZ 2.0 against a strong GPT-2 baseline and investigate a simplified sparse training scenario in which DST models are trained only on session-level annotations but evaluated at the turn level. We further report detailed analyses to demonstrate the effectiveness of graph models in DST by showing that the proposed graph modules capture inter-slot dependencies and improve the predictions of values that are common to multiple domains.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>This paper investigates two aspects of dialogue state tracking (DST) for multi-domain taskoriented dialogue <ref type="bibr" target="#b0">(Budzianowski et al., 2018)</ref>. We present a novel hybrid architecture that augments GPT-2 <ref type="bibr" target="#b12">(Radford et al., 2019)</ref> with dialogue act representations derived from Graph Attention Networks (GATs) <ref type="bibr" target="#b14">(Veličković et al., 2018)</ref> in such a way that allows causal, sequential prediction of slot values while explicitly modelling the relationships between slots and values across domains. Our approach uses GATs to improve predictions of values that are shared across domain-slots and that might otherwise be treated independently. As a related line of work, we investigate a form of sparsely supervised DST training and find that our hybrid architecture offers improved robustness with weak supervision.</p><p>DST can be improved by modelling the relationship between slots and values across domains. This has been explored recently by <ref type="bibr" target="#b20">Zhou and Small (2019)</ref> who suggest three types of relationships between domain-slots pairs that can be modelled explicitly: (1) pairs that share the same candidate set, such as &lt;restaurant-bookday&gt; and &lt;hotel-bookday&gt;; (2) pairs whose candidate values are subsets, as could happen with &lt;restaurant-name&gt; and &lt;taxi-destina tion&gt; if the candidate set of the first belongs to that of the second; and (3) correlated values between domain-slot pairs, such as when the 'star' level of a booked hotel correlates with the price range of a reserved restaurant.</p><p>Graph Neural Networks (GNNs) have been proposed to captures the interactions among slots and values and to improve DST performance <ref type="bibr" target="#b20">(Zhou and Small, 2019;</ref><ref type="bibr" target="#b1">Chen et al., 2020;</ref><ref type="bibr" target="#b16">Wu et al., 2020)</ref>. These relationships can be represented as edges in graph-based models, where domains, slots, and values are nodes in the graphs. However previous work has not explored quantitatively or in depth how graph models utilize the relationships they model. <ref type="bibr" target="#b1">Chen et al. (2020)</ref> and <ref type="bibr" target="#b16">Wu et al. (2020)</ref> provide example cases where the predictions of correlated values were potentially enhanced by their model, while <ref type="bibr" target="#b20">Zhou and Small (2019)</ref> and <ref type="bibr" target="#b21">Zhu et al. (2020)</ref> present ablation studies showing marginal improvements brought by their graph modules. <ref type="bibr" target="#b21">Zhu et al. (2020)</ref> and <ref type="bibr" target="#b16">Wu et al. (2020)</ref> further show joint accuracies over different dialogue turns, but there is more that can be said about how GATs can improve DST. One of the aims of this paper is to more deeply analyze how graph models can lead to improved DST on top of an already good GPT-2 baseline system.</p><p>Graph models may also compensate for some potential drawbacks associated with using generative models for DST. As a well-known generative model, GPT-2 offers powerful, left-to-right generation incorporating a causal attention mechanism. We note that <ref type="bibr" target="#b4">Hosseini-Asl et al. (2020)</ref> have demonstrated that GPT-2 can identify slot values as a prediction task, with variable length token sequences produced sequentially with interspersed special tokens indicating slot boundaries. The ability to easily generate token sequences of arbitrary lengths is a valuable feature of the model, although it may come at the expense of modelling power relative to models with non-causal attention mechanisms, such as BERT <ref type="bibr" target="#b2">(Devlin et al., 2019;</ref><ref type="bibr" target="#b13">Shan et al., 2020)</ref>. In particular, GPT-2's causality requires that the prediction of later slot values can depend explicitly on previously predicted slot values, but that the reverse is not possible. This can lead to decreased performance in predicting slot values that occur early on. We find that augmenting GPT-2 prediction with representations derived from GATs allows some sharing of information between slots prior to prediction to improve this GPT-2 limitation.</p><p>Capturing the relationships of slot values across domains also offers the opportunity to make better use of limited training data, particularly in sparsely supervised and weakly supervised scenarios <ref type="bibr" target="#b10">(Liang et al., 2021)</ref>. In a 'Last Turn' annotation scenario, annotations are available only for the final turn of a task-oriented dialogue. This is unlike the fullyannotated MultiWOZ setting, which offers turnlevel annotations throughout the entire dialogue session. As an annotation option, generating summary annotations at the completion of a recorded session is an attractive alternative to creating a detailed, turn-by-turn annotation of the entire dialogue <ref type="bibr" target="#b10">(Liang et al., 2021)</ref>. If it is possible to use only these session-level annotations to train a DST system that still achieves acceptable tracking performance, the chore of creating new annotated DST datasets could be made much easier. The challenges in using this summary data are significant, however. Using only the final-turn annotations in MultiWOZ 2.0 reduces the training set to 14.3% of its original size (in annotated turns).</p><p>We summarize the contributions of our work as follows:</p><p>(1) We propose a novel hybrid architecture that integrates GPT-2 with Graph Attention Networks (GATs) for dialogue state tracking. The model is shown to be robust when training samples are significantly reduced under sparse supervision.</p><p>(2) We demonstrate that our architecture also mit-igates a limitation of DSTs based on GPT-2 alone, associated with generating domain-slot values in a Left-to-Right manner.</p><p>(3) We investigate how knowledge-aware models capture relationships between domain-slots and show how using graphs can improve prediction of inter-dependent slot values.</p><p>While we do show DST accuracy improvements over a strong GPT-2 baseline, we emphasise that our aim is mainly to investigate and improve prediction of domain-slot values using relationships that otherwise are left unmodelled by the baseline.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Related Work</head><p>Statistical DST prioritises general and extensible systems based on machine-learning architectures <ref type="bibr" target="#b15">(Wu et al., 2019;</ref><ref type="bibr" target="#b19">Zhang et al., 2019;</ref><ref type="bibr" target="#b6">Huang et al., 2020;</ref><ref type="bibr" target="#b8">Lee et al., 2020)</ref>. Systems must be able to predict slot values from domain-specific lists such as list of hotel names as well as from more open-ended categories such as days, prices, and times. Recent trends are to combine several strategies to deal differently with the two types of values <ref type="bibr" target="#b19">(Zhang et al., 2019;</ref><ref type="bibr" target="#b20">Zhou and Small, 2019;</ref><ref type="bibr" target="#b3">Heck et al., 2020)</ref>. For example, <ref type="bibr" target="#b19">Zhang et al. (2019)</ref> combine a span predictor for non-enumerable slot values and a cosine similarity matching that exploits a BERT model to extract representations for enumerable slot values, with a dual-strategy model jointly handling both types of slot values; Zhou and Small (2019) use both a span predictor and a candidate classifier and combine their predictions with gating functions. Our work is based on GPT-2 and we note that generative models such as GPT-2 are less widely used in DST tasks, possibly because they raise additional challenges for information aggregation subject to the causality, as discussed in Sec. 1. However these recent results show that these models can yield competitive DST accuracy <ref type="bibr" target="#b4">(Hosseini-Asl et al., 2020;</ref><ref type="bibr" target="#b17">Yang et al., 2021)</ref> .</p><p>Previous work has addressed sharing information between slots either by explicitly copying values <ref type="bibr" target="#b11">(Ouyang et al., 2020;</ref><ref type="bibr" target="#b3">Heck et al., 2020)</ref> or by sharing embeddings <ref type="bibr" target="#b5">(Hu et al., 2020;</ref><ref type="bibr" target="#b20">Zhou and Small, 2019;</ref><ref type="bibr" target="#b1">Chen et al., 2020)</ref>. Beyond copying and sharing, as we note in Sec. 1 <ref type="bibr" target="#b20">Zhou and Small (2019)</ref> developed a graph attention network, and Chen et al., 2020 also developed a schema-guided multi-domain approach embedding slot relations in edges of graph neural networks. <ref type="bibr" target="#b21">Zhu et al. (2020)</ref> enhanced a strong base model SOM-DST <ref type="bibr" target="#b7">(Kim et al., 2020)</ref> with a schema graph to exploit relations among domain-slots. GCDST <ref type="bibr" target="#b16">(Wu et al., 2020)</ref> uses a state graph to transfer domain-slot features and hard-copy states directly from historical states.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Graph Neural Networks</head><p>In this section we review Graph Attention Networks (GATs) <ref type="bibr" target="#b14">(Veličković et al., 2018;</ref><ref type="bibr" target="#b9">Li et al., 2021)</ref> as will be used in this paper.</p><p>A weighted undirected graph at each dialogue turn t is defined as G = (V, E) with a node set V consisting of N nodes {v i }, and an edge set E containing all edges between nodes. We define an N × N binary symmetric adjacency matrix S, where</p><formula xml:id="formula_0">[S] ij = 0 if (v i , v j ) /</formula><p>∈ E and 1 otherwise. Associated with each node v i are feature vectors x i ∈ R F . These are gathered into matrices X of dimension N × F , where F is the input feature size.</p><p>Note that SX is mathematically equivalent to passing the features of each graph node to its neighbours. In this way S k X = S(S k-1 X) is equivalent to k rounds of feature exchanges with neighbours. As illustrated in Fig. <ref type="figure" target="#fig_0">1</ref>, k = 0 is self-connection, while k &gt; 0 aggregates features from k nodes away.</p><p>A GAT layer transforms an input X ∈ R N ×F to an output G(X) ∈ R N ×G as follows. Each K-hop GAT layer consists of P attention heads A (p) which incorporate k = 0, ..., K -1 rounds of feature aggregation (as shown in Fig. <ref type="figure" target="#fig_0">1</ref>) across the graph as</p><formula xml:id="formula_1">A (p) (X; S) = K-1 k=0 (E S) k XA (p) k G(X) = 1 P P p=1 σ A (p) (X; S) ,<label>(1)</label></formula><p>where the {A (p) k } K-1 k=0 are R F ×G linear feature transforms and σ(.) is a non-linear activation function. The values of the N × N attention matrix E are computed over X as</p><formula xml:id="formula_2">[E] ij = exp (LeakyReLU (e ij )) k∈N i exp (LeakyReLU (e ik )) e ij = (x i ) Q (p) x j ,<label>(2)</label></formula><p>where N i are the neighbouring nodes of node v i , and Q (p) are trainable F × F matrices used in computing attention. In this way a GAT layer aggregates features selectively by assigning dynamic weights to graph edges based on the input node features.</p><p>GATs are formed as a cascade of L GAT layers G , each with its own multi-headed graph attention mechanisms A p . At time t, the GAT transforms a set of input features X (0)</p><formula xml:id="formula_3">t to a set of output features X (L) t as X ( ) t = G (X ( -1) t ) for = 1, . . . , L<label>(3)</label></formula><p>Note that in this paper, we set output dimension G = F for all GAT layers such that the GAT output features have the same dimensions as the input.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Dialogue State Tracking with GPT-2 and Graph Neural Networks</head><p>We take a three-step approach to incorporating GNNs into GPT-2 for dialogue state tracking (see Fig <ref type="figure" target="#fig_1">2</ref>). At each turn we first present GPT-2 with the dialogue history to generate features for all possible domain-slots and values in the ontology. These features are then fed into a GAT which captures relationships amongst domain-slots and values. The features produced at the output layer of the GAT are then incorporated into a second application of GPT-2 which performs the actual prediction of the dialogue state values.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Domain-Slot and Value Embeddings</head><p>The first step is to extract features of both domainslots and values in the ontology. The dialogue history H t at turn t is a concatenation of user utterances and system responses, separated with special tokens:</p><formula xml:id="formula_4">H t = 'u t &lt;SYS&gt; s t-1 &lt;USR&gt; u t-1 ... &lt;SYS&gt; s 1 &lt;USR&gt; u 1 '.</formula><p>From the ontology, we construct a string for all domain-slots as follows: F = 'hotel name &lt;hotel-name&gt; taxi departure &lt;taxi-departure&gt;...' . The string F contains all domain-slots in the ontology and does not change with samples. The domain-slots appear in a fixed order and each is preceded by a brief text description to provide context to GPT-2 in producing features.</p><p>To produce domain-slot features at dialogue turn t, the string 'H t &lt;BOC&gt; F ' is presented to GPT-2. Since the domain-slots are fixed and appear in a prescribed order in F , there is a straightforward link between the positions of domain-slots in the input and their embeddings in the GPT-2 output layer. For example, the feature for &lt;taxi-depature&gt; can be found in the same position of the output embedding sequence as that domain-slot appears in the input, as shown by arrows in Fig. <ref type="figure" target="#fig_1">2</ref> x: Preextraction.</p><p>To produce embeddings for all possible values in the ontology at turn t the embedding layer of the GPT-2 is used. Therefore, this representation is fixed from turn to turn until the embedding layer is updated in back propagation. Some values may consist of multiple tokens, e.g. 'Demo Hotel' for the domain-slot &lt;hotel-name&gt;. A single vector for each multi-token value is found by averaging the features of each token.</p><p>At dialogue turn t, the domain-slot features and the value features are gathered into matrices X s t ∈ R Ns×h and X v t ∈ R Nv×h , where there are N v values and N s domain-slots, and h is the size of the hidden layer of the GPT-2 Transformer.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Inter-slot Information Exchange</head><p>We will use two types of GATs: DSGraph and DSVGraph. In DSGraph, there are N s nodes, each representing a domain-slot pair. All nodes are connected to each other to allow nodes to exchange features as shown in Fig. <ref type="figure" target="#fig_1">2</ref> y (a). In DSVGraph, there are N s domain-slot nodes and N v value nodes, each of the latter representing a possible value. If a value is in the candidate set of a domain-slot pair, then the corresponding value node and domain-slot node are connected, as shown in Fig. <ref type="figure" target="#fig_1">2</ref> y (b). The domain-slot nodes are not otherwise connected.</p><p>With features for domain-slots and values extracted in Sec. 4.1, we use GATs to transform the features to capture the relationships between domain-slots and values. The inputs to the GATs are</p><formula xml:id="formula_5">X (0) t = X s t ∈ R Ns×h in DSGraph, X s t ||X v t ∈ R (Ns+Nv)×h in DSVGraph .</formula><p>We use only the resulting domain-slot embeddings after graph operations, and thus we extract the first N s items of the output tensor X (L) t</p><p>and gather them into a matrix G t ∈ R Ns×h .</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">Dialog State Prediction</head><p>Finally, we present the string 'H t &lt;BOS&gt;' to the GPT-2 model to predict the dialogue state. The model is required to generate output Y t , a sequence of tokens of serialized domain-slot pairs and corresponding values: Y t = 'hotel name Demo Hotel &lt;SEP&gt; taxi departure 18 : 00 &lt;SEP&gt; ... &lt;EOS&gt;'. The model is trained to generate the name of each domain-slot, its predicted value, and finally a separation token &lt;SEP&gt; before proceeding to the prediction of the next domain-slot. Note that the value 'none' is generated for empty/not mentioned domain-slot values and thus all slots will be generated regardless of whether they have values. After producing values for all domain-slots, the model generates an &lt;EOS&gt; to end the generation process. In practice, we find that the model never omits any of the N s domain-slot pairs during generation, further confirming GPT-2's ability to produce structured output. An example of input/output is at the bottom of Fig. <ref type="figure" target="#fig_1">2</ref> z: Generation.</p><p>Decoding: In generation the model incorporates the GAT features G t [i] ∈ R h as shown by the pink arrows in Fig. <ref type="figure" target="#fig_1">2</ref> z: Generation. When predicting the value of the i th domain-slot (in this example the domain-slot is hotel-name), the GPT-2 features used for token decoding are concatenated with the domain-slot features G t [i] from the output of the GATs. The prediction of the value for each domainslot will incorporate the domain-slot features produced by the GATs. When predicting tokens that are not related to value predictions (black arrows in the figure), an all-zero tensor is concatenated to keep consistency. The input dimension of the linear layer in decoding is extended to accommodate the GAT features in concatenation.</p><p>Fine-tuning: Fine-tuning of GPT-2 for Multi-WOZ is done in the usual way. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Experiments</head><p>We report dialogue state tracking performance on MultiWOZ 2.0 <ref type="bibr" target="#b0">(Budzianowski et al., 2018)</ref> with its multi-domain goal-oriented dialogue conversations and annotations. For direct comparison to the previous literature, we use the same preprocessing as <ref type="bibr" target="#b15">Wu et al. (2019)</ref> and <ref type="bibr" target="#b20">Zhou and Small (2019)</ref>. Two metrics are used for evaluating the model performance:</p><p>Slot Accuracy measures the ratio of successful slot value predictions among all the slots of each dialogue turn in ground-truth.</p><p>Joint Goal Accuracy compares the predicted belief state to the ground truth at every dialogue turn, and the output is considered correct only if all the predicted slot values exactly match the ground truth values.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1">Baseline Performance</head><p>We take the performance of several recently published systems as points for comparison: TRADE <ref type="bibr" target="#b15">(Wu et al., 2019)</ref>, DST-Picklist <ref type="bibr" target="#b19">(Zhang et al., 2019)</ref>, and SUMBT+LaRL <ref type="bibr" target="#b8">(Lee et al., 2020)</ref>. These models employ transfer learning, classification with a mixed strategy, and reinforcement learning, respectively. As discussed in Sec. 2, we also compare our model to Graph-based DSTs: SOM-DST+SG <ref type="bibr" target="#b21">(Zhu et al., 2020)</ref>, GCDST <ref type="bibr" target="#b16">(Wu et al., 2020)</ref>, and SST <ref type="bibr" target="#b1">(Chen et al., 2020)</ref>.</p><p>In addition, we consider two models as most relevant baselines, and we have attempted to reproduce their results for inclusion here<ref type="foot" target="#foot_0">foot_0</ref> :</p><p>DSTQA* (Zhou and Small, 2019)<ref type="foot" target="#foot_1">foot_1</ref> : A bi-LSTM-based DST model utilizing a graph attention network to capture inter-slot relationships, which motivates the architecture introduced in this paper.</p><p>SimpleTOD* (Hosseini-Asl et al., 2020)<ref type="foot" target="#foot_2">foot_2</ref> : A GPT-2-based dialogue state tracker, which is similar to our base model, without graph enhancement.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2">Training Regimes</head><p>We investigate two training scenarios. The first approach is fully supervised at the level of individual turns, following the common practice (e.g. Hosseini-Asl et al.( <ref type="formula">2020</ref>)). The second approach is Sparsely-Supervised Training, in which training is at the entire dialogue level, i.e. including only the dialogue state labels at the final turn without their intermediate states during the session, but with the previous dialogue turns included as history (shown in Fig. <ref type="figure" target="#fig_2">3</ref>). The two components,   GPT-2 and GAT, are jointly trained. More details are in Appendix A.2. Under sparse supervision, the training set is reduced from 54, 971 turns to only last-turn samples 7, 884 (14.3%); validation utilizes only last-turn samples, as well. Note that evaluation is performed with the standard, Multi-WOZ test set (7, 372 samples) for models trained under either regime. For comparison, we produced the results of DSTQA* and SimpleTOD* using the same last-turn samples. These are denoted with a "-LastTurn" suffix as in Table <ref type="table" target="#tab_2">1b</ref>.</p><p>We denote the configurations of GAT with "L{_}P{_}K{_}-[Graph_Type]" format, filling in number of layers L, number of heads per layer P , and number of hops K.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">DST Performance</head><p>We first compare our model with baseline systems.</p><p>As shown in Table 1a, L0P0K0-NoGraph, which has no graph enhancement, achieves higher joint accuracy than most of the baseline models including the graph-based models such as GCDST and SOM-DST+SG, setting a strong baseline for further improvement to GPT-2-based generation. L4P4K2-* models, with multiple GAT layers to encourage inter-slot information exchange, show significantly better performance. L4P4K2-DSGraph achieves 54.86% in joint accuracy, highest amongst these systems.</p><p>In the sparsely-supervised scenario, the performance of the baseline GPT-2 model drops to 48.07% joint accuracy (L0P0K0-NoGraph, Table <ref type="table" target="#tab_2">1b</ref>). Incorporating GAT in the system (L4P4K2-DSGraph-LastTurn) achieves 50.43% in joint accuracy, leading to a 3% degradation relative to L0P0K0-NoGraph fine-tuned with the full set of annotated dialogue turns. By contrast, DSTQA * -LastTurn, which utilizes bidirectional LSTM modules, exhibits a sharp performance decrease to 22.88% joint accuracy; we hypothesize this that the LSTM-based model can not annotate short dialogue samples well having been fine-tuned only with the last-turn samples which have relatively longer dialogue history and annotations.</p><p>The sparsely supervised scenario further shows the value of augmenting GPT-2 with representations derived from GATs (Table <ref type="table" target="#tab_2">1b</ref>). Relative to the base system (Model 3, Table <ref type="table" target="#tab_2">1b</ref>), L1P1K2-DSVGraph-LastTurn (Model 5) improves accuracy by incorporating GAT representations in which slot nodes depend on only value nodes. When the number of hops is increased, slot nodes influence each other via intermediate value nodes, yielding further improvement (Models 6,8).</p><p>However, multiple GAT layers (L = 4, P = 4, Models 7,8,9, Table <ref type="table" target="#tab_2">1b</ref>) do not differ much in performance, showing that dependencies between slots nodes and values can be captured with sufficient layers (thus effectively more hops of information exchange) and attention heads. In particular, although the number of hops (K) is relatively small, feature passing between distant nodes can occur from layer to layer.</p><p>We summarize our findings as below:</p><p>(1) Through modelling values nodes, the DSVGraph is able to capture dependencies between slots that share values, resulting in a slight improvement over the DSGraph when the number of layers/hops are limited (Table <ref type="table" target="#tab_2">1b</ref> Model 5, 6 v.s. Model 4).</p><p>(2) With sufficient layers of GATs, DSGraph compensates for the lack of explicit value nodes and matches and sometimes outperforms the performance of DSVGraph, but this is at the cost of additional modelling complexity (comparing Table <ref type="table" target="#tab_2">1b</ref> Model 8, 9 and Model 7). Understanding these trade-offs will be helpful in applying these models in larger, more complex domains.</p><p>In the following sections (Sec. 6.1, 6.2, and 6.3), we investigate how graph modules improve the performance of the base fine-tuned GPT-2 model.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.1">GATs capture inter-slot dependencies</head><p>The accuracy of each domain-slot of several models is shown in Fig. <ref type="figure" target="#fig_3">4</ref>. The horizontal axis follows the serialization order of domain-slot pairs in the model output. As discussed in Sec. 1, when predicting &lt;restaurant-area&gt; (position 14), the causal GPT-2 model is able to condition on what has been predicted for &lt;attraction-area&gt; (position 1), but not the other direction, possibly incurring decreased performance for earlier slots. After introducing graph modules this effect of causality is mitigated. For example, as shown in Fig. <ref type="figure" target="#fig_3">4</ref>, the slot accuracy of "attraction" domain is always boosted by graph-enhanced models (green and yellow). We further note that these graph-enhanced models perform generally better in those intuitively correlated slots (e.g. &lt;hotel-pricerange&gt; and &lt;restaurant-pricerange&gt;). We conclude that graph-based inter-slot dependencies are beneficial to such GPT-2-based generation models.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.2">GATs improve the predictions at intermediate dialogue turns</head><p>It is important to analyze what impact the last-turn training brings to the predictions at intermediate turns, and how graph modules improve them. A dialogue session might run for 3-4 turns to complete a single task, or up to 18 turns to complete a complex task (e.g. booking a train, taxi, and hotel in the same session). Starting from 0% (the first turn) to 100% (the last turn), we report the prediction accuracy of all slots as the dialogue progresses. As shown in Fig. <ref type="figure" target="#fig_4">5</ref>, the baseline model trained with all training samples (L4P4K2-DSGraph) shows a downward trend in prediction accuracy as the dialogue progresses. This agrees with our observation that as dialogue progresses, the domain-slot prediction task becomes larger and more complex (e.g. time-related slots such as taxi-arriveBy are known to be difficult and tend to appear late in a session).</p><p>Comparing L4P4K2-DSGraph (blue) and L0P0K0-NoGraph-LastTurn (yellow), the performance throughout the dialogue sessions lags by around 5% in joint accuracy. When graph modules are introduced in models such as L4P4K2-DSGraph-LastTurn and L4P4K2 -DSVGraph-LastTurn, the system performance in the latter half of the dialogue degrades much less. For instance, when towards the end of dialogues (progress higher than 80%), the difference in joint accuracy of L4P4K2-DSGraph (blue) and L4P4K2-DSGraph-LastTurn (brown) is less than 2%. Graph-enhanced models significantly improve the performance in the latter halves of dialogues. A possible reason is that, as  the dialogue proceeds, more values are specified and correlated domain-slots appear together more frequently, which enables graph modules to exploit the dependencies between slots.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.3">GATs improve the predictions of correlated slots</head><p>We investigate these inter-slot dependencies and to what extent they affect our graph models.</p><p>For every pair of value candidates under two distinct slots (e.g. &lt;hotel-people&gt;:3 and &lt;restaurant-people&gt;:3 form a value pair), we measure the correlation of the two values using Jaccard similarity coefficient <ref type="bibr" target="#b18">(Zhang and Srihari, 2003)</ref>. Jaccard score of two sets C 1 and C 2 is defined as: For each value pair, we flag their occurrences in the turn-level test set samples where both of their corresponding slots have non-empty annotations. The Jaccard score is then computed from the cooccurrences of the two values. Further details are given in Appendix A.3. Intuitively, the score indicates whether the two values in the pair tend to appear together or not, which is a suitable measurement for value-level dependencies, at the same time bridging the slots to which they belong. Note that these scores are objective values derived from the test set, without the engagement of any model. Fig. <ref type="figure" target="#fig_5">6</ref> shows value pairs with their Jaccard scores from the test set annotations. There is clear evidence of dependencies in slots across domains. For example, &lt;restaurant-pricerange&gt; and &lt;hotel-pricerange&gt; are bridged by their values (cheap and expensive) with high Jacard scores (highlighted in green). The values of &lt;restaurant-area&gt; also aligns well with those of &lt;hotel-area&gt; (in blue).</p><formula xml:id="formula_6">J(C 1 , C 2 ) = |C 1 ∩C 2 | |C 1 ∪C 2 | .</formula><p>We run three models (as shown in the legend of Fig. <ref type="figure" target="#fig_6">7</ref>) and for each value pair obtain the average pair accuracy (the success rate of correctly generating both values). We then plot the change in average pair accuracy (relative to baseline values) with the increasing Jaccard coefficient in Fig. <ref type="figure" target="#fig_6">7</ref>. Compared to the baseline without GATs (blue), the graph-enhanced models (yellow and green) perform better when predicting values that have high Jaccard scores. Specifically, L4P4K2-DSVGraph-LastTurn has a 0.15% boost when Jaccard is around 0.2, and it further improves the performance to 0.6% at the Jaccard value of 0.88. Therefore, we can conclude that the graph modules enable the models to exploit the inter-slot dependencies and learn better in those highly correlated values.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7">Conclusion</head><p>We presented a novel hybrid architecture that augments GPT-2 with representations derived from Graph Attention Networks in such a way to allow causal, sequential prediction of slot values. Our analysis shows that these graph-enhanced models mitigate some of the issues that arise in prediction with left-to-right generative models. We also demonstrate that our model can exploit dependencies among domain-slot values, improving accuracy for systems trained with weak supervision.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A Appendices</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.1 Reproduction Details</head><p>Dialogue state tracking performance reported in this paper are replications of published results for DSTQA* and SimpleTOD* using source code accompanying the papers describing these systems. The asterisk indicates results found by our replication.</p><p>DSTQA*: We used the software released by Zhou and Small (2019)<ref type="foot" target="#foot_4">foot_4</ref> to retrain and evaluate the system with hyperparameters set as in the original code. Training ran for 300 epochs and 2 days. The best model was found at epoch 174 based on the validation accuracy of all slots.</p><p>DSTQA*-LastTurn: We used the same software environment as for DSTQA*, modified such that only the final turn of training/validation samples was used in training. The training was run for 300 epochs and 20 hours, and the best model was found at epoch 109, after which the model exhibited overfitting and reduced performance.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: Illustration of GATs. k = 0 is selfconnection, and k ≥ 1 passes the features of other nodes to the node being evaluated. The values on the links are attention values, which weight the passing features.</figDesc><graphic coords="3,338.88,70.87,152.79,89.24" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: The workflow of the proposed model: x The model extracts domain-slot embeddings from dialogue history, without knowing the ground truth; y domain-slot embeddings are passed into Graph Attention Networks for feature aggregation and information exchanges; y(a)-y(b) two types of graph connectivity used in our experiments; z the updated domain-slot features are fed into the causal generation process of corresponding slots. Tokens shaded with red are model inputs, while tokens shaded with blue are generation outputs. For better visualization, only two domain-slot pairs are presented (&lt;hotel-name&gt; and &lt;taxi-departure&gt;).</figDesc><graphic coords="4,70.87,70.87,453.48,256.89" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: An example of the sparely-supervised training scenario where only the annotations at the last turn (highlighted in blue) are available.</figDesc><graphic coords="6,70.87,70.87,453.54,157.29" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 4 :</head><label>4</label><figDesc>Figure 4: Slot accuracy relative to baseline (L0P0K0-NoGraph-LastTurn), in the serialization order for GPT-2 generation. Domain-slot accuracy is improved, particularly for items earlier in the serialisation.</figDesc><graphic coords="8,116.22,70.86,362.84,215.87" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 5 :</head><label>5</label><figDesc>Figure 5: Prediction accuracy against of dialogue progress. Models trained with only last-turn samples can utilize GATs to retain much performance in the latter halves of dialogues (50% to 100%).</figDesc><graphic coords="8,70.87,332.03,202.99,151.44" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Figure 6 :</head><label>6</label><figDesc>Figure 6: A sample of slot value pairs in the test set with their Jaccard scores. Each entry shows that values in two different slots are bridged by their Jaccord scores. Higher scores indicate stronger dependencies.</figDesc><graphic coords="8,306.14,332.03,218.26,146.77" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>Figure 7 :</head><label>7</label><figDesc>Figure 7: The joint accuracy (relative to baseline L0P0K0-NoGraph-LastTurn) changes with the Jaccard Score of value pairs. A moving window of size 0.1 is applied to obtain the averaged joint accuracy around each Jaccard score being evaluated.</figDesc><graphic coords="9,80.42,70.87,196.44,164.36" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head></head><label></label><figDesc>Each turn t in the MultiWOZ training set is transformed into a sequence 'H t &lt;BOS&gt; Y t ' where Y t contains the sequence of domain-slots and values for dialogueturn t, as extracted from the annotated training set. Training proceeds by optimising P (Y t |H t ; θ) over the training set.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 1 :</head><label>1</label><figDesc>MultiWOZ</figDesc><table /><note><p>2.0 Dialogue State Tracking performance comparison, and ablation study. The metrics are joint accuracy (Joint) and slot accuracy (Slot) in %. GAT models are named "L{_}P{_}K{_}-[Graph_Type]", for number of layers L, number of heads per layer P , and number of hops K (Sec. 4.2).</p></note></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>The results shown in this paper might be different from what they reported. See Appendix A.1.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_1"><p>https://github.com/alexa/dstqa</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="3" xml:id="foot_2"><p>https://github.com/salesforce/simpletod</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="4" xml:id="foot_3"><p>https://github.com/LinWeizheDragon/Knowledge-Aware-Graph-Enhanced-GPT-2-for-Dialogue-State-Tracking</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="5" xml:id="foot_4"><p>https://github.com/alexa/dstqa</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="8" xml:id="foot_5"><p>https://github.com/LinWeizheDragon/Knowledge-Aware-Graph-Enhanced-GPT-2-for-Dialogue-State-Tracking</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head n="8">Acknowledgements</head><p>We thank <rs type="person">Zhilin Wang</rs> (<rs type="affiliation">University of Washington</rs>) for initial discussions and <rs type="person">Qingbiao Li</rs> (<rs type="affiliation">University of Cambridge</rs>) for an initial implementation of graph convolution operations. The code of this project is released on Github. 4   </p></div>
+			</div>			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>SimpleTOD*: Software was from the official repository 6 of SimpleTOD. After fixing several bugs according to the discussions in the repository, we evaluated this model in MultiWOZ 2.0 <ref type="bibr" target="#b0">(Budzianowski et al., 2018)</ref> for a fair comparison with our proposed models. The best model was found by the perplexity of validation set, as recommended by the paper.</p><p>SimpleTOD*-LastTurn: We reduced the training data set to only final turns of dialogues as in DSTQA*-LastTurn, and produced the results to compare with our proposed models.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.2 Training Details</head><p>All experiments were done with a RTX3090 GPU. Fine-tuning is done with an AdamW optimizer with a linear decay learning rate for 8 epochs (36 epochs for sparsely-supervised training). Each epoch costs around 1 hour to complete on the GPU used. The GPT-2 component loads the pre-trained parameters of the standard model (12-layer, 768-hidden, 12-heads, 117M parameters, OpenAI GPT-2 English model) provided by huggingface 7 . Though 6 <ref type="url" target="https://github.com/salesforce/simpletod">https://github.com/salesforce/simpletod</ref> 7 <ref type="url" target="https://huggingface.co/">https://huggingface.co/</ref> the GPT-2 and GAT are jointly trained, the initial learning rates are 6.25×10 -5 and 8×10 -5 for two major components respectively. Training details can be found in our official Github repository. 8</p><p>A.3 Calculation of Jaccard Scores Table <ref type="table">2</ref> shows an example of labeling sequences of C 1 and C 2 from which Jaccard scores are computed by</p><p>With the five samples shown, the Jaccard score is 2 4 = 0.5. The value is not high as intuitively the occurrence and absence of &lt;restaurant-pricerange&gt;:expensive does not pair well with those of &lt;hotel-pricerange&gt;:expensive. As the number of samples increases, this score effectively reflects how a slot value depends on the other, leading to a good measurement of coreference and dependencies.</p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">MultiWOZ -a large-scale multi-domain Wizard-of-Oz dataset for task-oriented dialogue modelling</title>
+		<author>
+			<persName><forename type="first">Paweł</forename><surname>Budzianowski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tsung-Hsien</forename><surname>Wen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bo-Hsiang</forename><surname>Tseng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Iñigo</forename><surname>Casanueva</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stefan</forename><surname>Ultes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Milica</forename><surname>Osman Ramadan</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Gašić</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/D18-1547</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2018 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2018 Conference on Empirical Methods in Natural Language Processing<address><addrLine>Brussels, Belgium</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="5016" to="5026" />
+		</imprint>
+	</monogr>
+	<note>Association for Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Schema-guided multi-domain dialogue state tracking with graph attention neural networks</title>
+		<author>
+			<persName><forename type="first">Lu</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Boer</forename><surname>Lv</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chi</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Su</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bowen</forename><surname>Tan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kai</forename><surname>Yu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">The Thirty-Fourth AAAI Conference on Artificial Intelligence, AAAI 2020</title>
+		<imprint>
+			<publisher>AAAI Press</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="7521" to="7528" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">BERT: Pre-training of deep bidirectional transformers for language understanding</title>
+		<author>
+			<persName><forename type="first">Jacob</forename><surname>Devlin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming-Wei</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kenton</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kristina</forename><surname>Toutanova</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/N19-1423</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference of the North American Chapter</title>
+		<meeting>the 2019 Conference of the North American Chapter</meeting>
+		<imprint>
+			<publisher>ACL</publisher>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">TripPy: A triple copy strategy for value independent neural dialog state tracking</title>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Heck</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nurul</forename><surname>Carel Van Niekerk</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christian</forename><surname>Lubis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hsien-Chin</forename><surname>Geishauser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marco</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Milica</forename><surname>Moresi</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Gasic</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 21th Annual Meeting of the Special Interest Group on Discourse and Dialogue</title>
+		<meeting>the 21th Annual Meeting of the Special Interest Group on Discourse and Dialogue</meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page">1</biblScope>
+		</imprint>
+	</monogr>
+	<note>st virtual meeting</note>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">A simple language model for task-oriented dialogue</title>
+		<author>
+			<persName><forename type="first">Ehsan</forename><surname>Hosseini-Asl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bryan</forename><surname>Mccann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chien-Sheng</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Semih</forename><surname>Yavuz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Richard</forename><surname>Socher</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="20179" to="20191" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">SAS: Dialogue state tracking via slot attention and slot information sharing</title>
+		<author>
+			<persName><forename type="first">Jiaying</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yan</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chencai</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Liang</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhou</forename><surname>Yu</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.acl-main.567</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 58th Annual Meeting of the Association for Computational Linguistics</meeting>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="6366" to="6375" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Meta-reinforced multidomain state generator for dialogue systems</title>
+		<author>
+			<persName><forename type="first">Yi</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junlan</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Min</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaoting</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaoyu</forename><surname>Du</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shuo</forename><surname>Ma</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.acl-main.636</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 58th Annual Meeting of the Association for Computational Linguistics</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="7109" to="7118" />
+		</imprint>
+	</monogr>
+	<note>Online. ACL</note>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Efficient dialogue state tracking by selectively overwriting memory</title>
+		<author>
+			<persName><forename type="first">Sungdong</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sohee</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gyuwan</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sang-Woo</forename><surname>Lee</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.acl-main.53</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 58th Annual Meeting of the Association for Computational Linguistics</meeting>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="567" to="582" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<monogr>
+		<author>
+			<persName><forename type="first">Hwaran</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Seokhwan</forename><surname>Jo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hyungjun</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sangkeun</forename><surname>Jung</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tae-Yoon</forename><surname>Kim</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2009.10447</idno>
+		<title level="m">Sumbt+ larl: End-to-end neural task-oriented dialog system with reinforcement learning</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Message-aware graph attention networks for large-scale multi-robot path planning</title>
+		<author>
+			<persName><forename type="first">Qingbiao</forename><surname>Li</surname></persName>
+			<affiliation>
+				<orgName type="collaboration">Amanda Prorok</orgName>
+			</affiliation>
+		</author>
+		<author>
+			<persName><forename type="first">Weizhe</forename><surname>Lin</surname></persName>
+			<affiliation>
+				<orgName type="collaboration">Amanda Prorok</orgName>
+			</affiliation>
+		</author>
+		<author>
+			<persName><forename type="first">Zhe</forename><surname>Liu</surname></persName>
+			<affiliation>
+				<orgName type="collaboration">Amanda Prorok</orgName>
+			</affiliation>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Robotics and Automation Letters</title>
+		<imprint>
+			<biblScope unit="volume">6</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="5533" to="5540" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<title level="m" type="main">Attention guided dialogue state tracking with sparse supervision</title>
+		<author>
+			<persName><forename type="first">Shuailong</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lahari</forename><surname>Poddar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gyuri</forename><surname>Szarvas</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2101.11958</idno>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Dialogue state tracking with explicit slot connection modeling</title>
+		<author>
+			<persName><forename type="first">Yawen</forename><surname>Ouyang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Moxin</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xinyu</forename><surname>Dai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yinggong</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shujian</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiajun</forename><surname>Chen</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.acl-main.5</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 58th Annual Meeting of the Association for Computational Linguistics</meeting>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="34" to="40" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Language models are unsupervised multitask learners</title>
+		<author>
+			<persName><forename type="first">Alec</forename><surname>Radford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeffrey</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rewon</forename><surname>Child</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Luan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dario</forename><surname>Amodei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ilya</forename><surname>Sutskever</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">OpenAI blog</title>
+		<imprint>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="issue">8</biblScope>
+			<biblScope unit="page">9</biblScope>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">A contextual hierarchical attention network with adaptive objective for dialogue state tracking</title>
+		<author>
+			<persName><forename type="first">Yong</forename><surname>Shan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zekang</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jinchao</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fandong</forename><surname>Meng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yang</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Cheng</forename><surname>Niu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jie</forename><surname>Zhou</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.acl-main.563</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 58th Annual Meeting of the Association for Computational Linguistics</meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="6322" to="6333" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<author>
+			<persName><forename type="first">Petar</forename><surname>Veličković</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillem</forename><surname>Cucurull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arantxa</forename><surname>Casanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adriana</forename><surname>Romero</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pietro</forename><surname>Liò</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+		<title level="m">Graph Attention Networks. International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Transferable multi-domain state generator for task-oriented dialogue systems</title>
+		<author>
+			<persName><forename type="first">Chien-Sheng</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrea</forename><surname>Madotto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ehsan</forename><surname>Hosseini-Asl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Caiming</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Richard</forename><surname>Socher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pascale</forename><surname>Fung</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/P19-1078</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 57th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 57th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Florence, Italy. ACL</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="808" to="819" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">GCDST: A graph-based and copy-augmented multi-domain dialogue state tracking</title>
+		<author>
+			<persName><forename type="first">Peng</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bowei</forename><surname>Zou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ridong</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aiti</forename><surname>Aw</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.findings-emnlp.95</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Findings of the Association for Computational Linguistics: EMNLP 2020</title>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="1063" to="1073" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Ubar: Towards fully end-to-end task-oriented dialog systems with gpt-2</title>
+		<author>
+			<persName><forename type="first">Yunyi</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yunhao</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaojun</forename><surname>Quan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Properties of binary vector dissimilarity measures</title>
+		<author>
+			<persName><forename type="first">Bin</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Sargur</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Srihari</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. JCIS Int&apos;l Conf. Computer Vision, Pattern Recognition, and Image Processing</title>
+		<meeting>JCIS Int&apos;l Conf. Computer Vision, Pattern Recognition, and Image essing</meeting>
+		<imprint>
+			<date type="published" when="2003">2003</date>
+			<biblScope unit="volume">1</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Find or classify? dual strategy for slot-value predictions on multi-domain dialog state tracking</title>
+		<author>
+			<persName><forename type="first">Jian-Guo</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kazuma</forename><surname>Hashimoto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chien-Sheng</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yao</forename><surname>Wan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Philip</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Richard</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Caiming</forename><surname>Socher</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Xiong</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">th Joint Conference on Lexical and Computational Semantics</title>
+		<meeting><address><addrLine>SEM</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2019">2019. 2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Multi-domain dialogue state tracking as dynamic knowledge graph enhanced question answering</title>
+		<author>
+			<persName><forename type="first">Li</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kevin</forename><surname>Small</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NeurIPS 2019 Workshop on Conversational AI</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Efficient context and schema fusion networks for multidomain dialogue state tracking</title>
+		<author>
+			<persName><forename type="first">Su</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jieyu</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lu</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kai</forename><surname>Yu</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.findings-emnlp.68</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Findings of the Association for Computational Linguistics: EMNLP 2020</title>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="766" to="781" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

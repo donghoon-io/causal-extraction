@@ -1,0 +1,1111 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">DIFFUZZ: Differential Fuzzing for Side-Channel Analysis</title>
+				<funder ref="#_gWeWPv4">
+					<orgName type="full">German Research Foundation</orgName>
+				</funder>
+				<funder ref="#_5pFeSX5">
+					<orgName type="full">DARPA</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Shirin</forename><surname>Nilizadeh</surname></persName>
+							<email>shirin.nilizadeh@uta.edu</email>
+						</author>
+						<author>
+							<persName><forename type="first">Yannic</forename><surname>Noller</surname></persName>
+							<email>yannic.noller@hu-berlin.de</email>
+						</author>
+						<author>
+							<persName><forename type="first">Corina</forename><forename type="middle">S</forename><surname>Pȃsȃreanu</surname></persName>
+							<email>corina.s.pasareanu@nasa.gov</email>
+						</author>
+						<author>
+							<affiliation key="aff0">
+								<orgName type="institution">University of Texas at Arlington Arlington</orgName>
+								<address>
+									<region>TX</region>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff1">
+								<orgName type="institution">Humboldt-Universität zu Berlin Berlin</orgName>
+								<address>
+									<country key="DE">Germany</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff2">
+								<orgName type="institution" key="instit1">Carnegie Mellon University Silicon Valley</orgName>
+								<orgName type="institution" key="instit2">NASA Ames Research Center</orgName>
+								<address>
+									<addrLine>Moffett Field</addrLine>
+									<region>CA</region>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">DIFFUZZ: Differential Fuzzing for Side-Channel Analysis</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-21T21:42+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<textClass>
+				<keywords>
+					<term>vulnerability detection</term>
+					<term>side-channel analysis</term>
+					<term>dynamic analysis</term>
+					<term>fuzzing</term>
+				</keywords>
+			</textClass>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Side-channel attacks allow an adversary to uncover secret program data by observing the behavior of a program with respect to a resource, such as execution time, consumed memory or response size. Side-channel vulnerabilities are difficult to reason about as they involve analyzing the correlations between resource usage over multiple program paths. We present DIFFUZZ, a fuzzing-based approach for detecting side-channel vulnerabilities related to time and space. DIFFUZZ automatically detects these vulnerabilities by analyzing two versions of the program and using resource-guided heuristics to find inputs that maximize the difference in resource consumption between secretdependent paths. The methodology of DIFFUZZ is general and can be applied to programs written in any language. For this paper, we present an implementation that targets analysis of JAVA programs, and uses and extends the KELINCI and AFL fuzzers. We evaluate DIFFUZZ on a large number of JAVA programs and demonstrate that it can reveal unknown sidechannel vulnerabilities in popular applications. We also show that DIFFUZZ compares favorably against BLAZER and THEMIS, two state-of-the-art analysis tools for finding side-channels in JAVA programs.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>I. INTRODUCTION</head><p>Side-channel attacks enable an adversary to uncover sensitive information from programs by observing non-functional characteristics of program behavior, such as execution time, memory usage, response size, network traffic, or power consumption. There is a large literature on side channels showing evidence that they are practical and can have serious security consequences <ref type="bibr" target="#b11">[13]</ref>, <ref type="bibr" target="#b20">[22]</ref>, <ref type="bibr" target="#b29">[31]</ref>. For instance, exploitable timing channel information flows were discovered for Google's Keyczar Library <ref type="bibr" target="#b26">[28]</ref>, the Xbox 360 <ref type="bibr" target="#b3">[5]</ref> and implementations of RSA encryption <ref type="bibr" target="#b11">[13]</ref>. More recently, the Meltdown and Spectre side-channel attacks <ref type="bibr" target="#b2">[4]</ref> have shown how to exploit critical vulnerabilities in modern processors to uncover secret information. These vulnerabilities highlight the increased need for tools and techniques that can effectively discover side channels before they are exploited by a malicious user in the field. However, side-channel vulnerabilities are difficult to reason about as they involve analyzing correlations between resource usage over multiple program paths.</p><p>In this paper we present DIFFUZZ, a dynamic analysis approach for the detection of side channels in software systems.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>*Joint first authors</head><p>Given a program whose inputs are partitioned into public and secret variables, DIFFUZZ uses a form of differential fuzzing to automatically find program inputs that reveal side channels related to a specified resource, such as time, consumed memory, or response size. We focus specifically on timing and space related vulnerabilities, but the approach can be adapted to other types of side channels, including cache based.</p><p>Differential fuzzing has been successfully applied before for finding bugs and vulnerabilities in a variety of applications, such as LF and XZ parsers, PDF viewers, SSL/TLS libraries, and C compilers <ref type="bibr" target="#b34">[36]</ref>, <ref type="bibr" target="#b36">[38]</ref>, <ref type="bibr" target="#b39">[41]</ref>. However, to the best of our knowledge, we are the first to explore differential fuzzing for side-channel analysis. Typically such fuzzing techniques analyze different versions of a program, attempting to discover bugs by observing differences in execution for the same inputs. In contrast DIFFUZZ works by analyzing two copies of the same program, with the same public inputs but with different secret values, and computing the difference in side channel measurements (time or space) observed over the two executions. If the difference is large, then it means that the program has a side-channel vulnerability, which should be remedied by the developer.</p><p>The approach is similar to the well-known method of selfcomposition <ref type="bibr" target="#b8">[10]</ref>), which is used to check that no matter what the secret is, the program yields the same output. If that is the case, the program is said to satisfy non-interference, meaning that the program leaks no information; otherwise, the program is vulnerable. However, it has been argued <ref type="bibr" target="#b6">[8]</ref>, <ref type="bibr" target="#b12">[14]</ref> that non-interference with regard to side channels is too strong a property for most realistic programs, as it is almost always the case that some variation in resource usage, particularly execution time, exists for different program paths. If the difference is small, it may not be exploitable in practice, since it may not be actually observable by an attacker. For example, consider the case of a client-server application. Small variations in execution time on the server side may not be observable (and therefore exploitable) on the client side. In such cases the program can be considered secure although it does not satisfy non-interference. If on the other hand, the difference is large, this indicates a side-channel vulnerability since an attacker can use differences between measurements to distinguish between secrets. For this reason, DIFFUZZ does not merely check non-interference, but instead employs resource-guided heuristics to automatically find inputs that attempt to maximize the difference in resource consumption between secret-dependent paths.</p><p>The methodology that we advocate with DIFFUZZ is general and can be applied to programs written in any language. For this paper we present an implementation that targets JAVA programs and is based on AMERICAN FUZZY LOP (AFL) <ref type="bibr" target="#b40">[42]</ref> and KELINCI <ref type="bibr" target="#b22">[24]</ref>. AFL is a fuzz testing tool that uses genetic algorithms to mutate user-provided inputs using byte-level operations with the goal of increasing coverage; KELINCI provides an interface to execute AFL on JAVA programs. To perform side-channel analysis, DIFFUZZ instruments a program to record resource consumption, in addition to coverage, along the paths that are executed by the fuzzed inputs. Furthermore, DIFFUZZ records the difference in resource consumption in a user-defined cost. This difference is sent back to the fuzzer, whose mutants are marked as important if there is an increase in the computed difference, thus guiding the fuzzer towards inputs that expose vulnerabilities.</p><p>We have applied DIFFUZZ on well-known, widely used JAVA applications, such as Apache FtpServer <ref type="bibr" target="#b0">[1]</ref> and Auth-MeReloaded <ref type="bibr" target="#b1">[2]</ref>, where we found new, previously unknown, vulnerabilities, which were confirmed by the developers. Additionally we have applied our approach on complex examples from the DARPA Space/Time Analysis for Cybersecurity (STAC) program <ref type="bibr" target="#b18">[20]</ref>, IBASys, an image-based authentication system, and CRIME, an instance of the Compression Ratio Info-leak Made Easy attack <ref type="bibr" target="#b17">[19]</ref>, where we found vulnerabilities related to both time and space consumption.</p><p>We also compared DIFFUZZ with BLAZER <ref type="bibr" target="#b6">[8]</ref> and THEMIS <ref type="bibr" target="#b12">[14]</ref>, two state-of-the-art analysis tools for finding side channels in JAVA programs. Both tools perform static analysis and can in principle guarantee absence of side channels, but may also give false alarms due to underlying over-approximation. In contrast DIFFUZZ performs a dynamic analysis, and thus does not give false alarms (provided that the fuzzing driver is meaningful, see Section 2.3.), but it can not prove absence of vulnerabilities.</p><p>We evaluated DIFFUZZ on the same benchmarks from THEMIS and BLAZER and were able to find the same vulnerabilities. We also ran DIFFUZZ on the corrected (safe) versions (when they were available). For the majority of these cases, we found that as expected, DIFFUZZ correctly finds zero or a small differences thus showing the usefulness of the approach also in the case of absence of vulnerabilities. However, we have also found that, in some cases, DIFFUZZ uncovered new vulnerabilities in versions which were shown to be safe with BLAZER and THEMIS.</p><p>In summary, this work makes the following contributions:</p><p>• We present DIFFUZZ, the first differential fuzzing approach for finding side-channel vulnerabilities. • We evaluate DIFFUZZ on multiple security-critical JAVA applications and we report new vulnerabilities in well known JAVA applications, such as Apache FtpServer. • We compare with state-of-the-art tools BLAZER and THEMIS, where we highlight some new vulnerabilities in programs that were previously deemed safe.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>II. APPROACH</head><p>Figure <ref type="figure" target="#fig_0">1</ref> shows the overview of our differential fuzzing approach. To start the analysis, the user needs to provide initial seed files that exercise the program under test (cf. step 1 in Figure <ref type="figure" target="#fig_0">1</ref>). The user also needs to provide a driver, which parses an input file into three elements pub (common public value), sec 1 , and sec 2 (two secret values, one for each program copy) and executes two copies of the program on these inputs. The program is instrumented to record resource consumption and coverage information.</p><p>The seed files are put into a queue for further processing (cf. step 2 in Figure <ref type="figure" target="#fig_0">1</ref>). This queue is used during the whole process as the central data structure that includes all the inputs that are deemed interesting by the analysis. The fuzzer will take the inputs from the queue and will mutate them repeatedly (cf. step 3 in Figure <ref type="figure" target="#fig_0">1</ref>). In order to decide whether a mutated input is interesting for further processing, DIFFUZZ executes the driver with this input, computes the cost difference between two executions, which is handled as the score for this input, and compares it with the maximum cost difference (aka cost difference high-score), which was observed in the previous executions (cf. step 4 in Figure <ref type="figure" target="#fig_0">1</ref>).</p><p>Only the inputs that either lead to increased high-score or to increased overall program coverage will be forwarded to the fuzzing queue (cf. step 5 in Figure <ref type="figure" target="#fig_0">1</ref>). The process is repeated until a user-specified timeout occurs.</p><p>We describe the DIFFUZZ approach in more detail below.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Side-Channel Analysis</head><p>Information flow analysis is typically used to determine that a program manipulates secret data in a secure manner. The analysis accepts programs as secure if the secret data can not be inferred by an attacker through their observations of the systems. This intuitive property is called non-interference. In the case of side-channels, the observations consist of the sidechannel measurements that an attacker can make.</p><p>There are many techniques for checking non-interference. The simplest one is through self-composition <ref type="bibr" target="#b8">[10]</ref>. At a high level the technique reduces the problem of secure information flow of a program to analyzing two copies of the same program, where the secret inputs are renamed, but the public values stay the same, and checking that these two copies create the same observation.</p><p>Let P be a program, and P pub, sec be the execution of the program P with inputs pub and sec. As it is customary in the security literature, we break down the program inputs to a tuple of public (low) values and secret (high) values. We abbreviate the public values as pub and the secret values as sec. Furthermore let c(.) be the evaluation of a program execution with respect to a particular cost encoding the resource usage (e.g., execution time or response size) of the program. The non-interference requirement can then be formalized as follows:</p><p>∀pub, sec 1 , sec 2 : c(P pub, sec 1 ) = c(P pub, sec  Intuitively, the property states that any two secrets are indistinguishable through the side-channel observations and therefore can not be uncovered by an attacker.</p><p>Although satisfying non-interference is a sound guarantee for a system to be secure, this requirement is too strict for the side-channel analysis of most realistic programs. Particularly for timing channels, small differences in computations may be imperceptible to an attacker and can thus not be exploited in practice. This problem was observed in various papers before <ref type="bibr" target="#b6">[8]</ref>, <ref type="bibr" target="#b12">[14]</ref> and was formalized as checkingbounded non-interference in <ref type="bibr" target="#b12">[14]</ref>: not only programs with zero interference can be accepted as secure, but also programs where the difference between observations is too small (below a threshold ) to be exploitable in practice. Thus the program is deemed to be secure if the following condition holds: ∀pub, sec 1 , sec 2 : |c(P pub, sec 1 ) -c(P pub, sec 2 )| &lt; One can perform the above check by enumerating all the possible input combinations, measuring the resource consumption for each run, and performing the check for the two versions of the program, but this could become quickly intractable for most realistic programs.</p><p>We therefore advocate the use of fuzzing to address the problem. However typical fuzzing tools are engineered to only increase code coverage and can thus be very slow in generating inputs that expose a significant difference in resource consumption. The key ingredient of our approach is the incorporation of heuristics that guide the fuzzing towards configurations that maximize this difference, as explained in the following sections. Note that, unlike previous techniques, that use static analysis to check -bounded non-interference <ref type="bibr" target="#b6">[8]</ref>, <ref type="bibr" target="#b12">[14]</ref>, we do not require the user to provide an a-priori threshold ; instead we let the tool try to maximize the difference between secretdependent paths.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Attacker Model</head><p>We review here the attacker model considered in this paper, which is similar to previous work on the topic <ref type="bibr" target="#b6">[8]</ref>, <ref type="bibr" target="#b12">[14]</ref>. We assume the program is deterministic and that the side-channel measurements are precise. We further assume that the attacker can not observe anything else (i.e., the attacker does not use the main-channel to infer information). When measuring resource usage we assume that any variations are caused by the application software, and we are thus ignoring side-channels related to the hardware architecture or the physical environment. In principle we can handle all these side-channels by using an available model of the corresponding resource. Even in the absence of a model, we could use the inputs generated by the fuzzer to run the programs on a specific platform and perform actual, precise measurements with respect to the resource of interest. Furthermore, we could measure the wall-clock time and also the JIT (just-in-time compilation) effect.</p><p>The mentioned assumptions are realistic. For example imagine a server-client scenario in a distributed environment (similar described in <ref type="bibr" target="#b12">[14]</ref>), in which the attacker is physically separated from the victim application, i.e. there is no chance to observe any physical side-channel. For an encrypted network communication the attacker cannot read the content of the sent messages, and hence, relies on the metrics that can be observed during communication with the server, like response sizes and response times. Additionally, based on the physical distribution the attacker should not have the possibility to manipulate the victim application to observe any hardwarelevel side-channels.</p><p>Note that DIFFUZZ is also applicable to non-deterministic code and in the experiments we report on such an application. However, in general the results could be imprecise in this case, due to the noise introduced in the measurements. More analysis would be necessary, which is left for future work.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Differential Fuzzing</head><p>Our approach aims to use fuzzing to analyze the two copies of the program and to guide it to find inputs that maximize the cost difference between two program executions, for which only the secret values are different: maximize:</p><formula xml:id="formula_0">pub,sec1,sec2 δ = |c(P pub, sec 1 ) -c(P pub, sec 2 )| (1)</formula><p>Fuzzing Driver: In order to apply fuzzing we need a driver that parses the inputs from the fuzzer and executes the two copies of the code under test, while also measuring the cost difference. Procedure 1 shows the general driver of our fuzzing approach. It starts with parsing the input (cf. line 1), i.e., reading three different input values: the public value and two secret values, which are used to execute the program twice, as formulated in Equation <ref type="formula">1</ref>. Additionally, the parsing can take some simple constraints for these input values, as described below. For each execution we measure the costs (cf. line 2 and 3) and calculate the absolute cost difference (cf. line 4). This value is used to guide the fuzzer (cf. line 5) to generate more inputs with the goal of increasing the difference. In our implementation this notion of cost difference is realized by setting user-defined cost values.</p><p>Procedure 1 Differential Fuzzing Driver</p><formula xml:id="formula_1">1: pub, sec 1 , sec 2 ← parse(input, constraints) 2: cost 1 ← measure(P (pub, sec 1 )) 3: cost 2 ← measure(P (pub, sec 2 )) 4: cost dif f ← |cost 1 -cost 2 | 5: setUserDefinedCost(cost dif f )</formula><p>Input Constraints: Solving the maximization problem described in Equation <ref type="formula">1</ref>for two totally arbitrary chosen input tuples might not be expedient because most applications assume certain properties of the secret values. For example if a password is stored as a hash, the application would assume that the hashed values have the same fixed length. Using secret values with arbitrary lengths for testing this application would lead to results that are not meaningful. Therefore, in practice it is useful to set some simple constraints on the inputs. In our approach we have a constructive solution, i.e. we rely on the user to encode input constraints in the driver such that only the inputs that satisfy these constraints are passed to the programs. For example the driver can limit the size of a string during parsing by simply not reading more characters than a given threshold, or the driver can ensure a certain character set for a string that should represent a hash value by mapping all non-member characters to member characters during parsing.</p><p>Analysis Outcome: The result of the analysis is a set of concrete public and secret inputs that expose the maximum cost difference between two secret-dependent paths found by the fuzzer. If the difference is large, it indicates a side-channel vulnerability and the developer can use the provided inputs to precisely pinpoint the problem and fix the vulnerability, e.g., by making the cost similar on both program paths. If on the other hand the difference is small (or zero) it could mean that the program has no vulnerabilities or that the fuzzer was not run long enough. The developer can then run the fuzzer longer to get enough confidence that the software indeed has no vulnerability. The fuzzer also records the coverage achieved on the analyzed code and this information can also be examined to increase the confidence in the reported results.</p><p>Manual Effort: DIFFUZZ requires manual effort in writing the drivers and the input constraints. In the driver, the user needs to specify: how to parse the input file to retrieve valid input values, the entry point to start the target application, and how to measure the execution cost. As many applications come with test cases, we use them to determine entry points. We believe that the manual effort is not high as all the drivers are very similar (and follow Procedure 1); the constraints are minimal and application specific (e.g., passwords have certain lengths). One can also envision using fuzzing to discover these constraints automatically, following the work on grammar inference from <ref type="bibr" target="#b19">[21]</ref>. However this is left for future work.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D. Fuzzing Programs</head><p>For fuzzing we use off-the-shelf tools such as AFL <ref type="bibr" target="#b40">[42]</ref>. AFL is a state-of-the-art, security-oriented grey-box fuzzer that employs compile-time instrumentation and genetic algorithms to automatically generate test inputs that improve the branch coverage of the analyzed code.</p><p>Fuzz testing tools have been very successful at finding bugs and vulnerabilities in a variety of applications, ranging from image processors and web browsers to system libraries and various language interpreters. For example, AFL was instrumental in finding several of the Stagefright vulnerabilities in Android, the Shellshock related vulnerabilities, vulnerabilities in BIND, as well as numerous bugs in (security-critical) applications and libraries such as OPENSSL, OPENSSH, GNUTLS, GNUPG, PHP, APACHE, IJG JPEG, LIBJPEG-TURBO and many more (cf. bug list on AFL's website <ref type="bibr" target="#b40">[42]</ref>). Motivated by the success of fuzzing, we aim to use this technology for finding side-channel vulnerabilities. Typically, fuzzers use heuristic algorithms to mutate user-provided inputs to increase coverage, with the goal of finding crashes and other vulnerabilities. In contrast, DIFFUZZ uses fuzzing to perform a relational analysis, where the goal is to maximize the difference in resource usage for two copies of the program.</p><p>To realize this goal, an off-the-shelf fuzzer can be extended as follows: (1) the instrumentation is modified to collect additional information related to a resource consumption, such as timing, memory usage and response size; and (2) the difference between the costs observed for two program copies is recorded and sent back to the fuzzer, whose logic is modified to consider as important the inputs that increase this difference. In particular, the fuzzer maintains the so far observed difference high-score and prioritizes inputs leading to new high-score in addition to improved coverage, attempting to maximize the difference and thus find side-channels.</p><p>The timing cost is approximated by counting every (bytecode) instruction executed by the program. A similar cost is used in previous static analysis tools (THEMIS and BLAZER) allowing us to compare with them. Note that we can also measure the wall-clock time directly, by recording the execution time for each execution. The measurements can be performed on a clean, un-instrumented version of the program, using the inputs provided by fuzzing. However, we found that these measurements could sometimes be imprecise due to garbage collection and other processes running on the same machine. One can perform multiple runs for the same input, and take the average of these measurements, but we did not explore this direction further in this work, as we found that counting the instructions provides a good approximation.</p><p>Memory usage is measured by intermittent polling using a timer, which results in measuring the maximum consumption at any point during program execution. DIFFUZZ also measures response size (in bytes) for the values that are returned and the messages that are sent by the application.</p><p>We note that AFL supports programs written in C, C++, or Objective C. To make it applicable to JAVA programs, we use KELINCI <ref type="bibr" target="#b22">[24]</ref>, which provides an AFL-style instrumentation for JAVA programs, executes the instrumented programs and sends results back to a simple C program that interfaces with AFL. AFL does not know about the JAVA program in the background because it only communicates with the mentioned interface program, and hence, AFL can use its heuristics to generate inputs that are then executed on the Java programs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E. Example</head><p>We illustrate the side-channel analysis on a password checking example. Listing 1 and Listing 2 show the code for the comparison of a user password with a server-side stored password in an unsafe and safe way respectively. The unsafe variant contains a timing side channel because its early-return in lines 2 and 6. These two locations were fixed in the safe variant by iterating over the complete password, even when the two passwords already do not match at an earlier point. To apply DIFFUZZ, we built a driver for the unsafe variant based on Procedure 1 with length limit of 16 bytes for each fuzzed value (see Listing 3). The way we parse the input in this example ensures that all three values have same length. The field Mem.instrCost holds the current cost measured by the instrumentation, i.e., in our case the number of executed bytecode instructions. The method Mem.clear() resets the current cost, which is necessary to measure the cost for each execution separately. Kelinci.addCost(diff) tells the fuzzer to use the cost difference diff as cost metric during the input assessment. We did run the fuzzer for 30 minutes and obtained a maximum cost difference of 47 bytecode instructions, with the inputs shown in Listing 4.</p><formula xml:id="formula_2">0 boolean pwcheck_unsafe(byte[] pub, byte[] sec) { 1 if (pub.length != sec.length) { 2 return false; 3 } 4 for (int i = 0; i &lt; pub.length; i++) { 5 if (pub[i] != sec[i]) {</formula><p>The value of sec 2 is matching the complete value of pub, whereas the value of sec 1 is not matching at all. Note that the fuzzer generated these values on its own, without any further influence by the driver. The initial input file (the seed file), generated randomly, leads to the cost difference 0. In fact the difference of 47 instructions is the worst-case scenario and was already retrieved by the fuzzer within 69 seconds. A value greater than 0 was retrieved by the fuzzer within 5 seconds. Afterwards, we used a similar fuzzing driver on the safe variant for 30 minutes as well, and we ran DIFFUZZ again. In this case we have observed no cost differences (i.e., δ = 0). To further check that the program was indeed repaired, we executed the safe variant with the inputs obtained with the previous fuzzer run on the unsafe variant, obtaining again zero difference.</p><p>III. EVALUATION To assess the effectiveness of DIFFUZZ in identifying side-channel vulnerabilities, we evaluated it on two sets of benchmarks. The first set, taken from <ref type="bibr" target="#b6">[8]</ref> and <ref type="bibr" target="#b12">[14]</ref>, contains programs with known time and space side-channels, as well as repaired versions. The second set contains new complex examples from the DARPA Space/Time Analysis for Cybersecurity (STAC) program <ref type="bibr" target="#b18">[20]</ref> as well as popular real-world applications, on which we identified new vulnerabilities.</p><p>For the first set of benchmarks, we compare DIFFUZZ with BLAZER <ref type="bibr" target="#b6">[8]</ref> and THEMIS <ref type="bibr" target="#b12">[14]</ref>, two state-of-the-art static analysis tools for detecting side-channel vulnerabilities in JAVA programs. BLAZER uses decomposition techniques for proving bounded non-interference while THEMIS uses Quantitative Cartesian Hoare Logic reasoning to check bounded non-interference for JAVA programs, where the bound is set to either 0 or 64 <ref type="bibr" target="#b12">[14]</ref>. Since BLAZER and THEMIS are not available, we perform the comparison on the same set of benchmarks that were used to evaluate the respective tools <ref type="bibr" target="#b6">[8]</ref>, <ref type="bibr" target="#b12">[14]</ref>. We received the code for all the benchmarks from the THEMIS developers. We note that three examples were missing (Apache Shiro, Apache Crypto and bc-java); we therefore could not analyze them. Our tool and the benchmarks are available at our GitHub repository: <ref type="url" target="https://github.com/isstac/diffuzz">https://github.com/isstac/diffuzz</ref> </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Experimental Setup</head><p>For each target application, we wrote a driver in JAVA, following the steps in Procedure 1 (Section II). Note that by default, the instrumentor ignores all library code and hence, we specifically copied methods from libraries into the application to instrument them as well.</p><p>Due to the randomness in fuzzing, we run DIFFUZZ on each application five times, and we report the averaged results. All the experiments were performed on a server with OPENSUSE LEAP 42.3 featuring 8 Quad-Core-AMD 8384 2.7 GHz and 64 GB of memory. We used OPENJDK 1.8.0 151 and GCC 4.8.5. Although typically DIFFUZZ is able to identify a side-channel vulnerability in a few seconds, we run each experiment for 30 minutes.</p><p>As mentioned, DIFFUZZ reads the inputs to a program from an initial seed file. In general, we used a randomly generated file. Some applications get specific types of inputs, such as IBASys that needs an image file. In that case, we extracted the byte encoding from a random image and used it as the initial input file. For finding timing side-channels, we use a simple cost model that counts the bytecode instructions during the program run. Both BLAZER and THEMIS similarly count the instructions for their timing side-channel analysis.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Evaluating DIFFUZZ on the BLAZER Examples</head><p>We employed DIFFUZZ on the examples from <ref type="bibr" target="#b6">[8]</ref> for evaluating BLAZER, which were also analyzed with THEMIS <ref type="bibr" target="#b12">[14]</ref>. They consist of programs with timing side-channels and repaired safe versions. They are small applications with up to a hundred lines of code.</p><p>Note that the safe version of unixlogin was not executable due to a NullPointerException during hash comparison (cf. the Figure <ref type="figure">3</ref> in the BLAZER paper <ref type="bibr" target="#b6">[8]</ref>, second example line 7). Although THEMIS did not include this subject, we fixed the issue by adding a dummy comparison of the same MD5 hash of the provided password.</p><p>Results: We summarize the results in Table <ref type="table" target="#tab_1">I</ref>. The Average column shows the (average) cost difference δ between two executions of an application. The Time column includes the time that each of the tools (DIFFUZZ, BLAZER, THEMIS) needed to identify a vulnerability. The numbers for BLAZER and THEMIS are extracted from <ref type="bibr" target="#b12">[14]</ref>; for the THEMIS experiments, the bound was set to zero. For DIFFUZZ, the time shows the average earliest time that cost difference is bigger than zero, δ &gt; 0. The time values for some safe versions are not provided because in those cases the δ is zero.</p><p>The results indicate that DIFFUZZ is able to accurately identify all the side-channel vulnerabilities in the unsafe versions. The average cost difference for all unsafe programs is more than zero and sometimes it is very large.</p><p>DIFFUZZ behaves as expected on the majority of the safe versions, finding zero difference, but it also found some discrepancies. In two cases (Array and unixlogin) the differences found (1 and 3) may be attributed to slight discrepancies between the intermediate representations of the different analyses, and can thus be considered negligible. However, in two other cases DIFFUZZ found large δ values indicating that the repaired versions are in fact not safe. We discuss them below.</p><p>LoopAndbranch: Both BLAZER and THEMIS deemed the repaired version of LoopAndbranch function as safe.</p><p>DIFFUZZ instead identified a huge difference δ = 1, 389, 926, 404 in computed costs, which occurs due to integer overflow. In particular, the value assigned by the fuzzer to one of the secrets is the maximum integer value in Java, which gets added to 10, becoming a negative value. As a result, none of the loops in the code get executed and the cost is very small compared to the cost of the other execution, with the second secret value. This vulnerability, which was confirmed by the developers of BLAZER, highlights the importance of handling overflow in analysis tools.</p><p>gpt14: This function computes the modular exponentiation, a b mod(p), used for the encryption and decryption of messages. Here, a and p are public values and b is the secret.</p><p>BLAZER reported this example as safe for a non-zero bound whereas THEMIS reported it as safe for a zero bound (noninterference). DIFFUZZ found that even though the repair has substantially reduced the cost difference, still δ = 517 (which is consistent with the BLAZER results). This vulnerability is due to an extra if statement that depends on the secret and it was confirmed by the Themis' developers.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Evaluating DIFFUZZ on the THEMIS Examples</head><p>We further evaluated DIFFUZZ on the larger JAVA programs with time and space side-channels from <ref type="bibr" target="#b12">[14]</ref>. These programs have up to 20K LOC (although only some smaller parts were analyzed with all three tools), and are extracted from complexreal world applications, such as Tomcat, Spring-Security and Eclipse Jetty HTTP web server.</p><p>All benchmarks except DynaTable, Advanced table, Open-MRS and OACC come with a repaired version. Some of the benchmarks (Tomcat, pac4j) include interactions with a database. In our experiments, we created the required databases and run them instead of simulating them with other data structures. We used the H2 database engine [3] to create an SQL database accessible via the JDBC API. Results: Table II displays our results; the results for THEMIS are taken from <ref type="bibr" target="#b12">[14]</ref>. Once again, DIFFUZZ successfully identified vulnerabilities in the unsafe versions of these examples and for the majority of the repaired versions, DIFFUZZ found only small differences, as expected. In one case (jetty), DIFFUZZ identified a new vulnerability in the repaired version. Some other examples (Tomcat, pac4j, OACC) also show some discrepancies. We provide more details below.</p><p>Jetty: THEMIS was used to analyze a known vulnerability in the Eclipse Jetty HTTP web server and a repaired version of it. Furthermore, THEMIS found a similar vulnerability in another part of the Jetty application.</p><p>The original unsafe version of the code performs some checking over sensitive credential information by calling the built-in equality method provided by the java.lang.String library. Since this method returns false as soon as it finds a mismatch between two characters, it introduces a timing side-channel vulnerability. The method has been repaired with the one in Listing 5. This repair is very common and has been used in many implementations to avoid time channels. Listing 5: Jetty safe string comparison analyzed in <ref type="bibr" target="#b12">[14]</ref> Interestingly, for this example, DIFFUZZ found that it is still vulnerable with δ = 5, 454. The reason for this vulnerability is subtle. It turns out that the operation at line 7 is not constant time: it takes either 2 or 3 bytecodes, depending on the outcome of the equality check between the two characters (the operation is optimized for the case that the outcome is false). Although there is a difference of only one bytecode instruction, having this operation in the loop amplifies its impact. This could not be discovered by THEMIS because in its intermediate representation (Jimple), the operation at line 7 takes constant time. We further note that we imposed no constraints on the input and this is in line with the THEMIS experiments. The observed difference is proportional with the size of the input, and for small input sizes, both versions could be considered safe. However, for large input sizes, both safe and unsafe versions are in fact not safe.</p><p>Tomcat, pac4j, OACC: The vulnerability of pac4j is due to the encoding of a password, which is performed during user authentication, and is assumed to be expensive. Nevertheless, the code provided by the THEMIS developers did not include an expensive implementation of the password encoding (they instead used a model which was not provided to us). Since we did not use any models we could not find a noteworthy cost difference between the provided safe and unsafe versions (cf. Table II subject pac4j Safe and pac4j Unsafe). We also used another more expensive password encoding method, denoted with a star (*) in Table <ref type="table" target="#tab_2">II</ref>, which iterates over the password, to get a stronger indication that there is an actual timing sidechannel vulnerability (cf. Table II subject pac4j Unsafe*).</p><p>We also found vulnerabilities in the unsafe versions of Tomcat and OACC, however the generated δs were small. Upon consulting with the THEMIS developers, it appears that, similar to pac4j, some manually built models were used, which we could not obtain.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D. Employing DIFFUZZ on New Examples</head><p>We also applied DIFFUZZ on new JAVA examples, including two complex applications taken from the Cybersecurity (STAC) program <ref type="bibr" target="#b18">[20]</ref>: IBASys and CRIME, and two realworld open-source projects: Apache FtpServer <ref type="bibr" target="#b0">[1]</ref> and Au-thMeReloaded <ref type="bibr" target="#b1">[2]</ref>.</p><p>Results: Table <ref type="table" target="#tab_3">III</ref> shows the results. For the reported zero-day vulnerabilities, all are confirmed and, collaborating with the developers and the community, solutions have been proposed and at this point most of them have been fixed. We explain our findings in more details.</p><p>CRIME: CRIME is an instance of the CRIME attack ("Compression Ratio Info-leak Made Easy") <ref type="bibr" target="#b17">[19]</ref>, which is as follows. Suppose a user is tricked into visiting a website attack.com, which has a malicious script making several requests to bank.com. Each request is a concatenation of public input generated by the script and the login (secret) cookie of the user. To avoid latency, protocols such as HTTPS and SPDY compress the requests before they are sent. The communication channel is encrypted, but the adversary can observe the size of the compressed package. When the public input is close to the secret, the compression is more efficient due to the redundancies, and the reduction in the size of the compressed package is more significant. Hence, the adversary can infer information about the secret. We analyzed the string compression procedure (160 LOC). It uses various inputoutput streams and involves complex string manipulations that are difficult to analyze with existing static analysis tools.</p><p>DIFFUZZ correctly identifies a space side-channel that reveals the secret through the size of the compressed output.</p><p>IBASys: IBASys is a network-based authentication server that uses images in place of textual passwords. To log in, a user supplies a username and a passcode image (e.g., a JPEG image). Following a successful authentication, IBASys replies with a response containing an encrypted session token. This session token could then be used to interact with other services that rely on IBASys for their authentication needs. We analyzed the authentication procedure (707 LOC), which performs complex image manipulations.</p><p>DIFFUZZ managed to generate input files that are bytecode representations of valid images and it was also able to uncover a timing-channel that is due to early termination in a loop that matches the two (public and private) provided images. The maximum cost difference found by DIFFUZZ is δ = 262, where the length of image_public is 18,995 bytes.</p><p>Apache FtpServer: We also applied DIFFUZZ on the opensource project Apache FtpServer <ref type="bibr" target="#b0">[1]</ref>, which has a very large code base; we focused our analysis on specific classes as reported below.</p><p>We identified a previously unknown timing side-channel in the class ClearTextPasswordEncryptor (115 LOC), in which the method boolean matches(String, String) uses the String.equals method for the comparison of the user provided password and the server-side stored password. This comparison returns false as soon as a character does not match, and hence, it could be used by a potential attacker to obtain knowledge about the hidden secret password. We have found this kind of vulnerability also in the classes Md5PasswordEncryptor (185 LOC) and SaltedPasswordEncryptor (211 LOC). We reported the issues to the developers who confirmed and fixed all of them. We also analyzed safe versions (provided by the developers) which fixed the issue. For all of them but one, the safe variant of string comparison did eliminate the vulnerability. Note that the salt in SaltedPasswordEncryptor gets randomly generated during encryption. Nevertheless for the matches method we fuzz the complete stored password including the salt. Furthermore, for the more focused analysis of the encrypt method we test if the algorithm leaks some information about the used salt via a side-channel.</p><p>We have also found a timing side-channel in the method String StringUtils.pad(String, char, boolean, int) (Listing 6), which was also confirmed by the developers. This method leaks the padding in a timing side-channel, from which a potential attacker could obtain the length of the src String. The padding is used to extend a username to fixed length, hence, a potential attacker could obtain the length of a given username, which might be used for further attacks. The vulnerability is caused by: (1) the early return in line 2, and (2) the for loop in line 5-7, which only runs for padLength iterations. The safe version, provided in our repository solves both issues.</p><p>AuthMeReloaded: We have also found an unknown timing side-channel in the open-source project AuthMeReloaded <ref type="bibr" target="#b1">[2]</ref>, which is an authentication plugin for Minecraft servers available on GitHub. It provides features like username spoof protection and anti-bot measures. Specifically, we found a vulnerability in the class RoyalAuth (209 LOC), in the inherited method boolean comparePassword(String password, HashedPassword hashedPassword, String name). Similar vulnerabilities have been found in the classes Sha256 and Pbkdf2. The developers fixed these vulnerabilities within a few days by using a constant time comparison algorithm.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E. Discussion</head><p>One advantage of DIFFUZZ compared to the other tools is that it not only shows whether an application is vulnerable, but also shows the magnitude of the vulnerability. This observation can be leveraged to estimate the severity of a vulnerability and it also makes it possible for the developers to compare different repaired versions of an application.</p><p>Analysis Time: Tables I, II and III also show the time that each of the tools needed for analysis. Both BLAZER and THEMIS were run on different hardware, making the timing reported incomparable. In general, static analysis is shown to be much faster than dynamic analysis; our results show that nonetheless DIFFUZZ is able to identify vulnerabilities in a reasonable time. In principle DIFFUZZ can run for a long time and it can still generate new inputs that increase the cost difference. However, we observed in preliminary test executions that our experiments find a plateau within 30 minutes, which is the time bound we applied.</p><p>For our experiments, we observed three different kinds of behavior: (a) DIFFUZZ identifies a small cost difference very fast, and it increases it over time; (b) DIFFUZZ identifies a big cost difference very fast and remains in a plateau after a few seconds; and (c) DIFFUZZ needs a long time to find a cost difference at all. Cases (a) and (b) were almost equally distributed on our experiments and covered almost all of them. Only for three experiments we observed case (c). As an illustration the plots in Figure <ref type="figure" target="#fig_4">2</ref> show the average maximum cost development within the first 5 minutes for the three cases. Orientdb (case (a)) checks passwords by comparing between user-given and stored passwords. The longer the matching prefix is, the higher will be the processing cost. Exact value matching is in general very difficult for fuzzing because it is hard to randomly generate the exact (unlikely) values that match the stored password. While DIFFUZZ finds quickly a small prefix, which reveals a cost difference greater than zero, it needs some time to reach a higher value.</p><p>For IBASys (case (b)), DIFFUZZ finds the maximum average value already after a few seconds, and thus leads very fast to the shown plateau value. The reason could be that the initial seed file guides the fuzzer already into a costly path or that the costly paths have a high probability, and hence, the fuzzer can easily catch them.</p><p>For LoopAndbranch (case (c)) DIFFUZZ reaches some parts of the code only with specific values for the secret and this is difficult to achieve with fuzzing. We believe that the limitations illustrated with cases (a) and (c) can be mitigated by adding further guidance to the fuzzer and by, e.g., combining fuzzing and symbolic execution.</p><p>Vulnerability vs Exploit: DIFFUZZ can identify sidechannel vulnerabilities but can not assess whether they are exploitable by a real attack. The synthesis of a real attack, which would be necessary to assess the severity of the found vulnerability, is out of scope for this work. Nevertheless, we believe that our contribution is a first step in this direction.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>IV. RELATED WORK</head><p>DIFFUZZ is related to a large body of work on checking non-interference via self-composition <ref type="bibr" target="#b8">[10]</ref>. For instance, related work <ref type="bibr" target="#b5">[7]</ref> presents a self-composition approach to timingchannel analysis, which however does not check bounded noninterference. We already compared with the most recent related tools, BLAZER <ref type="bibr" target="#b6">[8]</ref> and THEMIS <ref type="bibr" target="#b12">[14]</ref>.</p><p>CoCoChannel <ref type="bibr" target="#b10">[12]</ref> uses static analysis for finding sidechannel vulnerabilities and presents a comparison with THEMIS and BLAZER on the same benchmarks, showing better scalability. While CoCoChannel also found discrepancies in the THEMIS and BLAZER benchmarks, the approach still fails to report vulnerabilities for the repaired versions in, e.g., loopAndBranch and jetty.</p><p>Stacco <ref type="bibr" target="#b38">[40]</ref> also uses a differential analysis for finding timing side-channels, using random inputs. However, Stacco does not perform directed fuzzing, it does not check bounded non-interference, and it does not address Java.</p><p>There is a large amount of related work on side-channel analysis, for example <ref type="bibr" target="#b4">[6]</ref>, <ref type="bibr" target="#b11">[13]</ref>, <ref type="bibr" target="#b13">[15]</ref>, <ref type="bibr" target="#b15">[17]</ref>, <ref type="bibr" target="#b23">[25]</ref>, <ref type="bibr" target="#b24">[26]</ref>, <ref type="bibr" target="#b31">[33]</ref>. The most successful approaches use abstract interpretation (for cache side-channels analysis) <ref type="bibr" target="#b16">[18]</ref>, <ref type="bibr" target="#b25">[27]</ref>, <ref type="bibr" target="#b30">[32]</ref> and are thus quite different than DIFFUZZ. Other techniques <ref type="bibr" target="#b7">[9]</ref>, <ref type="bibr" target="#b33">[35]</ref>, <ref type="bibr" target="#b35">[37]</ref> use symbolic execution and constraint solving with model counting for quantifying side-channel leakage and for synthesis of attacks. They address JAVA programs, but may have scalability issues, due to the expensive constraint manipulation.</p><p>Other related techniques aim to quantify leakage using Monte Carlo sampling <ref type="bibr" target="#b14">[16]</ref>, <ref type="bibr" target="#b21">[23]</ref>. In contrast to DIFFUZZ, these techniques provide quantitative results, but they may be imprecise in practice.</p><p>Fuzzing has received renewed interest in the software engineering community, with many recent approaches reported <ref type="bibr" target="#b27">[29]</ref>, <ref type="bibr" target="#b28">[30]</ref>, <ref type="bibr" target="#b32">[34]</ref>, <ref type="bibr" target="#b37">[39]</ref>. Most related are techniques that use fuzzing alone <ref type="bibr" target="#b27">[29]</ref>, <ref type="bibr" target="#b37">[39]</ref> or a combination of fuzzing and symbolic execution <ref type="bibr" target="#b32">[34]</ref> to analyze the algorithmic complexity of programs, by monitoring a resource consumption. In particular, Badger <ref type="bibr" target="#b32">[34]</ref> also uses Kelinci and AFL for the fuzzing part. None of these works address side-channel analysis.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>V. CONCLUSIONS AND FUTURE WORK</head><p>We presented DIFFUZZ, the first differential fuzzing approach for automatically finding side-channel vulnerabilities. We have shown that DIFFUZZ can keep up with existing approaches such as BLAZER and THEMIS. Furthermore, DIF-FUZZ found new vulnerabilities in popular open-source JAVA applications such as Apache FtpServer. In the future, we plan to explore automated repair methods to eliminate the vulnerabilities discovered with DIFFUZZ. Additionally, we plan to augment our work with statistical guarantees similar to the STADS framework <ref type="bibr" target="#b9">[11]</ref>.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Fig. 1 :</head><label>1</label><figDesc>Fig. 1: Overview of DIFFUZZ approach.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Listing 1 : 1 boolean unused; 2 boolean 6 matches = false; 7 } else { 8 unused</head><label>112678</label><figDesc>Unsafe Password Checking 0 boolean pwcheck_safe(byte[] pub, byte[] sec) { matches = true; 3 for (int i = 0; i &lt; pub.length; i++) { 4 if (i &lt; sec.length) { 5 if (pub[i] != sec[i]) {</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>0; 4 int 8 9 14 boolean 17 long</head><label>481417</label><figDesc>void driver(String[] args) { 1 int maxLen = 16; 2 int maxData = 3 * maxLen; 3 byte[] allBytes = readDataUpToMax(args[0], maxData)len = allBytes.length / 3; 5 byte[] pub = Arrays.copyOfRange(allBytes, 0, len); 6 byte[] sec_1 =Arrays.copyOfRange(allBytes, len, 2 * len); 7 byte[] sec_2 = Arrays.copyOfRange(allBytes, 2 * len , 3 * len); Mem.clear(); 10 boolean answer1 = pwcheck_unsafe(pub, sec_1); 11 long cost1 = Mem.instrCost; answer2 = pwcheck_unsafe(pub, sec_2); 15 long cost2 = Mem.instrCost; 16 diff = Math.abs(cost1 -cost2); 18 Kelinci.addCost(diff); 19 } Listing 3: Password Checking Driver pub=[-48, -4, -48, 7, 17, 0, -24, -48, -48, 16, -48, -3, 108, 72, 32, 0] sec_1=[72, 77, -16, -66, -48, -48, -48, -48, -28, 0, 100, 0, 0, 0, 0, -48] sec_2=[-48, -4, -48, 7, 17, 0, -24, -48, -48, 16, -48, -3, 108, 72, 32, 0] Listing 4: Input for Max Cost Difference after 30 min.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>0 1 boolean result = true; 2 int</head><label>12</label><figDesc>boolean stringEquals(String s1, String s2) { l1 = s1.length(); 3 int l2 = s2.length(); 4 if (l1 != l2) result = false; 5 int n = (l1 &lt; l2) ? l1 : l2; 6 for (int i = 0; i &lt; n; i++) 7 result &amp;= s1.charAt(i) == s2.charAt(i); 8 return result; 9 }</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Fig. 2 :</head><label>2</label><figDesc>Fig. 2: Averaged cost over time for orientdb, IBASys, and LoopAndbranch (unsafe versions).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>TABLE I :</head><label>I</label><figDesc>The results of applying DIFFUZZ to the BLAZER examples. Discrepancies are highlighted in red and italics.</figDesc><table><row><cell>Benchmark</cell><cell cols="2">Version Average δ</cell><cell>Std. Error</cell><cell>Maximum</cell><cell cols="2">Time (s)</cell><cell></cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>DIFFUZZ, δ &gt; 0</cell><cell>BLAZER</cell><cell>THEMIS</cell></row><row><cell>MicroBench</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>Array</cell><cell>Safe</cell><cell>1.00</cell><cell>0.00</cell><cell>1</cell><cell>7.40 (+/-1.21)</cell><cell>1.60</cell><cell>0.28</cell></row><row><cell>Array</cell><cell>Unsafe</cell><cell>192.00</cell><cell>2.68</cell><cell>195</cell><cell>7.40 (+/-0.93)</cell><cell>0.16</cell><cell>0.23</cell></row><row><cell>LoopAndbranch</cell><cell>Safe</cell><cell cols="4">1,468,212,312.40 719,375,479.77 4,278,268,702 18.60 (+/-6.40)</cell><cell>0.23</cell><cell>0.33</cell></row><row><cell cols="2">LoopAndbranch Unsafe</cell><cell cols="2">4,283,404,852.40 4,450,278.15</cell><cell cols="2">4,294,838,782 10.60 (+/-2.62)</cell><cell>0.65</cell><cell>0.16</cell></row><row><cell>Sanity</cell><cell>Safe</cell><cell>0.00</cell><cell>0.00</cell><cell>0</cell><cell>-</cell><cell>0.63</cell><cell>0.41</cell></row><row><cell>Sanity</cell><cell>Unsafe</cell><cell cols="2">4,213,237,198.00 60,857,888.00</cell><cell cols="2">4,290,510,883 163 (+/-40.63)</cell><cell>0.30</cell><cell>0.17</cell></row><row><cell>Straightline</cell><cell>Safe</cell><cell>0.00</cell><cell>0.00</cell><cell>0.00</cell><cell>-</cell><cell>0.21</cell><cell>0.49</cell></row><row><cell>Straightline</cell><cell>Unsafe</cell><cell>8.00</cell><cell>0.00</cell><cell>8</cell><cell>14.60 (+/-6.53)</cell><cell>22.20</cell><cell>5.30</cell></row><row><cell>unixlogin</cell><cell>Safe</cell><cell>3.00</cell><cell>0.00</cell><cell>3</cell><cell>510 (+/-91.18)</cell><cell>0.86</cell><cell>-</cell></row><row><cell>unixlogin</cell><cell>Unsafe</cell><cell cols="5">2,880,000,008.00 286,216,701.00 3,200,000,008 464.20 (+/-64.61) 0.77</cell><cell>-</cell></row><row><cell>STAC</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>modPow1</cell><cell>Safe</cell><cell>0.00</cell><cell>0.00</cell><cell>0</cell><cell>-</cell><cell>1.47</cell><cell>0.61</cell></row><row><cell>modPow1</cell><cell>Unsafe</cell><cell>2,576.00</cell><cell>168.21</cell><cell>3,068</cell><cell>4.80 (+/-1.11)</cell><cell>218.54</cell><cell>14.16</cell></row><row><cell>modPow2</cell><cell>Safe</cell><cell>0.00</cell><cell>0.00</cell><cell>9</cell><cell>-</cell><cell>1.62</cell><cell>0.75</cell></row><row><cell>modPow2</cell><cell>Unsafe</cell><cell>1,471.00</cell><cell>891.00</cell><cell>5,206</cell><cell>23 (+/-3.48)</cell><cell>7813.68</cell><cell>141.36</cell></row><row><cell>passwordEq</cell><cell>Safe</cell><cell>0.00</cell><cell>0.00</cell><cell>0.00</cell><cell>-</cell><cell>2.70</cell><cell>1.10</cell></row><row><cell>passwordEq</cell><cell>Unsafe</cell><cell>86.40</cell><cell>20.31</cell><cell>127</cell><cell>8.60 (+/-2.11)</cell><cell>1.30</cell><cell>0.39</cell></row><row><cell>Literature</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>k96</cell><cell>Safe</cell><cell>0.00</cell><cell>0.00</cell><cell>0</cell><cell>-</cell><cell>0.70</cell><cell>0.61</cell></row><row><cell>k96</cell><cell>Unsafe</cell><cell>338.00</cell><cell>185.13</cell><cell>3,087,339</cell><cell>3.40 (+/-0.98)</cell><cell>1.29</cell><cell>0.54</cell></row><row><cell>gpt14</cell><cell>Safe</cell><cell>163.20</cell><cell>79.84</cell><cell>517</cell><cell>4.20 (+/-0.80)</cell><cell>1.43</cell><cell>0.46</cell></row><row><cell>gpt14</cell><cell>Unsafe</cell><cell>6,673,760.00</cell><cell>2,211,811.00</cell><cell>12,965,890</cell><cell>4.40 (+/-1.03)</cell><cell>219.30</cell><cell>1.25</cell></row><row><cell>login</cell><cell>Safe</cell><cell>0.00</cell><cell>0.00</cell><cell>0</cell><cell>-</cell><cell>1.77</cell><cell>0.54</cell></row><row><cell>login</cell><cell>Unsafe</cell><cell>62.00</cell><cell>0.00</cell><cell>62</cell><cell>10 (+/-2.92)</cell><cell>1.79</cell><cell>0.70</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>TABLE II :</head><label>II</label><figDesc>Comparison against THEMIS</figDesc><table><row><cell>Benchmark</cell><cell>Version</cell><cell></cell><cell></cell><cell>DIFFUZZ</cell><cell></cell><cell></cell><cell>THEMIS</cell></row><row><cell></cell><cell></cell><cell>Average δ</cell><cell cols="3">Std. Error Maximum Time (s) δ &gt; 0</cell><cell>= 64</cell><cell>= 0</cell><cell>Time (s)</cell></row><row><cell>Spring-Security</cell><cell>Safe</cell><cell>1.00</cell><cell>0.00</cell><cell>1</cell><cell>9.00 (+/-1.26)</cell><cell></cell><cell></cell><cell>1.70</cell></row><row><cell>Spring-Security</cell><cell>Unsafe</cell><cell>149.00</cell><cell>0.00</cell><cell>149</cell><cell>8.80 (+/-1.16)</cell><cell></cell><cell></cell><cell>1.09</cell></row><row><cell cols="2">JDK7-MsgDigest Safe</cell><cell>1.00</cell><cell>0.00</cell><cell>1</cell><cell>15.80 (+/-3.93)</cell><cell></cell><cell></cell><cell>1.27</cell></row><row><cell cols="2">JDK6-MsgDigest Unsafe</cell><cell>10,215.00</cell><cell>6,120.00</cell><cell>34,479</cell><cell>7.40 (+/-1.29)</cell><cell></cell><cell></cell><cell>1.33</cell></row><row><cell>Picketbox</cell><cell>Safe</cell><cell>1.00</cell><cell>0.00</cell><cell>1</cell><cell>29.20 (+/-5.00)</cell><cell></cell><cell></cell><cell>1.79</cell></row><row><cell>Picketbox</cell><cell>Unsafe</cell><cell>4,954.00</cell><cell>1,295</cell><cell>8,794</cell><cell>16.80 (+/-2.58)</cell><cell></cell><cell></cell><cell>1.55</cell></row><row><cell>Tomcat</cell><cell>Safe</cell><cell>12.20</cell><cell>1.61</cell><cell>14</cell><cell>13.80 (+/-1.29)</cell><cell></cell><cell></cell><cell>9.93</cell></row><row><cell>Tomcat</cell><cell>Unsafe</cell><cell>33.20</cell><cell>3.40</cell><cell>37</cell><cell>128.60 (+/-87.20)</cell><cell></cell><cell></cell><cell>8.64</cell></row><row><cell>Jetty</cell><cell>Safe</cell><cell>5454.00</cell><cell>1330.88</cell><cell>8898</cell><cell>9.40 (+/-1.86)</cell><cell></cell><cell></cell><cell>2.50</cell></row><row><cell>Jetty</cell><cell>Unsafe</cell><cell>10786.60</cell><cell>2807.51</cell><cell>16020</cell><cell>7.00 (+/-1.05)</cell><cell></cell><cell></cell><cell>2.07</cell></row><row><cell>orientdb</cell><cell>Safe</cell><cell>6.00</cell><cell>0.00</cell><cell>6</cell><cell>3.20 (+/-0.97)</cell><cell></cell><cell></cell><cell>37.99</cell></row><row><cell>orientdb</cell><cell>Unsafe</cell><cell>6,604.00</cell><cell>3,681</cell><cell>19,300</cell><cell>3.00 (+/-0.84)</cell><cell></cell><cell></cell><cell>38.09</cell></row><row><cell>pac4j</cell><cell>Safe</cell><cell>10.00</cell><cell>0.00</cell><cell>10</cell><cell>5.00 (+/-1.22)</cell><cell></cell><cell></cell><cell>3.97</cell></row><row><cell>pac4j</cell><cell>Unsafe</cell><cell>11.00</cell><cell>0.00</cell><cell>11</cell><cell>8.00 (+/-2.76)</cell><cell></cell><cell></cell><cell>1.85</cell></row><row><cell>pac4j</cell><cell cols="2">Unsafe* 39.00</cell><cell>0.00</cell><cell>39</cell><cell>10.80 (+/-5.80)</cell><cell>-</cell><cell>-</cell><cell>-</cell></row><row><cell>boot-auth</cell><cell>Safe</cell><cell>5.00</cell><cell>0.00</cell><cell>5</cell><cell>5.20 (+/-0.20)</cell><cell></cell><cell></cell><cell>9.12</cell></row><row><cell>boot-auth</cell><cell>Unsafe</cell><cell>101.00</cell><cell>0.00</cell><cell>101</cell><cell>5.20 (+/-0.20)</cell><cell></cell><cell></cell><cell>8.31</cell></row><row><cell>tourPlanner</cell><cell>Safe</cell><cell>0.00</cell><cell>0.00</cell><cell>0</cell><cell>-</cell><cell></cell><cell></cell><cell>22.22</cell></row><row><cell>tourPlanner</cell><cell>Unsafe</cell><cell>522.40</cell><cell>18.60</cell><cell>576</cell><cell>19.20 (+/-0.80)</cell><cell></cell><cell></cell><cell>22.01</cell></row><row><cell>DynaTable</cell><cell>Unsafe</cell><cell>95.80</cell><cell>0.44</cell><cell>97</cell><cell>3.60 (+/-1.21)</cell><cell></cell><cell></cell><cell>1.165</cell></row><row><cell>Advanced table</cell><cell>Unsafe</cell><cell>92.40</cell><cell>1.54</cell><cell>97</cell><cell>11.20 (+/-1.62)</cell><cell></cell><cell></cell><cell>2.01</cell></row><row><cell>OpenMRS</cell><cell>Unsafe</cell><cell>206.00</cell><cell>0.00</cell><cell>206</cell><cell>11.60 (+/-3.22)</cell><cell></cell><cell></cell><cell>9.71</cell></row><row><cell>OACC</cell><cell>Unsafe</cell><cell>47.00</cell><cell>0.00</cell><cell>47</cell><cell>7.00 (+/-1.30)</cell><cell></cell><cell></cell><cell>1.83</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>TABLE III :</head><label>III</label><figDesc>The results of applying DIFFUZZ on new examples</figDesc><table><row><cell>Benchmark</cell><cell cols="2">Version Average δ</cell><cell cols="3">Std. Error Maximum Time (s) δ &gt; 0</cell></row><row><cell>STAC</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>CRIME</cell><cell>unsafe</cell><cell>295.40</cell><cell>117.05</cell><cell>782</cell><cell>7.40 (+/-1.12)</cell></row><row><cell>ibasys (imageMacher)</cell><cell>unsafe</cell><cell>191</cell><cell>20.88</cell><cell>262</cell><cell>6.20 (+/-0.66)</cell></row><row><cell>Zero-day Vulnerabilities</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>Apache ftpserver Clear</cell><cell>safe</cell><cell>1.00</cell><cell>0.00</cell><cell>1</cell><cell>7.20 (+/-1.24)</cell></row><row><cell>Apache ftpserver Clear</cell><cell>unsafe</cell><cell>47.00</cell><cell>0.00</cell><cell>47</cell><cell>6.80 (+/-1.07)</cell></row><row><cell>Apache ftpserver MD5</cell><cell>safe</cell><cell>1.00</cell><cell>0.00</cell><cell>1</cell><cell>4.20 (+/-1.93)</cell></row><row><cell>Apache ftpserver MD5</cell><cell>unsafe</cell><cell>151.00</cell><cell>0.00</cell><cell>151</cell><cell>2.80 (+/-1.11)</cell></row><row><cell>Apache ftpserver SaltedPW</cell><cell>(safe)</cell><cell>176.40</cell><cell>6.25</cell><cell>198</cell><cell>2.20 (+/-0.73)</cell></row><row><cell>Apache ftpserver SaltedPW</cell><cell>unsafe</cell><cell>178.80</cell><cell>5.13</cell><cell>193</cell><cell>3.60 (+/-1.08)</cell></row><row><cell cols="2">Apache ftpserver SaltedPW* unsafe</cell><cell>163.40</cell><cell>3.80</cell><cell>178</cell><cell>5.40 (+/-0.98)</cell></row><row><cell>Apache ftpserver StringUtils</cell><cell>safe</cell><cell>0.00</cell><cell>0.00</cell><cell>0</cell><cell>-</cell></row><row><cell>Apache ftpserver StringUtils</cell><cell>unsafe</cell><cell>53.00</cell><cell>0.00</cell><cell>53</cell><cell>3.00 (+/-1.05)</cell></row><row><cell>AuthMeReloaded</cell><cell>safe</cell><cell>1.00</cell><cell>0.00</cell><cell>1</cell><cell>7.60 (+/-0.75)</cell></row><row><cell>AuthMeReloaded</cell><cell>unsafe</cell><cell>383.00</cell><cell>0.00</cell><cell>383</cell><cell>9.20 (+/-1.96)</cell></row><row><cell cols="3">For the class SaltedPasswordEncryptor DIFFUZZ still</cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="3">detected a vulnerability, so we continued our investigation and</cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="3">discovered that in addition to the matching method the used</cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="3">encryption method leaks information about the generated salt.</cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="3">We have thus analyzed method String encrypt(String</cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="3">pw, String salt), marked with a star (*) in Table III.</cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="3">We are discussing with the developers with regard to this new</cell><cell></cell><cell></cell><cell></cell></row><row><cell>vulnerability.</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table><note><p>0 public final static String pad_unsafe(String src, char padChar, boolean rightPad, int totalLength) { 1 int srcLength = src.length(); 2 if (srcLength &gt;= totalLength) return src; 3 int padLength = totalLength -srcLength; 4 StringBuilder sb = new StringBuilder( padLength); 5 for (int i = 0; i &lt; padLength; ++i) { 6 sb.append(padChar); 7 } 8 if (rightPad) { 9 return src + sb.toString(); 10 } else { 11 return sb.toString() + src; 12 } } Listing 6: Apache FtpServer StringUtils.pad unsafe version</p></note></figure>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>ACKNOWLEDGMENT</head><p>This material is based on research sponsored by <rs type="funder">DARPA</rs> under agreement number <rs type="grantNumber">FA8750-15-2-0087</rs>. The U.S. Government is authorized to reproduce and distribute reprints for Governmental purposes notwithstanding any copyright notation thereon. This work is also supported by the <rs type="funder">German Research Foundation</rs> (<rs type="grantNumber">GR 3634/4-1 EMPRESS</rs>).</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funding" xml:id="_5pFeSX5">
+					<idno type="grant-number">FA8750-15-2-0087</idno>
+				</org>
+				<org type="funding" xml:id="_gWeWPv4">
+					<idno type="grant-number">GR 3634/4-1 EMPRESS</idno>
+				</org>
+			</listOrg>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">Apache</forename><surname>Ftpserver</surname></persName>
+		</author>
+		<ptr target="https://mina.apache.org/ftpserver-project/" />
+		<imprint>
+			<date type="published" when="2018-08-21">2018-08-21</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<ptr target="https://github.com/AuthMe/AuthMeReloaded" />
+		<title level="m">Authentication plugin for the Bukkit/Spigot API</title>
+		<imprint>
+			<date type="published" when="2018-08-21">2018-08-21</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">The</forename><surname>Meltdown</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Attack</forename></persName>
+		</author>
+		<ptr target="https://meltdownattack.com/" />
+		<imprint>
+			<date type="published" when="2018-08-21">2018-08-21</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<ptr target="http://beta.ivc.no/wiki/index.php/Xbox360TimingAttack" />
+		<title level="m">Xbox 360 Timing Attack</title>
+		<imprint>
+			<date type="published" when="2018-08-21">2018-08-21</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Multi-channel Attacks</title>
+		<author>
+			<persName><forename type="first">Dakshi</forename><surname>Agrawal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Josyula</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pankaj</forename><surname>Rao</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Rohatgi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Cryptographic Hardware and Embedded Systems -CHES 2003, 5 th International Workshop</title>
+		<title level="s">Lecture Notes in Computer Science</title>
+		<editor>
+			<persName><forename type="first">Colin</forename><forename type="middle">D</forename><surname>Walter</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">C</forename><surname>¸etin Kaya Koc</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">¸</forename></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Christof</forename><surname>Paar</surname></persName>
+		</editor>
+		<meeting><address><addrLine>Cologne, Germany</addrLine></address></meeting>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2003">September 8-10, 2003. 2003</date>
+			<biblScope unit="volume">2779</biblScope>
+			<biblScope unit="page" from="2" to="16" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Formal verification of side-channel countermeasures using self-composition</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Almeida</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Barbosa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">S</forename><surname>Pinto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Vieira</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Science of Computer Programminga</title>
+		<imprint>
+			<biblScope unit="volume">78</biblScope>
+			<biblScope unit="issue">7</biblScope>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Decomposition instead of selfcomposition for proving the absence of timing channels</title>
+		<author>
+			<persName><forename type="first">Timos</forename><surname>Antonopoulos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Paul</forename><surname>Gazzillo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Hicks</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eric</forename><surname>Koskinen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tachio</forename><surname>Terauchi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shiyi</forename><surname>Wei</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 38th ACM SIGPLAN Conference on Programming Language Design and Implementation</title>
+		<meeting>the 38th ACM SIGPLAN Conference on Programming Language Design and Implementation<address><addrLine>Barcelona, Spain</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2017-06-18">2017. June 18-23, 2017. 2017</date>
+			<biblScope unit="page" from="362" to="375" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">String Analysis for Side with Segmented Oracles</title>
+		<author>
+			<persName><forename type="first">Lucas</forename><surname>Bang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abdulbaki</forename><surname>Aydin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Quoc-Sang</forename><surname>Phan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Corina</forename><forename type="middle">S</forename><surname>Pȃsȃreanu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tevfik</forename><surname>Bultan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. of the 2016 24 th ACM SIGSOFT International Symposium on Foundations of Software Engineering, FSE 2016</title>
+		<meeting>of the 2016 24 th ACM SIGSOFT International Symposium on Foundations of Software Engineering, FSE 2016<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2016-11">November 2016</date>
+			<biblScope unit="page" from="193" to="204" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Secure information flow by self-composition</title>
+		<author>
+			<persName><forename type="first">Gilles</forename><surname>Barthe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pedro</forename><forename type="middle">R</forename><surname>D'argenio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tamara</forename><surname>Rezk</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 17th IEEE Workshop on Computer Security Foundations, CSFW &apos;04</title>
+		<meeting>the 17th IEEE Workshop on Computer Security Foundations, CSFW &apos;04<address><addrLine>Washington, DC, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>IEEE Computer Society</publisher>
+			<date type="published" when="2004">2004</date>
+			<biblScope unit="volume">100</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">STADS: Software testing as species discovery</title>
+		<author>
+			<persName><forename type="first">Marcel</forename><surname>Böhme</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Transactions on Software Engineering and Methodology</title>
+		<imprint>
+			<biblScope unit="volume">27</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page">52</biblScope>
+			<date type="published" when="2018-06">June 2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Symbolic path cost analysis for side-channel detection</title>
+		<author>
+			<persName><forename type="first">Tegan</forename><surname>Brennan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Seemanta</forename><surname>Saha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tevfik</forename><surname>Bultan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Corina</forename><forename type="middle">S</forename><surname>Pȃsȃreanu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 27th ACM SIGSOFT International Symposium on Software Testing and Analysis, ISSTA 2018</title>
+		<meeting>the 27th ACM SIGSOFT International Symposium on Software Testing and Analysis, ISSTA 2018<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="27" to="37" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Remote Timing Attacks Are Practical</title>
+		<author>
+			<persName><forename type="first">David</forename><surname>Brumley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dan</forename><surname>Boneh</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. of the 12 th Conf. on USENIX Security Symposium</title>
+		<meeting>of the 12 th Conf. on USENIX Security Symposium<address><addrLine>Berkeley, CA, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>USENIX Association</publisher>
+			<date type="published" when="2003">2003</date>
+			<biblScope unit="volume">12</biblScope>
+		</imprint>
+	</monogr>
+	<note>SSYM&apos;03</note>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Precise detection of side-channel vulnerabilities using quantitative cartesian hoare logic</title>
+		<author>
+			<persName><forename type="first">Jia</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yu</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Isil</forename><surname>Dillig</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2017 ACM SIGSAC Conference on Computer and Communications Security</title>
+		<meeting>the 2017 ACM SIGSAC Conference on Computer and Communications Security<address><addrLine>Dallas, TX, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2017-10-30">2017. October 30 -November 03, 2017. 2017</date>
+			<biblScope unit="page" from="875" to="890" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Side-Channel Leaks in Web Applications: A Reality Today, a Challenge Tomorrow</title>
+		<author>
+			<persName><forename type="first">Shuo</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rui</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaofeng</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kehuan</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. of the 2010 IEEE Symposium on Security and Privacy, SP &apos;10</title>
+		<meeting>of the 2010 IEEE Symposium on Security and Privacy, SP &apos;10<address><addrLine>Washington, DC, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>IEEE Computer Society</publisher>
+			<date type="published" when="2010">2010</date>
+			<biblScope unit="page" from="191" to="206" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">LeakWatch: Estimating Information Leakage from Java Programs</title>
+		<author>
+			<persName><forename type="first">Tom</forename><surname>Chothia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yusuke</forename><surname>Kawamoto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Novakovic</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">19th European Symposium on Research in Computer Security</title>
+		<meeting><address><addrLine>New York, NY, USA; New York, Inc</addrLine></address></meeting>
+		<imprint>
+			<publisher>Springer-Verlag</publisher>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="volume">8713</biblScope>
+			<biblScope unit="page" from="219" to="236" />
+		</imprint>
+	</monogr>
+	<note>ESORICS 2014</note>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Exploit Generation for Information Flow Leaks in Object-Oriented Programs</title>
+		<author>
+			<persName><forename type="first">Quoc</forename><surname>Huy Do</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Richard</forename><surname>Bubel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Reiner</forename><surname>Hähnle</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICT Systems Security and Privacy Protection: 30 th IFIP TC 11 Intl. Conf., SEC 2015</title>
+		<meeting><address><addrLine>Hamburg, Germany</addrLine></address></meeting>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="401" to="415" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">CacheAudit: A Tool for the Static Analysis of Cache Side Channels</title>
+		<author>
+			<persName><forename type="first">Goran</forename><surname>Doychev</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dominik</forename><surname>Feld</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Boris</forename><surname>Köpf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Laurent</forename><surname>Mauborgne</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jan</forename><surname>Reineke</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. of 22 nd USENIX Conf. on Security, SEC&apos;13</title>
+		<meeting>of 22 nd USENIX Conf. on Security, SEC&apos;13<address><addrLine>Berkeley, CA, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>USENIX Association</publisher>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page" from="431" to="446" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">The CRIME attack</title>
+		<author>
+			<persName><forename type="first">Thai</forename><surname>Duong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Juliano</forename><surname>Rizzo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Presentation at ekoparty Security Conf</title>
+		<imprint>
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<monogr>
+		<author>
+			<persName><forename type="first">Dustin</forename><surname>Mr</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Fraze</surname></persName>
+		</author>
+		<idno>Ac- cessed: 2018-08-21</idno>
+		<ptr target="https://www.darpa.mil/program/space-time-analysis-for-cybersecurity" />
+		<title level="m">Space/Time Analysis for Cybersecurity (STAC)</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Mining input grammars from dynamic taints</title>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Höschele</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andreas</forename><surname>Zeller</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 31st IEEE/ACM International Conference on Automated Software Engineering, ASE 2016</title>
+		<meeting>the 31st IEEE/ACM International Conference on Automated Software Engineering, ASE 2016<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="720" to="725" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Practical timing side channel attacks against kernel space aslr</title>
+		<author>
+			<persName><forename type="first">Ralf</forename><surname>Hund</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Carsten</forename><surname>Willems</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thorsten</forename><surname>Holz</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Security and Privacy (SP), 2013 IEEE Symposium on</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page" from="191" to="205" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Hybrid Statistical Estimation of Mutual Information for Quantifying Information Flow</title>
+		<author>
+			<persName><forename type="first">Yusuke</forename><surname>Kawamoto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fabrizio</forename><surname>Biondi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Axel</forename><surname>Legay</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">FM</title>
+		<title level="s">Lecture Notes in Computer Science</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="volume">9995</biblScope>
+			<biblScope unit="page" from="406" to="425" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Poster: Aflbased fuzzing for java with kelinci</title>
+		<author>
+			<persName><forename type="first">Rody</forename><surname>Kersten</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kasper</forename><surname>Luckow</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Corina</forename><forename type="middle">S</forename><surname>Pȃsȃreanu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2017 ACM SIGSAC Conference on Computer and Communications Security, CCS &apos;17</title>
+		<meeting>the 2017 ACM SIGSAC Conference on Computer and Communications Security, CCS &apos;17<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="2511" to="2513" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Timing Attacks on Implementations of Diffie-Hellman, RSA, DSS, and Other Systems</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Paul</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Kocher</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. of the 16 th Annual International Cryptology Conf. on Advances in Cryptology, CRYPTO &apos;96</title>
+		<meeting>of the 16 th Annual International Cryptology Conf. on Advances in Cryptology, CRYPTO &apos;96<address><addrLine>London, UK, UK</addrLine></address></meeting>
+		<imprint>
+			<publisher>Springer-Verlag</publisher>
+			<date type="published" when="1996">1996</date>
+			<biblScope unit="page" from="104" to="113" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">An Information-theoretic Model for Adaptive Side-channel Attacks</title>
+		<author>
+			<persName><forename type="first">Boris</forename><surname>Köpf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Basin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. of the 14 th ACM Conf. on Computer and Communications Security, CCS &apos;07</title>
+		<meeting>of the 14 th ACM Conf. on Computer and Communications Security, CCS &apos;07<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2007">2007</date>
+			<biblScope unit="page" from="286" to="296" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Automatic quantification of cache side-channels</title>
+		<author>
+			<persName><forename type="first">Boris</forename><surname>Köpf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Laurent</forename><surname>Mauborgne</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martín</forename><surname>Ochoa</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. of the 24 th international Conf. on Computer Aided Verification, CAV&apos;12</title>
+		<meeting>of the 24 th international Conf. on Computer Aided Verification, CAV&apos;12<address><addrLine>Berlin, Heidelberg</addrLine></address></meeting>
+		<imprint>
+			<publisher>Springer-Verlag</publisher>
+			<date type="published" when="2012">2012</date>
+			<biblScope unit="page" from="564" to="580" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<monogr>
+		<title level="m" type="main">Timing attack in Google Keyczar library</title>
+		<author>
+			<persName><forename type="first">Nate</forename><surname>Lawson</surname></persName>
+		</author>
+		<idno>Ac- cessed: 2018-08-21</idno>
+		<ptr target="https://rdist.root.org/2009/05/28/timing-attack-in-google-keyczar-library/" />
+		<imprint>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Perffuzz: Automatically generating pathological inputs</title>
+		<author>
+			<persName><forename type="first">Caroline</forename><surname>Lemieux</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rohan</forename><surname>Padhye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Koushik</forename><surname>Sen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dawn</forename><surname>Song</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 27th ACM SIGSOFT International Symposium on Software Testing and Analysis</title>
+		<meeting>the 27th ACM SIGSOFT International Symposium on Software Testing and Analysis<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2018">2018. 2018</date>
+			<biblScope unit="page" from="254" to="265" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Fairfuzz: A targeted mutation strategy for increasing greybox fuzz testing coverage</title>
+		<author>
+			<persName><forename type="first">Caroline</forename><surname>Lemieux</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Koushik</forename><surname>Sen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2018 33rd ACM/IEEE International Conference on Automated Software Engineering, ASE 2018</title>
+		<meeting>the 2018 33rd ACM/IEEE International Conference on Automated Software Engineering, ASE 2018<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Last-level cache side-channel attacks are practical</title>
+		<author>
+			<persName><forename type="first">Fangfei</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuval</forename><surname>Yarom</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qian</forename><surname>Ge</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gernot</forename><surname>Heiser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ruby</forename><forename type="middle">B</forename><surname>Lee</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Security and Privacy (SP), 2015 IEEE Symposium on</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="605" to="622" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">A systematic study of cache side channels across aes implementations</title>
+		<author>
+			<persName><forename type="first">Heiko</forename><surname>Mantel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexandra</forename><surname>Weber</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Boris</forename><surname>Köpf</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Engineering Secure Software and Systems</title>
+		<editor>
+			<persName><forename type="first">Eric</forename><surname>Bodden</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Mathias</forename><surname>Payer</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Elias</forename><surname>Athanasopoulos</surname></persName>
+		</editor>
+		<meeting><address><addrLine>Cham</addrLine></address></meeting>
+		<imprint>
+			<publisher>Springer International Publishing</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="213" to="230" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Quantifying information flow for dynamic secrets</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Mardziel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">S</forename><surname>Alvim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Hicks</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">R</forename><surname>Clarkson</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2014 IEEE Symposium on Security and Privacy (SP)</title>
+		<imprint>
+			<date type="published" when="2014-05">May 2014</date>
+			<biblScope unit="page" from="540" to="555" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Badger: Complexity analysis with fuzzing and symbolic execution</title>
+		<author>
+			<persName><forename type="first">Yannic</forename><surname>Noller</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rody</forename><surname>Kersten</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Corina</forename><forename type="middle">S</forename><surname>Pȃsȃreanu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 27th ACM SIGSOFT International Symposium on Software Testing and Analysis</title>
+		<meeting>the 27th ACM SIGSOFT International Symposium on Software Testing and Analysis<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2018">2018. 2018</date>
+			<biblScope unit="page" from="322" to="332" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Multirun side-channel analysis using symbolic execution and max-smt</title>
+		<author>
+			<persName><forename type="first">Corina</forename><forename type="middle">S</forename><surname>Pasareanu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Quoc-Sang</forename><surname>Phan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pasquale</forename><surname>Malacaria</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Computer Security Foundations Symposium (CSF)</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2016">2016. 2016</date>
+			<biblScope unit="page" from="387" to="400" />
+		</imprint>
+	</monogr>
+	<note>IEEE 29th</note>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">NEZHA: efficient domain-independent differential testing</title>
+		<author>
+			<persName><forename type="first">Theofilos</forename><surname>Petsios</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adrian</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Salvatore</forename><forename type="middle">J</forename><surname>Stolfo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Angelos</forename><forename type="middle">D</forename><surname>Keromytis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Suman</forename><surname>Jana</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2017 IEEE Symposium on Security and Privacy</title>
+		<meeting><address><addrLine>San Jose, CA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2017">May 22-26, 2017. 2017</date>
+			<biblScope unit="volume">2017</biblScope>
+			<biblScope unit="page" from="615" to="632" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Synthesis of adaptive side-channel attacks</title>
+		<author>
+			<persName><forename type="first">Quoc-Sang</forename><surname>Phan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lucas</forename><surname>Bang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Corina</forename><forename type="middle">S</forename><surname>Pasareanu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pasquale</forename><surname>Malacaria</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tevfik</forename><surname>Bultan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">30th IEEE Computer Security Foundations Symposium</title>
+		<meeting><address><addrLine>Santa Barbara, CA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2017-08-21">2017. August 21-25, 2017. 2017</date>
+			<biblScope unit="page" from="328" to="342" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Hvlearn: Automated black-box analysis of hostname verification in ssl/tls implementations</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Sivakorn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Argyros</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Pei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">D</forename><surname>Keromytis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Jana</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2017 IEEE Symposium on Security and Privacy (SP)</title>
+		<imprint>
+			<date type="published" when="2017-05">May 2017</date>
+			<biblScope unit="page" from="521" to="538" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Singularity: Pattern fuzzing for worst case complexity</title>
+		<author>
+			<persName><forename type="first">Jiayi</forename><surname>Wei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jia</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yu</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kostas</forename><surname>Ferles</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Isil</forename><surname>Dillig</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 26th ACM Joint European Software Engineering Conference and Symposium on the Foundations of Software Engineering, ESEC/FSE 2018</title>
+		<meeting>the 26th ACM Joint European Software Engineering Conference and Symposium on the Foundations of Software Engineering, ESEC/FSE 2018<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Stacco: Differentially analyzing side-channel traces for detecting ssl/tls vulnerabilities in secure enclaves</title>
+		<author>
+			<persName><forename type="first">Yuan</forename><surname>Xiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mengyuan</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sanchuan</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yinqian</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2017 ACM SIGSAC Conference on Computer and Communications Security, CCS &apos;17</title>
+		<meeting>the 2017 ACM SIGSAC Conference on Computer and Communications Security, CCS &apos;17<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="859" to="874" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Finding and understanding bugs in c compilers</title>
+		<author>
+			<persName><forename type="first">Xuejun</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yang</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eric</forename><surname>Eide</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">John</forename><surname>Regehr</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 32Nd ACM SIGPLAN Conference on Programming Language Design and Implementation, PLDI &apos;11</title>
+		<meeting>the 32Nd ACM SIGPLAN Conference on Programming Language Design and Implementation, PLDI &apos;11<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="page" from="283" to="294" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<monogr>
+		<title level="m" type="main">American fuzzy lop (afl)</title>
+		<author>
+			<persName><forename type="first">Michal</forename><surname>Zalewski</surname></persName>
+		</author>
+		<ptr target="http://lcamtuf.coredump.cx/afl/" />
+		<imprint>
+			<date type="published" when="2014">2014. 2018-05-06</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

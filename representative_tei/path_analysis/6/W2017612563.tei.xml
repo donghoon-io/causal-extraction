@@ -1,0 +1,584 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Refining Buffer Overflow Detection via Demand-Driven Path-Sensitive Analysis</title>
+				<funder>
+					<orgName type="full">Phoenix</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Wei</forename><surname>Le</surname></persName>
+							<email>weile@cs.virginia.edu</email>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Computer Science</orgName>
+								<orgName type="institution">University of Virginia Charlottesville</orgName>
+								<address>
+									<postCode>22904</postCode>
+									<region>VA</region>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Mary</forename><forename type="middle">Lou</forename><surname>Soffa</surname></persName>
+							<email>soffa@cs.virginia.edu</email>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Computer Science</orgName>
+								<orgName type="institution">University of Virginia Charlottesville</orgName>
+								<address>
+									<postCode>22904</postCode>
+									<region>VA</region>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Refining Buffer Overflow Detection via Demand-Driven Path-Sensitive Analysis</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-14T19:24+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<textClass>
+				<keywords>
+					<term>D.2.4 [Software Engineering]: Software/Program Verification; D.2.5 [Software Engineering]: Testing and Debugging General Terms Algorithms</term>
+					<term>Reliability</term>
+					<term>Security</term>
+					<term>Verification Path-Sensitive</term>
+					<term>Demand-Driven</term>
+					<term>Infeasible Paths</term>
+				</keywords>
+			</textClass>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Although static analysis is an important technique for detecting buffer overflow before software deployment, current static tools rely on considerable human effort for annotating code to help analysis, or for diagnosing warnings, many of which are false positives. This paper presents an analysis technique that refines information about the paths that involve a potential buffer overflow to help in the diagnosis and debugging of vulnerabilities. Instead of only reporting a vulnerable buffer or statement in the program, which most tools do, our analysis categorizes paths of a possibly vulnerable statement into five types: Vulnerable, Overflow-User-Independent, Safe, Infeasible and Don't-Know. Thus, safe and infeasible paths can be excluded from being inspected, providing focus on problematic paths. For scalability, we designed and implemented our analysis as an interprocedural, demand-driven path-sensitive analysis. Our experiments demonstrate that various path types do go through a possibly vulnerable buffer statement. The results also indicate that our technique is efficient and practical.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1.">Introduction</head><p>Although much effort has been expended to detect and avoid buffer overflow in software, we are still plagued with exploits that are costly to fix, disruptive, and promote a general loss of trust in software. Since many applications are written in unsafe languages and it is difficult for programmers to correctly write applications that use buffers, buffer overflow is still being introduced into software and is the most commonly exploited vulnerability <ref type="bibr" target="#b4">[5,</ref><ref type="bibr" target="#b20">21]</ref>. In 2006, SecuriTeam reported 134 vulnerable overflows, a quarter of the total security warnings <ref type="bibr" target="#b20">[21]</ref>, and many of them have caused severe impact such as unauthorized access and denial of service. To detect vulnerabilities, dynamic detectors are used but they slow down the Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. To copy otherwise, to republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. PASTE'07 <ref type="bibr">June 13-14, 2007</ref>, San Diego, California, USA. Copyright c 2007 ACM 978-1-59593-595-3/07/0006. . . $5.00 execution by a factor of 2 to 30 due to the increase of code size, branch mispredictions and data cache misses <ref type="bibr" target="#b23">[24]</ref>. Therefore dynamic buffer overflow detection is difficult to apply for time constrained software. In addition, patches to fix the vulnerability are expensive due to the number of computers typically effected. For these reasons, a number of software companies rely on static analysis to detect buffer overflow before software release <ref type="bibr" target="#b11">[12,</ref><ref type="bibr" target="#b12">13]</ref>.</p><p>However, current static tools require considerable human effort, either for diagnosing warnings or for annotating programs to help analysis <ref type="bibr" target="#b3">[4,</ref><ref type="bibr" target="#b10">11,</ref><ref type="bibr" target="#b12">13,</ref><ref type="bibr" target="#b17">18,</ref><ref type="bibr" target="#b21">22,</ref><ref type="bibr" target="#b23">24]</ref>. Many tools report warnings about potentially vulnerable program points, such as statements or buffers, for example, Splint, BOON and ARCHER <ref type="bibr" target="#b10">[11,</ref><ref type="bibr" target="#b21">22,</ref><ref type="bibr" target="#b23">24]</ref>. The code reviewer has no knowledge about the paths through the program point that actually produce the vulnerability. Tools that report vulnerable paths instead of statements include Prefix, ESPx and Prefast <ref type="bibr" target="#b3">[4,</ref><ref type="bibr" target="#b12">13,</ref><ref type="bibr" target="#b17">18]</ref>. The analysis is performed exhaustively along all program paths. The challenge for these tools is scalability, in particular when the vulnerability may cross procedure boundaries. As a result, the tools sometime have to give up after exploring a certain number of paths <ref type="bibr" target="#b17">[18]</ref>. Although heuristics can be applied to select and merge paths, excessive warnings are produced <ref type="bibr" target="#b3">[4]</ref>. Some tools address scalability by introducing annotations to specify the buffer contract between procedures and thus turn the buffer overflow detection intraprocedural <ref type="bibr" target="#b12">[13]</ref>. But both writing and verification of annotations are costly, and thus, correctness of annotations is not guaranteed. This paper presents an interprocedural demand-driven pathsensitive analysis with the goal of reducing the effort required to identify program paths that are vulnerable and providing more precise information about the vulnerability to help users find the root cause. Our analysis classifies paths as infeasible, safe, vulnerable with potential for exploits, overflow with little chance to be exploited, and don't-know. Our analysis is driven by statements that have a definition or redefinition of a buffer. By using a demanddriven algorithm, our analysis is directed to those paths that can be executed and maybe vulnerable, and the analysis terminates as soon as the vulnerability decision is discovered. Through our analysis, we exclude paths that are infeasible and safe, and prioritize paths that can overflow based on their chance of being exploited.</p><p>In summary, the contributions of the paper include:</p><p>1. A categorization and identification of five types of paths for buffer overflow.</p><p>2. An interprocedural demand-driven path-sensitive diagnosis tool for identifying the types of paths through a potential overflow buffer.</p><p>3. Experimental results that demonstrate the path types existing in real programs and the time and space costs of the analysis.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Figure 1. A Simple Example</head><p>Section 2 gives an overview of our approach using a simple example. Section 3 defines five path types. Section 4 describes the demand-driven model and framework. Experimental results are given in Section 5, followed by the related work in Section 6, and a summary in Section 7.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.">Overview and an Example</head><p>We present an overview of our technique through an example in Figure <ref type="figure">1</ref> that is based on the work of Bodik et al <ref type="bibr" target="#b2">[3]</ref>. In the discussion of the example, we assume that a demand-driven pathsensitive infeasibility analysis has already been done <ref type="bibr" target="#b2">[3]</ref>.</p><p>In Figure <ref type="figure">1</ref>, nodes 3, 4, 8, 12 and 14 write strings to a buffer. Overflow might occur at any of these five nodes. The nodes 3 and 4 are identified to be safe buffer definitions since both the buffer size and the content of the buffer can be determined locally. For the nodes 8, 12 and 14, we need more context to make a judgment as to their vulnerability.</p><p>Consider the buffer at node 12, which is a string copy. We first construct and raise the query BSize(b) &gt; T P os(a) at node 12, which means after the strcpy, if the size of buffer b, BSize(b), is larger than the index of the null string terminator in the buffer, T P os(a), the buffer access is safe (we assume the index starts at 0). The query is then propagated backwards to the nodes 11 and then 9. No information is collected at these two nodes to update the query as they have no impact on the query. At each step of propagation, we cache the query at the node for reuse. At node 9, we propagate the query along three paths to its predecessors, namely nodes 16, 8 and 5. At node 16, the query enters a loop, which does not update the query. Thus the query is merged at node 9 and not propagated further. The query from node 8 reaches an infeasible path segment, 8, 9, 11, 12 , and terminates. From node 5, the query is propagated to node 4. Here, it is discovered that T P os(a) = 3, and the query  Thus the query is resolved by 2 &gt; 3 as false. The constant flag shows the buffer is overflowed by some constant string and is not dependent on input. Note that propagation halts as soon as the query is resolved. We propagate this answer to the nodes we have visited to determine the path.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.">Path Types</head><p>In this section, we describe the types of paths that we identify. We consider both feasibility and buffer overflow in the classification. Our goals for categorizing paths include: 1) distinguishing faulty paths from safe and infeasible paths, 2) prioritizing vulnerable paths based on their possible exploitation consequences, and 3) identifying what paths should be further explored to determine its vulnerability. We now classify paths that go through a potentially vulnerable statement, PVS.</p><p>Infeasible: Infeasible paths can never be executed. Therefore, the overflow property of buffers on those paths is meaningless for judging whether or not a buffer overflow exists. Infeasible paths occur when there exist branch correlations along a path that make a branch unexecutable. Previous work shows that there are 9-40% statically detectable branch correlations <ref type="bibr" target="#b1">[2]</ref>, which indicates that it is necessary to try to identify them. However, identifying all infeasible paths is not computable <ref type="bibr" target="#b0">[1]</ref>.</p><p>Safe: Given a PVS, some paths that execute the PVS are safe either because the bounds checking is properly done along the path or the overflow will not happen under any input that leads to traversal of these paths. For example, in Figure <ref type="figure">2</ref>, code from Squid-2.3 ftp.c shows that the path 1 -13, 23 is always safe regardless of a possibly vulnerable strcat at the line 23.</p><p>Vulnerable: Many attacks through buffer overflow are conducted through external inputs, e.g., command line, file, network packets or environment variables. Attack incidents show that important attack data such as control transfer code in the controldata attack and data used to corrupt program variables in the noncontrol-data attack <ref type="bibr" target="#b6">[7]</ref> are usually injected through the overflowed buffer <ref type="bibr" target="#b4">[5,</ref><ref type="bibr" target="#b20">21]</ref>. The data such as malicious payload for stack smashing <ref type="bibr" target="#b18">[19]</ref> or parameters for system calls to launch return-into-lib attack <ref type="bibr" target="#b22">[23]</ref> are also often located in the overflowed buffer <ref type="bibr" target="#b4">[5,</ref><ref type="bibr" target="#b20">21]</ref>. Therefore we consider a buffer that can overflow with user input as a likely exploitable buffer. If feasible paths reach these types of buffer, we call them vulnerable paths. In Figure <ref type="figure">1</ref>, the path 1 -6, 18, 19, 7, 8 is considered vulnerable if str gets a string from the user input.</p><p>Overflow-User-Independent: Not all buffer overflows are exploitable by unknown users, e.g., when the buffer can overflow only with constants in the program, the chance of exploitation is low compared to a buffer overflowed through external input. A crash or corruption of the data could still be possible. Paths containing these buffers are placed in a lower priority than vulnerable paths. This prioritization is useful when the message volume is large and there is a time limit imposed for correcting the code. In a large code base, it is impossible to fix every bug before releasing the software. 1 -5, 9, 11, 12 in Figure <ref type="figure">1</ref> is an overflow-user-independent path. It can overflow the buffer b with the C string "y" (the character 'y' followed by the null terminator '\0').</p><p>Don't-Know: We identify paths as don't-know when their detection is beyond the power of static analysis, e.g., the library source will not be known until link time. Instead of merging imprecise dataflow facts with precise facts and generating conservative results, we identify those don't-know paths and the reason that makes them don't-know so that a code reviewer is aware of them and other detection facilities such as testing can be applied. In Figure <ref type="figure">2</ref>, paths entering the if statement at line 13, such as 1 -23 , encounter the library call rfc1738 escape part at line 14 or line 18, which may define ftpState-&gt;user and ftpState-&gt;password. Thus the content written to the buffer t cannot be judged by the static analyzer.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.">Buffer Overflow Analysis</head><p>A demand-driven analysis has a number of advantages that lead to scalability. Firstly, each query of a PVS is independent and thus all queries can be performed in parallel. The intermediate queries generated for solving a query can be cached and reused for checking queries from other buffers. Also, the analysis only visits the nodes reachable from the PVS, collects information related to user queries, and terminates as soon as the query is resolved. Experiments on a demand-driven copy constant propagation framework reported the speedup of a factor of 1.4-44.3 for a set of benchmarks <ref type="bibr" target="#b9">[10]</ref>. A demand-driven approach also provides a user with flexibility for diagnosing and debugging errors with regard to which buffer should be checked.</p><p>Our analysis for buffer overflows instantiates and extends a general demand-driven framework based on Duesterwald et al's work <ref type="bibr" target="#b9">[10]</ref>. The demand-driven approach has showed scalability for solving dataflow problems such as reaching definition and constant propagation <ref type="bibr" target="#b9">[10]</ref>. However, according to our knowledge, it has not been investigated for detecting software errors or vulnerabilities. According to Duesterwald et al <ref type="bibr" target="#b9">[10]</ref>, in order to build a concrete demand-driven analyzer, we should answer the following questions: 1) What is the query and where is it raised? 2) How should the query be propagated? 3) What information is used for updating queries? 4) With the information, what are the updating rules for queries? 5) When is the search terminated?</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">The Demand-Driven Model</head><p>For designing a buffer overflow demand-driven analyzer, we develop a demand-driven model using the above questions as a guide. Some descriptions below are language dependent and we use C and C++ for explanation.</p><p>Query. We define a set of program points of interest as PVSs where queries are raised. Conservatively, we assume that every definition to a buffer (write to a buffer) is dangerous, thus is a PVS. A buffer overflow query is regarding whether a buffer access at the PVS would be safe and whether the user input could write to the buffer. These two parts are represented as a constraint of buffer size and string length, and a flag in the query. We designed a set of query templates for PVSs. The second column of Table <ref type="table">1</ref> shows some example constraints for the selected PVSs.</p><p>Information for Updating Queries. There is a set of program points where information could be extracted to update queries. They include buffer definitions, buffer allocations, index definitions, alias operations and pointer arithmetic. Buffer definitions are PVSs, as we explained above. Buffer allocations often specify the size of a buffer. For example, stack buffer can be declared as char a <ref type="bibr" target="#b9">[10]</ref>, and the heap buffer is usually allocated by the malloc family of library calls. The information also can come from constant assignment, branch conditions and the declared type. The extracted information is formatted as assertions so that the analysis can use substitution or inequality rules to update queries. The third column of Table <ref type="table">1</ref> showed some assertions formatted from the node of the buffer definition and allocation.</p><p>Propagation Rules. Based on the work of Bodik and Duesterwald et al <ref type="bibr" target="#b1">[2,</ref><ref type="bibr" target="#b2">3,</ref><ref type="bibr" target="#b9">10]</ref>, we designed rules for propagating queries interprocedurally, incorporating feasibility, and handling loops.</p><p>We only propagate queries interprocedurally when we are confident that this call will update the query. To determine if a procedure impacts a query, we first check if any unknown variables in the query constraint defined by a global, a return or reference parameters of the call. If so, we perform a simple linear scan to determine if a statement in the procedure can possibly update a query. Our analysis is context sensitive. Therefore the query will be propagated back to the call site after it propagates out of the procedure. Only a newly raised query will be propagated to all call sites of its raised procedure.</p><p>In order to make sure a query is not propagated along an infeasible path, we first detect infeasible paths using branch correlation and mark infeasible path segments on the edges of an Interprocedural Control Flow Graph (ICFG) <ref type="bibr" target="#b2">[3,</ref><ref type="bibr" target="#b13">14]</ref>. During buffer overflow analysis, the query terminates when it encounters an infeasible path segment.</p><p>We also developed propagation rules for loops. In our analysis, users can specify the number of iterations they would like to compute for the loop. We track the query precisely when the iteration of the loop has not reached the threshold. Sometimes, the query can only be updated during the first iteration of the loop or even cannot be updated in the loop. In this case, queries from different iterations are merged. Sometimes, loop iteration is bounded by some constant integer, e.g., the loop for (int i = 0; i &lt; 100; i++) will iterate 100 times. When this type of loop is detected, we compute the final query with the upper limit of loop iteration. There are also loops whose iterations are not regular and might be determined by the user input. We represent the query after these loops as unknown in terms of loop iterations, and continuously propagate the query to see if any user input can control this loop to overflow the buffer.</p><p>Resolving the Query. For buffer overflow detection, the general property we aim to check is: after a write to the buffer, the declared buffer size must be no less than the size of the string stored in the buffer. It should be noted that we only specify the upper limit of the buffer and for the buffer write overflow. But the technique can be easily extended to also include the lower bound and read overflow. Based on the general property, we further expand the overflow properties to be vulnerable, overflow-user-independent, safe and don't-know, each of which corresponds to a path type defined in Section 3. During the analysis, if the information collected in the query is enough to be evaluated as one of the above properties, the query is solved. As the first step, the analysis detects infeasible paths and mark them on the ICFG. Second, a PVS is identified and a query is raised at this PVS. Then the query is propagated backwards under a set of propagation rules, and when it reaches a node, the information is collected to update the query. Every time a query is updated, the analysis judges if the query is solved to be one of the overflow properties. If not, the query will be continuously propagated. This process continues iteratively until the query is solved. After all queries are solved, the results are propagated from solved nodes to all previously visited nodes, and the path types are labeled on the edge. We can then identify the path based on the edge markings.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">The Framework</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.">Experimentation</head><p>To investigate the existence of the five types of paths in the real programs, we implemented our demand-driven algorithm using Microsoft Phoenix APIs <ref type="bibr" target="#b16">[17]</ref>. We measured the cost of the analysis on a set of benchmark programs selected from the BugBench <ref type="bibr" target="#b14">[15]</ref> and the Buffer Overflow Benchmark <ref type="bibr" target="#b24">[25]</ref>. The set consists of 9 programs, each of which contains known buffer overflow. Our experiments compute buffer overflow paths for these known vulnerabilities, identify the type of path, and determine the performance and space usage of analysis.</p><p>In our experiments, we compute buffer overflow paths for one PVS in each program. We would check every PVS of the program to make sure the software is secure. Our experiments consist of two steps. In the first step, we compute paths for a PVS in a benchmark program without considering infeasibility of paths. We then integrate our infeasibility detection module to check the impact of the infeasible paths on the query. In Tables 2, 3 and 4, we use a prime ( ) symbol for results after integrating infeasible paths.</p><p>We summarize the generated paths for benchmarks including path types and path segment lengths in Table <ref type="table" target="#tab_1">2</ref>. The path segment consists of all nodes between when the query was raised and when it was resolved. Under the Path Types column, there are vulnerable (Vul), overflow-user-independent (CNST), don't-know (UnK) and safe (Safe) subcolumns. Each subcolumn lists the number of the path generated for the specified type. The results show that all five types of paths do exist in real programs. Six of nine programs are detected to have vulnerable paths, and two programs have don't-know paths due to an external library. One program contains overflow-user-independent paths. Seven out of nine programs have safe paths. Without our path detection, the code debuggers might explore safe paths which will not be successful in finding the vulnerability. For the program bc-1.06, the total number of overflow-user-independent paths is very large and we ran out of memory when we traversed the marked ICFG to print paths. Actually, the number of paths is not important because it is not necessary for a code reviewer to inspect every path for diagnosis. With our framework, users can specify the number of paths to be output. After fixing them, the framework would be used again to determine if this fix corrects all vulnerable paths of the PVS.</p><p>The column, Inf, under Path Types shows whether infeasible paths are detected in the programs <ref type="bibr" target="#b2">[3]</ref>. We identify that six out of nine programs have infeasible paths. Using the infeasible information, the number of safe paths in three programs and the number of unknown paths in one program are able to be reduced. The length of the path segments is given by the number of different procedures (not including library calls) and number of basic blocks that are traversed by the path. These numbers are shown in the Average Path Size column.</p><p>In Table <ref type="table" target="#tab_2">3</ref>, we present data to evaluate the demand-driven approach. Under the Basic Blocks column, subcolumn All Blocks reports the total number of basic blocks in the program. The column labeled V Blocks reports the number of visited blocks during the analysis. Similarly, the All Procs column lists the total number of non-library procedures. V Procs lists the number of procedure visited. There are two worklists which are representative to report the memory usage of the analysis. Max S shows the maximum number of elements in the worklist during the solve-query step while Max P gives the maximum number of elements in the worklist during the propagate-results step. With the infeasible paths integration, the number of visited blocks and procedures is usually reduced because blocks that are on the infeasible paths are no longer visited. The total number of elements in the worklist of the solve-query step often increases because, in the presence of infeasible information, queries are less likely merged.</p><p>Table <ref type="table" target="#tab_3">4</ref> shows the time of our analysis. Performance is reported by Phoenix's time report functionality <ref type="bibr" target="#b16">[17]</ref>. For the nine programs, the performance varies from .24 to 102.6 seconds for detecting infeasible paths and resolving a buffer overflow query along all paths. The memory usage ranges from 9 to 65MB and the average is 18MB. We also report the memory usage by the size of the worklist queue (see Table <ref type="table" target="#tab_2">3</ref> </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>column Work List).</head><p>The above results demonstrate that the path types we defined all exist in the real code. For the vulnerable paths we generated, many cross procedural boundaries, involve global buffers, or are located in loops. Without the identification of the actual paths, these features will make manual inspection very difficult and timeconsuming.  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.">Related Work</head><p>Many approaches for detecting buffer overflow have been proposed, including compilers, languages, dynamic detectors and static analysis. Static analysis has the advantage that the overflow can be detected and fixed before software release. The drawbacks include high false positive rates and required human efforts for confirmation, prioritization and diagnoses of the bug. General static approaches include mapping of buffer bounds checking to integer range analysis, abstract interpretation, symbolic execution or type inference <ref type="bibr" target="#b10">[11,</ref><ref type="bibr" target="#b12">13,</ref><ref type="bibr" target="#b21">22,</ref><ref type="bibr" target="#b23">24]</ref>. Most of the existing static tools report high false positives, require annotations, or do not report or characterize paths.</p><p>Path-sensitive analysis aims to check if the property holds for every path. It reduces false positives by excluding infeasible paths. ARCHER <ref type="bibr" target="#b23">[24]</ref> is path-sensitive, but it does not compute faulty paths, and only reports statements where the access of the buffer is violated. ESP <ref type="bibr" target="#b7">[8]</ref> generates a set of paths where typestate violation can occur. MOPS <ref type="bibr" target="#b5">[6]</ref> adapts model checking technology for computing a set of traces that violate security properties.</p><p>Demand-driven analysis aims to reduce time and space overhead by only collecting information that is needed, and thus improving scalability <ref type="bibr" target="#b9">[10]</ref>. Duesterwald et al. designed a general framework for interprocedural dataflow analysis <ref type="bibr" target="#b9">[10]</ref>, which has been used to infeasible path detection and dataflow testing <ref type="bibr" target="#b2">[3,</ref><ref type="bibr" target="#b8">9]</ref>. Demand-driven analysis has also been applied to reproduce traces to explain program failure caused by typestate errors and to detect memory leaks <ref type="bibr" target="#b15">[16,</ref><ref type="bibr" target="#b19">20]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7.">Conclusions and Future Work</head><p>This paper presents a demand-driven path-sensitive analysis framework for detecting and categorizing paths along which a buffer overflow may occur. The analysis is flexible, scalable and fully automatic. Its major contributions are:</p><p>• Reducing false positives by eliminating infeasible and safe paths that go through a vulnerable statement. • Providing information on paths with overflow for directing manual diagnosis. • Categorizing paths based on their chance of being exploited.</p><p>In the future, we plan to more fully explore the usage of the information provided by our technique in finding and correcting bugs. We also plan to use more sophisticated constraint solvers and alias detectors to provide more precise categorization.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head></head><label></label><figDesc>is updated to BSize(b) &gt; 3. Meanwhile, a flag is set in the query to indicate the buffer content currently is constant. The propagation continues and the information at node 3 indicates BSize(b) = 2.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 3 8 Table 1 .Figure 3 .</head><label>3813</label><figDesc>Figure3presents the framework for the buffer overflow analyzer. Our goal is to compute types of paths we defined in Section 3. The demand-driven model in the previous section guides the analysis to</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head></head><label></label><figDesc>Code Snippet from Squid-2.3 ftp.c.</figDesc><table><row><cell>1</cell><cell>v o i d f t p B u i l d T i t l e U r l ( F t p S t a t e D a t a  *  f t p S t a t e ){</cell></row><row><cell>2</cell><cell>r e q u e s t t  * r e q u e s t = f t p S t a t e -&gt;r e q u e s t ;</cell></row><row><cell>3</cell><cell>s i z e t l e n ;</cell></row><row><cell>4</cell><cell>cha r  *  t ;</cell></row><row><cell>5</cell><cell>l e n = 64</cell></row><row><cell>6</cell><cell>+ s t r l e n ( f t p S t a t e-&gt;u s e r )</cell></row><row><cell>7</cell><cell>+ s t r l e n ( f t p S t a t e-&gt;p a s s w o r d )</cell></row><row><cell>8</cell><cell>+ s t r l e n ( r e q u e s t-&gt;h o s t )</cell></row><row><cell>9</cell><cell>+ s t r l e n ( r e q u e s t-&gt;u r l p a t h ) ;</cell></row><row><cell>10</cell><cell>. . .</cell></row><row><cell>11</cell><cell>t = x c a l l o c ( l e n , 1 ) ;</cell></row><row><cell>12</cell><cell>s t r c a t ( t , " f t p : / / " ) ;</cell></row><row><cell>13</cell><cell>i f ( s t r c m p ( f t p S t a t e -&gt;u s e r , " anonymous " ) ) {</cell></row><row><cell>14</cell><cell>s t r c a t ( t , r f c 1 7 3 8 e s c a p e p a r t (</cell></row><row><cell>15</cell><cell>f t p S t a t e-&gt;u s e r ) ) ;</cell></row><row><cell>16</cell><cell>i f ( f t p S t a t e -&gt;p a s s w o r d u r l ) {</cell></row><row><cell>17</cell><cell>s t r c a t ( t , " : " ) ;</cell></row><row><cell>18</cell><cell>s t r c a t ( t , r f c 1 7 3 8 e s c a p e p a r t (</cell></row><row><cell>19</cell><cell>f t p S t a t e -&gt;p a s s w o r d ) ) ;</cell></row><row><cell>20</cell><cell>}</cell></row><row><cell>21</cell><cell>s t r c a t ( t , "@" ) ;</cell></row><row><cell>22</cell><cell>}</cell></row><row><cell>23</cell><cell>s t r c a t ( t , r e q u e s t-&gt;h o s t ) ;</cell></row><row><cell>24</cell><cell>. . .</cell></row><row><cell>25</cell><cell>}</cell></row><row><cell></cell><cell>Figure 2.</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 2 .</head><label>2</label><figDesc>Experiment Results: Computed Paths for Benchmarks</figDesc><table><row><cell>Benchmark</cell><cell>Lines of Code</cell><cell cols="2">Inf</cell><cell>Vul/Vul</cell><cell cols="4">Path Types CNST/CNST UnK/UnK</cell><cell>Safe/Safe</cell><cell>Average Path Size # P/#P # B/#B</cell></row><row><cell>polymorph-0.4.0</cell><cell>0.7K</cell><cell cols="2">yes</cell><cell>966/966</cell><cell></cell><cell>0/0</cell><cell></cell><cell>0/0</cell><cell>434/0</cell><cell>2.6/2.5</cell><cell>26.1/25.9</cell></row><row><cell>ncompress-4.2.4</cell><cell>1.9K</cell><cell cols="2">yes</cell><cell>288/288</cell><cell></cell><cell>0/0</cell><cell></cell><cell>0/0</cell><cell>2016/0</cell><cell>2.0/2.0</cell><cell>29.3/27.8</cell></row><row><cell>man-1.5h1</cell><cell>4.7K</cell><cell cols="2">yes</cell><cell>16/16</cell><cell></cell><cell>0/0</cell><cell></cell><cell>0/0</cell><cell>24/24</cell><cell>1.8/1.8</cell><cell>14.3/14.3</cell></row><row><cell>gzip-1.2.4</cell><cell>8.2K</cell><cell cols="2">no</cell><cell>1/1</cell><cell></cell><cell>0/0</cell><cell></cell><cell>0/0</cell><cell>0/0</cell><cell>3/3</cell><cell>5/5</cell></row><row><cell>bc-1.06</cell><cell>17.0K</cell><cell cols="2">yes</cell><cell>0/0</cell><cell cols="3">&gt;50,000/&gt;50,000</cell><cell>0/0</cell><cell>&gt;30,000/&gt;30,000</cell><cell>-</cell><cell>-</cell></row><row><cell>squid-2.3</cell><cell>93.5K</cell><cell cols="2">yes</cell><cell>0/0</cell><cell></cell><cell>0/0</cell><cell></cell><cell>8/4</cell><cell>4/2</cell><cell>1/1</cell><cell>6.7/6.8</cell></row><row><cell>wu-ftp: mapping-chdir</cell><cell>0.4K</cell><cell cols="2">yes</cell><cell>4320/4320</cell><cell></cell><cell>0/0</cell><cell></cell><cell>0/0</cell><cell>18624/18624</cell><cell>3.8/3.8</cell><cell>33.6/33.6</cell></row><row><cell>sendmail: ge-bad</cell><cell>0.7K</cell><cell cols="2">no</cell><cell>48/48</cell><cell></cell><cell>0/0</cell><cell></cell><cell>0/0</cell><cell>648/648</cell><cell>2.0/2.0</cell><cell>35.5/35.5</cell></row><row><cell>BIND: nxt-bad</cell><cell>1.3K</cell><cell cols="2">no</cell><cell>0/0</cell><cell></cell><cell>0/0</cell><cell></cell><cell>2/2</cell><cell>0/0</cell><cell>2.0/2.0</cell><cell>23.5/23.5</cell></row><row><cell>Benchmark</cell><cell cols="2">All Blocks</cell><cell cols="3">Basic Blocks V Blocks/V Blocks</cell><cell>All Procs</cell><cell cols="3">Procedures V Procs/V Procs</cell><cell>Work List Max S/Max S Max P/Max P</cell></row><row><cell>polymorph-0.4.0</cell><cell>740</cell><cell></cell><cell></cell><cell>34/34</cell><cell></cell><cell>22</cell><cell></cell><cell>3/3</cell><cell>10/9</cell><cell>13/13</cell></row><row><cell>ncompress-4.2.4</cell><cell>654</cell><cell></cell><cell></cell><cell>48/47</cell><cell></cell><cell>14</cell><cell></cell><cell>2/2</cell><cell>12/12</cell><cell>16/15</cell></row><row><cell>man-1.5h1</cell><cell>2593</cell><cell></cell><cell></cell><cell>100/100</cell><cell></cell><cell>78</cell><cell></cell><cell>8/8</cell><cell>23/23</cell><cell>25/25</cell></row><row><cell>gzip-1.2.4</cell><cell>3436</cell><cell></cell><cell></cell><cell>5/5</cell><cell></cell><cell>102</cell><cell></cell><cell>3/3</cell><cell>2/2</cell><cell>2/2</cell></row><row><cell>bc-1.06</cell><cell>3090</cell><cell></cell><cell></cell><cell>228/226</cell><cell></cell><cell>102</cell><cell></cell><cell>12/11</cell><cell>102/115</cell><cell>54/50</cell></row><row><cell>squid-2.3</cell><cell>35189</cell><cell></cell><cell></cell><cell>10/10</cell><cell></cell><cell>1423</cell><cell></cell><cell>1/1</cell><cell>5/4</cell><cell>3/3</cell></row><row><cell>wu-ftp:mapping chdir</cell><cell>129</cell><cell></cell><cell></cell><cell>40/39</cell><cell></cell><cell>6</cell><cell></cell><cell>4/3</cell><cell>46/46</cell><cell>10/10</cell></row><row><cell>sendmail: ge-bad</cell><cell>187</cell><cell></cell><cell></cell><cell>34/34</cell><cell></cell><cell>8</cell><cell></cell><cell>3/3</cell><cell>6/7</cell><cell>5/5</cell></row><row><cell>BIND: nxt-bad</cell><cell>423</cell><cell></cell><cell></cell><cell>31/31</cell><cell></cell><cell>14</cell><cell></cell><cell>2/2</cell><cell>8/8</cell><cell>6/6</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 3 .</head><label>3</label><figDesc>Evaluating Demand-Driven Analysis</figDesc><table><row><cell>Benchmark</cell><cell>Time(s)</cell><cell>Time (s)</cell></row><row><cell>polymorph-0.4.0</cell><cell>12.19</cell><cell>12.40</cell></row><row><cell>ncompress-4.2.4</cell><cell>0.69</cell><cell>0.24</cell></row><row><cell>man-1.5h1</cell><cell>2.05</cell><cell>2.16</cell></row><row><cell>gzip-1.2.4</cell><cell>0.24</cell><cell>0.24</cell></row><row><cell>bc-1.06</cell><cell>98.3</cell><cell>102.6</cell></row><row><cell>squid-2.3</cell><cell>1.14</cell><cell>1.32</cell></row><row><cell>wu-ftp:mapping chdir</cell><cell>13.51</cell><cell>13.36</cell></row><row><cell>sendmail: ge-bad</cell><cell>1.64</cell><cell>1.70</cell></row><row><cell>BIND: nxt-bad</cell><cell>2.40</cell><cell>2.65</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 4 .</head><label>4</label><figDesc>Performance of Analysis</figDesc><table /></figure>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head n="8.">Acknowledgment</head><p>We thank the <rs type="institution">Microsoft External Research &amp; Programs group</rs> for supporting this project, especially <rs type="person">Yan Xu</rs> and <rs type="person">John Lefor</rs>. We also thank <rs type="person">Andy Ayers</rs> and <rs type="person">Chris McKinsey</rs> from the <rs type="funder">Phoenix</rs> group for their help in using Phoenix.</p></div>
+			</div>
+			<listOrg type="funding">
+			</listOrg>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<title level="m" type="main">Programs follow paths</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Ball</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">R</forename><surname>Larus</surname></persName>
+		</author>
+		<idno>MSR-TR-99-01</idno>
+		<imprint>
+			<date type="published" when="1999">1999</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">Microsoft Technical Report</note>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Interprocedural conditional branch elimination</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Bodik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Gupta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">L</forename><surname>Soffa</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the ACM SIGPLAN 1997 conference on Programming language design and implementation</title>
+		<meeting>the ACM SIGPLAN 1997 conference on Programming language design and implementation</meeting>
+		<imprint>
+			<date type="published" when="1997">1997</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Refining data flow information using infeasible paths</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Bodik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Gupta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">L</forename><surname>Soffa</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 5th ACM SIGSOFT international symposium on Foundations of software engineering</title>
+		<meeting>the 5th ACM SIGSOFT international symposium on Foundations of software engineering</meeting>
+		<imprint>
+			<date type="published" when="1997">1997</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<title level="m" type="main">A static analyzer for finding dynamic programming errors. Software: Practice and Experience</title>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">R</forename><surname>Bush</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">D</forename><surname>Pincus</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">J</forename><surname>Sielaff</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2000">2000</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<monogr>
+		<ptr target="http://www.cert.org" />
+		<title level="m">CERT</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Mops: an infrastructure for examining security properties of software</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wagner</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 9th ACM conference on Computer and communications security</title>
+		<meeting>the 9th ACM conference on Computer and communications security</meeting>
+		<imprint>
+			<date type="published" when="2002">2002</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Non-control-data attacks are realistic threats</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Sezer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Gauriar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Iyer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 14th USENIX Security Symposium</title>
+		<meeting>the 14th USENIX Security Symposium</meeting>
+		<imprint>
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">ESP: path-sensitive program verification in polynomial time</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Das</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Lerner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Seigle</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the ACM SIGPLAN 2002 conference on Programming language design and implementation</title>
+		<meeting>the ACM SIGPLAN 2002 conference on Programming language design and implementation</meeting>
+		<imprint>
+			<date type="published" when="2002">2002</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">A demand-driven analyzer for data flow testing at the integration level</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>Duesterwald</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Gupta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">L</forename><surname>Soffa</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 18th international conference on Software engineering</title>
+		<meeting>the 18th international conference on Software engineering</meeting>
+		<imprint>
+			<date type="published" when="1996">1996</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">A practical framework for demand-driven interprocedural data flow analysis</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>Duesterwald</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Gupta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">L</forename><surname>Soffa</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Transactions on Programming Languages and Systems</title>
+		<imprint>
+			<date type="published" when="1997">1997</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Static detection of dynamic memory errors</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Evans</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the ACM SIGPLAN 1996 conference on Programming language design and implementation</title>
+		<meeting>the ACM SIGPLAN 1996 conference on Programming language design and implementation</meeting>
+		<imprint>
+			<date type="published" when="1996">1996</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<ptr target="http://www.fortifysoftware.com" />
+		<title level="m">Fortify</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Modular checking for buffer overflows in the large</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Hackett</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Das</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Yang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 28th international conference on Software engineering</title>
+		<meeting>the 28th international conference on Software engineering</meeting>
+		<imprint>
+			<date type="published" when="2006">2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Efficient computation of interprocedural definition-use chains</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">J</forename><surname>Harrold</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">L</forename><surname>Soffa</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Transactions on Programming Languages and Systems</title>
+		<imprint>
+			<date type="published" when="1994">1994</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Bugbench: Benchmarks for evaluating bug detection tools</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Qin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Tan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhou</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of Workshop on the Evaluation of Software Defect Detection Tools</title>
+		<meeting>Workshop on the Evaluation of Software Defect Detection Tools</meeting>
+		<imprint>
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">PSE: explaining program failures via postmortem static analysis</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Manevich</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Sridharan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Adams</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Das</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Yang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 12th ACM SIGSOFT international symposium on Foundations of software engineering</title>
+		<meeting>the 12th ACM SIGSOFT international symposium on Foundations of software engineering</meeting>
+		<imprint>
+			<date type="published" when="2004">2004</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<monogr>
+		<title level="m" type="main">Phoenix: A software optimization and analysis framework</title>
+		<ptr target="http://research.microsoft.com/phoenix/" />
+		<imprint>
+			<publisher>Microsoft</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<monogr>
+		<title/>
+		<author>
+			<persName><surname>Microsoft</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Prefast</surname></persName>
+		</author>
+		<ptr target="http://www.microsoft.com/whdc/devtools/tools/prefast.mspx" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<monogr>
+		<title level="m" type="main">Smashing the stack for fun and profit</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>One</surname></persName>
+		</author>
+		<ptr target="http://www.phrack.org/archives/49/P49-14" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Memory leak analysis by contradiction</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Orlovich</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Rugina</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 13th International Static Analysis Symposium</title>
+		<meeting>the 13th International Static Analysis Symposium</meeting>
+		<imprint>
+			<date type="published" when="2006">2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<monogr>
+		<ptr target="http://www.securiteam.com/" />
+		<title level="m">SecuriTeam</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">A first step towards automated detection of buffer overrun vulnerabilities</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wagner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">S</forename><surname>Foster</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">A</forename><surname>Brewer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Aiken</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of Network and Distributed System Security Symposium</title>
+		<meeting>Network and Distributed System Security Symposium</meeting>
+		<imprint>
+			<date type="published" when="2000">2000</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<monogr>
+		<title level="m" type="main">The advanced return-into-lib(c) exploits</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Wojtczuk</surname></persName>
+		</author>
+		<ptr target="http://www.phrack.org" />
+		<imprint>
+			<date type="published" when="2001">2001</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">ARCHER: Using symbolic, pathsensitive analysis to detect memory access errors</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Chou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Engler</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 11th ACM SIGSOFT international symposium on Foundations of software engineering</title>
+		<meeting>the 11th ACM SIGSOFT international symposium on Foundations of software engineering</meeting>
+		<imprint>
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Testing static analysis tools using exploitable buffer overflows from open source code</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zitser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Lippmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Leek</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 12th ACM SIGSOFT international symposium on Foundations of software engineering</title>
+		<meeting>the 12th ACM SIGSOFT international symposium on Foundations of software engineering</meeting>
+		<imprint>
+			<date type="published" when="2004">2004</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

@@ -1,0 +1,1130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Out-of-Distribution Adaptation in Offline RL: Counterfactual Reasoning via Causal Normalizing Flows</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability  status="unknown">
+					<licence/>
+				</availability>
+				<date type="published" when="2024-05-06">6 May 2024</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Minjae</forename><surname>Cho</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Jonathan</forename><forename type="middle">P</forename><surname>How</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Chuangchuang</forename><surname>Sun</surname></persName>
+						</author>
+						<title level="a" type="main">Out-of-Distribution Adaptation in Offline RL: Counterfactual Reasoning via Causal Normalizing Flows</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2024-05-06">6 May 2024</date>
+						</imprint>
+					</monogr>
+					<idno type="arXiv">arXiv:2405.03892v1[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-14T18:18+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<textClass>
+				<keywords>
+					<term>Offline Reinforcement Learning</term>
+					<term>Causal Inference</term>
+					<term>Normalizing Flow</term>
+					<term>Counterfactual Reasoning</term>
+				</keywords>
+			</textClass>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Despite notable successes of Reinforcement Learning (RL), the prevalent use of an online learning paradigm prevents its widespread adoption, especially in hazardous or costly scenarios. Offline RL has emerged as an alternative solution, enabling learning from pre-collected static datasets, i.e., observational data. However, this offline paradigm introduces a new challenge known as "distributional shift", degrading the performance when the policy is tested/ evaluated on scenarios that are Out-Of-Distribution (OOD) from the training dataset. Most existing offline RL approaches resolve this issue by regularizing policy learning within the information supported by the given dataset. However, such regularized learning overlooks the potential for high-reward regions that may exist beyond the dataset. This observation motivates exploring novel offline learning techniques that can generalize and make improvements beyond the data support without compromising policy performance, potentially by learning causation (cause-and-effect) instead of correlation from the dataset. In this paper, we propose the MOOD-CRL (Modelbased Offline OOD-Adapting Causal RL) algorithm, which aims to address the challenge of extrapolation for offline policy training through causal inference instead of policy-regularizing methods. Specifically, Causal Normalizing Flow (CNF) is developed to learn the transition dynamics and reward function for data generation/ augmentation in offline policy evaluation and training. Based on the data-invariant, physics-based qualitative causal graph and the observational data, we develop a novel learning scheme for CNF to learn the quantitative structural causal model, leading to the understanding of the underlying dynamics. As a result, CNF is generalized with predictive and counterfactual reasoning capabilities for sequential decision-making tasks, revealing a high potential for OOD adaptation. The effectiveness of our CNFbased offline RL approach is validated through extensive empirical evaluations, achieving comparable results with its online counterparts and outperforming both state-of-the-art model-free and model-based baselines with a significant margin.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>I. INTRODUCTION</head><p>W HILE Reinforcement Learning (RL) has achieved no- table success in addressing sequential decision-making challenges across diverse domains, its deployment in realworld applications poses significant challenges due to the need for active/ online interaction with the environments Minjae Cho is with the Department of Mechanical Engineering, Mississippi State University, MS 39762, USA (Email: mc3216@msstate.edu) Jonathan P. How is with the Department of Aeronautics and Astronautics, Massachusetts Institute of Technology, MA 02139, USA (Email: jhow@mit.edu)</p><p>Chuangchuang Sun is with the Department of Aerospace Engineering, Mississippi State University, MS 39762, USA (Email: csun@ae.msstate.edu) during policy training. Specifically, online interactions can be costly, impractical, unethical, or prohibitive, especially in safety-critical domains like autonomous driving or healthcare. Meanwhile, in many applications, (large-scale) previously collected observational data is often available, such as power systems and autonomous driving. As a result, for an alternative solution to its online counterpart, offline RL has emerged to learn policies directly from a static observational dataset instead of online interaction. Yet, traditional offline learning encounters a significant obstacle known as distributional shift. This shift occurs when the agent explores the part of stateaction space that is barely included in the dataset. This results in extrapolation, where the values are typically overestimated. Consequently, the RL agent, aiming to maximize the return, may deteriorate in performance as it trusts in false belief.</p><p>Many efforts have been put to mitigate this distributional shift issue due to the increasing popularity of offline RL. One predominant way is to limit policy learning within the dataset by adopting extra conservatism in environment exploration <ref type="bibr" target="#b29">[31]</ref>, <ref type="bibr" target="#b37">[39]</ref>. This conservatism prevents the policy training and evaluation from straying too far from the data distribution to alleviate overestimation in uncertain regions. For more details, interested readers are referred to the Section V and the survey <ref type="bibr" target="#b19">[20]</ref>.</p><p>However, such a conservatism-based offline training scheme is likely to be sub-optimal, as the highest achievable performance is constrained by the given data. Hence, rather than confining the policy to learn solely within the data, a novel approach that is orthogonal to most existing works for offline RL is to facilitate exploration with accurate policy evaluation beyond the data support, i.e., out-of-distribution (OOD) adaptation. This is highly desirable when high-stake data points are impractical/ unethical to collect but at the same time are of high interest, such as vehicle crashes and certain clinical medical treatments. We argue that this can be achieved by utilizing available resources, including the dataset and other partially known/qualitative information, to infer the underlying environment dynamics and discover alternative optimal trajectories beyond the dataset.</p><p>Our work aims to uncover regions with higher rewards without erroneous overestimation using causality-based approaches <ref type="bibr">[26]</ref>, which avoids imposing any OOD regularizers and prevents overestimation by considering the cause-andeffect relationships among the variables of interest. Specifically, our formulation excludes any elements that penalize exploration into OOD spaces, and the counterfactual reasoning at the highest level in Pearl's causal hierarchy is employed for reasoning beyond the dataset. As a result, causal inference without OOD penalization <ref type="bibr" target="#b25">[27]</ref> brings the promise for exploration beyond the data support for OOD adaptation. Additionally, this type of Causal Reinforcement Learning (CRL), therefore, learns with causal relationships rather than relying solely on correlations within each provided dataset <ref type="bibr" target="#b5">[6]</ref>, <ref type="bibr" target="#b38">[40]</ref>. In the context of offline RL, instead of discovering causal relationships from data, we would like to learn the environment model, including the transition dynamics and reward, from the data assuming that a causal graph is given as a prior. Such a causal graph comes from the qualitative physics laws (e.g., force changes velocity based on Newton's second law) on top of the Markov decision process that formalizes sequential decision-making in RL.</p><p>To effectively learn a world model, i.e., the global data distribution beyond the given dataset, we combine causal inference and Normalizing Flows (NF), a generative model with exact likelihood quantification. Recent progress in NF offers substantial advantages due to its expressiveness and capacity for causal inference. Unlike Variational Autoencoders (VAE), normalizing flow integrates diffeomorphic transformations, which are both invertible and bijective. These properties enable transparent transformations, allowing OOD detection via probabilistic evaluation as well as molding simple distributions into more expressive multi-modal data distributions and vice versa. Moreover, studies in <ref type="bibr" target="#b11">[12]</ref>, <ref type="bibr" target="#b13">[14]</ref> present the equivalence of the autoregressive normalizing flow to acyclic causal models, showcasing its potential as a model for causal inference. Specifically, masking can eliminate dependency between irrelevant variables within each transformation layer of the autoregressive normalizing flow to preserve only interactions between relevant variables. Overall, leveraging the expressiveness, OOD detection, and causal inference capabilities of normalizing flow for dynamic modeling makes it an attractive choice for an under-explored regime of model-based offline RL with the promise to improve over observational datasets.</p><p>Building on these insights, we propose to learn the Markov Decision Process (MDP) by utilizing Causal Normalizing Flows (CNF) as a world model with provided causal graphs. In essence, facilitating OOD adaptation involves eliminating penalization for OOD instances while safeguarding against policy degradation resulting from OOD exploration. This is achieved by precisely identifying erroneous predictions that deviate from the dynamic nature of testing environments. Therefore, we introduce MOOD-CRL (Model-based Offline OOD-Adapting Causal RL) that leverages the aforementioned benefits to train policy.</p><p>Our contributions are threefold as follows.</p><p>1) We develop a model-based offline RL for OOD adaptation based on a causal model using normalizing flows. This involves developing a novel learning scheme within the base distribution of NF, enabling counterfactual reasoning with a qualitative physics-informed causal graph, and augmenting data for offline policy training and evaluation.</p><p>2) We propose an effective model design using causal normalizing flow that systematically guides policy learning in a principled way. This includes leveraging OOD detection through accurate probabilistic density evaluation to prevent policy degradation caused by erroneous predictions exceeding the acceptable threshold. 3) We perform comprehensive empirical investigations through various ablations, including: a) comparing with and without policy sophistication, b) evaluating against state-of-the-art model-based and model-free baselines, and c) testing across multiple robotic manipulation domains (Mujoco). This analysis provides valuable insights into our learning approach and demonstrates significantly enhanced performance compared to baselines, rivaling that of online methods. The remainder of this paper is organized as follows. The necessary background for our method is introduced in Section II. Next, the details of our methodology and practical implementations are discussed in Section III. This is followed by comprehensive experiments designed to evaluate the OOD adaptation of our approach, including extensive comparisons with other baselines, in Section IV. Finally, it is concluded with a discussion of the current limitations of our method and potential directions for promising future research to further advance offline RL in Section VI.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>II. PRELIMINARIES</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Reinforcement Learning</head><p>Markov Decision Process (MDP) is a mathematical formulation for sequential decision-making problems. The MDP is a four-tuple ⟨S, A, T (s, a), r(s, a)⟩, including a state set S, an action set A, a transition function, T (s, a) : S × A → S ′ , and a reward function, r(s, a) : S × A → R. In reinforcement learning, the objective is to optimize the policy π : S → A by maximizing its cumulative reward T t=0 γ t r(s t , a t ), where γ ∈ [0, 1] is the discount factor.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Offline Reinforcement Learning</head><p>In offline RL, the objective is identical to its online counterpart, but it only learns from a pre-collected dataset without online interaction, by either revealing the dynamic model (model-based) or directly finding a possibly optimal (often sub-optimal) policy π (model-free). While this learning approach presents numerous advantages by decoupling its training reliance from constant environmental feedback, it introduces a new challenge: the policy's performance degrades when confronted with information not present in the dataset, a phenomenon referred to as 'distributional shift'. This factor is known to significantly impact the training process, as highlighted by <ref type="bibr" target="#b19">[20]</ref>. Various works have explored this area from different angles, including the exploration of conservative value functions <ref type="bibr" target="#b15">[16]</ref>, estimation of state-action density in policy training <ref type="bibr" target="#b17">[18]</ref>, and utilization of a structurally superior network architecture (specifically the Transformer <ref type="bibr" target="#b3">[4]</ref>), yet no promising results compared to their online counterpart. Hence, a crucial yet under-explored aspect of offline (reinforcement) learning has been exploring approaches to address the distributional shift with generalizability and adaptation beyond static datasets. This can be achieved by learning a world model capable of extrapolation.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Causal Reinforcement Learning</head><p>Causal RL combines causal inference <ref type="bibr" target="#b25">[27]</ref> and RL, focusing on identifying true physics-based interactions and dependencies among variables rather than statistical correlations. In contrast, traditional RL assumes that all variables can interact with each other, which can lead to inaccurate analysis, known as spurious variables. For example, observing an increase in shark attacks at the shore alongside rising ice cream sales may suggest a correlation, but it does not necessarily imply causation without scientific evidence <ref type="bibr" target="#b16">[17]</ref>. Therefore, integrating causal analysis into the RL framework holds the promise of further enhancing RL in terms of both performance and explainability, as it has the potential to mitigate erroneous predictions when confronted with previously unseen scenarios.</p><p>Causal RL aims to address this issue by focusing on the interdependency between variables through causal discovery and inference <ref type="bibr" target="#b39">[41]</ref>, <ref type="bibr" target="#b7">[8]</ref>, <ref type="bibr" target="#b8">[9]</ref>. This process typically involves adopting a score metric and constructing a causal graph among variables to identify relationships with the highest score. Following this, the policy undergoes optimization to address spurious correlations and emphasize genuinely related ones. Additionally, another line of research explores learning based on the discovered causal relationships <ref type="bibr" target="#b20">[21]</ref>. Despite significant attention given to causal discovery, a gap exists in understanding how the discovered graphs can be effectively employed, particularly in offline learning. Consequently, this work assumes that causal graphs are given as priors. Usually, this causal graph is available following qualitative physics, such as that force changes velocity. As a result, this prerequisite is not restrictive in many cyber-physical systems, such as robotics and autonomous systems. In cases where a causal graph is unavailable, our method is applicable following causal discovery that learns a causal graph.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D. Normalizing Flow</head><p>Normalizing flow belongs to a distinct category of generative models, alongside Generative Adversarial Networks (GAN) and VAE. While sharing structural similarities with VAE, NF is different in incorporating diffeomorphic transformations and thus facilitating precise density evaluations. Unlike VAE's reliance on non-invertible neural networks, NF is bijective with invertible transformations that enable seamless passage of samples back and forth through the model, allowing probabilistic inference. Derived using the change of variable, the NF is updated by maximizing the model's probability density, represented as p(•), in generating samples from one simple distribution to another distribution as below.</p><formula xml:id="formula_0">p x (x) = p u (u)|detJ F (u)| -1 , with u = F -1 (x) (1)</formula><p>where x ⊂ R D and u ⊂ R D are vectors of the same dimensionality (bijective), with x representing the original dataspace and u representing the base distribution (i.e., uniform or multivariate Gaussian). The Jacobian J F is the D × D matrix of all partial derivatives of F , a diffeomorphic transformation regarding u.</p><p>The role of the Jacobian, J F (u), is crucial as it shapes the original data into a base distribution. However, the high computational complexity of computing the determinant of the Jacobian, i.e, O(D 3 ), has led to a convention of employing transformations with a lower triangular matrix of Jacobian, significantly reducing the complexity to linear as O(D). This preference makes autoregressive structure inherently suitable and a natural choice for the flow model framework <ref type="bibr" target="#b23">[24]</ref>.</p><p>Moreover, the autoregressive NF has undergone theoretical scrutiny as a framework for causal inference, exemplified by studies such as <ref type="bibr" target="#b11">[12]</ref>, <ref type="bibr" target="#b13">[14]</ref>. In this theoretical examination, the flow of data passage is constrained by existing causal relationships, which are represented by a binary adjacency matrix of the causal graph. This approach simply prevents the information sharing between irrelevant nodes within the transformation, F (x), computing with only causally-related ones. Under certain conditions, this masking process guarantees the equivalence between autoregressive causal NF and its corresponding structural causal model.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>III. CAUSAL NORMALIZING FLOW FOR DYNAMIC MODELLING</head><p>In this section, we present our conceptualization of CNF as a comprehensive world model for offline sequential decisionmaking, emphasizing its structural distinctions from conventional predictive models such as neural networks (Multi-Layer Perceptron: MLP). Specifically, our methodology can achieve OOD predictive capabilities within the generative network architecture of normalizing flows.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Formulating CNF for MDP Prediction</head><p>MLP can predict the next state and reward based on input states and actions, involving different dimensions of inputs and outputs (non-bijective), represented by G. In contrast, the transformation within the CNF, denoted as F, is characterized by a bijective process. Note that the bijective nature of CNF exposes limitations when applied as a world modeling tool in the context of RL. In standard scenarios, world models predict the next state and reward (dynamics) based on the previous state and action, which are mainly different dimensions of input and output. This insight reveals untapped potential in world modeling using normalizing flows, despite the clear advantages. Consequently, we introduce our formulation to facilitate world modeling, addressing its structural constraints.</p><p>The dataset in offline RL commonly comprises MDP tuples represented as (s, a, s ′ , r). To predict the dynamics of the environment using the bijective flow model, we utilize a bidirectional prediction process with two different MDP (true and perturbed) tuples with an additional mapping function to connect those in base space. This enables effective learning within the base distribution and harnesses the expressive power and OOD detection of normalizing flow. Specifically, we consider the true tuple x = (s, a, s ′ , r) and the perturbed tuple x = (s, a, s, ∅), where the next-state and reward tokens Figure <ref type="figure" target="#fig_0">1b</ref> illustrates the qualitative physics-informed causation in stateto-state transitions for each time frame, specifically in an Inverted-Pendulum Environment by OpenAI Gym <ref type="bibr" target="#b33">[35]</ref>. The variables p, θ, v, and ω correspond to position, angle, velocity, and angular velocity, respectively. As shown in Figure <ref type="figure" target="#fig_0">1b</ref>, the causation is grounded in physics, and multi-dimensional actions can be further partitioned into various parts for other environments.</p><p>are initialized as previous state, s, and zero (denoted as ∅), respectively. The rationale for this initialization approach is to align the base distributions of the perturbed tuple with the true one, thereby optimizing the mapping function for improved predictions. Essentially, by passing an initialized perturbed tuple through the flow model and employing a mapping function (in this case, an MLP), along with the inverse operation of the flow model, we aim to generate the expected true tuple. These tuples, along with their corresponding base distributions u and ũ, undergo the following sequential transformations:</p><formula xml:id="formula_1">x FCNF(x) -----→ ũ G(ũ) ---→ u F -1 CNF (u) -----→ x<label>(2)</label></formula><p>Here, F CNF (•) represents the transformation of the CNF, and G(•) is a general function approximator mapping ũ to u. They are composed as follows:</p><formula xml:id="formula_2">F CNF = F 1 • • • • • F n ⊂ R d×d G MLP = G 1 ⊂ R d×m • • • • • G n ⊂ R n×k ,<label>(3)</label></formula><p>where F i , ∀i = 1, . . . n and G j , ∀j = 1, . . . , n are intermediate layers.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Architectural Details</head><p>The diagram in Figure <ref type="figure">2</ref> illustrates our CNF framework for an offline model-based approach, depicting the dynamic interplay among the function approximator, MLP in the base space (serving as a mapping function to connect perturbed to true tuples), the flow model (deciphering predicted tuple in the base space to the true one), and the policy network (map from state to action for decision-making). Henceforth, Fig. <ref type="figure">2:</ref> A depiction of Causal Reinforcement Learning employing a normalizing flow world model. The system handles two MDP tuples: the first is an arbitrary input for counterfactual reasoning, involving the use of state and action as inputs, initializing the next state with the current state for stability, and setting the reward to zero for initialization. The second tuple represents the original scenario. Subsequently, we calculate the loss between these tuples in the base space and train the mapping function.</p><p>we explain each component of our complete CNF model in full detail, following the aforementioned order with practical implementation and error analysis.</p><p>1) Autoregressive Flow Model for Causal Inference: As discussed in Section II, the autoregressive framework is commonly embraced by flow models to capture dependencies among the variables and reduce computational costs. In our setup, we define x, z, and u as the original data, intermediate data during the transformation process, and the ultimately transformed data in the base distribution, respectively. This process is articulated as follows:</p><formula xml:id="formula_3">F 1 (x) = z 1 , • • • , F k (z k-1 ) = z k , • • • , F n (z n-1 ) = u.</formula><p>Building on this, the autoregressive transformation, labeled F(•|τ, c i ), is defined by the subsequent expression:</p><formula xml:id="formula_4">z i k+1 = τ (z i k |h i ), where h i = c i (z &lt;i-1 k )</formula><p>In this context, τ and c denote the transformer and conditioner, respectively, as illustrated in Figure <ref type="figure" target="#fig_1">3</ref>. The subscript, k, indicates the layer index, while the superscript, i, denotes the variable index within a layer. This framework inherently aligns with causal inference, particularly guided by an additional matrix-product operation inside c (conditioner) with a causal graph. The schematic ensuring causation in the transformation is as follows:</p><formula xml:id="formula_5">h i = c i (z &lt;k |A &lt;k ij )<label>(4)</label></formula><p>In this context, the adjacency matrix denoted as A ij represents a causal graph specific to an RL problem, where A ∈ R d×d and d is the size of the MDP tuple: (s, a, s ′ , r). This behaves as a masking of variables for those without relevance. It is worth noting that the adjacency matrix of the causal graph, a directed acyclic graph (DAG), can always be permuted to be a lower (or upper) triangle one. Taking the Inverted-Pendulum environment by OpenAI <ref type="bibr" target="#b33">[35]</ref> as an example, the states include the position of the cart, angle of the pole, (5)</p><p>2) Approximator in the Base Space: Several methods have been investigated for manipulating the base space to achieve specific outcomes. One such example includes arithmetic operations to predict different angles of an image and applying constraints for improved classification <ref type="bibr" target="#b28">[30]</ref>. Following this appealing operation in base space, our approach is an explicit introduction of a mapping idea to enhance effective learning in the context of offline RL.</p><p>As previously mentioned, this involves using an MLP in the base space, which maps two MDP tuples, namely ũ and u. The MLP is trained based on the discrepancy between these two tuples; for our case, we adopted the L1 norm as illustrated below:</p><formula xml:id="formula_6">ϕ = arg min ϕ ||u -G(ũ|ϕ)|| 1<label>(6)</label></formula><p>where the MLP model, parametrized by ϕ, is trained using the provided dataset in the base distribution by passing it through the previously mentioned CNF.</p><p>3) Policy Training with CNF: Moving forward, our comprehensive training begins with initiating the training of the CNF model using the provided data, to employ it as a world model in lieu of any true model (e.g., OpenAI Gym environment). This marks a purposeful transition from the offline learning paradigm to an online approach, leveraging the pre-trained CNF as an oracle of transition dynamics and reward functions in the MDP. This implies that any online for Each episode do </p><formula xml:id="formula_7">M true (s, a, s ′ , r) ← F -1 • G • F (M ) 16:</formula><p>end for 17:</p><p>π ← arg max E at∼π, (s ′ ,r)∼CNF T t=1 r(s t , a t ) 18: end while model-free method can be used as expressed below where transition and reward dynamics are estimated using CNF:</p><formula xml:id="formula_8">π ← arg max E at∼π, (s ′ ,r)∼CNF T t=1 r(s t , a t )<label>(7)</label></formula><p>Crucially, unlike conventional model-based offline RL with an OOD penalty, our approach enables exploration into OOD spaces without incurring any OOD penalty. Instead, it effectively prevents policy degradation by accurately detecting erroneous predictions for previously unseen state-action pairs; see the implementation below.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Implementation to Guide the Policy</head><p>In contrast to the previous offline RL approach <ref type="bibr" target="#b15">[16]</ref>, <ref type="bibr" target="#b18">[19]</ref>, <ref type="bibr" target="#b37">[39]</ref> where uncertainty estimation is used as a regularizer in reward, we do not include such penalization in our method. In Section IV, we demonstrate how this reward penalization deteriorates policy learning, resulting in inconsistent performance across diverse tasks. Moreover, to guarantee that our causal model makes reasonable predictions, we devise a principled approach to prevent deterioration in policy exploration, evaluation, and learning due to erroneous predictions in OOD space. This is achieved by terminating the episodic task when a certain OOD measure exceeds a reasonable threshold, benefiting from the power of uncertainty quantification of the CNF model. In other words, we filter out high-error/ low-probability predictions during policy learning to facilitate effective learning, leveraging exact probabilistic evaluation of normalizing flow. The terminating criterion is shown below: Here, the parameter c is user-defined to control the level of exploration into OOD scenarios, and it was chosen as a negative integer. In Algorithm 1, we provide pseudo-code for our algorithm termed MOOD-CRL, to represent the entire framework.</p><formula xml:id="formula_9">truncate = True, if log p θ (s t , a t , s t+1 , r t ) &lt; c False, otherwise<label>(8)</label></formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>IV. EXPERIMENTS</head><p>This section systematically and extensively evaluates our method using OpenAI's Gymnasium environments <ref type="bibr" target="#b33">[35]</ref> to address the following questions.</p><p>1) Is MOOD-CRL able to effectively capture causation among variables? 2) Is MOOD-CRL able to surpass previous offline RL methodologies in achieving higher returns? 3) Is MOOD-CRL able to operate under different qualities of data and different RL algorithms?</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Baselines Algorithms</head><p>For extensive analysis, our baselines include comparisons with both model-based and model-free approaches, specifically the non-causal version of our approach (MOOD-RL), the stateof-the-art Model-based Offline Policy Optimization: MOPO <ref type="bibr" target="#b37">[39]</ref>, the state-of-the-art model-free policy optimization: Op-tiDICE <ref type="bibr" target="#b17">[18]</ref>, and traditional MLP-based predictions (for transition dynamics and rewards). The details are presented below: </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Testing Environments</head><p>Moreover, we introduce our continuous environments here to answer questions 2 and 3. These environments are commonly used in RL, online or offline.</p><p>• Inverted Pendulum: S ⊂ R 4 and A ⊂ R 1 where a cart with the vertical pole seeks to maintain the pole in an upright position and prevent it from falling. • Hopper: S ⊂ R 11 and A ⊂ R 3 where a one-legged agent trying to achieve forward velocity without falling. • Walker: S ⊂ R 17 and A ⊂ R 6 where a two-legged agent trying to achieve forward velocity without falling. • HalfCheetah: S ⊂ R 17 and A ⊂ R 6 where a two-legged cheetah learns to run forward without falling.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Causal Predictive Power of MOOD-CRL</head><p>We demonstrate the stability and predictive performance of MOOD-CRL in OOD scenarios using a straightforward discrete environment: FrozenLake <ref type="bibr" target="#b2">[3]</ref>. We compare the predictive outcomes with those generated by a standard MLP-based prediction by a non-extensive quick demonstration to reveal the fundamental insight of MOOD-CRL, as the comprehensive empirical studies are saved in its application in offline RL, the focus of this paper. We refer the reader to Figure <ref type="figure" target="#fig_8">8</ref> in Appendix A for the continuous environment. 2) Evaluation: We measured the model's error using the L1 norm for the transition dynamics of state in comparison to the standard MLP-based predictions. As depicted in Figure <ref type="figure" target="#fig_5">5</ref>, causal normalizing flow effectively captures the dynamics, showcasing a notably reduced error attributed to its causal prowess. The substantial difference in error primarily stems from the susceptibility of the MLP when confronted with unseen inputs, (s, a) where s &lt; 45, leading to erroneous predictions. While causal normalizing flow yields significantly reduced error rates in detecting boundaries and obstacles, it is important to acknowledge that the upper boundary and obstacles are inherently not discoverable due to the absence of information in the dataset. However, the left and right boundaries hold the potential for inference. This proves the potential of causal normalizing flow as a world model effectively capturing the dynamics with fairly accurate outputs to unseen inputs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Extensive Assessments in Robotic Control Tasks</head><p>In this section, our primary focus is on how the learned causal model can improve the performance of offline RL by predicting the transition dynamics and reward in the highreward state-action space in Figure <ref type="figure" target="#fig_7">7</ref>. We offer thorough insights into how the architecture of MOOD-CRL improves offline learning performance over others. As it's crucial to understand how model errors and predictive dynamics can be managed within existing RL algorithms to ensure satisfactory performance, we evaluate our baselines using two different on-policy algorithms: the basic policy gradient method of RE-INFORCE <ref type="bibr" target="#b32">[34]</ref> and the state of the art policy gradient method of Proximal Policy Optimization (PPO) <ref type="bibr" target="#b31">[33]</ref>. Furthermore, we empirically determined the parameter c in Equation ( <ref type="formula" target="#formula_9">8</ref>) to facilitate an OOD adaptation without degrading the policy to mitigate erroneous predictions.</p><p>1) Experimental Design: To assess the OOD adaptation, we generate training data consisting of tuples (s, a, s ′ , r) explored by REINFORCE. Specifically, the training dataset was curated to include state-action pairs observed within the first 2000 episodes, as illustrated by the return distribution in Figure <ref type="figure" target="#fig_6">6</ref>. We refer to this as a low-quality dataset. While mediumquality data was collected from episodes 2000 to 3000, its size is maintained as the same as the low-quality dataset. This is for the ablation study and is explored in the next section.</p><p>This way of composing data facilitates a gradual learning process, akin to how infants learn to crawl before they walk. Afterward, the evaluation of OOD adaptation depends on the agent's ability to recognize improved reward zones once it has gained a general understanding of the given tasks. The details of data composition are depicted in Figure <ref type="figure" target="#fig_6">6</ref>, while its t-SNE visualization <ref type="bibr" target="#b34">[36]</ref> is provided in Figure <ref type="figure">9</ref> in the Appendix, offering a sound justification for this choice.</p><p>2) Evaluation: As shown in Figure <ref type="figure" target="#fig_7">7</ref> and for low-quality data (first two rows), MOPO performs poorly when combined with REINFORCE. While it achieves competitive results with the PPO algorithm, it falls short of matching the performance of MOOD-CRL in every task. Additionally, in HalfCheetah, MOPO performs worse than traditional MLP. This is attributed to MOPO's tendency to underestimate OOD scenarios, resulting in penalized rewards that hinder policy improvement. This suggests that MOPO's sensitivity to policy learning can lead to inconsistent training results. Conversely, modelfree OptiDICE generally does not achieve the same level of performance as model-based methods. This suggests that model-based approaches offer a more principled solution than model-free gradient estimation.</p><p>In contrast, our method, MOOD-CRL, closely tracks the online learning curves or at least their lower bounds. This holds is also plotted here for benchmarking. Our method, MOOD-CRL (shown in red), closely mirrors the online learning curve or its lower bound for all environments. MOPO (black) avoids OOD via uncertainty quantification, but it struggles to learn optimal policies in all environments and even fails in InvertedPendulum and Walker due to strong OOD constraints which are removed from our approach. Furthermore, except for Walker, the model-free OptiDICE exhibits high sensitivity to the provided dataset, which is unfavorable. With MOOD-CRL surpassing other methods, its non-causal counterpart (i.e., NF) also demonstrates competitive results across all domains, highlighting the structural superiority of our novel approach for OOD adaptation: base-distributional learning with a decoding network. Overall, our approach and its variants can consistently achieve high performance over baselines across different domains and settings. Conversely, MLP-based methods such as MOPO and neural networks reveal weaknesses in OOD predictions, which prevent learning high-performing policies.</p><p>across both REINFORCE and PPO. Additionally, MOOD-RL demonstrates highly competitive performance compared to MOPO in several domains, highlighting the benefits of base-distributional learning with interpretative tools such as normalizing flow. However, we observed a spike in our method for achieving returns exceeding the online learning curve (e.g., especially in HalfCheetah, PPO (low-quality data)), which is unexpected. We attribute this to slight errors in state prediction and corresponding policy actions that resonated to be highquality state-action pairs leading the policy to converge rapidly to the optimal policy. As this appears to be an isolated case and no performance degradation is observed, we conclude that MOOD-CRL's predictions remain reasonably accurate for the entire domain.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Ablation on Different Data Quality</head><p>To assess the sensitivity of each baseline and ours to varying data quality, we conduct an ablation study by including medium-quality data (last row of Figure <ref type="figure" target="#fig_7">7</ref>) in addition to its low-quality counterpart. This differs from the previous method of employing low-quality data inputs, which involves utilizing knowledge from early iterations and assessing its OOD adaptation. Instead, we now task the algorithm with medium-quality data to learn a high-performing policy.</p><p>1) Evaluation: In the cases of Inverted Pendulum, Walker, and HalfCheetah, it is evident that MOPO and MLP fail to exhibit even minor improvements. This suggests that the predictions made by these models do not facilitate any OOD adaptation for optimal rewards. Conversely, ours, including MOOD-RL, demonstrate stable and consistent learning curves. This solves the previous inferiority of the model-based approach against model-free where given data lacks wide coverage as well as underscores the advantage over other modelbased approaches.</p><p>V. RELATED WORKS Offline reinforcement learning has been attracting much attention and effort in the community, with several notable methods emerging for its resolution. This includes both modelbased and model-free algorithms, with resolutions on overcoming the distributional shift via constraints to match the training data distributions. It has been an active search to explore more sophisticated methods for incorporating such constraints via 1) policy constraint, 2) importance sampling, and 3) uncertainty estimation. Thus, we summarize the previous trend below with the taxonomy proposed by <ref type="bibr" target="#b26">[28]</ref>.</p><p>A. Model-free algorithms 1) Policy Constraints: Works in <ref type="bibr" target="#b6">[7]</ref>, <ref type="bibr" target="#b15">[16]</ref>, <ref type="bibr" target="#b36">[38]</ref> introduced additional constraints to align the learning policy with the behavior policy, requiring the parameters of the behavior policy. These methods then employ a f -divergence metric to quantify distributional divergence between the behavior policy and the learning policy to implicitly match the two distributions. Specifically, <ref type="bibr" target="#b6">[7]</ref> estimates behavior policy via supervised regression, while <ref type="bibr" target="#b15">[16]</ref> suggested support matching over distribution matching to prevent OOD actions, which was proved to be effective by exploiting only good actions in the data.</p><p>2) Importance Sampling: Additionally, another line of research seeks to estimate the distributional discrepancy between the behavior policy and the learning policy <ref type="bibr" target="#b17">[18]</ref>, <ref type="bibr" target="#b18">[19]</ref>. This discrepancy estimation aids in accurately evaluating the learning policy's performance, facilitating the identification of optimal rewards by aligning the expectation under the state marginal of the dataset with that of the learning policy. This approach is complemented by reward regularizers to penalize OOD occurrences as well.</p><p>3) Uncertainty Estimation: Alternatively, certain approaches directly estimate the uncertainty linked to the policy's actions given a state, aiming to alleviate OOD constraints and mitigate excessive conservatism. The estimated uncertainty can substitute the previous reward regularizer in policy constraint methods, specifically targeting high uncertainty in OOD regions, while allowing exploration in OOD regions with low uncertainty. Our work fits within this taxonomy through robust uncertainty quantification achieved by normalizing flow.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Model-based algorithms</head><p>Like our approach, model-based offline RL centers on estimating transition dynamics and reward functions. For instance, <ref type="bibr" target="#b37">[39]</ref> employs a supervised learning approach with explicit uncertainty quantification in transition dynamics to underestimate rewards and avoid OOD issues deliberately. These models, including recent advances of Transformer <ref type="bibr" target="#b35">[37]</ref>, are commonly utilized as trajectory planners <ref type="bibr" target="#b10">[11]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Others</head><p>There are multiple other studies to enhance offline RL, such as Lyapunov stability and control-invariant sets <ref type="bibr" target="#b12">[13]</ref>, invariant representation learning <ref type="bibr" target="#b27">[29]</ref>, mutual information regularizer <ref type="bibr" target="#b21">[22]</ref>, anti-exploration <ref type="bibr" target="#b29">[31]</ref> to penalize OOD states/actions. However, the degree of conservatism to avoid overestimation is still ambiguous and can be sub-optimal. A straightforward extension is proposed in <ref type="bibr" target="#b9">[10]</ref> by sampling and learning under multiple conservatism degrees. Another notable issue in offline RL is how to learn policies from data generated by multiple policies (with varying sampling distributions and performance) for the task <ref type="bibr" target="#b0">[1]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>VI. CONCLUSIONS AND DISCUSSIONS</head><p>While earlier advancements have centered on OOD constraints in the offline RL framework, our approach introduces an OOD-adapting algorithm empowered by causal inference and accurate detection of erroneous predictions in OOD space. This is accomplished by eliminating prior OOD penalization to address distributional shifts, while also preventing policy degradation from erroneous predictions. Our approach introduces a novel model architecture for offline RL, merging causal normalizing flow with a conventional MLP. This innovative formulation enables the use of normalizing flow to address offline RL challenges in a model-based approach, which has not been previously explored due to its structural constraints (bijective nature) for dynamic modeling, albeit its appealing properties. Normalizing flow is leveraged for the benefits of causal inference, OOD detection, and the ability to handle multi-modal distributions. Notably, our experiments demonstrate that the learning curve of our model closely resembles that of online training or its lower bound for all testing environments. This research offers a pioneering approach to model-based offline RL for out-of-distribution adaptation, emphasizing the importance of base-distributional learning with interpretative tools such as normalizing flow and VAE <ref type="bibr" target="#b14">[15]</ref>. This property is particularly appealing as it addresses the existing weakness of model-based learning compared to the model-free approach. In particular, given a narrow coverage of data, the model-free approach was favored due to its ability to closely mimic the distribution of given data, while the model-based approach, as demonstrated in Section IV-C, often performed poorly. This was because the given data might not provide sufficient initial knowledge to initiate learning of the primal steps required to achieve higher returns. However, our approach demonstrates OOD-adapting performance, which can be beneficial even in scenarios with limited datasets where model-free algorithms have traditionally excelled. Furthermore, we anticipate that our method is generalizable and applicable to OOD adaptation in various domains, as it combines generative and predictive models with causal inference capabilities.</p><p>While this paper introduces a novel research avenue for model-based offline RL, we acknowledge several limitations of our approach. These include the absence of theoretical support and scalability issues, with computational costs increasing as the dimensions of states and actions grow. The latter is particularly pronounced as passing the entire MDP tuple through the model becomes more susceptible to the curse of dimensionality. Additionally, we suggest several intriguing research avenues worth exploring further. a) It is promising to investigate further which base-distributional learning mechanisms, coupled with interpretative tools (normalizing flow or VAE), can enhance overall learning outcomes, such as Bayesian neural network <ref type="bibr" target="#b22">[23]</ref>, Recurrent Neural Network (RNN) <ref type="bibr" target="#b30">[32]</ref>, or Transformer <ref type="bibr" target="#b35">[37]</ref>. b) Moreover, constrained settings <ref type="bibr" target="#b1">[2]</ref> even with environmental non-stationarity <ref type="bibr" target="#b4">[5]</ref> can be considered in offline RL under MOOD-CRL's umbrella. This is particularly crucial in safety-critical domains like autonomous driving and robotic manipulation, where safety breaches are intolerable, and non-stationary conditions may prevail. These requirements necessitate rigorous proof through constraint-satisfaction analysis in OOD cases, either with chance-constrained or worst-case safety criteria. c) Lastly, one could bring other techniques to enhance offline RL by studying conformal predictions for uncertainty quantification calibration and physics-informed neuro-symbolic RL with data-invariant logic rules for extrapolation. Log probability is also included to validate the predictions made by our method. Notably, while MLP-based predictions may exhibit unknown patterns, our predictions form reasonable curves and patterns compared to the true values, albeit with some margins.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Experimental Settings</head><p>Below, detailed hyperparameters for experiments and qualitative physics-informed causal graphs are discussed.</p><p>Hyperparameters:</p><p>• Optimizer: Adam, Learning Rate: 1e-4</p><p>• CNF (Causal Normalizing Flow):</p><p>-Flow model: Masked Autoregressive Flow <ref type="bibr" target="#b24">[25]</ref> Architecture: conditioner c i = (64, 64, 64) with 5 layers of transformation F 1 -Architecture: neural network dimension of (64, 64) -Algorithm: REINFORCE and PPO REINFORCE: lr = 1e-4 PPO: K-epochs = 2, lr(policy) = 1e-4, lr(critic) = 3e-3, epsilon-clip = 0.2</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Fig. 1 :</head><label>1</label><figDesc>Fig. 1: Illustration of causality in RL context. Figure 1(a) depicts the decision flow based on the Markov property: state causes action (S → A), state-action causes next-state (S × A → S ′ ) and reward (S × A → R).Figure1billustrates the qualitative physics-informed causation in stateto-state transitions for each time frame, specifically in an Inverted-Pendulum Environment by OpenAI Gym<ref type="bibr" target="#b33">[35]</ref>. The variables p, θ, v, and ω correspond to position, angle, velocity, and angular velocity, respectively. As shown in Figure1b, the causation is grounded in physics, and multi-dimensional actions can be further partitioned into various parts for other environments.</figDesc><graphic coords="4,52.10,56.07,119.24,119.79" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Fig. 3 :</head><label>3</label><figDesc>Fig. 3: Autoregressive flow model illustration of transformation:F k (z k |τ, c i ) = z k+1 .The conditioner, denoted as c, gathers information from previous elements, while τ transforms the current element and its history into a new value. The figure is adopted from<ref type="bibr" target="#b23">[24]</ref>.</figDesc><graphic coords="5,55.24,56.07,238.50,123.73" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Algorithm 1 4 :</head><label>14</label><figDesc>MOOD-CRL: Model-based Offline OOD-Adapting Causal Reinforcement Learning Require: dataset D, causal graph A 1: Initialization Randomly initialize θ, ϕ 2: / * CNF update * / 3: for each random batch in data, B i ∈ D do Update θ with Equation (5) with Adam. 5: end for 6: Create base data: U = F (D) and Ũ = F (D ptd ) 7: / * MLP update * / 8: for each random batch, B i ∈ U , Bi ∈ Ũ do 9: Update ϕ with Equation (6) with Adam. 10: end for 11: return F (θ) := CNF(θ) and G(ϕ) := MLP(ϕ) / * Policy Training * / Require: s, π 12: while not done do 13:</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>14 :</head><label>14</label><figDesc>Create Perturbed MDP M ptd = (s, π(a|s), s, ∅)15:</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Fig. 4 :</head><label>4</label><figDesc>Fig. 4: A classical toy problem implemented in OpenAI Gymnasium involves a 15 × 15 grid with non-slippery conditions selected for a deterministic environment. The top-left corner has a state of 0, increasing by 1 towards the right. Any actions towards boundaries and obstacles result in staying in the same position.</figDesc><graphic coords="6,99.18,56.07,150.64,149.87" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>•Fig. 5 :</head><label>5</label><figDesc>Fig. 5: A comparison of estimation errors between MLP estimator and MOOD-CRL (in log-scale). The training dataset consists of state-action combinations from 45 ≤ s ≤ 224 with 0 ≤ s ≤ 44 as the testing dataset. The results reveal that MOOD-CRL consistently delivers reasonable predictions in OOD scenarios. However, MOOD-CRL makes an error only for the 'Up' action at the top row of the grid, where inference is inherently challenging. In contrast, the MLP exhibits failures when confronted with OOD situations, yielding erroneous values.</figDesc><graphic coords="6,311.98,56.07,251.06,162.63" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>Fig. 6 :</head><label>6</label><figDesc>Fig.6: This figure depicts our dataset's structure, highlighting the discrepancy between training data and the desired optimal distribution sought by the policy for improved rewards. Specifically, this setup is designed for evaluating OOD adaptation using low-quality data. Here, MDP tuples are sourced from green distributions (e.g., low-quality data) for training and blue distributions for testing.</figDesc><graphic coords="7,56.73,70.81,115.67,92.44" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head>Fig. 7 :</head><label>7</label><figDesc>Fig.7:The figure depicts the average episodic returns (higher is better) over 5 seeds with standard errors as a shadow. Each row represents one domain while each column represents one pair of the base RL algorithm-data quality combination. The horizontal solid line represents the optimal return (top 10%) found in the training data. The online learning curve (blue) is also plotted here for benchmarking. Our method, MOOD-CRL (shown in red), closely mirrors the online learning curve or its lower bound for all environments. MOPO (black) avoids OOD via uncertainty quantification, but it struggles to learn optimal policies in all environments and even fails in InvertedPendulum and Walker due to strong OOD constraints which are removed from our approach. Furthermore, except for Walker, the model-free OptiDICE exhibits high sensitivity to the provided dataset, which is unfavorable. With MOOD-CRL surpassing other methods, its non-causal counterpart (i.e., NF) also demonstrates competitive results across all domains, highlighting the structural superiority of our novel approach for OOD adaptation: base-distributional learning with a decoding network. Overall, our approach and its variants can consistently achieve high performance over baselines across different domains and settings. Conversely, MLP-based methods such as MOPO and neural networks reveal weaknesses in OOD predictions, which prevent learning high-performing policies.</figDesc><graphic coords="8,55.00,421.05,159.35,92.95" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head>Fig. 8 :</head><label>8</label><figDesc>Fig.8: This illustrates the disparity between the true and predicted values in the Hopper. Key physical quantities of the torso of Hopper are plotted alongside rewards and termination (for those requiring termination prediction as well). Log probability is also included to validate the predictions made by our method. Notably, while MLP-based predictions may exhibit unknown patterns, our predictions form reasonable curves and patterns compared to the true values, albeit with some margins.</figDesc><graphic coords="11,54.94,72.66,246.75,164.17" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head></head><label></label><figDesc>• • • • • F 5</figDesc><table><row><cell>Base Distribution: Normal</cell></row><row><cell>Activation: elu</cell></row><row><cell>-Regularization: weight regularization</cell></row><row><cell>Training Epochs: 2000</cell></row><row><cell>-Base model: MLP</cell></row><row><cell>Architecture: neural network dimension of (512,</cell></row><row><cell>512, 512, 512)</cell></row><row><cell>Activation: leakyrelu</cell></row><row><cell>-Regularization: weight regularization</cell></row><row><cell>Training Epochs: 1000</cell></row><row><cell>• MOPO:</cell></row><row><cell>-Architecture: Single ensemble with dimensions (512,</cell></row><row><cell>512, 512, 512)</cell></row><row><cell>-Activation: elu</cell></row><row><cell>-Regularization: weight regularization</cell></row><row><cell>-Training Epochs: 1000</cell></row><row><cell>• MLP:</cell></row><row><cell>-Architecture: neural network dimension of (512, 512,</cell></row><row><cell>512, 512)</cell></row><row><cell>-Activation: leakyrelu</cell></row><row><cell>-Regularization: weight regularization</cell></row><row><cell>-Training Epochs: 1000</cell></row></table><note><p>• Policy Network:</p></note></figure>
+		</body>
+		<back>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>APPENDIX EXPERIMENTAL DETAILS</head><p>In this section, we outline the specific configurations of our experiments conducted in OpenAI Gym <ref type="bibr" target="#b33">[35]</ref>. We provide details on the composition of the training dataset and the underlying rationale. Additionally, we elaborate on the specific parameters employed for the baselines, including network size, key hyperparameters, and the causal graph used in our approach. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>State and Reward Predictions Curve</head><p>For additional clarity, we provide a comparison of transition and reward dynamics between the trained model and the true oracle for the InvertedPendulum in Figure <ref type="figure">8</ref> for the sake of simplicity.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>t-SNE Visualization of Dataset</head><p>Using t-SNE visualization <ref type="bibr" target="#b34">[36]</ref>, the Figure <ref type="figure">9</ref> validates our choice of data for OOD adaptation purposes.</p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<ptr target="https://bair.berkeley.edu/blog/2019/12/05/bear/" />
+		<title level="m">Data-driven deep reinforcement learning</title>
+		<imprint>
+			<biblScope unit="page" from="2023" to="2024" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Constrained policy optimization</title>
+		<author>
+			<persName><forename type="first">Joshua</forename><surname>Achiam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Held</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aviv</forename><surname>Tamar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pieter</forename><surname>Abbeel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International conference on machine learning</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="22" to="31" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title/>
+		<author>
+			<persName><forename type="first">Greg</forename><surname>Brockman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vicki</forename><surname>Cheung</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ludwig</forename><surname>Pettersson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jonas</forename><surname>Schneider</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">John</forename><surname>Schulman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jie</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wojciech</forename><surname>Zaremba</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Openai gym</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Decision transformer: Reinforcement learning via sequence modeling</title>
+		<author>
+			<persName><forename type="first">Lili</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kevin</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aravind</forename><surname>Rajeswaran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kimin</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aditya</forename><surname>Grover</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Misha</forename><surname>Laskin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pieter</forename><surname>Abbeel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aravind</forename><surname>Srinivas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Igor</forename><surname>Mordatch</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in neural information processing systems</title>
+		<imprint>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="page" from="15084" to="15097" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Constrained meta-reinforcement learning for adaptable safety guarantee with differentiable convex programming</title>
+		<author>
+			<persName><forename type="first">Minjae</forename><surname>Cho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chuangchuang</forename><surname>Sun</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+			<biblScope unit="volume">38</biblScope>
+			<biblScope unit="page" from="20975" to="20983" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<monogr>
+		<author>
+			<persName><forename type="first">Zhihong</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jing</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guodong</forename><surname>Long</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chengqi</forename><surname>Zhang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2307.01452</idno>
+		<title level="m">Causal reinforcement learning: A survey</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Off-policy deep reinforcement learning without exploration</title>
+		<author>
+			<persName><forename type="first">Scott</forename><surname>Fujimoto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Meger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Doina</forename><surname>Precup</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International conference on machine learning</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="2052" to="2062" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<author>
+			<persName><forename type="first">Maxime</forename><surname>Gasse</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Damien</forename><surname>Grasset</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillaume</forename><surname>Gaudron</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pierre-Yves</forename><surname>Oudeyer</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2106.14421</idno>
+		<title level="m">Causal reinforcement learning using observational and interventional data</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Review of causal discovery methods based on graphical models</title>
+		<author>
+			<persName><forename type="first">Clark</forename><surname>Glymour</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kun</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Spirtes</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Frontiers in genetics</title>
+		<imprint>
+			<biblScope unit="volume">10</biblScope>
+			<biblScope unit="page">524</biblScope>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<monogr>
+		<title level="m" type="main">Confidence-conditioned value functions for offline reinforcement learning</title>
+		<author>
+			<persName><forename type="first">Joey</forename><surname>Hong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aviral</forename><surname>Kumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sergey</forename><surname>Levine</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2212.04607</idno>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Offline reinforcement learning as one big sequence modeling problem</title>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Janner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qiyang</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sergey</forename><surname>Levine</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in neural information processing systems</title>
+		<imprint>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="page" from="1273" to="1286" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<author>
+			<persName><forename type="first">Adrián</forename><surname>Javaloy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pablo</forename><surname>Sánchez-Martín</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Isabel</forename><surname>Valera</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2306.05415</idno>
+		<title level="m">Causal normalizing flows: from theory to practice</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Lyapunov density models: Constraining distribution shift in learning-based control</title>
+		<author>
+			<persName><forename type="first">Katie</forename><surname>Kang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Paula</forename><surname>Gradu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><forename type="middle">J</forename><surname>Choi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Janner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Claire</forename><surname>Tomlin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sergey</forename><surname>Levine</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<publisher>PMLR</publisher>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="10708" to="10733" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Causal autoregressive flows</title>
+		<author>
+			<persName><forename type="first">Ilyes</forename><surname>Khemakhem</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ricardo</forename><surname>Monti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Robert</forename><surname>Leech</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aapo</forename><surname>Hyvarinen</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International conference on artificial intelligence and statistics</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="3520" to="3528" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<title level="m" type="main">Auto-encoding variational bayes</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Diederik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1312.6114</idno>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Conservative q-learning for offline reinforcement learning</title>
+		<author>
+			<persName><forename type="first">Aviral</forename><surname>Kumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aurick</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">George</forename><surname>Tucker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sergey</forename><surname>Levine</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="1179" to="1191" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Can neurofeedback provide evidence of direct brain-behavior causality?</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Timo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tomas</forename><surname>Kvamme</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Morten</forename><surname>Ros</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Overgaard</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">NeuroImage</title>
+		<imprint>
+			<biblScope unit="volume">258</biblScope>
+			<biblScope unit="page">119400</biblScope>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Optidice: Offline policy optimization via stationary distribution correction estimation</title>
+		<author>
+			<persName><forename type="first">Jongmin</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wonseok</forename><surname>Jeon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Byungjun</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joelle</forename><surname>Pineau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kee-Eung</forename><surname>Kim</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="6120" to="6130" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<monogr>
+		<title level="m" type="main">Coptidice: Offline constrained reinforcement learning via stationary distribution correction estimation</title>
+		<author>
+			<persName><forename type="first">Jongmin</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Cosmin</forename><surname>Paduraru</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Daniel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicolas</forename><surname>Mankowitz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Doina</forename><surname>Heess</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kee-Eung</forename><surname>Precup</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arthur</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Guez</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2204.08957</idno>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<monogr>
+		<title level="m" type="main">Offline reinforcement learning: Tutorial, review, and perspectives on open problems</title>
+		<author>
+			<persName><forename type="first">Sergey</forename><surname>Levine</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aviral</forename><surname>Kumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">George</forename><surname>Tucker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Justin</forename><surname>Fu</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2005.01643</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Efficient reinforcement learning with prior causal knowledge</title>
+		<author>
+			<persName><forename type="first">Yangyi</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amirhossein</forename><surname>Meisami</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ambuj</forename><surname>Tewari</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Conference on Causal Learning and Reasoning</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="526" to="541" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<monogr>
+		<author>
+			<persName><forename type="first">Xiao</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bingyi</forename><surname>Kang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhongwen</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Min</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shuicheng</forename><surname>Yan</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2210.07484</idno>
+		<title level="m">Mutual information regularized offline reinforcement learning</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<monogr>
+		<title level="m" type="main">Bayesian learning for neural networks</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Radford</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Neal</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2012">2012</date>
+			<publisher>Springer Science &amp; Business Media</publisher>
+			<biblScope unit="volume">118</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Normalizing flows for probabilistic modeling and inference</title>
+		<author>
+			<persName><forename type="first">George</forename><surname>Papamakarios</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eric</forename><surname>Nalisnick</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danilo</forename><surname>Jimenez Rezende</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shakir</forename><surname>Mohamed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Balaji</forename><surname>Lakshminarayanan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">The Journal of Machine Learning Research</title>
+		<imprint>
+			<biblScope unit="volume">22</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="2617" to="2680" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Masked autoregressive flow for density estimation</title>
+		<author>
+			<persName><forename type="first">George</forename><surname>Papamakarios</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Theo</forename><surname>Pavlakou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Iain</forename><surname>Murray</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="volume">30</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<monogr>
+		<author>
+			<persName><forename type="first">Judea</forename><surname>Pearl</surname></persName>
+		</author>
+		<title level="m">Causal inference. Causality: objectives and assessment</title>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+			<biblScope unit="page" from="39" to="58" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">A survey on offline reinforcement learning: Taxonomy, review, and open problems</title>
+		<author>
+			<persName><forename type="first">Marcos</forename><forename type="middle">Roa</forename><surname>Rafael Figueiredo Prudencio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Esther</forename><forename type="middle">Luna</forename><surname>Maximo</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Colombini</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Neural Networks and Learning Systems</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<monogr>
+		<title level="m" type="main">Data-driven offline decision-making via invariant representation learning</title>
+		<author>
+			<persName><forename type="first">Han</forename><surname>Qi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yi</forename><surname>Su</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aviral</forename><surname>Kumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sergey</forename><surname>Levine</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2211.11349</idno>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<monogr>
+		<title level="m" type="main">Unsupervised representation learning with deep convolutional generative adversarial networks</title>
+		<author>
+			<persName><forename type="first">Alec</forename><surname>Radford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luke</forename><surname>Metz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Soumith</forename><surname>Chintala</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1511.06434</idno>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Offline reinforcement learning as anti-exploration</title>
+		<author>
+			<persName><forename type="first">Shideh</forename><surname>Rezaeifar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Robert</forename><surname>Dadashi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nino</forename><surname>Vieillard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Léonard</forename><surname>Hussenot</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Olivier</forename><surname>Bachem</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Olivier</forename><surname>Pietquin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthieu</forename><surname>Geist</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="volume">36</biblScope>
+			<biblScope unit="page" from="8106" to="8114" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<monogr>
+		<title level="m" type="main">Learning internal representations by error propagation</title>
+		<author>
+			<persName><forename type="first">David</forename><forename type="middle">E</forename><surname>Rumelhart</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Geoffrey</forename><forename type="middle">E</forename><surname>Hinton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ronald</forename><forename type="middle">J</forename><surname>Williams</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1986">1986</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<monogr>
+		<author>
+			<persName><forename type="first">John</forename><surname>Schulman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Filip</forename><surname>Wolski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Prafulla</forename><surname>Dhariwal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alec</forename><surname>Radford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oleg</forename><surname>Klimov</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1707.06347</idno>
+		<title level="m">Proximal policy optimization algorithms</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<monogr>
+		<title level="m" type="main">Policy gradient methods for reinforcement learning with function approximation. Advances in neural information processing systems</title>
+		<author>
+			<persName><forename type="first">David</forename><surname>Richard S Sutton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Satinder</forename><surname>Mcallester</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yishay</forename><surname>Singh</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Mansour</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1999">1999</date>
+			<biblScope unit="volume">12</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title/>
+		<author>
+			<persName><forename type="first">Mark</forename><surname>Towers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jordan</forename><forename type="middle">K</forename><surname>Terry</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ariel</forename><surname>Kwiatkowski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">John</forename><forename type="middle">U</forename><surname>Balis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gianluca</forename><surname>De Cola</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tristan</forename><surname>Deleu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Manuel</forename><surname>Goulão</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andreas</forename><surname>Kallinteris</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">G</forename><surname>Arjun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Markus</forename><surname>Krimmel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rodrigo</forename><surname>Perez-Vicente</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrea</forename><surname>Pierré</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sander</forename><surname>Schulhoff</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jun Jet</forename><surname>Tai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Tan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jin</forename><surname>Shen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Omar</forename><forename type="middle">G</forename><surname>Younis</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Gymnasium</title>
+		<imprint>
+			<date type="published" when="2023-03">March 2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Visualizing data using t-sne</title>
+		<author>
+			<persName><forename type="first">Laurens</forename><surname>Van Der Maaten</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Geoffrey</forename><surname>Hinton</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of machine learning research</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="issue">11</biblScope>
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Attention is all you need</title>
+		<author>
+			<persName><forename type="first">Ashish</forename><surname>Vaswani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noam</forename><surname>Shazeer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Niki</forename><surname>Parmar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jakob</forename><surname>Uszkoreit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Llion</forename><surname>Jones</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aidan</forename><forename type="middle">N</forename><surname>Gomez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Łukasz</forename><surname>Kaiser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Illia</forename><surname>Polosukhin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="volume">30</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<monogr>
+		<author>
+			<persName><forename type="first">Yifan</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">George</forename><surname>Tucker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ofir</forename><surname>Nachum</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1911.11361</idno>
+		<title level="m">Behavior regularized offline reinforcement learning</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Mopo: Model-based offline policy optimization</title>
+		<author>
+			<persName><forename type="first">Tianhe</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Garrett</forename><surname>Thomas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lantao</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stefano</forename><surname>Ermon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><forename type="middle">Y</forename><surname>Zou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sergey</forename><surname>Levine</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chelsea</forename><surname>Finn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tengyu</forename><surname>Ma</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="14129" to="14142" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<monogr>
+		<title level="m" type="main">A survey on causal reinforcement learning</title>
+		<author>
+			<persName><forename type="first">Yan</forename><surname>Zeng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ruichu</forename><surname>Cai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fuchun</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Libo</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhifeng</forename><surname>Hao</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2302.05209</idno>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<monogr>
+		<title level="m" type="main">Causal discovery with reinforcement learning</title>
+		<author>
+			<persName><forename type="first">Shengyu</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ignavier</forename><surname>Ng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhitang</forename><surname>Chen</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1906.04477</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

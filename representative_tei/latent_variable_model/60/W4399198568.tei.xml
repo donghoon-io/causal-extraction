@@ -1,0 +1,2238 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Does learning the right latent variables necessarily improve in-context learning?</title>
+				<funder>
+					<orgName type="full">Canada Research Chair in Neural Computations and Interfacing</orgName>
+				</funder>
+				<funder ref="#_e5BMJqa">
+					<orgName type="full">Canada-CIFAR</orgName>
+				</funder>
+				<funder ref="#_Hn3cXFg #_RWJwB2J">
+					<orgName type="full">NSERC</orgName>
+				</funder>
+				<funder>
+					<orgName type="full">Canada-CIFAR AI Chair</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability  status="unknown">
+					<licence/>
+				</availability>
+				<date type="published" when="2025-06-14">14 Jun 2025</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Sarthak</forename><surname>Mittal</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Eric</forename><surname>Elmoznino</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Leo</forename><surname>Gagnon</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Sangnie</forename><surname>Bhardwaj</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Tom</forename><surname>Marty</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Guillaume</forename><surname>Lajoie</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Dhanya</forename><surname>Sridhar</surname></persName>
+						</author>
+						<title level="a" type="main">Does learning the right latent variables necessarily improve in-context learning?</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2025-06-14">14 Jun 2025</date>
+						</imprint>
+					</monogr>
+					<idno type="arXiv">arXiv:2405.19162v2[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-28T23:11+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Large autoregressive models like Transformers can solve tasks through in-context learning (ICL) without learning new weights, suggesting avenues for efficiently solving new tasks. For many tasks, e.g., linear regression, the data factorizes: examples are independent given a task latent that generates the data, e.g., linear coefficients. While an optimal predictor leverages this factorization by inferring task latents, it is unclear if Transformers implicitly do so or instead exploit heuristics and statistical shortcuts through attention layers. In this paper, we systematically investigate the effect of explicitly inferring task latents by minimally modifying the Transformer architecture with a bottleneck to prevent shortcuts and incentivize structured solutions. We compare it against standard Transformers across various ICL tasks and find that contrary to intuition and recent works, there is little discernible difference between the two; biasing towards task-relevant latent variables does not lead to better out-of-distribution performance, in general. Curiously, we find that while the bottleneck effectively learns to extract latent task variables from context, downstream processing struggles to utilize them for robust prediction. Our study highlights the intrinsic limitations of Transformers in achieving structured ICL solutions that generalize, and shows that while inferring the right latents aids interpretability, it is not sufficient to alleviate this problem.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1.">Introduction</head><p>Recent advancements in large language models (LLMs, <ref type="bibr" target="#b42">Radford et al., 2019)</ref> showcase the Transformer architecture's <ref type="bibr" target="#b55">(Vaswani et al., 2017)</ref> ability to perform novel tasks at infer-ence through in-context learning <ref type="bibr">(ICL, Brown et al., 2020)</ref>. Indeed, LLMs can learn from instructions and demonstrations provided as input, without requiring gradient-based learning. While ICL plays a key role in many LLM abilities <ref type="bibr" target="#b33">(Lu et al., 2024)</ref>, such as instruction-following <ref type="bibr" target="#b61">(Wei et al., 2022)</ref> and chain-of-thought reasoning <ref type="bibr" target="#b62">(Wei et al., 2023)</ref>, the factors that influence its generalization -particularly in outof-distribution (OOD) settings -remain poorly understood. Although ICL can leverage a combination of instructions and demonstrations, our analysis focuses specifically on its ability to model predictions based on a task's training examples (demonstrations) provided in-context <ref type="bibr" target="#b32">(Lampinen et al., 2024)</ref> beyond the modality of language.</p><p>A plausible hypothesis behind the success of ICL is that since many tasks are based on some low-dimensional latents (e.g., complex games are described completely through their rules, linear regression through its underlying coefficients), Transformers might generalize to novel queries by inferring the task latents from the context <ref type="bibr" target="#b25">(Hendel et al., 2023;</ref><ref type="bibr" target="#b53">Todd et al., 2024;</ref><ref type="bibr" target="#b65">Yang et al., 2025)</ref>. This describes a parametric <ref type="bibr" target="#b4">(Bishop, 2006)</ref> modeling approach that breaks the prediction mechanism into two parts: 1) inferring the task latents (i.e. parameters) from the context, and then 2) using them to make predictions on novel queries. With the right prediction function, such an approach leads to systematic OOD generalization to new queries. However, mounting evidence <ref type="bibr" target="#b60">(Wang et al., 2023;</ref><ref type="bibr" target="#b23">Han et al., 2023;</ref><ref type="bibr" target="#b47">Song et al., 2024;</ref><ref type="bibr">Tang et al., 2023b;</ref><ref type="bibr" target="#b3">Bhaskar et al., 2024;</ref><ref type="bibr" target="#b7">Crosbie &amp; Shutova, 2024)</ref> suggests that Transformers instead often employ more shallow solutions which rely on direct comparison of the query to demonstrations (reminiscent of induction heads, <ref type="bibr" target="#b38">Olsson et al., 2022)</ref>. This is closer in spirit to non-parametric approaches (such as nearest neighbors or kernel regression) which are known for their flexibility but poor generalization <ref type="bibr" target="#b4">(Bishop, 2006)</ref>. Since these solutions do not model the data generative process, they can be described as statistical shortcuts and risk poor performance on OOD context and queries -e.g., learning the actual linear predictor for linear regression can generalize to any distribution over training and test points, but nearest-neighbour based interpolation might not. Interestingly, the functional form of attention operations is almost identical to that of kernel regression <ref type="bibr">(Tsai et al.,</ref>  We compare the benefits of the implicit (left) and the explicit (right) model. Explicit models disentangle context aggregation and prediction into two separate functions with an inductive bias for inferring generative latent variables in order to solve the task. Implicit models are more expressive, but can learn non-parametric shortcut solutions that bypass latent variable inference.</p><p>2019; <ref type="bibr" target="#b23">Han et al., 2023)</ref>, making such solutions more natural for Transformers to express <ref type="bibr" target="#b68">(Zhou et al., 2023)</ref>.</p><p>In this paper, we aim to test the hypothesis that biasing Transformers against non-parametric solutions can improve their ICL performance by encouraging parametric modeling. We minimally modify the Transformer architecture to prevent such non-parametric shortcuts and compare the OOD performance of the resulting model to that of a traditional Transformer on a large array of ICL tasks. We call this altered architecture an explicit model because of its inductive bias of explicitly extracting structured latent variables to solve the tasks, and call the traditional Transformer architecture an implicit model. Specifically, the explicit model prevents the query from directly attending to demonstrations in the context by introducing a bottleneck between the processing of the context and the query (see Figure <ref type="figure">1</ref>), similar to a conditional neural process <ref type="bibr">(Garnelo et al., 2018a)</ref>. To study the impacts of this inductive bias favoring parametric solutions, we need to establish that explicit models successfully recover task latents. As such, we consider synthetic and real tasks for which the latent mechanisms are well understood, and systematically analyse the impact of task latents on generalization by comparing explicit and implicit models.</p><p>We find that the explicit model does not outperform the implicit one on OOD data, challenging the aforementioned hypothesis that avoiding non-parametric solutions enhances generalization. Our investigation into this lack of improvement reveals that the issue often lies in the explicit model's prediction function which has to leverage the inferred latent variables for downstream predictions on the query. Our controlled experiments and analysis on the interpretable nature of the bottleneck revealed strong evidence that while the explicit model often extracts relevant task latents, these are not properly utilized by the prediction function.</p><p>While on one hand, our research demonstrates that using a simple bottleneck in a Transformer can improve interpretability and explicitly extract task-relevant latent variables, it also suggests that the limitations of Transformers in learning more structured and generalizable ICL solutions are not solely due to non-parametric shortcuts that skirt latent variable inference, but due to more fundamental architectural limitations. In sum, our contributions are:</p><p>• Formalizing a framework to test whether parametric ICL solutions generalize better out-of-distribution. • Analyzing the benefits, or lack thereof, of inferring the true latents explicitly. • Highlighting flaws in the prediction function and downstream latent utilization which hinders generalization.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.">Notation</head><p>Throughout the paper, we denote datasets with the symbol D which consists of a set of observations with inputs denoted via x ∈ X and their corresponding outputs as y ∈ Y.</p><p>A task is defined by a functional mapping g : X , Z → Y which maps observations x to labels y through some latents or parameters z, eg. y = z T x for a linear regression task, or y ∼ N (•; z T x, σ 2 ) for its stochastic counterpart. To ease readability, we will reserve x * ∈ X for the query, i.e. the test time observation we want to generalize to, and y * ∈ Y its corresponding target. Finally, ψ denotes the parameters of the context aggregation component of explicit model, which inputs the dataset D and infers the corresponding parameters z ψ (D), and γ the parameters of the prediction model which given a query x * and parameters z ∈ Z, provides the prediction. For the implicit model, these operations are subsumed into a single model, with parameters φ.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.">Implicit vs. Explicit Inference</head><p>We look at ICL in the context of algorithmic problems where the task is to predict the target y * from a query x * when provided with some context examples D = {(x i , y i )} n i=1 , a.</p><p>Synthetic regression tasks b. Synthetic classification tasks c.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Compositional tasks</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Transformer</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Implicit</head><p>x q y q D</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Explicit</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Transformer</head><p>Transformer MLP</p><p>x q z D y q 0 0 0 0 0 0 0 0 0 sharing a common underlying structure defined by the task latent z and a functional form g. The goal of ICL is to learn a function that can utilize the context set D to provide predictions for new queries x * . To achieve this, the model is trained on different draws of context sets (D 1 , D 2 , ...) which share the same underlying functional mapping g : x, z → y but different realizations of the latent z, for example g(x, z) = z T x could be a linear regression system shared across different contexts D 1 , D 2 , ..., but the underlying latents could be different, i.e. D 1 is generated from z 1 while D 2 from z 2 , similar to Von <ref type="bibr" target="#b58">Oswald et al. (2023)</ref>. We emphasize that in this setup, we are not training models to do next-token prediction as is done in language modeling; instead, given a fixed context D that includes n samples, we are attempting to make a prediction on a single novel query x * . We therefore do not use a causal Transformer, and we allow all tokens to attend to each other.</p><p>Often, ICL solutions are learned via maximum likelihood:</p><formula xml:id="formula_0">arg max φ E D,x * ,y * [log p φ (y * |x * , D)]<label>(1)</label></formula><p>where p φ represents the Transformer model and D is sampled from the parametric family defined through g. Thus, the transformer model p φ must not only learn the form of the prediction function g, but also how to efficiently aggregate information from the context D to infer z for downstream predictions on x * . Thus, this general framework can be naturally decomposed into two distinct parts. Predictive Modeling. This component refers to the process of estimating the predictive function that leverages context D to infer y * from a query x * . In the above example, it refers to learning the functional mapping g once z has been extracted from context aggregation.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Context</head><p>As discussed, Transformers do not have a clear incentive to make this explicit separation of context aggregation and predictive modeling. Instead, given context D, they implicitly and jointly model both the function g along with Ddependent latent variable z inference to directly provide predictions for the query x * , in contrast to separately estimating g and explicitly factorizing z. Thus, in order to enforce explicit representation of z, we propose a simple architectural modification where the query x * cannot directly attend to the context, and the latent task representation is forced to summarize the context efficiently. Formally, we compare the following two models, which are illustrated in Figure <ref type="figure">1</ref>.</p><p>Implicit Model. This refers to the traditional in-context learning computation performed by Transformer models. In this setup, given the set of observations D (context) and a query x * , the prediction y * is modeled directly  Finally, we note that our aim is not to construct the best possible explicit model architecture -indeed, more sophisticated ones already exist based on amortized Bayesian inference <ref type="bibr">(Garnelo et al., 2018b;</ref><ref type="bibr" target="#b35">Mittal et al., 2023)</ref>. Instead, we are interested in investigating potential inductive biases for ICL by minimally modifying the standard Transformer architecture to remove certain shortcuts from the space of possible solutions. We leave the design of more performant architectures for future work and refer the readers to Appendix A for a detailed discussion of related work.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.">Experiments</head><p>Our goal is to use both synthetic and real tasks that capture the key elements of ICL applications to tease apart the effects of implicit and explicit models on both in-distribution (ID) and out-of-distribution (OOD) generalization.</p><p>Task Setup. We conduct experiments across a variety of settings that admit task latents, from synthetic regression and classification to reasoning problems. For reasoning tasks that require compositional knowledge, we consider Raven's Progressive Matrices (Raven's PM) <ref type="bibr">(John &amp; Raven, 2003)</ref>, Alchemy <ref type="bibr" target="#b59">(Wang et al., 2021)</ref>, Gene Targeting <ref type="bibr" target="#b37">(Norman et al., 2019)</ref> and reusable mixture of experts. A brief description of our tasks is provided below, with a more thorough explanation in Appendix B.</p><p>Regression Tasks. We consider different data-generating processes, e.g., linear: prediction z T x and latents z, nonlinear (MLP): prediction with a neural network g(x, z) and latents as its weights, sinusoidal: prediction as a sum of sinusoids with different frequencies and the latents as its amplitudes.</p><p>Classification Tasks. Akin to the regression problems, we consider a linear and nonlinear (MLP) prediction for classification using an additional sigmoid activation on the output.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>a.</head><p>Decoding the true latent z b.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Counterfactual interventions</head><p>Transformer MLP Known</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Implicit</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Transformer</head><p>x q y q D Explicit Transformer x q z D y q Known z Backprop Raven's Progressive Matrices. A pattern-completion task used in IQ tests where individual object attributes evolve according to different rules. The task is to complete a sequence of frames to satisfy the underlying rule, which is the latent variable and can be based on colors, shapes, etc.</p><p>Alchemy. Here, a latent causal graph describes how different stones and potions interact to generate new stones. The task is to infer the next stone given some transitions.</p><p>Gene Targeting. It represents a real-world dataset of targeted gene knockouts and subsequent observations of gene expressions across many cells. The underlying latent variable is the set of genes that were knocked out in a given experiment, and the task is to infer the gene expressions of certain cells in an experiment given those of other observed ones.</p><p>Reusable Modular Mixture of Experts (MoE). In this task, we apply a sequence of operations g l on the input x, where the choice of expert applied at layer l is governed by a categorical latent z l . In particular, we apply five operations sequentially, leading to y = g z5 • g z4 • . . . • g z1 (x). Here g 1 , g 2 , . . . are shared across tasks and each task is uniquely identified by (z 1 , . . . , z 5 ) which are the task latents. This represents a reusable mixture of experts system with a hierarchical and compositional decomposition.</p><p>Training and Evaluation. Tasks based on regression utilize the mean-squared error loss, while those based on classification use the cross entropy loss for training. Model architecture details are provided in subsection C.1. For ID evaluation, we consider the underlying task latent z, context samples D, and queries x * to be sampled from the same distribution as during training. The challenge in this case is simply to generalize from finite data. For OOD evaluation, we test two different cases depending on the kind of task. For our synthetic regression and classification tasks, the task latent z and context samples D are sampled from the same distribution as at training time, but the queries x * are sampled from a Gaussian distribution with higher (3×) standard deviation, thus testing a form of out-of-domain generalization. For our reasoning-based problems, we evaluate on task latents z that were not seen at training. The task latent in each of these reasoning-based problems is composed of parts (e.g., in the Gene Targeting experiment, the latent is a binary vector of targeted genes), which allows us to test a form of compositional generalization <ref type="bibr" target="#b63">(Wiedemer et al., 2023)</ref> in which all parts have full marginal support at training time, but novel combinations of those parts are evaluated at test-time.</p><p>For all tasks, implicit and explicit models were trained from scratch over a distribution of tasks latents, with a control for the number of parameters to provide a systematic comparison between the two. To better understand the shortcomings of different models, we also compare with privileged oracles (known decoder -using ground-truth g function, and known latent variable -using an auxiliary loss that includes the ground-truth z).</p><p>Explicit models do not outperform the implicit models.</p><p>The first evaluation setting that we considered was the ID performance. In this case, we should expect both implicit and explicit models to perform equally well, even if implicit models learn shortcuts rather than ground-truth task latents. This is because those shortcuts are tuned to minimize prediction error within the same data distribution that is being evaluated. Across all our tasks, the results indeed confirmed this prediction. Specifically, during ID evaluation, all models were capable of making highly accurate predictions (Figure <ref type="figure" target="#fig_1">2</ref>). While the performance of the implicit model was generally slightly better than that of the explicit models, the benefits were marginal. Effectively, all models solved the tasks similarly well.</p><p>While we expected that ID evaluation would be insufficient to demonstrate potential benefits of the explicit models, we expected to see differences in OOD settings. Both implicit and explicit models are sufficiently expressive to fit the training distribution. However, if an explicit model successfully learns the true task latents that generated the data while an implicit model learns statistical shortcuts that are specialized to the training distribution, we should expect the explicit model to generalize better OOD. As a reminder, for the synthetic regression and classification tasks in Figure <ref type="figure" target="#fig_1">2</ref> (a, b), OOD evaluation was done by sampling x * from a normal distribution with wider standard deviation than was used at training (3×), effectively evaluating if the models could extrapolate to points further out along their domain despite only being trained within a narrow distribution near the origin. For the compositional tasks in Figure <ref type="figure" target="#fig_1">2</ref> (c), we instead evaluated OOD performance by only training on certain configurations of the true latent variable z while evaluating on unseen ones. Importantly, at training time the models were shown data that included every possible value for each component of z, but not every possible combination of these values were seen, thus evaluating a form of compositional generalization <ref type="bibr" target="#b63">(Wiedemer et al., 2023)</ref>. Similarly, for the reusable modular MoE task, we train the models on a fraction of all possible combinations in the latent (z 1 , . . . , z 5 ) and evaluate on all combinations.</p><p>Surprisingly, and counter to our predictions above, we found that the explicit model provided no significant benefit in OOD settings. In synthetic regression tasks shown in Figure <ref type="figure" target="#fig_1">2</ref> (a), all models failed to generalize and obtained substantially worse performance than during ID evaluation, with the implicit model actually being the one that had a slightly lower degradation in performance. In classification and compositional tasks shown in Figure <ref type="figure" target="#fig_1">2 (b,</ref><ref type="figure">c</ref>), all models generalized fairly well OOD and with similar performance. Our results on reusable modular MoE task in Figure <ref type="figure">5</ref> further indicate that implicit models consistently outperform explicit ones across different proportion of latent combinations seen during training (X-axis). In summary, explicit models appear to provide no benefit across our tasks, both in terms of ID and OOD performance.</p><p>If the explicit model did learn the right latent variables in the bottleneck, it essentially implies that either the implicit model learns benign shortcuts (if at all) or that learning the right latent variables is not sufficient to improve generalization, both ID or OOD. In the following results, we see that the explicit model does indeed learn the right task latents.</p><p>Explicit models learn to infer the correct latent variable, but not how to use it. Why didn't the explicit model provide any benefit? Our initial hypothesis was that the implicit model could be susceptible to learning shortcuts that are sufficient to reduce the training loss and easy to express using self-attention between the query x * and context D.</p><p>By summarizing the context in a bottleneck z ψ , the explicit model should instead be forced to extract the true latent variable in order to minimize the training loss, thus learning a solution that is closer to the actual data-generating process.</p><p>There are then two possible explanations for the results in Figure <ref type="figure" target="#fig_1">2:</ref> (1) the explicit models did not learn to extract the true latent variable despite inductive biases to do so induced by the bottleneck, or (2) they did extract the true latent variable but did not learn to use it in the correct way. We performed several experiments to test these two</p><formula xml:id="formula_1">z Transformer Implicit x q y q D Explicit Transformer x q D Transformer y q Known a.</formula><p>Task performance (OOD)</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>b.</head><p>Decoding the true latent z Figure <ref type="figure">6</ref>. We analyze (a) Linear regression OOD performance and (b) latent variable linear decoding as a function of model and task parameters. Task performance scales similarly for implicit (gray) and explicit models (blue), while latent variable decoding scales similarly for the explicit model and models trained with the true prediction function g (green).</p><p>possibilities, and found strong evidence for the second.</p><p>To test whether or not the explicit models failed because they did not extract the correct latent variable, we added an additional supervised loss term to Equation <ref type="formula" target="#formula_0">1</ref>, ||z -W z ψ || 2 , to force the explicit model to recover the true task latent z up to a linear transformation, where W is a learnable parameter. The loss of this linear model was then backpropagated through the context model along with the task loss. Results in Figure <ref type="figure" target="#fig_3">3</ref> (purple) show that this auxiliary loss provided no improvement apart from minor increases in accuracy on Raven's PM, suggesting that incorrect latent variable inference does not explain the explicit model's suboptimal performance. Indeed, when we did not use the auxiliary loss as a training signal for the explicit model and just evaluated the quality of the learned task latents by training a separate linear predictor to predict z ψ , we found that we could still accurately predict the true latent variable (see Figure <ref type="figure" target="#fig_4">4 (a)</ref>). This means that in the absence of any explicit training signal to predict the true task latent, the explicit model accurately learns task latents up to linear reparameterizations.</p><p>Given that the explicit model correctly infers the true latent variable in its bottleneck, we study whether the prediction function is suboptimally learned. In other words, despite the explicit model having access to the true z, we hypothesize that p γ (y * |x * , z ψ ) does not learn the true data-generating process y * = g(x * , z), where g is the true prediction function -e.g., for linear regression g(x * , z) = z T x * . To validate this hypothesis, we trained explicit models with the prediction function g hard-coded as an oracle. For instance, in the linear regression task, the z ψ output by the context model was linearly projected to the same dimensionality as the true weights z, after which the prediction function took its dot product with queried input x * . In this setting, if the explicit model extracts the correct latent variable, it should generalize perfectly both in and out of distribution. Our results in Figure <ref type="figure" target="#fig_3">3</ref> confirm that using the correct prediction function indeed provides substantially better OOD generalization and effectively solves most tasks. This finding has significant implications: it suggests that while learning the true task latents may be a necessary condition for generalization, this must also be supplemented with significant inductive biases in the prediction function -for instance, through novel architectures -so that these task latents can be leveraged correctly. In the absence of such inductive biases, inferring the correct task latent appears to provide no benefits in practice. We do note that our nonlinear regression tasks, where z represents the weights of an underlying MLP generating the data, were an exception to the results described here in that using an oracle prediction function performed poorly. In this case, we conjecture that the underlying latent variable is too difficult to accurately infer from the context, while shortcut-based solutions would avoid latent variable inference altogether to provide robust solutions.</p><p>Explicit models are easily interpretable. While explicit models do not provide performance benefits, the ability to extract the correct latent and summarize it in a single bottleneck can still be useful for interpretability. On tasks with known underlying latent variables, we were able to linearly decode them from z ψ with high accuracy, meaning that the information is not only present but also easily accessible (Figure <ref type="figure" target="#fig_4">4</ref> (a)). The exceptions were complex nonlinear regression tasks where the latents are difficult to infer and classification tasks where more context samples are needed to precisely identify the decision boundary.</p><p>In contrast, finding such clear task-relevant latents is immensely challenging in an ordinary Transformer trained to do ICL, given that they can be distributed across a mixture of many layers and token positions.</p><p>Furthermore, even when latent variables appear to be successfully identified using a linear decoder in some hidden layer of a Transformer, one often finds that the relationships merely amount to spurious correlations <ref type="bibr" target="#b43">(Ravichander et al., 2021)</ref>. For instance, if one manually modifies the activations in this hidden layer such that a different latent variable is predicted by the linear decoder, the model's predictions do not generally change in a way that is "counterfactually" consistent with this new latent (i.e., the prediction is not what it should have been under the new latent variable). We therefore used the Distributed Alignment Search (DAS) method from Geiger et al. 2023b (see subsection C.4) to search for units in the implicit and explicit models that can be manipulated to obtain correct counterfactual predictions. For the explicit model, we limited this search to the bottleneck z ψ . We found that using the explicit model, we were indeed able to manipulate z ψ and obtain correct counterfactual predictions, but we were not able to successfully do this using the implicit model, as shown in Figure <ref type="figure" target="#fig_4">4</ref> (b). Explicit models might therefore be useful for both mechanistic interpretability and scientific discovery <ref type="bibr">(Geiger et al., 2023a)</ref>, where we do not know the underlying task latents and want to be able to easily uncover them from the trained model, and subsequently obtain a good predictor for an intervened system zero-shot given some knowledge about the intervention.</p><p>Scaling Trends across Different Properties. To better compare the implicit and explicit models, we investigated their OOD task performance on linear regression as we varied the different properties of the task (input dimensionality and context length) and the size of the model used (Figure <ref type="figure">6</ref> (a)). We found that performance in both models scaled similarly, but that the implicit model reliably outperformed the explicit one unless it used the known prediction function g. We also looked at the latent variable linear decoding accuracy in the explicit model as a function of these task and model properties (Figure <ref type="figure">6</ref> (b)). As expected, we found that the latent variable was easier to decode from the explicit model's bottleneck when there was less inherit uncertainty about its value (lower data dimensionality, longer context length) and when the explicit model was given more capacity. However, throughout the different settings, we see that while the explicit model does learn the true latent well, it is not sufficient to get a performance boost over the implicit models. Further details on the setup of these scaling experiments is provided in subsection C.2.</p><p>Impact of auxiliary loss on decoding from bottleneck.</p><p>Additionally, we perform an experiment where instead of using an auxiliary loss obtained between the ground-truth task latents z and a decoding from the explicit model's bottleneck ||z -W z ψ || 2 (called aux decoded), we instead force the bottleneck itself to be directly close to the ground-truth ||z -z ψ || 2 (called aux direct). Since the prediction function relies on the bottleneck and not its decoding, removing this extra layer when providing additional supervision might allow the bottleneck to better reflect the task latents and thereby aid prediction. Our results, however, indicate that doing so does not lead to any benefits on OOD evaluation for linear regression, further strengthening the conclusion that effective task latent inference is not the biggest problem in such models.</p><p>Extreme Shortcut Injection. Finally, we test whether injecting extreme shortcuts during training pushes implicit models to learn nearest-neighbor styled kernel-regression solutions as opposed to uncovering the underlying functional form. We consider two cases, where queries during training are sampled (a) randomly, or (b) near context points. The latter further incentivizes implicit models to learn nearest neighbour shortcuts. At evaluation, the queries are sampled far from the context. Our results on sinusoid regression in Figure <ref type="figure" target="#fig_5">7</ref> indicate that while implicit models perform well generally, they suffer considerably more in the presence of such injected shortcuts since explicit models distill the task latent from context independent of the query.</p><p>We further refer to Appendix D for a detailed analysis.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.">Conclusion</head><p>A commonly believed hypothesis is that Transformers do ICL through brittle statistical shortcuts rather than by inferring the underlying generative latent variables of the task, and that this explains their inability to generalize outside of the training distribution. Here, we empirically tested this hypothesis by minimally modifying the Transformer architecture through the use of a bottleneck that factorized the model into separate context aggregation and prediction functions, creating an inductive bias for explicit latent variable inference. While we confirmed that this model indeed learned to infer the correct latent variables across many ICL tasks, it surprisingly gave no improvement in performance for either in-distribution or out-of-distribution evaluation. Contrary to common belief, then, we showed that simply learning the correct latent variables for the tasks is not sufficient for better generalization because end-to-end optimization does not learn the right prediction model to leverage these latent variables.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Impact Statement</head><p>This paper provides a comparative analysis to better understand the capabilities of current in-context learners from a point of view of making them more robust and aligned with the true underlying models of the data. We believe that this is an important step towards understanding when and how machine learning models can rely on shortcuts and spurious correlations, and understanding whether such correlations can be mitigated through the use of conditional independence assumptions and bottlenecks, as is investigated in this work.</p><p>While we show a negative result that such bottlenecks do not substantially aid generalization, they do come with interpretability benefits which are extremely useful when deploying AI systems at scale. Finally, we hope that our analysis sparks controlled experiments to understand the mechanisms behind in-context learning better as well as incorporating and validating numerous inductive biases to see whether they do aid generalization and reduce the reliance on shortcuts.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Related Work</head><p>In-Context Learning. In-Context learning (ICL) is an ability of certain trained models to take an entire task's dataset as input and parameterize solutions directly in their layer activations, which then condition subsequent computation on novel inputs from those same tasks. Generally, this ability is found in sequence models such as Transformers where the task dataset, or "context", corresponds to an earlier part of the sequence. ICL was first observed in large-scale pre-trained LLMs <ref type="bibr" target="#b5">(Brown et al., 2020)</ref>, and is similar in many respects to meta-learning <ref type="bibr" target="#b6">(Chan et al., 2022)</ref>. These LLM findings were subsequently expanded to more controlled settings outside of the language modality, where Transformer models were directly trained on task distributions such as linear regression <ref type="bibr" target="#b58">(Von Oswald et al., 2023;</ref><ref type="bibr" target="#b9">Garg et al., 2023)</ref>, hidden Markov models <ref type="bibr" target="#b64">(Xie et al., 2022)</ref>, compositional grammars <ref type="bibr" target="#b22">(Hahn &amp; Goyal, 2023)</ref>, regular languages <ref type="bibr" target="#b0">(Akyürek et al., 2024)</ref> and Turing machines <ref type="bibr" target="#b20">(Grau-Moya et al., 2024)</ref>, with a set of task observations defining the "context". These works highlight that Transformers are indeed able to model many types of complex task distributions, approaching in many cases the performance of the Bayes-optimal predictor, the a-priori optimal solution <ref type="bibr" target="#b64">(Xie et al., 2022)</ref>. Our work lies along similar lines but using more complex tasks and a systematic study into the differences between modeling the predictive space directly, or through a two-step process involving explicit inference of task latents.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Shortcuts in ICL.</head><p>Shortcut learning is a phenomenon that has widely been observed in machine learning <ref type="bibr" target="#b17">(Geirhos et al., 2020)</ref>, and refers to where a model solves a task through statistical correlations that are accidental and thus not robust to even slight distribution shifts. A classical example of this in image classification is the usage of background cues to classify objects <ref type="bibr" target="#b45">(Ribeiro et al., 2016)</ref>. Similar mistakes are know to be very common in NLP <ref type="bibr" target="#b34">(McCoy et al., 2019)</ref>, specifically in reasoning tasks <ref type="bibr" target="#b67">(Zhang et al., 2022)</ref>. Particularly relevant to our work, many authors have shown that has shown that Transformers are very prone to relying on shortcuts when performing ICL <ref type="bibr">(Tang et al., 2023a)</ref>. For instance, <ref type="bibr" target="#b38">(Olsson et al., 2022;</ref><ref type="bibr" target="#b46">Singh et al., 2024)</ref> have shown that induction heads play in important role in ICL by predicting that the continuation of a token will be the same as last time (i.e. ). As shown by <ref type="bibr" target="#b58">(Von Oswald et al., 2023)</ref> this motif can be used to do linear regression, and can generally be seen as a form of kernel regression (i.e. p(y q |x q , x 1:n ) ∝ i K(x i , x q )y i , <ref type="bibr" target="#b23">(Han et al., 2023)</ref>). This observation draws a link between those types of solutions and non-parametric inference methods in statistics <ref type="bibr" target="#b24">(Hastie, 2009)</ref>, of which kernel regression is a member. In contrast <ref type="bibr" target="#b25">(Hendel et al., 2023;</ref><ref type="bibr" target="#b52">Todd et al., 2023)</ref> have concurrently shown that in some cases Transformers encode a "task vector" that they infer from the context and then use to do the prediction. There is therefore a need to better understand the nature of shortcuts in ICL and whether or not they can be easily avoided for better generalization. Our work explores this very question.</p><p>Neural Processes. The problem of solving new tasks in a zero-shot manner directly at inference is also closely tied to amortized Bayesian models <ref type="bibr" target="#b31">(Kingma &amp; Welling, 2013;</ref><ref type="bibr" target="#b44">Rezende et al., 2014;</ref><ref type="bibr" target="#b41">Radev et al., 2020;</ref><ref type="bibr">Geffner et al., 2023;</ref><ref type="bibr" target="#b35">Mittal et al., 2023)</ref>. Conditional Neural Processes (CNPs) <ref type="bibr">(Garnelo et al., 2018a)</ref> provide a framework akin to the explicit model, where the posterior predictive distribution is modeled through a bottleneck z ψ , i.e. p θ (y * |x * , D) = p θ (y * |x * , z ψ (D)). However, CNPs do not look at the relevance of z ψ to the true latent z, and use the DeepSets <ref type="bibr" target="#b66">(Zaheer et al., 2017)</ref> architecture to model z ψ , though recent research generalizes this setting to use Transformers <ref type="bibr" target="#b36">(Nguyen &amp; Grover, 2023)</ref> and other architectural backbones as well <ref type="bibr" target="#b29">(Kim et al., 2019;</ref><ref type="bibr" target="#b19">Gordon et al., 2019)</ref>. Our approach with the explicit model, however, is to precisely question whether task-specific latents are encoded via z ψ which is now instead modeled using a Transformer architecture. Analogously, Neural Processes (NPs) <ref type="bibr">(Garnelo et al., 2018b;</ref><ref type="bibr" target="#b39">Pakman et al., 2020)</ref> augment CNPs with probabilistic modeling, where z is now modeled explicitly as a latent-variable in the Bayesian sense, i.e. the likelihood is now modeled as p θ (y|x * , D) = p θ (y|x, z)p θ (z|D)dz, where z represents the latent variable and θ the parameters of the likelihood model. The model is trained via the Evidence Lower-Bound (ELBO) with the amortized variational approximation q φ (•|D). Once trained, predictions for new datasets can be made by simply performing inference over the encoder q φ to obtain z, and then leveraging this latent variable to eventually give the predictions via p θ (y|x * , z). Hence, while CNPs and the explicit model to share similarities in architecture, our goal is orthogonal in that we specifically use the explicit model to understand the impact of task-specific latent variable inference on ICL setups.</p><p>Meta-Learning. Meta-learning <ref type="bibr">(Hospedales et al., 2020b;</ref><ref type="bibr">a)</ref> studies systems that can learn over two levels: rapidly through an inner-loop that is meta-learned using a slower outer-loop. The goal in such methods is to learn a good initialization common to the parameterized family of tasks, in a manner that obtaining a particular solution for a new task is fast from this initial point. The inner loop provides an optimization trajectory for a randomly drawn task from some initialization, which in itself is optimized in the outer loop to a good solution applicable for the global set of tasks. Typically, evaluation is done on some meta-validation set of tasks not seen during training. Task distributions can for example be a set of different classification/regression tasks (few shot learning, <ref type="bibr" target="#b56">(Vettoruzzo et al., 2023)</ref>) or variations of a reinforcement learning (meta-RL, <ref type="bibr" target="#b2">(Beck et al., 2023)</ref>). The goal is similar to ICL approaches in the sense that given a novel context D,</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Implicit</head><p>x q y q D Explicit Transformer Transformer MLP</p><p>x q z D y q</p><p>Figure <ref type="figure">9</ref>. Same experiment as Figure <ref type="figure" target="#fig_4">4b</ref> but with the linear regression task. Specifically, we use Distributed Alignment Search (DAS, <ref type="bibr">(Geiger et al., 2023b)</ref>, see Appendix C for details) to find the 10 dimensional subspace in each model with best simulates counterfactual interventions on the task vector (in this case, the weight of the linear regression). In both explicit model, the subspace is taken at the bottleneck. In the implicit one, we perform the DAS at all layer of the query token and report the best one. The reported metric is the MSE of the intervened model on the intervened regression problem (i.e. using the same query x but y's coming from the intervened linear regression weights, Appendix C for details).</p><p>one wants to make predictions for some query x * . However, a big difference is that ICL approaches bypass modeling a common initialization by working directly on the prediction side (implicit), or instead predict the optimal parameters directly zero-shot through inference on the context model (explicit).</p><p>Mechanistic Interpretability. Mechanistic interpretability is interested in understanding deep neural network's computations through interpretable abstraction, akin to what computational neuroscience does with the brain. (Alain &amp; Bengio, 2018) introduced the foundational technique of linear "probes", which are linear models trained on the hidden state of a network to predict an abstract feature of the input; the success of which suggests that such a feature is used by the model. Since then, this naïve approach has been criticized for being potentially misleading <ref type="bibr" target="#b43">(Ravichander et al., 2021)</ref>; in many cases a feature can be linearly decoded from a model without the model using it. More reliable methods grounded in causality <ref type="bibr" target="#b57">(Vig et al., 2020;</ref><ref type="bibr" target="#b16">Geiger et al., 2024)</ref> have now became the gold standard, and their use applied to Transformers has been exploding in popularity <ref type="bibr" target="#b8">(Elhage et al., 2021)</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Tasks</head><p>We consider the following tasks for our evaluations, specified by the data-generating prediction function g : x, z → y which is used to generate the ICL dataset, where z represents the task-specific latent variable.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B.1. Regression Tasks</head><p>For regression tasks, since y ∈ R, we use the mean-squared-error loss to train the model.</p><p>Linear Regression. This refers to the task where y is obtained from an affine transformation on the input x. In particular, y = g(x, z) = z T x, where z ∈ R i×j ∼ N (0, I). For our experiments, we set dim(x) = 1 and dim(y) = 1.</p><p>Nonlinear Regression using MLPs. Here, the labels y are obtained from a neural network which takes x as an input. In particular, y = g(x, z) = f z (x), where f z is modeled as a Multi-Layer Perceptron (MLP) network with a 64 dimensional single hidden layer and ReLU nonlinearity. The distribution of the weights of the neural network is z ∼ N (0, I). For our experiments, we set dim(x) = 2 and dim(y) = 1.</p><p>Sinusoid Regression. For this task, the label y is obtained as a summation of sine functions with different frequencies and amplitudes, taking x as an input. Mathematically, we structure the system as y = g(x, z) = K i=1 α i sin (2πλ i x), where λ i 's denote the frequencies and α i 's the amplitudes. The parameters for the system can be seen as z = {α 1:K } while λ 1:K remains fixed throughout. Additionally, for our experiments we set K = 3, and consider the distributions -λ i ∼ U(0, 5) and α i ∼ U(-1, 1), and set dim(x) = 2 and dim(y) = 1.</p><p>Gaussian Process Regression. While the other tasks considered had a parametric nature to it, this task on the other hand has more of a non-parametric nature. Here, the task is that Y ∼ N (0, K(X, X)), i.e. the set of labels is sampled from a joint Gaussian distribution, akin to drawing a random function through a Gaussian Process (GP) prior and then evaluating it at different points X; with K defining the kernel in the GP. In our case, we consider K(x,</p><formula xml:id="formula_2">x ′ ) = exp -∥x-x ′ ∥ 2 2σ 2</formula><p>as the RBF kernel and X = (X c , X q ), Y = (Y c , Y q ) are the combined points for both the context and the queries, which are split after this sampling. Here the latents z has to store the kernel computations between the query and all the context points X c , as well as the corresponding context labels Y c . Storing this either involves storing the high-dimensional mapping of X c which is defined by the kernel K, or storing all the points X c themselves. This is thus very high dimensional and weakly structured.</p><p>Hodgkin-Hoxley ODE Prediction. This is an example of the task where the context D is not composed of iid entries, but instead observations from the Hodgkin-Huxley temporal dynamics model of neural activity unrolled through time :</p><formula xml:id="formula_3">C m dV dt = g 1 (E 1 -V ) + ḡNa m 3 h (E N a -V ) + ḡK n 4 (E K -V ) + ḡM p (E K -V ) + I inj + ση (t)</formula><p>Above, V represents the membrane potential which is the target of interest, t represents the different points at which observations are provided, C m is the membrane capacitance, g l is the leak conductance, E l is the membrane reversal potential, ḡc is the density of channels of type c (Na + , K + , M), E c is the reversal potential of c, (m, h, n, p) are the respective channel gating kinetic variables, and ση(t) is the intrinsic neural noise. The right hand side of the voltage dynamics is composed of a leak current, a voltage-dependent Na + current, a delayed-rectifier K + current, a slow voltagedependent K + current responsible for spike-frequency adaptation, and an injected current I inj . Channel gating variables q have dynamics fully characterized by the neuron membrane potential V , given the respective steady-state q ∞ (V ) and time constant τ q (V ) (details in <ref type="bibr" target="#b40">(Pospischil et al., 2008)</ref>).</p><p>Importantly, in our experiments, we fix all parameters but (ḡ N a , ḡK ) to values in Tejero-Cantero et al. 2020 and solve the differential equation for 6,400 pairs (ḡ N a , ḡK ) ∈ [0, 40] 2 from t = 0 to t = 120 with 1000 time-steps. In other words, the Transformer has to regress to solutions of ordinary differential equations, where the task latents are z = {ḡ N a , ḡK ]}, the observations are x = t and y = V , such that y = g(x, z). Here g represents the unrolling of the differential equation.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B.2. Classification Tasks</head><p>For classification tasks, since y is a categorical measure, we use a cross-entropy loss for training.</p><p>Linear Classification. Akin to linear regression, here we consider the case that y is obtained by an affine transformation of x followed by a sigmoid function and a consequent sampling step. That is, y = g(x, z) ∼ Categorical(Softmax(z T x)) where z ∈ R i×j ∼ N (0, I). For our experiments, we set dim(x) = 2 and y ∈ {0, 1}.</p><p>Nonlinear Classification Using MLPs. Here, the logits for the labels are instead obtained through a neural network taking x as an input, and not an affine transformation. Mathematically, this can be seen as y = g(x, z) ∼ Categorical(Softmax(f z (x))) where f z is modeled as a Multi-Layer Perceptron (MLP) network with a 64 dimensional single hidden layer and ReLU nonlinearity. The distribution of the weights of the neural network is z ∼ N (0, I). For our experiments, we set dim(x) = 2 and y ∈ {0, 1}.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B.3. Compositional tasks</head><p>Reusable Modular Mixture of Experts (MoE). We consider a modular task which consists of sequential application of a choice of K experts g 1 , . . . g K over the input x. In particular, the computational graph consists of L layers where at each layer l, expert z l operates on the output of the preceding layer to give the successive output, i.e. x l = g z l (x l-1 ). This task is compositional in nature because at each layer, any of the K experts can be called upon to perform a unit of computation and the choice of the expert is defined by the underlying task latent z 1 , . . . , z L , each of which are categorical with K possibilities. In our specific implementation, we set L to be 5, K to be 5, x ∈ R 4 and y ∈ R 4 . Each expert g i is parameterized as a linear layer followed by the tanh activation function. We enumerate all K L possible combinations and then only use a subset of them during training, while randomly sampling all for evaluation.</p><p>Alchemy. Alchemy is a meta-reinforcement learning benchmark <ref type="bibr" target="#b59">(Wang et al., 2021)</ref> where each environment is defined by a set z = (GRAPH, POTION MAP, STONE MAP) of rules about how some set of potions transforms some stones. We extracted from it an ICL classification dataset consisting of transformations x = (STONE, POTION) → y = STONE. The transformations are compositional and symbolic; each potion affects only one of the three properties of stones (size, shape and color). An environment is specified by how observable stones and potions MAP to latent stones and potions, along with a GRAPH over these latent stones which specify the result of the Transformations. In total there is 109 GRAPH, 48 POTION MAP and 32 STONE MAPS, making for 167424 environments. We reserve 100,000 environments for evaluation and train of the remaining ones.</p><p>Raven's Progressive Matrices. Raven's Progressive Matrices (Raven's PM) is a reasoning task used for IQ tests <ref type="bibr">(John &amp; Raven, 2003)</ref>. It consists of a 3x3 grid where each cell contains simple objects varying in a small number of attributes (number, shape, size, color), but the bottom right cell is left empty. Subjects must notice a pattern in how the cells change from left to right in the first two rows of the grid, and then use that same pattern to complete missing cell in the bottom row. This is done by selecting one answer among N possible provided options for the missing cell. We use a symbolic version of the dataset that addresses bias in the original version <ref type="bibr" target="#b21">(Guo et al., 2023)</ref>. In this dataset, objects at a cell have 4 discrete attributes with 40 possible values each. In our models, the context consists of the first two rows of the grid, the query consists of the last row with a masked out final cell, and the ground-truth latent variable is the underlying rule that generates a particular grid. Each rule is composed of a set of sub-parts, and we evaluate on unseen compositions.</p><p>Gene Targeting. We use Perturb-seq dataset collected by <ref type="bibr" target="#b37">Norman et al. (2019)</ref> where researchers performed several genetic intervention experiments using CRISPR <ref type="bibr" target="#b18">(Gilbert et al., 2014)</ref>. In each experiment, either one or two genes were targeted and the resulting expressions across 5000 genes were observed across several cells. Here, we consider each CRISPR intervention experiment as a different context, the resulting cell genetic expressions as 5000-dimensional observations, and a left-out cell with half of the genetic expressions randomly masked out as the query. The task is to predict the missing genetic expressions for the queried cell. We evaluate on held on held out CRISPR experiments with novel pairs of targeted genes.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Model Details</head><p>In the following section, we describe the standard architectural details used for all the tasks, as well as specific differences in the architecture used for the scaling experiments. Finally, we also provide details about the distributed alignment search mechanism.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.1. General Details</head><p>For our implicit model, we use a standard Transformer with 8 layers. In the explicit model, for context aggregation we parameterize z ψ (D) using a standard Transformer with 4 layers, 256 dimensions latent, 512 dimensions MLP, and 4 heads.</p><p>For the predictor p γ , we consider two options: a ReLU-actiavtion based MLP with three hidden layers of size 512 and a Transformer with the same configuration as z ψ (D).</p><p>For the implicit model, we format the prompt for prediction as</p><formula xml:id="formula_4">[x 1 , y 1 ] . . . [x n , y n ][x q , ∅],</formula><p>where every [•] represents a token. We use a distinct mask token ∅ to represent the target (which is the thing being predicted). For the explicit model, we first compute [x 1 , y 1 ] . . . [x n , y n ] to z ψ (D) with the context Transformer, then we give [z ψ (D)][x q ] to the predictor Transformer or [z ψ (D), x q ] to the MLP.</p><p>For our experiments, the number of context points n is uniformly sampled from 16 to 128 for both training and evaluation.</p><p>Training is done with new data being synthetically generated on the fly, and evaluation either based on the test set provided for real-world tasks or simulated data of 1000 different contexts for synthetic tasks. All the models were trained with a learning rate of 10 -4 using the Adam optimizer <ref type="bibr" target="#b30">(Kingma &amp; Ba, 2014)</ref> for a 1000 epochs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.2. Scaling Experiments</head><p>For the scaling experiments, we only consider the linear regression case with a base configuration of: (a) x of dimensionality 100, (b) context size being sampled uniformly from (75, 125), and (c) 8 heads, 8 layers, 512 hidden dimensions and 256 bottleneck dimension for the transformer models.</p><p>From this base configuration, we changed only one of the configurations at each time to test for scaling trends for each property independently. In particular, we ablated over (50, 100, 250) for the dimensionality of x, (50, 100, 250) for the context length which was sampled from a ±25 range and the model size. The smallest model size considered had 4 heads, 4 All the models were trained with a learning rate of 10 -5 using the Adam optimizer for 5000 epochs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.3. Compute Details</head><p>We train most of our models on single RTX8000 NVIDIA GPUs, where it takes roughly 3-6 hours for each experiment to run. Our scaling experiments on the other hand often required 1-2 days on single GPUs for training each model.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.4. Distributed Alignment Search details</head><p>To find subspace causally associated with a task latent in Alchemy, we use a method based on Distributed Alignment Search (DAS) by <ref type="bibr">(Geiger et al., 2023b)</ref>. This procedure is performed for a location L = R d (e.g. the bottleneck) and latent i ∈ {1, 2, 3} (GRAPH, STONE MAP, POTION MAP).</p><p>First, we run with the model on D z and D z for every possible query x * . We call z the base and z the source and only differ by the ith latent. For every run, we record the activity of the source model at the location l z ∈ L. Then, we run the base model again but this time fixing the subspace of l defined by the orthogonal projection Π ∈ R d×10 to it's value in l z . A single projection Π is learned over all possible combination z, z and x * with a cross-entropy loss between the prediction of the base (intervened) model and the true counter-factual result of changing the latent z i to zi . See Figure <ref type="figure" target="#fig_8">10</ref> for an illustration of the process. A subspace is evaluated by looking at the accuracy of the counterfactual interventions over a dataset of held-out z, z pairs; a quantity called the Interchange Intervention Accuracy (IIA). In Figure Figure <ref type="figure" target="#fig_4">4</ref> (b) we report the validation IIA relative to a baseline corresponding to the counterfactual accuracy if we don't perform any intervention (because changing the latent sometimes doesn't change the prediction) IIA-BASELINE 1-BASELINE .</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D. Analysis of Experiments</head><p>Based on the empirical evidence presented in section 4, we finally provide details and analysis into the results to further the understanding of the conclusions. In particular, our key analysis includes Explicit Models sufficiently uncover task latents. We see that in problems where the context provides enough evidence</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Explicit</head><p>Transformer MLP</p><p>x q z D y q</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Implicit Proxy</head><p>Transformer MLP</p><p>x q z D y q x q Figure 11. To further understand the difference between the explicit and implicit model, we utilize an implicit proxy model which shares the same architecture as the explicit model with MLP prediction with just one key difference: the task latent z depends on the query xq as well. This task latent z can be understood as the final attention layer output of the implicit model, after which an additional MLP is utilized to provide prediction. Our findings on linear and sinusoidal regression demonstrate that as we move further and further out-of-distribution, the implicit proxy model performs better than the explicit model (left figures), but recovers the underlying true task latents worse (two right figures). This provides additional validation of our hypothesis.</p><p>to uncover the true task latents, explicit models are able to do so. In particular, this hints at the fact that explicit models do perform downstream prediction based on true task latents whenever these latents can be sufficiently identified from the context examples.</p><p>Explicit Models do not generalize better than implicit ones. Our analysis also reveals that while explicit models often do uncover the right task latents, they are still not able to surpass implicit models even on OOD generalization. This could be due to implicit models also uncovering the true underlying prediction function but in a distributed fashion, or explicit models not being able to leverage the learned latents in downstream prediction.</p><p>Learned downstream prediction is often sub-optimal. Our results indicate that it is indeed the case that while the explicit models do uncover the right latents, they fail to generalize well OOD because the downstream prediction function fails to generalize. This is further strengthened by Figure <ref type="figure">11</ref> where additionally leverage the query in context aggregation, thus interpolating between explicit and implicit model while maintaining a bottleneck. Our results indicate that despite worse latent variable inference far from the query, it still has better predictive generalization when compared to explicit models. This further strengthens the claim that better latent variable inference is not the sole problem, and learning the right downstream prediction is as important.</p><p>Classification tasks vs. regression tasks. OOD performance is generally strong (across all models) for classification because decision boundaries are within the training domain and do not change beyond it. In contrast, for regression tasks, the function continues to change beyond the observed training domain, making OOD prediction more difficult. This is also why known prediction functions give little benefit in classification tasks: they are already solved well OOD with ordinary implicit and explicit models.</p><p>The explicit model with known prediction function does not give benefits in nonlinear (MLP) regression. This is because the problem of inferring an MLP's weights given some context examples is too difficult, so the explicit model opts for a different, non-parametric solution. This is supported by the latent variable decoding results in Fig. <ref type="figure">5</ref> (previously Fig. <ref type="figure" target="#fig_4">4</ref>), which show that even with a known prediction function the explicit model does not learn to infer the correct latent variable for the nonlinear (MLP) regression task.</p><p>Impact of Output Dimensionality. In addition to our standard experiments, we consider linear regression with varying output dimensionality as another measure of difficulty of the task. Our results in Figure <ref type="figure" target="#fig_12">14</ref> showcase that the implicit model fares much better than the explicit model, however having a known prediction function leads to much better performance.</p><p>Size of Context Aggregator. While we primarily controlled for the total number of parameters, it is possible that context aggregation requires more parameters and thus equally splitting parameters between this aggregation and prediction may be the cause for suboptimal performance. To study this properly, we conduct experiments where the context aggregator is the a.</p><p>Synthetic regression tasks b. Synthetic classification tasks c.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Compositional tasks</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Transformer</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Implicit</head><p>x q y q D Explicit Transformer Transformer MLP</p><p>x q z D y q</p><p>Explicit, context aggregator Transformer same size as for Implicit model same size as the implicit model and we see similar results in Figures <ref type="figure" target="#fig_9">12</ref> and<ref type="figure" target="#fig_11">13</ref>. In addition, we ablate with differently sized context aggregators and prediction models for different tasks in Tables <ref type="table" target="#tab_9">1 to 8</ref> Visualization of Explicit Predictions. We visualize the failure of explicit model in learning the right prediction function, which can be seen in out of distribution for sinusoid regression in Figure <ref type="figure">15</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E. Mathematical Formalism</head><p>In this section, we provide a formal distinction between the implicit and explicit model. In both the approaches, the goal is to model the true posterior predictive p(y|x, D); however the two methods model it through different conditional independence setup.</p><p>Implicit Model. In this setup, we model the predictive distribution as p φ (y|x, D), where the training is done as</p><formula xml:id="formula_5">arg max φ E x,y,D [log p φ (y|x, D)]<label>(2)</label></formula><p>and then given a query x and dataset D, the inference is done simply by sampling or estimating the mean of p(y|x, D).</p><p>Explicit Model. Contrary to the implicit model, the explicit model parameterizes the predictive distribution as p γ (y|x, z ψ (D)), with a similar training procedure as above. Note that the predictive distribution only interacts with the dataset D through the latent z ψ (D) while the implicit model allows unconstrained access to D.</p><p>Implicit Proxy Model. To better understand the differences that play a role from architectural differences and parameterizations, we use exactly the same architecture as the explicit model to obtain a version of the implicit model. Such a model parameterizes the predictive distribution as p γ (y|x, z ψ (D, x)), with a similar training procedure as above. Note that the only difference with the explicit model here is that the conditional dependence of the query and the task latents is broken.</p><p>We refer the reader to Figure <ref type="figure">16</ref> for a plate diagram of the corresponding architectures.     </p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head></head><label></label><figDesc>Figure1. We compare the benefits of the implicit (left) and the explicit (right) model. Explicit models disentangle context aggregation and prediction into two separate functions with an inductive bias for inferring generative latent variables in order to solve the task. Implicit models are more expressive, but can learn non-parametric shortcut solutions that bypass latent variable inference.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 .</head><label>2</label><figDesc>Figure 2. Comparison of implicit and explicit models in-distribution (ID) and out-of-distribution (OOD) across various domains: (a) synthetic regression, (b) classification, and (c) compositional generalization tasks. Implicit models are in shown gray, explicit models with Transformer prediction in blue, and with MLP prediction in orange. Further details about tasks is provided in Appendix B.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head></head><label></label><figDesc>Aggregation. This component deals with inferring the task-dependent latent variables from the in-context examples such that the downstream prediction becomes conditionally independent of the context, i.e. inferring z from D such that p(y * | x * , z, D) = p(y * | x * , z).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 3 .</head><label>3</label><figDesc>Figure3. Performance on a subset of tasks where the true latents z and prediction function g are known. Implicit models are in shown gray, explicit models with Transformer prediction in blue, models trained with an auxiliary loss to predict the true latents in purple and those using the true prediction function in green. Using the known prediction function leads to significantly better OOD performance.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 4 .</head><label>4</label><figDesc>Figure 4. Explicit models are interpretable as the bottleneck allows (a) linearly decoding the true latent, and (b) intervening to obtain correct counterfactual predictions. Implicit models are shown in gray, explicit models with Transformer prediction in blue, and with MLP prediction in orange. Models in green use the true prediction function g, while models in purple use an additional auxiliary loss based on true latents. To evaluate decoding performance in (a), we linearly decode the true latent directly from concatenated context examples, which yields significantly worse performance than decoding from the bottleneck. Baseline performances in units of the plots are -Linear regression: 0.49, Nonlinear regression (MLP): 0.94, Sinusoid regression: 0.33, Linear classification: 0.86, Nonlinear classification (MLP): 0.97, Raven's PM: 0.5, and Gene targeting: 0.0. In (b), the "Relative accuracy" takes the baseline in account (details in C.4).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Figure 7 .</head><label>7</label><figDesc>Figure 7. We analyze sinusoid regression by sampling the query either from the normal distribution (left) or close to the context (right) during training but always far from context during evaluation. We see that when queries are sampled close to the context, implicit models which can rely more on kernel-regression based nearest-neighbor solutions don't generalize far from context, while explicit models do.</figDesc><graphic coords="8,54.44,64.80,492.00,97.70" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>Figure 8 .</head><label>8</label><figDesc>Figure8. We compare using the auxiliary ground-truth task latent loss directly on the output of context aggregation, i.e. z ψ (D) (aux direct), or to a linear decoding from it (aux decoding).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head></head><label></label><figDesc>[a][b] . . . [a] → [b]</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head>Figure 10 .</head><label>10</label><figDesc>Figure 10. Illustration of the DAS training procedure</figDesc><graphic coords="17,55.44,67.06,486.01,222.19" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_9"><head>Figure 12 .</head><label>12</label><figDesc>Figure 12. Similar to Figure 2, but with an additional explicit model where the context aggregator is identical in size and hyperparameters (M) as the implicit model. Implicit models are in shown gray, explicit with Transformer prediction in blue (light blue = total model size identical to implicit as in main paper, dark blue = context aggregator identical to implicit), and with MLP prediction in orange.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_11"><head>Figure 13 .</head><label>13</label><figDesc>Figure13. Similar to Figure3but with an additional explicit model where the context aggregator is identical in size and hyperparameters (M) as the implicit model. Performance on tasks where the true latents z and prediction function g are known. Implicit models are in gray, explicit models with Transformer prediction in blue, models trained with an auxiliary loss to predict true latents in purple and those using the true prediction function in green. Using the known prediction function leads to significantly better OOD performance. Lighter color indicates total model size identical to implicit as in main paper, darker = context aggregator identical to implicit.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_12"><head>Figure 14 .</head><label>14</label><figDesc>Figure14. We study the impact of output dimensions on the performance of explicit and implicit models for linear regression with 8-dimensional inputs. The output dimensionality is considered to be 1, 4 and 8 dimensional, and our results indicate that implicit methods (gray) outperform explicit ones (blue), but the same explicit models with known prediction function (green) scales much better.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_13"><head>Figure 15 .Figure 16 .</head><label>1516</label><figDesc>Figure 15. Illustration of explicit model with MLP prediction on the sinusoid task OOD. True function is shown in black, model output in green, context points in blue and query points in red. Our results indicate the failure of learned prediction function away from context.</figDesc><graphic coords="21,55.44,142.28,485.98,121.50" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 1 .</head><label>1</label><figDesc>Trainable parameters are indicated without circles. In the explicit model case, z is currently modeled as a dirac measure defined via the trainable parameters ψ. One can see the implicit proxy model as very similar to the implicit model where output of the last attention layer corresponding to the query token is further processed to give prediction. Its similarity to the explicit model is also clear as it shares exactly the same parameterization. Analysis of different design choices for linear regression where implicit and explicit models are tested with different number of parameters or different parameter split between context aggregation and prediction. We conduct experiments on in-distribution generalization as well as out of distribution generalization where either the query is OOD or the underlying latent is.</figDesc><table><row><cell>L2 Loss (↓)</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 2 .</head><label>2</label><figDesc>Analysis of different design choices for linear classification where implicit and explicit models are tested with different number of parameters or different parameter split between context aggregation and prediction. We conduct experiments on in-distribution generalization as well as out of distribution generalization where either the query is OOD or the underlying latent is.</figDesc><table><row><cell>L2 Loss (↓)</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 3 .</head><label>3</label><figDesc>Analysis of different design choices for sinusoid regression where implicit and explicit models are tested with different number of parameters or different parameter split between context aggregation and prediction. We conduct experiments on in-distribution generalization as well as out of distribution generalization.</figDesc><table><row><cell>L2 Loss (↓)</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Table 4 .</head><label>4</label><figDesc>Analysis of different design choices for GP regression where implicit and explicit models are tested with different number of parameters or different parameter split between context aggregation and prediction. We conduct experiments on in-distribution generalization as well as out of distribution generalization.</figDesc><table><row><cell>L2 Loss (↓)</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>Table 5 .</head><label>5</label><figDesc>Analysis of different design choices for MLP regression where implicit and explicit models are tested with different number of parameters or different parameter split between context aggregation and prediction. We conduct experiments on in-distribution generalization as well as out of distribution generalization.</figDesc><table><row><cell>Accuracy (↑)</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head>Table 6 .</head><label>6</label><figDesc>Analysis of different design choices for MLP classification where implicit and explicit models are tested with different number of parameters or different parameter split between context aggregation and prediction. We conduct experiments on in-distribution generalization as well as out of distribution generalization.</figDesc><table><row><cell>Accuracy (↑)</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_8"><head>Table 7 .</head><label>7</label><figDesc>Analysis of different design choices for RAVEN's progressive matrices where implicit and explicit models are tested with different number of parameters or different parameter split between context aggregation and prediction. We conduct experiments on in-distribution generalization as well as compositional out of distribution generalization.</figDesc><table><row><cell>R 2 (↑)</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_9"><head>Table 8 .</head><label>8</label><figDesc>Analysis of different design choices for gene targeting experiments where implicit and explicit models are tested with different number of parameters or different parameter split between context aggregation and prediction. We conduct experiments on compositional out of distribution generalization.</figDesc><table /></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" xml:id="foot_0"><p>† Equal Contribution, * Equal Supervision 1 Mila -Quebec AI Institute 2 Université de Montréal 3 Google DeepMind. Correspondence to: Sarthak Mittal &lt;sarthmit@gmail.com&gt;, Guillaume Lajoie &lt;guillaume.lajoie@mila.quebec&gt;.Proceedings of the42 nd International Conference on Machine Learning, Vancouver, Canada. PMLR 267, 2025. Copyright 2025 by the author(s).</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>Ackonwledgements</head><p>The authors would like to acknowledge the following researchers for valuable discussions and exchanges: <rs type="person">Joao Sacramento</rs>, <rs type="institution">Johannes von Oswald</rs>. All authors acknowledge support from an unrestricted gift from Google inc. EE acknowledges support from <rs type="grantName">Vanier Canada Graduate Scholarship</rs> #<rs type="grantNumber">492702</rs>. SM acknowledges the support of PhD Excellence Scholarship from UNIQUE. DS acknowledges support from <rs type="funder">NSERC</rs> <rs type="grantName">Discovery Grant</rs> <rs type="grantNumber">RGPIN-2023-04869</rs>, and a <rs type="funder">Canada-CIFAR</rs> AI Chair. GL acknowledges support from <rs type="funder">NSERC</rs> <rs type="grantName">Discovery Grant</rs> <rs type="grantNumber">RGPIN-2018-04821</rs>, the <rs type="funder">Canada Research Chair in Neural Computations and Interfacing</rs>, and a <rs type="funder">Canada-CIFAR AI Chair</rs>.</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funding" xml:id="_Hn3cXFg">
+					<idno type="grant-number">492702</idno>
+					<orgName type="grant-name">Vanier Canada Graduate Scholarship</orgName>
+				</org>
+				<org type="funding" xml:id="_e5BMJqa">
+					<idno type="grant-number">RGPIN-2023-04869</idno>
+					<orgName type="grant-name">Discovery Grant</orgName>
+				</org>
+				<org type="funding" xml:id="_RWJwB2J">
+					<idno type="grant-number">RGPIN-2018-04821</idno>
+					<orgName type="grant-name">Discovery Grant</orgName>
+				</org>
+			</listOrg>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<author>
+			<persName><forename type="first">E</forename><surname>Akyürek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andreas</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename></persName>
+		</author>
+		<title level="m">-context language learning: Architectures and algorithms</title>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<title level="m" type="main">Understanding intermediate layers using linear classifier probes</title>
+		<author>
+			<persName><forename type="first">Alain</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<monogr>
+		<author>
+			<persName><forename type="first">J</forename><surname>Beck</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Vuorio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">Z</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Zintgraf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Finn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Whiteson</surname></persName>
+		</author>
+		<title level="m">A survey of meta-reinforcement learning</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<title level="m" type="main">The heuristic core: Understanding subnetwork generalization in pretrained language models</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bhaskar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Friedman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Chen</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2403.03942" />
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<monogr>
+		<title level="m" type="main">Pattern Recognition and Machine Learning</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Bishop</surname></persName>
+		</author>
+		<ptr target="https://www.microsoft.com/en-us/research/publication/pattern-recognition-machine-learning/" />
+		<imprint>
+			<date type="published" when="2006-01">January 2006</date>
+			<publisher>Springer</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Language models are few-shot learners</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Brown</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Mann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Ryder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Subbiah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">D</forename><surname>Kaplan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Dhariwal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Neelakantan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Shyam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Sastry</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Askell</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in neural information processing systems</title>
+		<imprint>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="1877" to="1901" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Data distributional properties drive emergent in-context learning in transformers</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Chan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Santoro</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Lampinen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Singh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Richemond</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Mcclelland</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Hill</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">35</biblScope>
+			<biblScope unit="page" from="18878" to="18891" />
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<title level="m" type="main">Induction heads as an essential mechanism for pattern matching in in-context learning</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Crosbie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Shutova</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2407.07011" />
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<monogr>
+		<title level="m" type="main">A mathematical framework for transformer circuits. Transformer Circuits Thread</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Elhage</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Nanda</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Olsson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Henighan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Joseph</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Mann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Askell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Conerly</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Dassarma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Drain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Ganguli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Hatfield-Dodds</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Hernandez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Jones</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kernion</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Lovitt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Ndousse</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Amodei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Brown</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Clark</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kaplan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Mccandlish</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Olah</surname></persName>
+		</author>
+		<ptr target="https://transformer-circuits.pub/2021/framework/index.html" />
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<monogr>
+		<title level="m" type="main">What can transformers learn in-context? a case study of simple function classes</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Garg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Tsipras</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Valiant</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<title level="m" type="main">Conditional neural processes</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Garnelo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Rosenbaum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">J</forename><surname>Maddison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Ramalho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Saxton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Shanahan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><forename type="middle">W</forename><surname>Teh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">J</forename><surname>Rezende</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">M</forename><surname>Eslami</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<title level="m" type="main">Neural processes</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Garnelo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Schwarz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Rosenbaum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Viola</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">J</forename><surname>Rezende</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">M A</forename><surname>Eslami</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><forename type="middle">W</forename><surname>Teh</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<monogr>
+		<title level="m" type="main">Compositional score modeling for simulation-based inference</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Geffner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Papamakarios</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Mnih</surname></persName>
+		</author>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Engelhardt</title>
+		<author>
+			<persName><forename type="first">In</forename><surname>Krause</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Brunskill</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Cho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename></persName>
+		</author>
+		<ptr target="https://proceedings.mlr.press/v202/geffner23a.html" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 40th International Conference on Machine Learning</title>
+		<editor>
+			<persName><forename type="first">B</forename><surname>Sabato</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">S</forename><surname>Scarlett</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">J</forename></persName>
+		</editor>
+		<meeting>the 40th International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2023-07">Jul 2023</date>
+			<biblScope unit="volume">202</biblScope>
+			<biblScope unit="page" from="23" to="29" />
+		</imprint>
+	</monogr>
+	<note>Proceedings of Machine Learning Research</note>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<title level="m" type="main">Causal abstraction for faithful model interpretation</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Geiger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Potts</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Icard</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<monogr>
+		<title level="m" type="main">Finding alignments between interpretable causal variables and distributed neural representations</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Geiger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Potts</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Icard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">D</forename><surname>Goodman</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<monogr>
+		<author>
+			<persName><forename type="first">A</forename><surname>Geiger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Potts</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Icard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">D</forename><surname>Goodman</surname></persName>
+		</author>
+		<title level="m">Finding alignments between interpretable causal variables and distributed neural representations</title>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Shortcut learning in deep neural networks</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Geirhos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J.-H</forename><surname>Jacobsen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Michaelis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Zemel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Brendel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Bethge</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><forename type="middle">A</forename><surname>Wichmann</surname></persName>
+		</author>
+		<idno type="DOI">10.1038/s42256-020-00257-z</idno>
+		<ptr target="http://dx.doi.org/10.1038/s42256-020-00257-z" />
+	</analytic>
+	<monogr>
+		<title level="j">Nature Machine Intelligence</title>
+		<idno type="ISSN">2522-5839</idno>
+		<imprint>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="issue">11</biblScope>
+			<biblScope unit="page" from="665" to="673" />
+			<date type="published" when="2020-11">November 2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Genome-scale crisprmediated control of gene repression and activation</title>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">A</forename><surname>Gilbert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">A</forename><surname>Horlbeck</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Adamson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">E</forename><surname>Villalta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">H</forename><surname>Whitehead</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Guimaraes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Panning</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><forename type="middle">L</forename><surname>Ploegh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">C</forename><surname>Bassik</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Cell</title>
+		<imprint>
+			<biblScope unit="volume">159</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="647" to="661" />
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<monogr>
+		<author>
+			<persName><forename type="first">J</forename><surname>Gordon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">P</forename><surname>Bruinsma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">Y</forename><surname>Foong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Requeima</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Dubois</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">E</forename><surname>Turner</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1910.13556</idno>
+		<title level="m">Convolutional conditional neural processes</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title/>
+		<author>
+			<persName><forename type="first">J</forename><surname>Grau-Moya</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Genewein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Hutter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Orseau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Delétang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Catt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Ruoss</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">K</forename><surname>Wenliang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Mattern</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Aitchison</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Veness</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">J. Learning universal predictors</title>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Hao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Du</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Yi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Peng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Chen</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note>Emergent communication for rules reasoning</note>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<monogr>
+		<title level="m" type="main">A theory of emergent in-context learning as implicit structure induction</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Hahn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Goyal</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<monogr>
+		<title level="m" type="main">Explaining emergent in-context learning as kernel regression</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Han</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Ji</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<monogr>
+		<title level="m" type="main">The elements of statistical learning: data mining, inference, and prediction</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Hastie</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">R</forename><surname>Hendel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Geva</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Globerson</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note>context learning creates task vectors</note>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<monogr>
+		<title level="m" type="main">Meta-learning in neural networks: A survey</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Hospedales</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Antoniou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Micaelli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Storkey</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Meta-learning in neural networks: A survey</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Hospedales</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Antoniou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Micaelli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Storkey</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2004.05439.JohnandRaven" />
+	</analytic>
+	<monogr>
+		<title level="j">J. Raven Progressive Matrices</title>
+		<imprint>
+			<biblScope unit="page" from="223" to="237" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">U</forename><forename type="middle">S</forename><surname>Springer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">A</forename><surname>Boston</surname></persName>
+		</author>
+		<idno type="DOI">10.1007/978-1-4615-0153-4_11</idno>
+		<ptr target="https://doi.org/10.1007/978-1-4615-0153-4_11" />
+		<imprint>
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">H</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Mnih</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Schwarz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Garnelo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Eslami</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Rosenbaum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Vinyals</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><forename type="middle">W</forename><surname>Teh</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note>Attentive neural processes</note>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<monogr>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">P</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ba</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Adam</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1412.6980</idno>
+		<title level="m">A method for stochastic optimization</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<monogr>
+		<title level="m" type="main">Auto-encoding variational bayes</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">P</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1312.6114</idno>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<monogr>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">K</forename><surname>Lampinen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">C</forename><surname>Chan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">K</forename><surname>Singh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Shanahan</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2412.03782</idno>
+		<title level="m">The broader spectrum of in-context learning</title>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<monogr>
+		<title level="m" type="main">Are emergent abilities in large language models just in-context learning?</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Bigoulaeva</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Sachdeva</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><forename type="middle">T</forename><surname>Madabushi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Gurevych</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2309.01809" />
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Right for the wrong reasons: Diagnosing syntactic heuristics in natural language inference</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Mccoy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Pavlick</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Linzen</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/P19-1334</idno>
+		<ptr target="https://aclanthology.org/P19-1334" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 57th Annual Meeting of the Association for Computational Linguistics</title>
+		<editor>
+			<persName><forename type="first">A</forename><surname>Korhonen</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">D</forename><surname>Traum</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">L</forename><surname>Màrquez</surname></persName>
+		</editor>
+		<meeting>the 57th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Florence, Italy</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2019-07">July 2019</date>
+			<biblScope unit="page" from="3428" to="3448" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Exploring exchangeable dataset amortization for bayesian posterior inference</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Mittal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">L</forename><surname>Bracher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Lajoie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Jaini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">A</forename><surname>Brubaker</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=Zt9A5LmNUG" />
+	</analytic>
+	<monogr>
+		<title level="m">ICML 2023 Workshop on Structured Probabilistic Inference &amp; Generative Modeling</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<monogr>
+		<title level="m" type="main">Transformer neural processes: Uncertainty-aware meta learning via sequence modeling</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Grover</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Exploring genetic interaction manifolds constructed from rich single-cell phenotypes</title>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">M</forename><surname>Norman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">A</forename><surname>Horlbeck</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">M</forename><surname>Replogle</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">Y</forename><surname>Ge</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Jost</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">A</forename><surname>Gilbert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">S</forename><surname>Weissman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Science</title>
+		<imprint>
+			<biblScope unit="volume">365</biblScope>
+			<biblScope unit="issue">6455</biblScope>
+			<biblScope unit="page" from="786" to="793" />
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<monogr>
+		<author>
+			<persName><forename type="first">C</forename><surname>Olsson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Elhage</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Nanda</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Joseph</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Dassarma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Henighan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Mann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Askell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Conerly</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Drain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Ganguli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Hatfield-Dodds</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Hernandez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Johnston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Jones</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kernion</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Lovitt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Ndousse</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Amodei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Brown</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Clark</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kaplan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Mccandlish</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Olah</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2209.11895" />
+		<title level="m">-context learning and induction heads</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Neural clustering processes</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Pakman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Mitelut</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Paninski</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="7455" to="7465" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Minimal hodgkin-huxley type models for different classes of cortical and thalamic neurons</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Pospischil</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Toledo-Rodriguez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Monier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Piwkowska</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Bal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Frégnac</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Markram</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Destexhe</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Biological cybernetics</title>
+		<imprint>
+			<biblScope unit="volume">99</biblScope>
+			<biblScope unit="page" from="427" to="441" />
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Learning complex stochastic models with invertible neural networks</title>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">T</forename><surname>Radev</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">U</forename><forename type="middle">K</forename><surname>Mertens</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Voss</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Ardizzone</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">U</forename><surname>Köthe</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Bayesflow</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE transactions on neural networks and learning systems</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="1452" to="1466" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">Language models are unsupervised multitask learners</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Radford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Child</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Luan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Amodei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Sutskever</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">OpenAI blog</title>
+		<imprint>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="issue">8</biblScope>
+			<biblScope unit="page">9</biblScope>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<monogr>
+		<title level="m" type="main">Probing the probing paradigm: Does probing accuracy entail task relevance?</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Ravichander</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Belinkov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Hovy</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">Stochastic backpropagation and approximate inference in deep generative models</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">J</forename><surname>Rezende</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Mohamed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wierstra</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International conference on machine learning</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="1278" to="1286" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">T</forename><surname>Ribeiro</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Singh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Guestrin</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note>why should i trust you?&quot;: Explaining the predictions of any classifier</note>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<monogr>
+		<title level="m" type="main">What needs to go right for an induction head? a mechanistic study of in-context learning circuits and their formation</title>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">K</forename><surname>Singh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Moskovitz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Hill</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">C Y</forename><surname>Chan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">M</forename><surname>Saxe</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<monogr>
+		<title level="m" type="main">Shortcut learning in in-context learning: A survey</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Giunchiglia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Xu</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2411.02018" />
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<analytic>
+		<title level="a" type="main">Large language models can be lazy learners: Analyze shortcuts in in-context learning</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Kong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Xue</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2023.findings-acl.284</idno>
+		<ptr target="http://dx.doi.org/10.18653/v1/2023.findings-acl.284" />
+	</analytic>
+	<monogr>
+		<title level="m">Findings of the Association for Computational Linguistics: ACL 2023</title>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<analytic>
+		<title level="a" type="main">Large language models can be lazy learners: Analyze shortcuts in in-context learning</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Kong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Xue</surname></persName>
+		</author>
+		<idno>doi: 10.18653</idno>
+		<ptr target="1/2023.findings-acl" />
+	</analytic>
+	<monogr>
+		<title level="m">Findings of the Association for Computational Linguistics: ACL 2023</title>
+		<editor>
+			<persName><forename type="first">A</forename><surname>Rogers</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">J</forename><surname>Boyd-Graber</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">N</forename><surname>Okazaki</surname></persName>
+		</editor>
+		<meeting><address><addrLine>Toronto, Canada</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2023-07">July 2023</date>
+			<biblScope unit="page" from="4645" to="4657" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<monogr>
+		<ptr target="https://aclanthology.org/2023.findings-acl.284/" />
+		<title level="m">URL</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b51">
+	<monogr>
+		<title level="m" type="main">Sbi -a toolkit for simulation-based inference</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Tejero-Cantero</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Boelts</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Deistler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J.-M</forename><surname>Lueckmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Durkan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">J</forename><surname>Gonc ¸alves</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">S</forename><surname>Greenberg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">H</forename><surname>Macke</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b52">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">E</forename><surname>Todd</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">L</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">S</forename><surname>Sharma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Mueller</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">C</forename><surname>Wallace</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Bau</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note>Function vectors in large language models</note>
+</biblStruct>
+
+<biblStruct xml:id="b53">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">E</forename><surname>Todd</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">L</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">S</forename><surname>Sharma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Mueller</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">C</forename><surname>Wallace</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Bau</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+	<note>Function vectors in large language models</note>
+</biblStruct>
+
+<biblStruct xml:id="b54">
+	<monogr>
+		<title level="m" type="main">Transformer dissection: A unified understanding of transformer&apos;s attention via the lens of kernel</title>
+		<author>
+			<persName><forename type="first">Y.-H</forename><forename type="middle">H</forename><surname>Tsai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Bai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Yamada</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L.-P</forename><surname>Morency</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Salakhutdinov</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b55">
+	<analytic>
+		<title level="a" type="main">Attention is all you need</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Vaswani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Shazeer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Parmar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Uszkoreit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Jones</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">N</forename><surname>Gomez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ł</forename><surname>Kaiser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Polosukhin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in neural information processing systems</title>
+		<imprint>
+			<biblScope unit="volume">30</biblScope>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b56">
+	<monogr>
+		<title level="m" type="main">Advances and challenges in meta-learning: A technical review</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Vettoruzzo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M.-R</forename><surname>Bouguelia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Vanschoren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Rögnvaldsson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Santosh</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b57">
+	<monogr>
+		<title level="m" type="main">Causal mediation analysis for interpreting neural nlp: The case of gender bias</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Vig</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Gehrmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Belinkov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Qian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Nevo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Sakenis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Singer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Shieber</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b58">
+	<analytic>
+		<title level="a" type="main">Transformers learn in-context by gradient descent</title>
+		<author>
+			<persName><forename type="first">Von</forename><surname>Oswald</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Niklasson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Randazzo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Sacramento</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Mordvintsev</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Zhmoginov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Vladymyrov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename></persName>
+		</author>
+		<idno>PMLR</idno>
+		<ptr target="https://proceedings.mlr.press/v202/von-oswald23a.html" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 40th International Conference on Machine Learning</title>
+		<editor>
+			<persName><forename type="first">A</forename><surname>Krause</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">E</forename><surname>Brunskill</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">K</forename><surname>Cho</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">B</forename><surname>Engelhardt</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">S</forename><surname>Sabato</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">J</forename><surname>Scarlett</surname></persName>
+		</editor>
+		<meeting>the 40th International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2023-07">Jul 2023</date>
+			<biblScope unit="volume">202</biblScope>
+			<biblScope unit="page" from="23" to="29" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b59">
+	<monogr>
+		<title level="m" type="main">Alchemy: A benchmark and analysis toolkit for metareinforcement learning agents</title>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">X</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>King</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Porcel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Kurth-Nelson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Deck</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Choy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Cassin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Reynolds</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Buttimore</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">P</forename><surname>Reichert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Rabinowitz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Matthey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Hassabis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Lerchner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Botvinick</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b60">
+	<monogr>
+		<title level="m" type="main">Label words are anchors: An information flow perspective for understanding in-context learning</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Dai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Meng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Sun</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b61">
+	<monogr>
+		<title level="m" type="main">Finetuned language models are zero-shot learners</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Bosma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">Y</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Guu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">W</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Lester</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Du</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">M</forename><surname>Dai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><forename type="middle">V</forename><surname>Le</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2109.01652" />
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b62">
+	<monogr>
+		<title level="m" type="main">Chain-ofthought prompting elicits reasoning in large language models</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Schuurmans</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Bosma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Ichter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Xia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Chi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Le</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Zhou</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2201.11903" />
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b63">
+	<monogr>
+		<title level="m" type="main">Compositional generalization from first principles</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Wiedemer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Mayilvahanan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Bethge</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Brendel</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b64">
+	<monogr>
+		<title level="m" type="main">An explanation of in-context learning as implicit bayesian inference</title>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">M</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Raghunathan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Ma</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b65">
+	<monogr>
+		<author>
+			<persName><forename type="first">L</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Papailiopoulos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Nowak</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2501.09240</idno>
+		<title level="m">Task vectors in in-context learning: Emergence, formation, and benefit</title>
+		<imprint>
+			<date type="published" when="2025">2025</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b66">
+	<monogr>
+		<title level="m" type="main">Deep sets. Advances in neural information processing systems</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zaheer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Kottur</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ravanbakhsh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Poczos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">R</forename><surname>Salakhutdinov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">J</forename><surname>Smola</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="volume">30</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b67">
+	<monogr>
+		<title level="m" type="main">On the paradox of learning to reason from data</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">H</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Meng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K.-W</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><forename type="middle">V</forename><surname>Broeck</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b68">
+	<monogr>
+		<title level="m" type="main">What algorithms can transformers learn? a study in length generalization</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bradley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Littwin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Razin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Saremi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Susskind</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Nakkiran</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

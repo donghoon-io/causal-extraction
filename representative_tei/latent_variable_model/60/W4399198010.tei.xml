@@ -1,0 +1,1353 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Deep Bayesian Filter for Bayes-Faithful Data Assimilation</title>
+				<funder ref="#_QvKUmhN">
+					<orgName type="full">Ministry of Internal Affairs and Communications of Japan</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability  status="unknown">
+					<licence/>
+				</availability>
+				<date type="published" when="2025-05-29">29 May 2025</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Yuta</forename><surname>Tarumi</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Keisuke</forename><surname>Fukuda</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Shin-Ichi</forename><surname>Maeda</surname></persName>
+						</author>
+						<title level="a" type="main">Deep Bayesian Filter for Bayes-Faithful Data Assimilation</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2025-05-29">29 May 2025</date>
+						</imprint>
+					</monogr>
+					<idno type="arXiv">arXiv:2405.18674v3[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-28T23:12+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Data assimilation for nonlinear state space models (SSMs) is inherently challenging due to non-Gaussian posteriors. We propose Deep Bayesian Filtering (DBF), a novel approach to data assimilation in nonlinear SSMs. DBF introduces latent variables h t in addition to physical variables z t , ensuring Gaussian posteriors by (i) constraining state transitions in the latent space to be linear and (ii) learning a Gaussian inverse observation operator r(h t |o t ). This structured posterior design enables analytical recursive computation, avoiding the accumulation of Monte Carlo sampling errors over time steps. DBF optimizes these operators and other latent SSM parameters by maximizing the evidence lower bound. Experiments demonstrate that DBF outperforms existing methods in scenarios with highly non-Gaussian posteriors.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1.">Introduction</head><p>Data assimilation (DA) is a crucial technique across various scientific domains. Its objective is to estimate the current state and the trajectory of a system by combining partially informative observations with a dynamics model. Specifically, given a series of observations T time steps o 1:T , the goal is to infer the posterior distribution of the system's physical variables z t : p(z t |o 1:t ). DA has been widely applied in fields such as weather forecasting <ref type="bibr" target="#b22">(Hunt et al., 2007;</ref><ref type="bibr" target="#b29">Lorenc, 2003;</ref><ref type="bibr" target="#b1">Andrychowicz et al., 2023)</ref>, ocean research analysis <ref type="bibr">(Ohishi et al., 2024)</ref>, sea surface temperature prediction <ref type="bibr" target="#b27">(Larsen et al., 2007)</ref>, seismic wave analysis <ref type="bibr" target="#b0">(Alfonzo &amp; Oliver, 2020)</ref>, multi-sensor fusion localization <ref type="bibr">(Bach &amp; Ghil, 2023)</ref>, and visual object tracking <ref type="bibr">(Awal et al., 2023)</ref>.</p><p>A key challenge in DA arises from the non-Gaussian nature of the posterior distributions p(z t |o 1:t ), which results from the inherent nonlinearity in both the system dynamics and observation models. Despite this, many operational DA systems, such as those used in weather forecasting, rely on methods like the ensemble Kalman Filter (EnKF) <ref type="bibr">(Evensen, 1994;</ref><ref type="bibr" target="#b6">Bishop et al., 2001)</ref> for sequential state filtering (i.e., p(z t |o 1:t )) and the four-dimensional variational method (4D-Var) for retrospective state analysis (i.e., p(z t |o 1:T ), t &lt; T ). These approaches assume Gaussianity in their test distributions q(z t |o 1:t ) or q(z t |o 1:T ), a simplification driven by computational constraints. While exact methods such as bootstrap Particle Filters (PF) or sequential Monte Carlo (SMC) <ref type="bibr" target="#b10">(Chopin &amp; Papaspiliopoulos, 2020;</ref><ref type="bibr" target="#b12">Daum &amp; Huang, 2007;</ref><ref type="bibr" target="#b21">Hu &amp; van Leeuwen, 2021)</ref> could compute the true posterior, their performance degrades significantly when the number of particles is insufficient <ref type="bibr" target="#b5">(Beskos et al., 2014)</ref>. This issue is exacerbated in high-dimensional systems, making SMC approaches impractical for many physical problems.</p><p>To address these limitations, we propose a novel variational inference approach called Deep Bayesian Filtering (DBF) for posterior estimation. Our strategy consists of two main components: (i) constraining the test distribution to remain Gaussian to ensure computational tractability, and, in cases where the original dynamics are nonlinear, (ii) leveraging a nonlinear mapping to enhance the expressive capability of the test distribution.</p><p>Linear dynamics When the system's dynamics operator in p(z t+1 |z t ) is linear, DBF introduces the concept of the inverse observation operator (IOO; see also <ref type="bibr">Frerix et al. 2021)</ref> to construct Gaussian test distributions q(z t |o 1:t ). The IOO and any unknown system parameters are trained to minimize the Kullback-Leibler divergence between the test distribution q(z t |o 1:t ) and the true posterior p(z t |o 1:t ). The training maximizes the likelihood of the observed time series and therefore does not require teacher signals z t .</p><p>Nonlinear dynamics In the more common case of nonlinear dynamics, DBF operates in a latent space, assuming Gaussianity in the latent variables h t . The original physical variables are recovered through a nonlinear mapping function ϕ, implemented via neural networks (NNs). This nonlinear mapping allows for a more flexible representation of the test distribution q(z t |o 1:t ). The IOO and other parameters are trained in a supervised manner (i.e., z t is used during training).</p><p>For state space models (SSMs) with nonlinear dynamics, DBF functions as a variational autoencoder (VAE) that adheres to the Markov property, expressing the posterior distributions of latent variables h t within a Bayesian framework. As a subclass of dynamical VAEs (DVAEs, <ref type="bibr" target="#b18">Girin et al. 2021</ref> for a review), DBF leverages the VAE structure to model time-series data while distinguishing itself through its posterior design. Unlike other DVAEs, where Monte Carlo sampling is required for inference (see Sec. 2.6.1), DBF recursively computes posteriors via closed-form analytical expressions, eliminating the need for sampling during the inference. Additionally, DBF can be interpreted as learning the Koopman operator <ref type="bibr" target="#b24">(Koopman, 1931)</ref> using NNs. The discovery of such latent spaces and operators through machine learning has been extensively studied <ref type="bibr" target="#b35">(Takeishi et al., 2017;</ref><ref type="bibr" target="#b31">Lusch et al., 2018;</ref><ref type="bibr" target="#b3">Azencot et al., 2020)</ref> and will be experimentally validated through the handling of nonlinear filtering tasks involving chaotic dynamics.</p><p>In summary, our key contributions are as follows:</p><p>• DBF offers a novel 'Bayes-Faithful' approximation for the posterior within the dynamical VAE, following the inference structure of an SSM with the Markov property.</p><p>• For systems with linear dynamics, DBF extends the Kalman Filter (KF) to handle nonlinear observations through learnable NNs. The training process enables the model to infer unknown system parameters directly from data (see Sec. 3.1).</p><p>• For nonlinear dynamics, the posterior is maintained as Gaussian to ensure computational tractability while incorporating nonlinear transformations, allowing representation of a wide class of posterior distributions (see Sec. 3.2 and 3.3).</p><p>• As a generative model, DBF estimates the uncertainty of the physical variables z t , in contrast to 3D-and 4D-Var, which yield only point estimates (see Sec. 3.2 and Fig. <ref type="figure">3</ref>).</p><p>• The linear constraint on dynamics stabilizes the training process, which is known to be unstable in standard recurrent NNs (see Sec. 3.3 and Fig. <ref type="figure" target="#fig_5">6</ref>).</p><p>DBF has demonstrated superior performance over classical DA algorithms and latent assimilation methods in scenarios with highly non-Gaussian posteriors.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.">Method</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.1.">Physical Variable Inference in a State-Space Model</head><p>A physical system is defined by variables z t , with its evolution described by the dynamics model p(z t+1 |z t ) = N (z t+1 ; f (z t ), Q), where N (x|µ, Σ) denotes a Gaussian whose mean and covariance are µ and Σ. The nonlinear function f is the dynamics operator and Q is the system covariance. The Markov property holds, as z t+1 depends only on z t . An observation model p(o t |z t ) = N (o t ; h(z t ), R) relates observations to physical variables via the observation operator h and covariance R. The objective of sequential DA is to compute the posterior of z t given o 1:t .</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.2.">KF for Linear Dynamics, Linear Observations</head><p>In the KF, the dynamics and observation models are both linear Gaussian. Given that the dynamics and observation operators f, h are linear, we can represent them using matrices A and C, respectively. All matrices (A, C, Q, and R) are constant. The filter distribution p(z t |o 1:t ) remains Gaussian, provided that the initial distribution p(z 1 ) is Gaussian. We can recursively compute the posterior parameters (means µ t and covariance matrices Σ t ) using the following equations:</p><formula xml:id="formula_0">µ t = Σ t (AΣ t-1 A T + Q) -1 Aµ t-1 +K t (o t -HAµ t-1 ), (1) Σ -1 t = (AΣ t-1 A T + Q) -1 + HR -1 H T , (2) where K t = (AΣ t-1 A T +Q)H T (H(AΣ t-1 A T +Q)H T + R -1 ) -1 is the Kalman Gain.</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.3.">DBF for Linear Dynamics, Nonlinear Observations</head><p>In this scenario, Gaussianity of the test distribution is lost during the KF update step. We introduce an inverse observation operator (IOO) r(z t |o t ) (see also <ref type="bibr">Frerix et al. 2021)</ref>:</p><formula xml:id="formula_1">p(z t |o 1:t ) ∝ r(z t |o t ) ρ(z t ) p(z t |o 1:t-1 ),<label>(3)</label></formula><p>where r(z t |o t ) = p(ot|zt)ρ(zt) p(ot|zt)ρ(zt)dzt and ρ(z t ) is a prior virtually introduced for the IOO. By approximating both the IOO and the virtual prior as Gaussians, r(z</p><formula xml:id="formula_2">t |o t ) = N (f θ (o t ), G θ (o t )</formula><p>) and ρ(z t ) = N (m, V ), respectively, the posterior q(z t |o 1:t ) can be analytically computed as a Gaussian, where the mean µ t and covariance Σ t are given as:</p><formula xml:id="formula_3">µ t = Σ t (AΣ t-1 A T + Q) -1 Aµ t-1 +G θ (o t ) -1 f θ (o t ) -V -1 m, (4) Σ -1 t = (AΣ t-1 A T + Q) -1 + G θ (o t ) -1 -V -1 ,(5)</formula><p>where f θ (o t ) and G θ (o t ) are NNs with parameters θ, and m and V are constants set to m = 0 and V = 10 8 I. These values bias the NNs' outputs without affecting performance. The initial distribution q(z 1 ) is taken to be a Gaussian with µ 1 = 0 and Σ 1 = 100I. With the Gaussian IOO r(z t |o t ) in place, the recursive update in Eqs. 4 and 5 remains fully analytic.</p><p>The recursive formula for the exact posterior (Equation <ref type="formula" target="#formula_1">3</ref>) requires no approximation. Thus, DBF computes the exact Although the dynamics operator A for the latent variables h t is linear, it can express any nonlinear dynamics if the latent space is sufficiently high-dimensional. The Koopman operator <ref type="bibr" target="#b24">(Koopman, 1931)</ref> provides a framework for representing nonlinear systems by mapping observables-functions of the system's state-into a higher-dimensional space where the dynamics are linear. For a system z t+1 = f (z t ), the Koopman operator K is a linear operator acting on a set of observables g(z), such that Kg(z t ) = g(f (z t )). This reformulates the system as h t+1 = Ah t in the latent space, where A is the dynamics matrix learned by DBF. While the physical dynamics f (z) are nonlinear, the Koopman operator ensures the existence of an embedding that linearizes the dynamics, enabling recursive computation of test distributions. Discovering such embeddings in finite dimensions has been widely studied <ref type="bibr" target="#b35">(Takeishi et al., 2017;</ref><ref type="bibr" target="#b31">Lusch et al., 2018;</ref><ref type="bibr" target="#b3">Azencot et al., 2020)</ref>. In high-dimensional simulations, the true degrees of freedom are often far fewer than the simulated variables, making surrogate modeling with the Koopman operator a promising approach to reducing computational costs.</p><formula xml:id="formula_4">ot 1 ot ot+1 ht 1 ht ht+1 zt 1 zt zt+1 (a) o t 1 o t o t + 1 h t 1 h t h t + 1 z t 1 z t z t + 1 A, Q A, Q , R , R , R r(h t |o t ) r(h t + 1 |o t + 1 ) (b)</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.5.">Training</head><p>When assimilating in the physical space (i.e., when the dynamics are linear), we train the IOO (i.e., f θ and G θ ) by optimizing the evidence lower bound (ELBO) without using the physical variables z t in data:</p><formula xml:id="formula_5">log p(o 1:T ) = T t=1 log p(o t |o 1:t-1 ) ≥ -L ELBO , L ELBO = - T t=1 q(z t |o 1:t ) log p(o t |z t )dz t +KL[q(z t |o 1:t )||q(z t |o 1:t-1 )],<label>(6)</label></formula><p>where KL[p||q] denotes the Kullback-Leibler divergence between distributions p and q (see Sec. A.1 in the appendix for the derivation). Here, q(z 1 |o 1:0 ) = q(z 1 ) is the initial distribution. If the SSM contains any unknown parameters, we can train these parameters as well.</p><p>For SSMs with nonlinear or unknown dynamics, we have two approaches: -KL[q(h t |o 1:t )|q(h t |o 1:t-1 )]). (8)</p><p>On the other hand, DVAEs take the ELBO from probability density with all the observations at once:</p><formula xml:id="formula_6">log p(o 1:T ) ≥ E q(h 1:T |o 1:T ) [log p(h 1:T , o 1:T ) -log q(h 1:T |o 1:T )].<label>(9)</label></formula><p>Therefore, DBF seeks for the filtered distributions q(h t |o 1:t ) whereas DVAEs model the smoother distributions q(h t |o 1:T ). Again, for DVAEs, to evaluate the expected values in Equation <ref type="formula" target="#formula_6">9</ref>, we need to undergo successive Monte-Carlo sampling over T variables (h 1:T ) (see also Sec. A.3).</p><p>Assuming linear Gaussian dynamics and a Gaussian IOO, DBF allows for the analytical integration of q(h t |o 1:t-1 ), resulting in a structured encoder. This structured posterior enables the recursive computation of the filtered distribution q(h t |o 1:t ) without relying on Monte Carlo sampling, setting it apart from other DVAEs. By constraining the dynamics to be linear, DBF ensures exact integration without the accumulation of Monte Carlo sampling errors across time steps.</p><p>Moreover, the linear assumption helps DBF mitigate the instability issues commonly faced when training standard RNNs. The linearity of the latent dynamics is also assumed in normalizing Kalman Filter <ref type="bibr" target="#b13">(de Bézenac et al., 2020)</ref> and Kalman variational auto-encoder <ref type="bibr" target="#b17">(Fraccaro et al., 2017)</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.6.2.">KF-BASED METHODS</head><p>Various approaches have been explored to address LGSSM limitations, including linearizing the model via first-order approximations like the extended Kalman Filter (EKF), approximating populations with a Gaussian distribution in the ensemble Kalman Filter (EnKF; Evensen 1994), and using NNs to approximate the Kalman gain <ref type="bibr" target="#b34">(Revach et al., 2022)</ref>. EKFNet <ref type="bibr">(Xu &amp; Niu, 2024)</ref> assumes EKF for the construction of test distribution and train the SSM parameters. Auto-EnKF <ref type="bibr" target="#b8">(Chen et al., 2022;</ref><ref type="bibr">2023)</ref> leverages EnKF and train the model by maximizing the log model evidence. The EnKF and its variants (e.g., ETKF; <ref type="bibr" target="#b6">Bishop et al. 2001</ref>) are commonly used in real-time data assimilation for weather forecasting. However, these methods rely on the KF's posterior update equations, limiting the expressivity of the distributions. Additionally, computations for covariance matrices become challenging in high-dimensional spaces, requiring specialized techniques for computational efficiency.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.6.3.">SAMPLING-BASED METHODS</head><p>The Particle Filter is a popular method for assimilating any posterior. However, achieving adequate particle density in high-dimensional state spaces poses significant challenges.</p><p>Insufficient density of particles leads to particle degeneracy, where few particles explain the observed data <ref type="bibr" target="#b5">(Beskos et al., 2014)</ref>. In contrast, DBF directly learns to position density through the IOO, offering advantages for high-dimensional tasks. For the performance comparison of PF and DBF in terms of accuracy-computation trade-off, see Sec. E in the Appendix. The Particle Flow Filter (PFF; <ref type="bibr" target="#b12">Daum &amp; Huang 2007;</ref><ref type="bibr" target="#b21">Hu &amp; van Leeuwen 2021)</ref> addresses particle degeneracy by moving particles according to gradient flow and effectively scales to nonlinear SSMs with hidden state dimensions up to 1000 <ref type="bibr" target="#b21">(Hu &amp; van Leeuwen, 2021)</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.6.4.">APPROXIMATE MAP ESTIMATION METHOD</head><p>MAP estimation is used to identify the high-density point of the posterior in high-dimensional space, such as in weather forecasting <ref type="bibr" target="#b29">(Lorenc, 2003;</ref><ref type="bibr">Frerix et al., 2021)</ref>.</p><p>Even if the computation of the posterior</p><formula xml:id="formula_7">p(h t |o 1:t ) is intractable, we can optimize log p(h t |o 1:t ) = log p(o t |h t ) + log p(h t |o 1:t-1 ) if we can describe p(o t |h t ) and p(h t |o 1:t-1 ) = p(h t |h t-1 )p(h t-1 |o 1:t-1 )dh t-1 ex- plicitly.</formula><p>In practice, we cannot access p(h t-1 |o 1:t-1 ) and therefore the integral p(h t |h t-1 )p(h t-1 |o 1:t-1 )dh t-1 , so we only compute the mean. The downside is that sequential computation of the covariance matrix of p(h t |o 1:t-1 ) is impossible.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.6.5.">NN-BASED PDE SURROGATE</head><p>Recently, there have been attempts to approximate partial differential equations (PDEs) using NNs. In this study, we experimented with one of the latest methods, PDE-refiner <ref type="bibr" target="#b28">(Lippe et al., 2023)</ref>, but its performance was poor and was excluded from the experiments. We suspect this is because PDE-refiner, designed for constructing PDE surrogates, does not handle noisy observations well, making it sensitive to noise. However, we confirmed that it performs well under noiseless conditions.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.">Experiments</head><p>We evaluate the performance of DBF on three tasks: a linear dynamics problem (moving MNIST) and two nonlinear dynamics problems (double pendulum and Lorenz96). An additional experiment on linear dynamics (object tracking) is presented in Sec. B of the appendix. The code is available on Github<ref type="foot" target="#foot_2">foot_2</ref> .</p><p>Linear Dynamics: Moving MNIST In the moving MNIST task, the goal is to identify the images, positions, and velocities of two handwritten digits as they move within the observed frames. While the dynamics of these digit images and their observation processes are provided, the actual images, positions, and velocities are not available, making supervised learning impossible.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Nonlinear Dynamics: Double Pendulum and Lorenz96</head><p>For nonlinear dynamics problems, such as the double pendulum and Lorenz96, DBF constructs a new latent space in addition to the original physical space. Here, we took Strategy 2 in Sec.2.5 for the training: we simultaneously train NNs for the IOO, nonlinear observation operator ϕ, the dynamics matrix A, and the emission model's standard deviation. We compare the performance of DBF with the classical DA algorithms (EnKF, ETKF, PF), state-of-the-art assimilation methodologies (PFF <ref type="bibr" target="#b12">Daum &amp; Huang 2007;</ref><ref type="bibr" target="#b21">Hu &amp;</ref><ref type="bibr">van Leeuwen 2021, KalmanNet Revach et al. 2022), and</ref><ref type="bibr">DVAE-based approaches (deep Kalman Filter;</ref><ref type="bibr">DKF, Krishnan et al. 2015;</ref><ref type="bibr">2016, variational recurrent neural network;</ref><ref type="bibr">VRNN, Chung et al. 2015</ref>, and stochastic recurrent neural network; SRNN, <ref type="bibr" target="#b16">Fraccaro et al. 2016)</ref>. DBF and other DVAEs are trained by optimizing the evidence lower bound (ELBO), as described in Sec. 2.5.</p><p>For all experiments, we generate random initial conditions and evolve them using the dynamics. Synthetic observations are produced by applying the observation operator with additive noise. Noise levels, observation operators, and further details are given in Sec. C.1, C.2, C.3, and C.4. Sec. C also provides computationally efficient parametrization of the latent dynamics matrix.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1.">Linear dynamics: Two-body Moving MNIST</head><p>This experiment demonstrates DBF's ability to handle linear dynamics with unknown observation operator parameters. The dataset consists of 2D figures containing two embedded images moving at constant speeds and reflecting off frame edges. The system state is defined by the positions and velocities of the images: z t = (x t , y t , v x,t , v y,t ), with dynamics governed by a block-diagonal translation matrix A tr . Reflection is modeled using a nonlinear observation operator (Sec. C.5). Observations are corrupted by Gaussian noise (σ = 50, where the original pixel values range from 0 to 255). See panel (a) of Fig. <ref type="figure" target="#fig_0">2</ref> for an example of the data.</p><p>The goal is to show that DBF tracks linear dynamics while estimating unknown system parameters. DBF learns the pixel values of the images from noisy observations while maintaining consistency with physical motion. Classical  In Table <ref type="table" target="#tab_2">1</ref>, we compare the success rates of DBF against model-based approaches (EnKF, ETKF, PF). We define success as achieving a root-mean-square error (RMSE) of less than 1.0 for both position (x 1 , y 1 , x 2 , y 2 ) and velocity (v x1 , v y1 , v x2 , v y2 ) of the two digits over the final ten steps (sub-pixel accuracy-an error no larger than 1/44 ≈ 2.3% of the 44 × 44 frame). DBF successfully performs assimilation without explicit knowledge of the images, while all the other model-based approaches fail. The KF-inspired approaches (EnKF, ETKF) failed because of very strong non-Gaussianity in the observation process and the high system dimension. Similarly, PF underperformed because the number of particles (10,000) was insufficient for the problem dimension (z dim = 8 and two digits images 2 × 28 × 28 = 1,568). Figures for visualizing the assimilation results for all the algorithms are given in the appendix (Fig. <ref type="figure" target="#fig_10">13</ref>).</p><p>Panel (b) also illustrates DBF's parameter updates. Initially, DBF assumes random shapes, identifying and refining the images over iterations. By the end of the training, DBF accurately estimates observation model parameters, including positions, crucial for reflecting behavior.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2.">Nonlinear Dynamics 1: Double Pendulum</head><p>This section presents our experiments with a double pendulum system, selected for its nonlinear and chaotic behavior. The pendulum consists of two 1 kg masses, P1 and P2, connected by two 1 meter bars, B1 and B2. One end of the bar B1 is fixed at the origin ("O"), with the other end attached to P1. Mass P2 is connected to P1 via bar B2. A schematic of the setup is shown in panel (a) of Fig. <ref type="figure">3</ref>.</p><p>We use the angles θ 1 and θ 2 , and the two angular velocities, ω 1 and ω 2 , as target physical variables. The latent dimension for DBF, VRNN, SRNN, and DKF is set to 50 (for the choice of the latent dimensions, refer to Sec. E.1). Observation data consists of the two-dimensional spatial positions of masses P 1 and P 2 , corrupted by Gaussian noise. The observation operator combines trigonometric functions for θ 1 and θ 2 which are highly nonlinear. Experiments are conducted with noise levels of σ = 0.1, 0.3, and 0.5 [m], with a time step of <ref type="bibr">0.03 [s]</ref> between observations. In the emission model p(z t |h t ), we assume von Mises distributions for θ 1 and θ 2 , while ω 1 and ω 2 follow Gaussians.    </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3.">Nonlinear Dynamics 2: Lorenz96</head><p>In the final experiment, we focus on state estimation in the Lorenz96 model <ref type="bibr" target="#b30">(Lorenz, 1995)</ref>, a benchmark for testing data assimilation algorithms on noisy, nonlinear observations. The Lorenz96 model describes the evolution of a one-dimensional array of variables, each representing a physical quantity over a spatial domain, like an equilatitude circle. The dynamics are governed by the following coupled ordinary differential equations:</p><formula xml:id="formula_8">dz i dt = (z i+1 -z i-2 )z i-1 -z i + F, i = 1, . . . , N,<label>(10)</label></formula><p>where z i is the value at grid i, N is the number of grid points, and F is external forcing. For our experiments, we take (F, N ) = (8, 40). We consider two observation operators. The first adds Gaussian noise to direct observations: o t,j = z t,j + ϵ, with noise levels σ = 1, 3, 5. The second uses a nonlinear operator: o t,j = min(z 4 t,j , 10) + ϵ, with the same noise levels. The dynamic range of z t,j is around ±10, and observations are capped at 10 when z t,j exceeds 1.8. This makes it highly challenging for classical DA methods, as each observation offers limited information. The filter must integrate data over long timesteps, where nonlinear dynamics distort the probability distribution. Fig. <ref type="figure" target="#fig_3">4</ref> illustrates observations and target values. All models use 80 observation steps with a 0.03 time interval. The latent dimension for DBF, VRNN, SRNN, and DKF is set to 800 (for the choice of the latent dimension in DBF, see Sec. E.2). For further details for the experiment, see Sec. C.4. Table <ref type="table" target="#tab_6">4</ref> presents the assimilation performance across different noise levels and observation settings. DBF outperforms existing methods in direct observations with σ = 3, 5, and across all noise levels for nonlinear observation cases. In the σ = 1 setting with direct observation, traditional algorithms like EnKF and ETKF outperform DBF.</p><p>The superior performance of EnKF and ETKF with direct observations at the lowest noise level can be attributed to  the minimal non-Gaussianity in the posteriors within physical space. Non-Gaussianity can originate from both the dynamics model (predict step) and the observation model (update step). In this setting, the linearity of the observation operator prevents non-Gaussianity from being introduced during the update step, provided that the prior q(z t |o 1:t-1 ) is Gaussian. Additionally, state estimation from each observation is highly accurate due to small noise. As a result, the prior q(z t |o 1:t-1 ) remains close to a Gaussian distribution, as the locally linear approximation of the dynamics adequately captures the time evolution of probability distributions. The poorer performance of EnKF and ETKF in the σ = 5 experiment is attributed to the increased non-Gaussianity introduced during each predict step. Similarly, when the observation operator is nonlinear, each update step introduces substantial non-Gaussianity. This results in a significant drop in performance for traditional filtering methods across all noise levels. In these scenarios, DBF consistently maintains an advantage over classical DA algorithms.</p><p>We observe that training DVAE-based methods is highly unstable, while that for DBF exhibits stability. Dynamics in DVAEs are modeled by RNNs, which often suffer from unstable training due to exploding or vanishing gradients.</p><p>In contrast, DBF employs matrix multiplication for dynamics. If the eigenvalues of the matrix exceed one by a large margin, the model predictions, and consequently the loss function, would explode irrespective of inputs. Fig. <ref type="figure" target="#fig_5">6</ref> shows </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.">Limitation</head><p>DBF's learning of IOO requires a training phase, unlike classical model-based data assimilation methods. Specifically, when dealing with nonlinear dynamics, DBF requires either: (i) a pair of (z t , o t ) generated from the original SSM, (ii) a pair of (z t , o t ) obtained via, e.g., retrospective reanalysis (ERA5; <ref type="bibr" target="#b20">Hersbach et al. 2020</ref> in weather forecasting), or (iii) a pretrained Koopman operator and observed data o t .</p><p>In the Lorenz96 experiment, DBF's performance with direct observation with σ = 1 falls short compared to EnKF and ETKF. In this setting, the non-Gaussianity of posteriors is weak, resulting in minor approximation errors due to Gaussian assumptions. Consequently, a model-based approach may be more advantageous in such situations, as it leverages complete SSM knowledge without introducing training biases.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.">Conclusion</head><p>We propose DBF, a novel DA method. DBF is a NN-based extension of the KF designed to handle nonlinear observa-tions. While constraining the test distributions to remain Gaussian, DBF enhances their representational capacity by leveraging nonlinear transform expressed by a NN. DBF is the first "Bayes-Faithful" amortized variational inference methodology, constructing test distributions that mirror the inference structure of a SSM with the Markov property. This structured inference enables analytical computation of test distributions, preventing the accumulation of Monte Carlo sampling errors over time steps. DBF exhibits superior performance over existing methods in scenarios where posterior distributions become highly non-Gaussian, such as in the presence of nonlinear observation operators or significant observation noise.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Reproducibility Statement</head><p>We have provided the source code to reproduce the experiments for double pendulum (Sec. 3.2) and the Lorenz96 (Sec. 3.3) in the supplementary material. The hyperparameters for the training are provided in Table <ref type="table" target="#tab_9">5</ref> in the appendix. Generation method of the training and test dataset, the dynamics model, the observation model, and the architectures are detailed in the appendix: Sec. C.2, C.3, and C.4.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Impact Statement</head><p>Our Deep Bayesian Filter could improve numerical weather prediction by providing more accurate estimates of the atmospheric state, enabling earlier and more reliable forecasts of extreme events-scenarios that typically yield non-Gaussian posterior distributions. The same framework transfers cleanly to virtually any sequential nonlinear filtering task, opening broad avenues for data assimilation across disciplines. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Derivation of the Evidence Lower-Bound and the Associated Monte-Carlo Sampling</head><formula xml:id="formula_9">) dh t = T t=1 q(h t |o 1:t ) log p(o t , h t |o 1:t-1 ) q(h t |o 1:t ) q(h t |o 1:t ) p(h t |o 1:t ) dh t = T t=1 q(h t |o 1:t ) log p(o t , h t |o 1:t-1 ) q(h t |o 1:t ) dh t + KL[q(h t |o 1:t )||p(h t |o 1:t )] = T t=1 L ELBO,t + KL[q(h t |o 1:t )||p(h t |o 1:t )] ≥ T t=1 L ELBO,t<label>(12)</label></formula><formula xml:id="formula_10">L ELBO,t = q(h t |o 1:t ) log p(o t , h t |o 1:t-1 ) q(h t |o 1:t ) dh t = q(h t |o 1:t ) log p(h t |o 1:t-1 )p(o t |h t ) q(h t |o 1:t ) dh t = q(h t |o 1:t ) log p(o t |h t )dh t + q(h t |o 1:t ) p(h t |o 1:t-1 ) q(h t |o 1:t ) dh t = q(h t |o 1:t ) log p(o t |h t )dh t -KL[q(h t |o 1:t )|p(h t |o 1:t-1 )]<label>(13)</label></formula><p>The true prior at step t (p(h t |o 1:t-1 )) on the right hand side of Eq. 13 could be replaced with the prior computed from the test distribution q(h t |o 1:t-1 ) when training.</p><p>A </p><p>The true prior at step t (p(h t |o 1:t-1 , z 1:t-1 )) on the right hand side of Eq. 16 could be replaced with the prior computed from the test distribution q(h t |o 1:t-1 ) when training. The last term of the equation (log p(o t |z t )) can be neglected as it does not affect the new latent variables h t .</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.3. Comparison to Other DVAEs in terms of Monte-Carlo Sampling</head><p>The crucial difference from other DVAEs is that the Monte-Carlo samplings in DBF are not nested with each other. In DVAE, we need to evaluate an integral term q(h 1:T |o 1:T ) log p(o 1:T , h 1:T )dh 1:T , where q(h 1:T |o 1:T ) = t q(h t |h t-1 , o t ).</p><p>Although the log-term could be factorized as t log p(o t |h t ) + log p(h t |h t-1 ) thanks to the Markov property, we need MC (nested) sequential sampling over h 1:T if we want to evaluate the term at t = T . On the other hand, ELBO in DBF is t q(h t |o 1:t ) log p(z t |h t )dh t + KL[q(h t |o 1:t )|q(h t |o 1:t-1 )] because DBF takes the lower limit of t log p(o t |o 1:t-1 ). Thanks to the analytic expressions of q(h t |o 1:t ) and q(h t |o 1:t-1 ), the KL term can be computed analytically. A MC sampling is needed to compute q(h t |o 1:t ) log p(z t |h t )dh t but this is independent from other timesteps.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.4. Comparison to a Linearized Observation Model</head><p>DBF seeks the optimal Gaussian posterior distribution for the hidden state z t (or h t ) given an observation o t . One alternative approach approximates the likelihood function by a Gaussian model:</p><formula xml:id="formula_12">p(o t |z t ) ≃ p ′ (o t |z t ) = N [o t ; f θ (z t ), G θ (z t )],</formula><p>where f θ (z t ) provides the mean and G θ (z t ) specifies the variance. Although this method preserves the Gaussian nature of the posterior, it requires the computation of the Jacobian ∂f (z t )/∂z t to update the covariance matrix. In contrast, DBF parameterizes the IOO instead of the observation model. This parameterization leads to a more general and straightforward update equation, circumventing the need for calculating the Jacobian. The only downside is the introduction of a "virtual prior"-a theoretical construct that ensures the IOO represents a valid probability distribution over z t . However, this virtual prior only slightly biases the neural network's output and does not impair overall performance.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Additional Linear Dynamics Experiment: Object Tracking</head><p>In a single-object tracking problem, a detector identifies a bounding box for the object in each frame, and these boxes are then connected across frames. When the object is not fully visible or is obscured, the detector often fails to accurately determine its position. In such scenarios, the KF aids by predicting and assimilating the object's true position. However, a key limitation of the KF is its reliance on a fixed observation model throughout the tracking process. While low-confidence observations can provide valuable approximate position information, they may also mislead the tracker with inaccurate data, potentially degrading overall tracking performance.</p><p>We demonstrate that DBF can enhance tracking stability without requiring additional training. During the computation of the posterior p(z t |o 1:t ) from p(z t |o 1:t-1 ), the importance of the observation o t is regulated via G θ (o t ). This allows the observational confidence to be effectively incorporated into the posterior estimation. We evaluate the tracking performance using the "airplane" category from the LaSOT dataset <ref type="bibr" target="#b14">(Fan et al., 2019;</ref><ref type="bibr">2021)</ref>.</p><p>We use the first 1,000 frames from 20 videos for evaluation. The first 10 videos serve as a validation set for determining filter parameters (see Sec. C.2), while the performance is assessed using videos 11-20. Each set of 1,000 frames is divided into 20 subsets of 50 frames. Filters are initialized at the ground truth coordinates of the bounding box in the first frame, after which each filter is responsible for tracking the bounding box throughout the subset. We employ the YOLOv8n model <ref type="bibr" target="#b23">(Jocher et al., 2023)</ref> as the object detector. The detector outputs the bounding box position, X, along with a confidence score, c. A detection threshold of 0.01 is applied. When multiple bounding boxes are detected, the one with the highest posterior probability is selected.</p><p>The bounding box coordinates are used as f θ (o t ) = X. We experiment with linear confidence G θ (o t ) ∝ c and squared confidence G θ (o t ) ∝ c 2 and find that the squared confidence G θ (o t ) ∝ c 2 perform better. For further settings, see Sec. C.2. we consider that h dim /2 complex eigenvalues λ i (0 ≤ i &lt; h dim /2) characterize A. Namely, A is a block-diagonal matrix of h dim /2 blocks. Each block consists of 2 × 2 matrix, whose components are:</p><formula xml:id="formula_13">A block = exp(ρ i ) cos(ω i ) -sin(ω i ) sin(ω i ) cos(ω i ) ,<label>(17)</label></formula><p>where</p><formula xml:id="formula_14">ρ i = Re[λ i ] and ω i = Im[λ i ].</formula><p>In contrast to <ref type="bibr" target="#b31">Lusch et al. (2018)</ref>, we apply the same dynamics matrix at any positions on the latent space. We consider that this representation is sufficiently expressive, as it can express any matrix on a complex number field that is diagonalizable.</p><p>One key advantage of DBF is that augmenting the latent dimension only results in a linear increase in computational demand. This scaling is due to the efficient parametrization of the dynamics matrix, where the block-diagonal structure allows operations to scale linearly with the latent dimension. In contrast, methods such as Sequential Monte Carlo (SMC) suffer from exponential increases in computational demand as the latent space grows, assuming that the same density of particles must be maintained to capture posterior distributions. This makes DBF particularly well-suited for high-dimensional systems where traditional methods struggle with computational complexity.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Computational resources</head><p>We conduct experiments on a cluster of V100 GPUs. Each GPU has memory of 32GB.</p><p>hyperparameters for training For all experiments, we have used Adam optimizer with default parameters. Table <ref type="table" target="#tab_9">5</ref> shows hyperparameters employed in our experiments. Trainings for moving MNIST and double pendulum are conducted with one GPU, while that for Lorenz96 is with eight GPUs. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.2. Object Tracking</head><p>Dataset: "Airplane" movies in the LaSOT dataset <ref type="bibr" target="#b14">(Fan et al., 2019;</ref><ref type="bibr">2021)</ref>. It contains 20 movies. Each movie has at least 1,000 frames. We chop the first 1,000 frames into 20 sets of 50 frames. Airplanes numbered one to ten are considered a validation set used to determine the model hyperparameters. We use the remaining data (airplane-11 to airplane-20) as a test set to evaluate the performance of the filters.</p><p>Dynamics model: Constant velocity model. The (x, y) coordinates and (v x , v y ) velocities of the top left and bottom right edges are the latent (physical) variables.</p><formula xml:id="formula_15">h t+1 = F h t (18) F =            </formula><p>1 0 0 0 dt 0 0 0 0 1 0 0 0 dt 0 0 0 0 1 0 0 0 dt 0 0 0 0 1 0 0 0 dt 0 0 0 0 1 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 1</p><formula xml:id="formula_16">            , h t =             x 1,t y 1,t x 2,t y 2,t v x1,t v y1,t v x2,t v y2,t             .<label>(19)</label></formula><p>Here, x 1,t and y 1,t stand for the coordinates of the left top edge of the bounding box, and x 2,t and y 2,t are the right bottom edge of the box. v x1,t , v y1,t , v x2,t , v y2,t are velocities of box edges. dt is the time difference between frames, which we take as 1 (arbitrary).</p><p>Network architecture: We use a pre-trained detector YOLOv8n model <ref type="bibr" target="#b23">(Jocher et al., 2023)</ref>. The detector yields the bounding box's position, X, and the box's confidence score, c. We set the detection threshold at 0.01. In cases where the detector reports multiple bounding boxes, we choose the one with the highest posterior probability. We use the bounding box coordinates as f θ (o t ) = X. Several choices for the relation between confidence score and G θ (o t ) are possible.</p><p>We experiment with linear confidence G θ (o t ) ∝ c and squared confidence G θ (o t ) ∝ c 2 . We determine the system noise factor for either dependence with the validation set. We use normalized precision as the evaluation metric <ref type="bibr" target="#b32">(Müller et al., 2018)</ref>. Figure <ref type="figure" target="#fig_8">8</ref> shows the normalized precision score for the validation set for the system noise factor. The system noise factor of 10 -1 is chosen for KF. For DBF, squared confidence with the system noise factor of 10 -2 is employed.</p><p>10 4 10 3 10 2 10 1 10 0 10 1 system noise factor  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.3. Double Pendulum</head><p>Dataset: The dataset consists of 2D coordinates representing the positions of two weights. The training set includes 10, 240, 000 initial conditions, while the test set contains 10 initial conditions. The number of training samples is sufficiently large to ensure that the training converges. During DVAE training, we observed that some initial conditions resulted in training failure due to instability; however, we maintained the total number of training samples since the training was successful for at least one initial condition. Both datasets comprise 80 time steps. Numerical integration is performed using the solve ivp function in SciPy, with relative tolerance (rtol) set to 10 -2 and absolute tolerance (atol) set to 10 -2 .</p><p>A schematic figure explaining the problem setting is presented in panel (a) of Fig. <ref type="figure">3</ref> in the main text.</p><p>Dynamics model is described in <ref type="url" target="https://matplotlib.org/stable/gallery/animation/doublependulum.html">https://matplotlib.org/stable/gallery/animation/double pendulum.html</ref>. The length of the bars is 1 [m], and the positions of the two pendulum weights are observable with Gaussian noise of σ = 0.1, 0.3, or 0.5 [m]. The observation interval is 0.03 [s]. The task is to predict the positions of the two weights in the successive ten frames.</p><p>Network architecture: f θ : A sequence of ten "linear blocks" composed of fully connected layers, layer normalizations, and skip connections. Namely, each linear block has three components:</p><p>• fc: (input dimension)× (output dimension) linear layer,</p><p>• norm: layer normalization,</p><p>• skip: skip connection.</p><p>Taking four observation variables as input, the first linear block expands the dimensionality to 100. The intermediate linear blocks maintain these 100-dimensional variables. The final linear block reduces the 100-dimensional input to a 50-dimensional output, representing 50 latent space variables. The ReLU activation function is applied throughout the network. The structure of G θ mirrors that of f θ , while ϕ θ serves as the inverse of f θ . The initial eigenvalues are randomly sampled from the range between e 0 and e 0.01 .  </p><formula xml:id="formula_17">z t+1 = F z t<label>(21)</label></formula><formula xml:id="formula_18">F =            </formula><p>1 0 0 0 dt 0 0 0 0 1 0 0 0 dt 0 0 0 0 1 0 0 0 dt 0 0 0 0 1 0 0 0 dt 0 0 0 0 1 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 1 </p><formula xml:id="formula_19">            , z t =             x 1,t y 1,t x 2,t y 2,t v x1,t v y1,t v x2,t v y2,t             ,<label>(22)</label></formula><formula xml:id="formula_20">o t = h(z t ), dim(o t ) = 44 × 44 , a 28 × 28 image is embedded at(x t , ỹt ). (<label>24</label></formula><formula xml:id="formula_21">)</formula><p>The formulation above addresses image reflection through the observation operator, resulting in linear dynamics while permitting multiple solutions for each observed figure. This approach presents significant challenges for the EnKF, which assumes a single-peak Gaussian distribution in the assimilating space. To ensure a fair comparison, we revise the dynamics and observation models to allow for a single solution for each figure. This adjustment notably enhances the performance of the EnKF if the image is provided. However, even with this modification, the EnKF fails to accurately estimate the position, velocity, and the embedded image.</p><p>Network architecture: f θ : Two-dimension convolutional NNs. Below is the list of layers.</p><p>• conv1: nn.Conv2d(1, 2, kernel size=3, stride=2, padding=1) observation dim. time estimate Figure <ref type="figure" target="#fig_0">12</ref>. An example of assimilation output in the experiment with nonlinear observation operator. The observation is not very informative due to low threshold for saturation in the observation operator (ot,j = min(z 4 t,j , 10) + ϵ,, all cells with zt,j &gt; 1.8 are just observed as 10 + ϵ). In the first 20 steps, the model output resembles little with the target. However, as the step proceeds, the estimated state begins to capture features of the true state. Even with such a poor observation operator, DBF finds a latent space representation that captures the evolution of the true state. The input image, sized 44 × 44, is sequentially processed by convolutional layers (conv1, conv2, conv3, and conv4). The output is then flattened to serve as the input for the fully connected layer (fc). Ultimately, this process yields eight variables for f θ (o t ). The network G θ follows the same architecture as f θ , but it produces only the diagonal components of G θ (o t ) through the NN.</p><p>Example figures: In Fig. <ref type="figure" target="#fig_11">14</ref>, we show example images for observations and all the algorithms in image-informed setting. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D. Training Stability</head><p>We observe that the training of our proposed method is stable compared to RNN-based models. Fig. <ref type="figure" target="#fig_4">15</ref> shows the evolution of the real parts of eigenvalues. Although we do not impose constraints on the real parts of eigenvalues, the values only marginally exceed one. Therefore, long-time dynamics is stable during training.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E. Hyperparameter Study on the Latent Dimensions</head><p>The dimension of the latent variables is a hyperparameter. We have tested the performance and computation (both training and inference) time for nonlinear problems.  0.8 0.9 1.0 1.1 abs(eigenvalue) 0.8 0.9 1.0 1.1 abs(eigenvalue) 0.8 0.9 1.0 1.1 abs(eigenvalue) 0.8 0.9 1.0 1.1 abs(eigenvalue) 0.8 0.9 1.0 1.1 abs(eigenvalue) 0.8 0.9 1.0 1.1 abs(eigenvalue)</p><p>Figure <ref type="figure" target="#fig_4">15</ref>. Evolution of histograms for the real parts of 800 complex eigenvalues in Lorenz96 experiment. Initially, eigenvalues are taken as one. As the model learns the dynamics, eigenvalues lower than 1.0 appear. However, the largest eigenvalue λmax mostly remains less than 1.02.  did not improve performance. The training gradually gets slower when we use latent dimensions higher than 80. As can be seen from Fig. <ref type="figure" target="#fig_13">16</ref>, The performance is rather insensitive to the latent dimensions in the range of <ref type="bibr">[20,</ref><ref type="bibr">200]</ref>: the RMSE for θ is 0.036 at dim(h t ) = 20, 0.053 at dim(h t ) = 80, and 0.044 at dim(h t ) = 200 and for ω is 0.265 at dim(h t ) = 20, 0.375 at dim(h t ) = 80, and 0.302 at dim(h t ) = 200.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E.1.2. COMPARISON TO THE PF</head><p>The performance of PF depends on the number of particles used. We have tested with 20, 200, 2,000, 20,000, and 100,000 particles. The performance for θ improves significantly if we use more than 200 particles. The RMSE for the angle velocities ω almost saturates at RMSE ≃ 0.31 when we use particles more than 20,000. To achieve that accuracy, the inference time required for PF is more than 200 seconds per initial condition. On the other hand, DBF achieves slightly better performance (RMSE ≃ 0.265) with the latent dimensions of 20. The inference time for DBF is 0.1 seconds per batch.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E.2. Lorenz96</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E.2.1. ACCURACY-COMPUTE TRADE-OFF IN DBF</head><p>For Lorenz96 problem, we test with the nonlinear observation operator with the observation noise of σ = 1. Figs. <ref type="bibr">19,</ref><ref type="bibr">20</ref> show the relation between the RMSE and the latent dimensions of the system. Here, we show results with 1.0 × 10 7 training data. The dimensionality of the latent variables can be either larger or smaller than that of the physical variables, but there is a trade-off: up to a certain latent dimensionality, increasing the dimension improves performance at the cost of longer computation time. Beyond that point, increasing the latent dimensionality no longer improves performance but only increases training time (although inference time remains relatively short compared to model-based approaches). Therefore, the optimal balance depends on the specific problem. For the Lorenz96 system, a dimensionality of 800 was a reasonable trade-off among 20, 80, 200, 800, and 2,000 dimensions. As shown in the figure, the RMSE changes by only 7 percent (1.31 vs 1.23) in the range from 200 to 2,000 dimensions, indicating that the impact is not critical in this range.    </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E.2.2. COMPARISON TO THE PF</head><p>The PF also has the trade-off. Although RMSE improves slowly as we increase the number of particles, the RMSE was poor (2.27) compared to the DBF results (RMSE ≃ 1.3) even with massively large number of particles (100,000) with very long inference time (2,000 seconds per initial condition)  Even with the latent dimensions (20) smaller than that of the original state space (40), DBF shows the skillful assimilation. With higher latent dimensions (800), the performance further improves.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Fig. 2</head><label>2</label><figDesc>Fig.2summarizes the experiment. Panel (a) shows an example from the test set, illustrating the challenges posed by strong noise and overlapping images. Panel (b) presents the DBF learning process. In Table1, we compare the success rates of DBF against model-based approaches (EnKF, ETKF, PF). We define success as achieving a root-mean-square error (RMSE) of less than 1.0 for both position (x 1 , y 1 , x 2 , y 2 ) and velocity (v x1 , v y1 , v x2 , v y2 ) of the two digits over the final ten steps (sub-pixel accuracy-an error no larger than 1/44 ≈ 2.3% of the 44 × 44 frame). DBF successfully performs assimilation without explicit knowledge of the images, while all the other model-based approaches fail. The KF-inspired approaches (EnKF, ETKF) failed because of very strong non-Gaussianity in the observation process and the high system dimension. Similarly, PF underperformed because the number of particles (10,000) was insufficient for the problem dimension (z dim = 8 and two digits images 2 × 28 × 28 = 1,568). Figures for visualizing the assimilation results for all the algorithms are given in the appendix (Fig.13).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 .Figure 3 .</head><label>23</label><figDesc>Figure 2. Figures from the two-body Moving MNIST experiments. Panel (a) displays examples of the observation data. Panel (b) illustrates the evolution of the observation model parameters (the embedded images) during training.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head></head><label></label><figDesc>across all time steps, focusing on i = ω 1 and i = ω 2 , since θ 1 and θ 2 follow von Mises distributions. If the uncertainty estimates are accurate, ϵ norm,t,i should approximate a Gaussian distribution with a standard deviation of one. To quantify the accuracy, we compute the symmetric KL divergence (Jeffreys divergence) KL sym [p, q] = (KL[p||q]+KL[q||p])/2 between the histogram of ϵ norm,t,i and a unit Gaussian. DBF exhibits very low KL sym values, indicating accurate error estimation. Panels (c) and (d) display example histograms of ϵ norm,t,i for DBF and ETKF.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 4 .</head><label>4</label><figDesc>Figure 4. A Hovmöller diagram for one initial condition in the test set. The observation operator is nonlinear, ot,j = min(z 4 t,j , 10) + ϵ.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 5 .</head><label>5</label><figDesc>Figure 5. RMSE results for Lorenz96 experiments. Panels (a) shows results for direct observation with σ = 1. Panel (b) shows results for nonlinear observation with σ = 1.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Figure 6 .</head><label>6</label><figDesc>Figure 6. Histogram of 800 eigenvalues of the dynamics matrix in Lorenz96. D for direct and N for nonlinear observations.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>Figure 7 Figure 7 .</head><label>77</label><figDesc>Figure7presents the results. The left panel provides an illustrative example comparing the two tracking algorith ms. The KF tracker is visibly influenced by false detections, being pulled toward a coordinate value of approximately 150 during frames 15-17. In contrast, the DBF tracker maintains stable predictions under the same conditions. The middle and the right panels offer a quantitative comparison of KF and DBF in terms of intersection over union (IoU). Both filters perform well in estimating bounding box positions in frames without detections. However, DBF demonstrates a significant performance advantage in frames with low-confidence (c &lt; 0.1) detections. This improvement can be attributed to DBF's flexibility, allowing it to adaptively decide whether to trust low-confidence observations or disregard them.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head>Figure 8 .</head><label>8</label><figDesc>Figure 8. Normalized precision scores for validation samples.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_9"><head>Figure 9 .Figure 10 .Figure 11 .</head><label>91011</label><figDesc>Figure9. PF results with 100,000 paticles for five example data in test set. Two left columns show evolution of θ1 and θ2 (rad) (, therefore, the values are cyclic with the period of 2π ≃ 6.3, and we corrected for those periodic shifts) and the two right columns show ω1 and ω2 (rad/s).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_10"><head>Figure 13 .</head><label>13</label><figDesc>Figure13. Example figures for two-body moving MNIST experiment. This is the setting explained in the main text. For all algorithms, the two embedded images are not explicitly informed: algorithms need to deal with many unknown parameters in the observation model.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_11"><head>Figure 14 .</head><label>14</label><figDesc>Figure 14. Example figures for two-body moving MNIST experiment. For model-based approaches (EnKF, ETKF, PF), contrary to the experiment reported in the main text, the true images are informed. In data 0, both DBF and EnKF successfully determine and follow the position of the two images. On the other hand, in data 20 and 27, EnKF estimate becomes unstable soon after the two letters overlap. Even in that situation, DBF stably follows the positions of the embedded images.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_13"><head>Figure 16 .</head><label>16</label><figDesc>Figure 16. Left panel: RMSE as a function of the latent dimensionality of DBF. Right panel: the inference time as a function of the latent dimensionality of DBF.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_14"><head>Figure 17 .</head><label>17</label><figDesc>Figure 17. Left panel: the training time for 1.0 × 10 7 initial conditions as a function of the latent dimension. Right panel: RMSE as a function of the training time for five different numbers of latent dimensions.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_15"><head>Figure 18 .</head><label>18</label><figDesc>Figure18. Left panel: the performance of PF as a function of the particles used. Right panel: RMSE as a function of the inference time for the DBF and the PF. For the DBF, the latent dimensions are 20, 80, 200, 800, and 2,000. For the PF, the number of particles are20,  200, 2,000, 20,000, 100,000.    </figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_16"><head>Figure 19 .</head><label>19</label><figDesc>Figure 19. Left panel: RMSE as a function of the latent dimensionality of DBF. Right panel: the inference time as a function of the latent dimensionality of DBF.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_17"><head>Figure 20 .</head><label>20</label><figDesc>Figure 20. Left panel: the training time for 1.0 × 10 7 initial conditions as a function of the latent dimension. Right panel: RMSE as a function of the training time for five different numbers of latent dimensions.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_18"><head>Figure 21 .</head><label>21</label><figDesc>Figure 21. Left panel: the performance of PF as a function of the particles used. Right panel: RMSE as a function of the inference time for the DBF and the PF. For the DBF, the latent dimensions are 20, 80, 200, 800, and 2,000. For the PF, the number of particles are 20,200, 2,000, 20,000, 100,000.    </figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_19"><head>Figure 22 .</head><label>22</label><figDesc>Figure22. the performance of DBF for a low latent dimension case (dim(ht) = 20) and a high latent dimension case (dim(ht) = 800). Even with the latent dimensions (20) smaller than that of the original state space (40), DBF shows the skillful assimilation. With higher latent dimensions (800), the performance further improves.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head></head><label></label><figDesc>Strategy 1 Pretrain the Koopman operator, which consists of the nonlinear mapping from z t to h t , the linear dynamics between h t and h t+1 represented by matrix A, and the reverse nonlinear mapping from h t to z t denoted by ϕ.</figDesc><table><row><cell cols="3">for inference, ensuring that real-time applications are not</cell><cell cols="2">be estimated via Monte Carlo sampling. Consequently, dur-</cell></row><row><cell cols="3">hindered by the need for z t during training. The parameters</cell><cell cols="2">ing inference, successive Monte Carlo sampling ("cascade</cell></row><row><cell cols="3">are optimized by maximizing a joint ELBO, L ELBO,joint ,</cell><cell cols="2">trick"; Girin et al. 2021) becomes unavoidable.</cell></row><row><cell>via supervised training:</cell><cell></cell><cell></cell><cell></cell></row><row><cell>log p(o 1:T , z 1:T ) =</cell><cell>T</cell><cell>log p(o t , z t |o 1:t-1 , z 1:t-1 )</cell><cell cols="2">loss function DBF takes the ELBO from factorized den-sity log p(o t |o 1:t-1 ) in log p(o 1:T ) = t log p(o t |o 1:t-1 ):</cell></row><row><cell></cell><cell>t=1</cell><cell></cell><cell>T</cell></row><row><cell cols="3">≥ -L ELBO,joint ,</cell><cell>log p(o 1:T ) ≥</cell><cell>(E q(ht|o1:t) [log p(o t |h t )]</cell></row><row><cell></cell><cell></cell><cell></cell><cell>t=1</cell></row><row><cell cols="2">L ELBO,joint = -</cell><cell>q(h t |o 1:t ) log p(z t |h t )dh t</cell><cell></cell></row><row><cell></cell><cell></cell><cell>t</cell><cell></cell></row><row><cell></cell><cell cols="2">+KL[q(h t |o 1:t )||q(h t |o 1:t-1 )].</cell><cell>(7)</cell></row><row><cell cols="3">(See Sec. A.2 in the appendix for the derivation). We have</cell><cell></cell></row><row><cell cols="3">replaced q(h t |o 1:t , z 1:t ) with its special case q(h t |o 1:t ) as</cell><cell></cell></row><row><cell cols="3">our objective is to give the best estimate of z t given obser-</cell><cell></cell></row><row><cell>vations o 1:t .</cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="3">Computational scalability. For nonlinear dynamics we</cell><cell></cell></row><row><cell cols="3">parameterize the transition matrix A as a 2 × 2 block-</cell><cell></cell></row><row><cell cols="3">diagonal operator (Eq. 17, see Appendix C.1). This fac-</cell><cell></cell></row><row><cell cols="3">torization decomposes each Kalman-style update into in-</cell><cell></cell></row><row><cell cols="3">dependent blocks, so the arithmetic cost per time step is</cell><cell></cell></row><row><cell cols="3">O(d h ) in the latent dimension d h and grows only linearly</cell><cell></cell></row><row><cell cols="3">with the sequence length T . Such linear-in-d h behavior is</cell><cell></cell></row><row><cell cols="3">a key advantage of DBF in the high-dimensional regimes</cell><cell></cell></row><row><cell cols="3">typical of large-scale physical models.</cell><cell></cell></row><row><cell>2.6. Related Works</cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="3">2.6.1. DYNAMICAL VARIATIONAL AUTOENCODERS</cell><cell></cell></row><row><cell cols="3">DVAEs (see Girin et al. 2021 for a review) are a broad class</cell><cell></cell></row><row><cell cols="3">of models incorporating time-series architectures into VAEs,</cell><cell></cell></row><row><cell cols="3">with DBF as a specialized subcategory. Key differences in-</cell><cell></cell></row><row><cell cols="3">clude (i) the posterior design and realization of the dynamics</cell><cell></cell></row><row><cell cols="3">step, and (ii) the loss function.</cell><cell></cell></row><row><cell cols="3">posterior design Our strategy for the test distribution is</cell><cell></cell></row><row><cell cols="3">to incorporate an appropriate architecture that reflects the</cell><cell></cell></row><row><cell cols="3">Markov property in the time dimension of the test distri-bution. The IOO, r(h t |o t ), and the linear dynamics model serve as key instruments in constructing the test posterior distributions. A distinguishing feature of our methodology is that each component's role is defined with respect to the Markov property of the state-space model (SSM) and is clearly differentiated from other components involved in posterior construction. For example, the IOO influences only the update step and does not affect the prediction step.</cell><cell cols="2">With these components (A and ϕ) of the Koopman operator, the method designed for linear dynamics can be applied. For pretraining, we require samples of z t or the SSM for the physical variables to generate these samples. Pairs of z t and o t are not necessary, as the training for the linear dy-namics (A and ϕ) and the IOO (r(h t |o t )) can be performed separately.</cell></row><row><cell cols="3">We refer to this methodology as "Bayes-Faithful" due to its tailored design for SSMs that exhibit the Markov property.</cell><cell cols="2">Strategy 2 Train all components (the matrix A, the stochastic mapping p(z t |h t ) = N (z t ; ϕ(h t ), diag[σ 2 ]), and</cell></row><row><cell cols="3">In contrast, the test posterior distributions in DVAEs are</cell><cell cols="2">the IOO) simultaneously. In this case, samples of (z t , o t )</cell></row><row><cell cols="3">constructed using RNNs. The complexity of the transition</cell><cell cols="2">pairs or the SSM for both physical and observation vari-</cell></row><row><cell cols="3">model prevents the analytical computation of latent vari-</cell><cell cols="2">ables to generate these sample pairs are required during</cell></row><row><cell cols="3">ables across time steps. As a result, these values can only</cell><cell cols="2">training. Note that the physical variables z t are not required</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 1 .</head><label>1</label><figDesc>The success rates and RMSE of the four methodologies for the two-body moving MNIST problem. EnKF, ETKF, PF) were adapted to infer these parameters by treating them as physical dimensions, but they fail due to high observation noise and non-Gaussianity. KalmanNet could not train due to the high observation dimensions (x 2 dim = (44 × 44) 2 ): even with the batch size of one, the training fails. While DVAE generates latent variables, they are different from the state variables of the original SSM: therefore, they cannot infer the position or velocity from those images.</figDesc><table><row><cell>Method</cell><cell>Success rate</cell><cell>RMSE(pos)</cell><cell>RMSE(vel)</cell></row><row><cell>DBF</cell><cell cols="3">100% (50/50) 0.39 ± 0.027 0.45 ± 0.042</cell></row><row><cell>EnKF</cell><cell>0% (0/50)</cell><cell>6.3 ± 1.1</cell><cell>4.4 ± 2.2</cell></row><row><cell>ETKF</cell><cell>0% (0/50)</cell><cell>5.7 ± 1.4</cell><cell>6.5 ± 8.4</cell></row><row><cell>PF</cell><cell>0% (0/50)</cell><cell>4.8 ± 0.7</cell><cell>1.4 ± 0.23</cell></row><row><cell cols="2">DA methods (</cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 2</head><label>2</label><figDesc>presents the RMSE between the physical variables and the mean of the filtered distribution. For both the angles θ and angle velocities ω, we compute the averages of the two variables across two pendulums.</figDesc><table><row><cell>Training for KalmanNet</cell></row></table><note><p><p>vation. Fig. 3 (b)  </p>illustrates an example of RMSE evolution during assimilation, where DBF consistently outperforms the other methods. The assimilation of ω occurs within the first ∼ 20 steps, maintaining an excellent estimation accuracy throughout the experiment.</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 2 .</head><label>2</label><figDesc>RMSE at the final ten steps of assimilation in double pendulum experiments. ± 0.01 0.21 ± 0.04 0.05 ± 0.02 0.26 ± 0.05 0.06 ± 0.01 0.36 ± 0.04 EnKF 0.05 ± 0.00 0.33 ± 0.07 0.14 ± 0.01 0.71 ± 0.09 0.24 ± 0.01 1.17 ± 0.22 ETKF 0.05 ± 0.01 0.46 ± 0.08 0.22 ± 0.05 1.41 ± 0.41 0.36 ± 0.08 2.70 ± 1.25 ± 0.01 0.44 ± 0.19 0.06 ± 0.02 0.35 ± 0.14 0.08 ± 0.04 0.40 ± 0.16 SRNN 0.05 ± 0.02 0.52 ± 0.18 0.06 ± 0.02 0.44 ± 0.08 0.08 ± 0.03 0.52 ± 0.22 DKF 0.12 ± 0.02 2.70 ± 0.28 0.17 ± 0.03 2.61 ± 0.74 0.23 ± 0.04 2.61 ± 0.56</figDesc><table><row><cell></cell><cell>σ = 0.1</cell><cell></cell><cell>σ = 0.3</cell><cell></cell><cell>σ = 0.5</cell><cell></cell></row><row><cell></cell><cell>θ</cell><cell>ω</cell><cell>θ</cell><cell>ω</cell><cell>θ</cell><cell>ω</cell></row><row><cell>DBF</cell><cell cols="6">0.03 NA</cell></row><row><cell>KNet</cell><cell>NA</cell><cell>NA</cell><cell>NA</cell><cell>NA</cell><cell>NA</cell><cell>NA</cell></row><row><cell cols="2">VRNN 0.04</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table><note><p>PF 0.05 ± 0.00 0.63 ± 0.24 0.21 ± 0.14 1.41 ± 1.30 0.32 ± 0.08 2.36 ± 2.29 PFF 1.27 ± 0.29 1.04 ± 0.15 NA 5.99 ± 1.09 5.88 ± 0.67</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Table 3 .</head><label>3</label><figDesc>The Jeffreys divergence of normalized errors and the unit Gaussian between DBF, EnKF, and ETKF predictions for the double pendulum experiment.</figDesc><table><row><cell cols="2">σ = 0.1 KL sym</cell></row><row><cell>DBF</cell><cell>0.02</cell></row><row><cell>EnKF</cell><cell>10.2</cell></row><row><cell>ETKF</cell><cell>0.12</cell></row></table><note><p>A key feature of DBF is its ability to generate samples of z t and assess the uncertainty in state estimates. To evaluate this capability, we analyze the distributions of normalized errors defined as ϵ norm,t,i = (z t,sample,i -z t,i )/δ i , where z t,i represents the true value of dimension i at time t, and δ i is the standard deviation of z t,sample,i . We collect ϵ norm,t,i</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>Table 4 .</head><label>4</label><figDesc>RMSE at the final ten steps of assimilation in Lorenz96 experiments with (F, N)=(8, 40). DBF 0.53 ± 0.04 0.82 ± 0.03 1.16 ± 0.07 1.08± 0.15 1.29 ± 0.18 1.65 ± 0.17 EnKF 0.31 ± 0.01 0.83 ± 0.10 1.73 ± 0.12 4.69 ± 0.14 3.93 ± 0.08 3.81 ± 0.07 ETKF 0.30 ± 0.01 1.06 ± 0.15 2.42 ± 0.11 4.57 ± 0.25 4.28 ± 0.04 4.23 ± 0.07 PF 2.80 ± 0.04 3.12 ± 0.06 3.62 ± 0.13 6.05 ± 0.16 4.95 ± 0.12 4.58 ± 0.14 PFF 0.60 ± 0.02 1.00 ± 0.05 2.20 ± 0.09 3.75 ± 0.09 3.85 ± 0.04 3.83 ± 0.11 KNet 0.60 ± 0.02 1.81 ± 0.05 3.02 ± 0.09 2.97 ± 0.21 3.47 ± 0.17 3.99 ± 0.25 VRNN 3.67 ± 0.06 3.67 ± 0.06 3.67 ± 0.06 3.69 ± 0.04 2.51 ± 0.79 3.67 ± 0.06 SRNN 3.08 ± 0.56 3.63 ± 0.05 3.40 ± 0.29 3.30 ± 0.81 3.62 ± 0.41 2.96 ± 0.32</figDesc><table><row><cell></cell><cell></cell><cell>direct observation</cell><cell></cell><cell></cell><cell>nonlinear observation</cell><cell></cell></row><row><cell></cell><cell>σ = 1</cell><cell>σ = 3</cell><cell>σ = 5</cell><cell>σ = 1</cell><cell>σ = 3</cell><cell>σ = 5</cell></row><row><cell>DKF</cell><cell>3.70</cell><cell>NA</cell><cell>NA</cell><cell>NA</cell><cell>NA</cell><cell>NA</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_8"><head></head><label></label><figDesc>The derivation proceeds parallel to the linear case. Using Eq. 14 at the third equality, log p(o 1:T , z 1:T ) =</figDesc><table><row><cell></cell><cell>T</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell></cell><cell cols="2">log p(o t , z t |o 1:t-1 , z 1:t-1 )</cell><cell></cell><cell></cell></row><row><cell></cell><cell>t=1</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell>T</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>=</cell><cell></cell><cell cols="2">q(h t |o 1:t ) log p(o t , z t |o 1:t-1 , z 1:t-1 )dh t</cell><cell></cell><cell></cell></row><row><cell></cell><cell>t=1</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>=</cell><cell>T t=1</cell><cell>q(h t |o 1:t ) log</cell><cell>p(o t , z t , h t |o 1:t-1 , z 1:t-1 ) p(h t |o 1:t , z 1:t )</cell><cell cols="2">dh t</cell></row><row><cell>=</cell><cell>T t=1</cell><cell>q(h t |o 1:t ) log</cell><cell cols="2">p(o t , z t , h t |o 1:t-1 , z 1:t-1 ) q(h t |o 1:t )</cell><cell>q(h t |o 1:t ) p(h t |o 1:t , z 1:t )</cell><cell>dh t</cell></row><row><cell>=</cell><cell>T t=1</cell><cell>q(h t |o 1:t ) log</cell><cell cols="2">p(o t , z t , h t |o 1:t-1 , z 1:t-1 ) q(h t |o 1:t )</cell><cell cols="2">dh t + KL[q(h t |o 1:t )||p(h t |o 1:t , z 1:t )]</cell></row><row><cell></cell><cell>T</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>=</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell>t=1</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell>T</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>≥</cell><cell></cell><cell>L ELBO,joint,t</cell><cell></cell><cell></cell><cell></cell><cell>(15)</cell></row><row><cell></cell><cell>t=1</cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table><note><p><p>.2. Nonlinear Dynamics Case p(o t , z t , h t |o 1:t-1 , z 1:t-1 ) = p(o t , z t |o 1:t-1 , z 1:t-1 )p(h t |o 1:t , z 1:t ) (14) L ELBO,joint,t + KL[q(h t |o 1:t )||p(h t |o 1:t , z 1:t )] L ELBO,joint,t = q(h t |o 1:t ) log p(o t , z t , h t |o 1:t-1 , z 1:t-1 ) q(h t |o 1:t ) dh t = q(h t |o 1:t ) log p(h t |o 1:t-1 , z 1:t-1 )p(o t , z t |h t ) q(h t |o 1:t ) dh t = q(h t |o 1:t )[log p(z t |h t ) + log p(o t |z t )]dh t + q(h t |o 1:t ) p(h t |o 1:t-1 , z 1:t-1 ) q(h</p>t |o 1:t ) dh t = q(h t |o 1:t ) log p(z t |h t )dh t -KL[q(h t |o 1:t )|p(h t |o 1:t-1 , z 1:t-1 )] + log p(o t |z t )</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_9"><head>Table 5 .</head><label>5</label><figDesc>Hyperparameters for training lr batch size h dim N data,train Epochs train time per model</figDesc><table><row><cell>moving MNIST</cell><cell>10 -3</cell><cell>64</cell><cell>8</cell><cell>480,000</cell><cell>2</cell><cell>3hr× 1GPU</cell></row><row><cell>double pendulum</cell><cell>10 -3</cell><cell>256</cell><cell>50</cell><cell>1.0 × 10 7</cell><cell>1</cell><cell>6hr× 1GPU</cell></row><row><cell>Lorenz96</cell><cell>3 × 10 -3</cell><cell>64</cell><cell>800</cell><cell>2.6 × 10 7</cell><cell>1</cell><cell>15hr× 8GPUs</cell></row><row><cell>object tracking</cell><cell>-</cell><cell>-</cell><cell>8</cell><cell>-</cell><cell>-</cell><cell>-</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_10"><head>Table 7 .</head><label>7</label><figDesc>List of hyperparameters for Lorenz96 experiment. The dataset consists of a series of 2D images, where each pixel has a dynamic range from 0 to 255. The training set contains 480,000 initial conditions, while the test set consists of ten initial conditions, with both datasets comprising 20 time steps each. The number of training samples and epochs is sufficiently large to ensure that the training converges effectively. A Gaussian noise with a standard deviation of σ = 50 is added to all pixels. The MNIST images of the digits "9" (data point 5740) and "5" (data point 5742) move at constant speeds until they reach the edges, where reflection occurs.Training: The network weights for G θ are fixed during the first epoch to facilitate the learning of f θ and the image tensor for the observation model. Subsequently, G θ is trained during the second epoch. In total, DBF undergoes training for two epochs. Constant velocity model. The exact dynamics matrix we have used is:</figDesc><table><row><cell>parameter</cell><cell>value</cell></row><row><cell>R init</cell><cell>diag[1]</cell></row><row><cell>Q</cell><cell>diag[e -8 ]</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_12"><head>Table 8 .</head><label>8</label><figDesc>List of hyperparameters for moving MNIST experiment.</figDesc><table><row><cell>parameter</cell><cell>value</cell></row><row><cell>R</cell><cell>diag[e 6 ]</cell></row><row><cell>Q</cell><cell>diag[e -4 ]</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_13"><head>Table 9 .</head><label>9</label><figDesc>The success rates of different methodologies in the two-body moving MNIST problem. For the model-based approaches, we used the same dynamics and observation models that generated the data. For DBF, the model was initialized with random image tensors and trained solely on the data.</figDesc><table><row><cell>Method</cell><cell>Success rate</cell></row><row><cell>DBF</cell><cell>100% (50/50)</cell></row><row><cell>EnKF</cell><cell>58% (29/50)</cell></row><row><cell>ETKF</cell><cell>0% (0/50)</cell></row><row><cell>PF</cell><cell>0% (0/50)</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>Preferred Networks, Inc., Japan. Correspondence to: Yuta Tarumi &lt;yuta.tarumi@riken.jp&gt;.Proceedings of the 42 nd International Conference on Machine Learning, Vancouver, Canada. PMLR</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" xml:id="foot_1"><p>267, 2025.  Copyright 2025 by the author(s).</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_2"><p>https://github.com/pfnet-research/deep-bayesian-filter</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>Acknowledgements</head><p>This research work was financially supported by the <rs type="funder">Ministry of Internal Affairs and Communications of Japan</rs> with a scheme of "Research and development of advanced technologies for a user-adaptive remote sensing data platform" (<rs type="grantNumber">JPMI00316</rs>). We thank the anonymous reviewers for helpful comments on earlier versions of this paper.</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funding" xml:id="_QvKUmhN">
+					<idno type="grant-number">JPMI00316</idno>
+				</org>
+			</listOrg>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Training: All training variables (network weights for the IOO (f θ , G θ ), the emission model operator ϕ, eigenvalues λ for the dynamics matrix A, Gaussian noise parameter σ for angular velocity ω, and the concentration parameter for Von Mises distribution used for angular coordinate θ) are trained together.</p><p>Examples: Here, we show examples for assimilated θ and ω in Fig. <ref type="figure">10</ref>. Also, we give an additional figure for the RMSE of θ for various methods.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.4. Lorenz96</head><p>Dataset: The dataset consists of physical and observed variables sampled at 40 grid points. The training set includes 25,600,000 initial conditions, while the test set contains 10 initial conditions. The number of training samples is sufficiently large to ensure that the training converges in most cases. The original datasets comprise 80 time steps. Numerical integration is performed using the solve ivp function in SciPy, with a relative tolerance rtol = 10 -2 and an absolute tolerance of atol = 10 -2 . Gaussian noise with standard deviations of σ = 1, 3, or 5 is added to all measurements.</p><p>For KalmanNet, we attempted to train with 25,600,000 and 400,000 initial conditions; however, the process was terminated due to memory limitations. Consequently, we report results using a dataset size of 120,000. For DKF, VRNN, and SRNN, we also tried training with 25,600,000 conditions, but all models encountered a RuntimeError due to instability during the backward computation. To obtain results, we reduced the number of training samples to 512,000. With this adjustment, both SRNN and VRNN successfully completed the training procedure for some initial conditions.</p><p>A physical quantity z j is defined at each grid point j(1 ≤ j ≤ 40). The time evolution of this quantity is described by the following set of differential equations:</p><p>In this equation, the driving term F is set to 8. The first term models the advection of the physical quantity, while the second term represents its diffusion along a fixed latitude. With these parameters, the evolution of the physical quantity exhibits chaotic behavior.</p><p>Network architecture: The NN f θ consists of ten convolutional blocks followed by a fully connected layer. Each convolutional block comprises a 1D convolution, layer normalization, and a skip connection:</p><p>• conv1d: nn.Conv1d( c in , c out , kernel size=5, padding=2, padding mode="circular", )</p><p>• norm: layer normalization,</p><p>• skip: skip connection.</p><p>The first convolutional block has c in = 1 and c out = 20, expanding the input by a factor of 20 in the channel dimension.</p><p>The subsequent eight layers maintain 20 channels. Finally, the 20 channels and 40 physical dimensions are flattened into 800-dimensional variables, which are then fed into a fully connected layer of size 800 × 800. For all layers, the activation function used is ReLU. The function G θ is structured identically to f θ , while ϕ θ represents the inverse of f θ .</p><p>Training: All training variables, including the network weights for the inverse observation operator f θ and G θ , the emission model operator ϕ, the eigenvalues λ for the dynamics matrix A, and the Gaussian noise parameter σ, are trained concurrently.</p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Seismic data assimilation with an imperfect model</title>
+		<author>
+			<persName><forename type="first">Alfonzo</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Oliver</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">S</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Computational Geosciences</title>
+		<imprint>
+			<biblScope unit="volume">24</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="889" to="905" />
+			<date type="published" when="2020">2020</date>
+			<publisher>Marine Environmental Monitoring and Prediction</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<title level="m" type="main">Deep learning for day forecasts from sparse observations</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Andrychowicz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Espeholt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Merchant</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Merose</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Zyda</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Agrawal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Kalchbrenner</surname></persName>
+		</author>
+		<idno>ArXiv, abs/2306.06079</idno>
+		<ptr target="https://api.semanticscholar.org/CorpusID" />
+		<imprint>
+			<date type="published" when="2023">2023</date>
+			<biblScope unit="page">259129311</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">A particle filter based visual object tracking: A systematic review of current trends and research challenges</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">A</forename><surname>Awal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">A R</forename><surname>Refat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Naznin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">Z</forename><surname>Islam</surname></persName>
+		</author>
+		<idno type="DOI">10.14569/IJACSA.2023.01411131</idno>
+		<ptr target="http://dx.doi.org/10.14569/IJACSA.2023.01411131" />
+	</analytic>
+	<monogr>
+		<title level="j">International Journal of Advanced Computer Science and Applications</title>
+		<imprint>
+			<biblScope unit="volume">14</biblScope>
+			<biblScope unit="issue">11</biblScope>
+			<biblScope unit="page">2023</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Forecasting sequential data using consistent koopman autoencoders</title>
+		<author>
+			<persName><forename type="first">O</forename><surname>Azencot</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">B</forename><surname>Erichson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Mahoney</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+		<ptr target="https://proceedings.mlr.press/v119/azencot20a.html" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 37th International Conference on Machine Learning</title>
+		<editor>
+			<persName><forename type="first">H</forename><forename type="middle">D</forename><surname>Iii</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">A</forename><surname>Singh</surname></persName>
+		</editor>
+		<meeting>the 37th International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2020-07">Jul 2020</date>
+			<biblScope unit="volume">119</biblScope>
+			<biblScope unit="page" from="13" to="18" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">A multi-model ensemble kalman filter for data assimilation and forecasting</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>Bach</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Ghil</surname></persName>
+		</author>
+		<idno type="DOI">10.1029/2022MS003123</idno>
+		<idno>10.1029/2022MS003123. e2022MS003123 2022MS003123</idno>
+		<ptr target="https://agupubs.onlinelibrary.wiley.com/doi/abs/" />
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Advances in Modeling Earth Systems</title>
+		<imprint>
+			<biblScope unit="volume">15</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page">2023</biblScope>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">On the stability of sequential Monte Carlo methods in high dimensions</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Beskos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Crisan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Jasra</surname></persName>
+		</author>
+		<idno type="DOI">10.1214/13-AAP951</idno>
+		<ptr target="https://doi.org/10.1214/13-AAP951" />
+	</analytic>
+	<monogr>
+		<title level="j">The Annals of Applied Probability</title>
+		<imprint>
+			<biblScope unit="volume">24</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="1396" to="1445" />
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Adaptive Sampling with the Ensemble Transform Kalman Filter. Part I: Theoretical Aspects. Mon</title>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">H</forename><surname>Bishop</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">J</forename><surname>Etherton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">J</forename><surname>Majumdar</surname></persName>
+		</author>
+		<idno type="DOI">10.1175/1520-0493(2001)129⟨0420:ASWTET⟩2</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Wea. Rev</title>
+		<idno type="ISSN">0027-0644</idno>
+		<imprint>
+			<biblScope unit="volume">129</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="420" to="436" />
+			<date type="published" when="2001-03">March 2001</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<title/>
+		<author>
+			<persName><surname>Co</surname></persName>
+		</author>
+		<idno type="DOI">10.1175/1520-0493(2001)129&lt;0420:ASWTET&gt;2.0.CO;2</idno>
+		<idno>1520-0493(2001)129&lt;0420: ASWTET&gt;2.0.CO;2</idno>
+		<ptr target="http://journals.ametsoc.org/doi/10.1175/" />
+		<imprint>
+			<biblScope unit="volume">2</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Autodifferentiable ensemble kalman filters</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Sanz-Alonso</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Willett</surname></persName>
+		</author>
+		<idno type="DOI">10.1137/21M1434477</idno>
+		<ptr target="https://doi.org/10.1137/21M1434477" />
+	</analytic>
+	<monogr>
+		<title level="j">SIAM Journal on Mathematics of Data Science</title>
+		<imprint>
+			<biblScope unit="volume">4</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="801" to="833" />
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<monogr>
+		<title level="m" type="main">Reduced-order autodifferentiable ensemble kalman filters. Inverse Problems</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Sanz-Alonso</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Willett</surname></persName>
+		</author>
+		<idno type="DOI">10.1088/1361-6420/acff14</idno>
+		<imprint>
+			<biblScope unit="volume">39</biblScope>
+			<biblScope unit="page">2023</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">An introduction to Sequential Monte Carlo</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Chopin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Papaspiliopoulos</surname></persName>
+		</author>
+		<ptr target="https://ci.nii.ac.jp/ncid/BC03234800" />
+	</analytic>
+	<monogr>
+		<title level="m">Springer series in statistics</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">A Recurrent Latent Variable Model for Sequential Data</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Chung</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Kastner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Dinh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Goel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">C</forename><surname>Courville</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+		<ptr target="https://proceedings.neurips.cc/paper_files/paper/2015/hash" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="volume">28</biblScope>
+		</imprint>
+	</monogr>
+	<note>b618c3210e934362ac261db280128c22-Abstract. html</note>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Signal and Data Processing of Small Targets</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Daum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Huang</surname></persName>
+		</author>
+		<idno type="DOI">10.1117/12.725684</idno>
+		<ptr target="https://doi.org/10.1117/12.725684" />
+	</analytic>
+	<monogr>
+		<title level="m">International Society for Optics and Photonics, SPIE</title>
+		<editor>
+			<persName><forename type="first">O</forename><forename type="middle">E</forename><surname>Drummond</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">R</forename><forename type="middle">D</forename><surname>Teichgraeber</surname></persName>
+		</editor>
+		<imprint>
+			<date type="published" when="2007">2007. 2007</date>
+			<biblScope unit="volume">6699</biblScope>
+		</imprint>
+	</monogr>
+	<note>Nonlinear filters with log-homotopy</note>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Sequential data assimilation with a nonlinear quasi-geostrophic model using Monte Carlo methods to forecast error statistics</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>De Bézenac</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">S</forename><surname>Rangapuram</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Benidis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Bohlke-Schneider</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Kurle</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Stella</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Hasson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Gallinari</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Januschowski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Larochelle</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Ranzato</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Hadsell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Balcan</surname></persName>
+		</author>
+		<idno type="DOI">10.1029/94JC00572</idno>
+		<ptr target="https://onlinelibrary.wiley.com/doi/pdf/10.1029/94JC00572" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">H</forename><surname>Lin</surname></persName>
+		</editor>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="1994">2020. 1994</date>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="10143" to="10162" />
+		</imprint>
+	</monogr>
+	<note>Normalizing kalman filters for multivariate time series analysis</note>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<author>
+			<persName><forename type="first">H</forename><surname>Fan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Chu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Bai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Liao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Ling</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Lasot</surname></persName>
+		</author>
+		<title level="m">A high-quality benchmark for large-scale single object tracking</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Lasot: A high-quality large-scale single object tracking benchmark</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Fan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Bai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Chu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Harshit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Liao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Yuan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Ling</surname></persName>
+		</author>
+		<idno type="DOI">10.1007/s11263-020-01387-y</idno>
+		<ptr target="https://doi.org/10.1007/s11263-020-01387-y" />
+	</analytic>
+	<monogr>
+		<title level="j">Int. J. Comput. Vision</title>
+		<idno type="ISSN">0920-5691</idno>
+		<imprint>
+			<biblScope unit="volume">129</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="439" to="461" />
+			<date type="published" when="2021-02">feb 2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Sequential neural models with stochastic layers</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Fraccaro</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">K</forename><surname>Sønderby</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">U</forename><surname>Paquet</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Winther</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 30th International Conference on Neural Information Processing Systems, NIPS&apos;16</title>
+		<meeting>the 30th International Conference on Neural Information Processing Systems, NIPS&apos;16<address><addrLine>Red Hook, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Curran Associates Inc</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="2207" to="2215" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">A disentangled recognition and nonlinear dynamics model for unsupervised learning</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Fraccaro</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Kamronn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">U</forename><surname>Paquet</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Winther</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Guyon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">U</forename><forename type="middle">V</forename><surname>Luxburg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Wallach</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Fergus</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Vishwanathan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Garnett</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Kochkov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Smith</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Cremers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Brenner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Hoyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename></persName>
+		</author>
+		<ptr target="https://proceedings.mlr.press/v139/frerix21a.html" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 38th International Conference on Machine Learning</title>
+		<meeting>the 38th International Conference on Machine Learning</meeting>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2017-07">2017. July 2021</date>
+			<biblScope unit="volume">30</biblScope>
+			<biblScope unit="page" from="3449" to="3458" />
+		</imprint>
+	</monogr>
+	<note>Advances in Neural Information Processing Systems</note>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Dynamical variational autoencoders: A comprehensive review</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Girin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Leglaive</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Bie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Diard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Hueber</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alameda-Pineda</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename></persName>
+		</author>
+		<idno type="DOI">10.1561/2200000089</idno>
+		<ptr target="http://dx.doi.org/10.1561/2200000089" />
+	</analytic>
+	<monogr>
+		<title level="j">Foundations and Trends® in Machine Learning</title>
+		<idno type="ISSN">1935- 8237</idno>
+		<imprint>
+			<biblScope unit="volume">15</biblScope>
+			<biblScope unit="issue">1-2</biblScope>
+			<biblScope unit="page" from="1" to="175" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<monogr>
+		<author>
+			<persName><forename type="first">A</forename><surname>Gu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Dao</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Mamba</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2312.00752</idno>
+		<title level="m">Linear-time sequence modeling with selective state spaces</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">The era5 global reanalysis</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Hersbach</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Bell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Berrisford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Hirahara</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Horányi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Muñoz-Sabater</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Nicolas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Peubey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Radu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Schepers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Simmons</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Soci</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Abdalla</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Abellan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Balsamo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Bechtold</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Biavati</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Bidlot</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Bonavita</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>De Chiara</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Dahlgren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Dee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Diamantakis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Dragani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Flemming</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Forbes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Fuentes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Geer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Haimberger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Healy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">J</forename><surname>Hogan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Hólm</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Janisková</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Keeley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Laloyaux</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Lopez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Lupu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Radnoti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>De Rosnay</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Rozum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Vamborg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Villaume</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J.-N</forename><surname>Thépaut</surname></persName>
+		</author>
+		<idno type="DOI">10.1002/qj.3803</idno>
+		<ptr target="https://rmets.onlinelibrary.wiley.com/doi/abs/10.1002/qj.3803" />
+	</analytic>
+	<monogr>
+		<title level="j">Quarterly Journal of the Royal Meteorological Society</title>
+		<imprint>
+			<biblScope unit="volume">146</biblScope>
+			<biblScope unit="issue">730</biblScope>
+			<biblScope unit="page" from="1999" to="2049" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">A particle flow filter for high-dimensional system applications</title>
+		<author>
+			<persName><forename type="first">C.-C</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">J</forename><surname>Van Leeuwen</surname></persName>
+		</author>
+		<idno type="DOI">10.1002/qj.4028</idno>
+		<ptr target="https://rmets.onlinelibrary.wiley.com/doi/abs/10.1002/qj.4028" />
+	</analytic>
+	<monogr>
+		<title level="j">Quarterly Journal of the Royal Meteorological Society</title>
+		<imprint>
+			<biblScope unit="volume">147</biblScope>
+			<biblScope unit="issue">737</biblScope>
+			<biblScope unit="page" from="2352" to="2374" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Efficient data assimilation for spatiotemporal chaos: A local ensemble transform kalman filter</title>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">R</forename><surname>Hunt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">J</forename><surname>Kostelich</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Szunyogh</surname></persName>
+		</author>
+		<idno type="DOI">10.1016/j.physd.2006.11.008</idno>
+		<ptr target="https://www.sciencedirect.com/science/article/pii/S0167278906004647.DataAssimilation" />
+	</analytic>
+	<monogr>
+		<title level="j">Physica D: Nonlinear Phenomena</title>
+		<idno type="ISSN">0167-2789</idno>
+		<imprint>
+			<biblScope unit="volume">230</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="112" to="126" />
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">G</forename><surname>Jocher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Chaurasia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Qiu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yolo</forename><surname>Ultralytics</surname></persName>
+		</author>
+		<ptr target="https://github.com/ultralytics/ultralytics" />
+		<imprint>
+			<date type="published" when="2023-01">January 2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Hamiltonian systems and transformation in hilbert space</title>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">O</forename><surname>Koopman</surname></persName>
+		</author>
+		<idno type="DOI">10.1073/pnas.17.5.315</idno>
+		<ptr target="https://www.pnas.org/doi/abs/10.1073/pnas.17.5.315" />
+	</analytic>
+	<monogr>
+		<title level="j">Proceedings of the National Academy of Sciences</title>
+		<imprint>
+			<biblScope unit="volume">17</biblScope>
+			<biblScope unit="issue">5</biblScope>
+			<biblScope unit="page" from="315" to="318" />
+			<date type="published" when="1931">1931</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<monogr>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">G</forename><surname>Krishnan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">U</forename><surname>Shalit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Sontag</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/1511.05121" />
+		<title level="m">Deep kalman filters</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<monogr>
+		<title level="m" type="main">Structured inference networks for nonlinear state space models</title>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">G</forename><surname>Krishnan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">U</forename><surname>Shalit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Sontag</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/1609.09869" />
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Validation of a hybrid optimal interpolation and kalman filter scheme for sea surface temperature assimilation</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Larsen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Høyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>She</surname></persName>
+		</author>
+		<idno type="DOI">10.1016/j.jmarsys.2005.09.013</idno>
+		<ptr target="https://www.sciencedirect.com/science/article/pii/S0924796306002880" />
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Marine Systems</title>
+		<idno type="ISSN">0924-7963</idno>
+		<imprint>
+			<biblScope unit="volume">65</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="122" to="133" />
+			<date type="published" when="2007">2007</date>
+			<publisher>Marine Environmental Monitoring and Prediction</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Achieving Accurate Long Rollouts with Temporal Neural PDE Solvers</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Lippe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">S</forename><surname>Veeling</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Perdikaris</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">E</forename><surname>Turner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Brandstetter</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Pde-Refiner</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=Qv6468llWS" />
+	</analytic>
+	<monogr>
+		<title level="m">Thirtyseventh Conference on Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Modelling of error covariances by 4d-var data assimilation</title>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">C</forename><surname>Lorenc</surname></persName>
+		</author>
+		<idno type="DOI">10.1256/qj.02.131</idno>
+		<ptr target="https://rmets.onlinelibrary.wiley.com/doi/abs/10.1256/qj.02.131" />
+	</analytic>
+	<monogr>
+		<title level="j">Quarterly Journal of the Royal Meteorological Society</title>
+		<imprint>
+			<biblScope unit="volume">129</biblScope>
+			<biblScope unit="issue">595</biblScope>
+			<biblScope unit="page" from="3167" to="3182" />
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<monogr>
+		<title level="m" type="main">Predictability: a problem partly solved</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>Lorenz</surname></persName>
+		</author>
+		<imprint>
+			<date>1995 1995</date>
+			<pubPlace>Shinfield Park, Reading</pubPlace>
+		</imprint>
+	</monogr>
+	<note type="report_type">PhD thesis</note>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Deep learning for universal linear embeddings of nonlinear dynamics</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Lusch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">N</forename><surname>Kutz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">L</forename><surname>Brunton</surname></persName>
+		</author>
+		<idno type="DOI">10.1038/s41467-018-07210-0</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Nature Communications</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="page">4950</biblScope>
+			<date type="published" when="2018-11">November 2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Trackingnet: A large-scale dataset and benchmark for object tracking in the wild</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Müller</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bibi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Giancola</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Alsubaihi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Ghanem</surname></persName>
+		</author>
+		<idno type="DOI">10.1007/978-3-030-01246-5_19</idno>
+		<ptr target="https://doi.org/10.1007/978-3-030-01246-5_19" />
+	</analytic>
+	<monogr>
+		<title level="m">Computer Vision -ECCV 2018: 15th European Conference</title>
+		<meeting><address><addrLine>Munich, Germany; Berlin, Heidelberg</addrLine></address></meeting>
+		<imprint>
+			<publisher>Springer-Verlag</publisher>
+			<date type="published" when="2018">September 8-14, 2018. 2018</date>
+			<biblScope unit="page" from="310" to="327" />
+		</imprint>
+	</monogr>
+	<note>Proceedings, Part I</note>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<monogr>
+		<title level="m" type="main">Letkf-based ocean research analysis (lora) version 1.0. Geoscience Data Journal</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ohishi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Miyoshi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Ando</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Higashiuwatoko</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Yoshizawa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Murakami</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Kachi</surname></persName>
+		</author>
+		<idno type="DOI">10.1002/gdj3.271</idno>
+		<ptr target="https://rmets.onlinelibrary.wiley.com/doi/abs/10.1002/gdj3.271" />
+		<imprint>
+			<biblScope unit="page">2024</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Neural network aided kalman filtering for partially known dynamics</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Revach</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Shlezinger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Ni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">L</forename><surname>Escoriza</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">J G</forename><surname>Van Sloun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><forename type="middle">C</forename><surname>Eldar</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Kalmannet</surname></persName>
+		</author>
+		<idno type="DOI">10.1109/TSP.2022.3158588</idno>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Signal Processing</title>
+		<imprint>
+			<biblScope unit="volume">70</biblScope>
+			<biblScope unit="page" from="1532" to="1547" />
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Learning koopman invariant subspaces for dynamic mode decomposition</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Takeishi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Kawahara</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Yairi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Guyon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">U</forename><forename type="middle">V</forename><surname>Luxburg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Wallach</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Fergus</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Vishwanathan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Niu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Ekfnet</surname></persName>
+		</author>
+		<idno type="DOI">10.1109/TSP.2024.3417350</idno>
+		<ptr target="https://proceedings.neurips.cc/paper_files/paper/2017/file/3" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">R</forename><surname>Garnett</surname></persName>
+		</editor>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2017">2017. 2024</date>
+			<biblScope unit="volume">30</biblScope>
+			<biblScope unit="page" from="3139" to="3152" />
+		</imprint>
+	</monogr>
+	<note>Learning system noise covariance parameters for nonlinear tracking</note>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

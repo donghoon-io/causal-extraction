@@ -1,0 +1,1064 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Distributionally Robust Policy Learning via Adversarial Environment Generation</title>
+				<funder ref="#_gXvNP6K">
+					<orgName type="full">School of Engineering and Applied Science at Princeton University</orgName>
+				</funder>
+				<funder ref="#_Dy4QSu9">
+					<orgName type="full">National Science Foundation</orgName>
+					<orgName type="abbreviated">NSF</orgName>
+				</funder>
+				<funder ref="#_PezuqHp">
+					<orgName type="full">Office of Naval Research</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability  status="unknown">
+					<licence/>
+				</availability>
+				<date type="published" when="2022-07-07">7 Jul 2022</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Allen</forename><forename type="middle">Z</forename><surname>Ren</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Anirudha</forename><surname>Majumdar</surname></persName>
+						</author>
+						<title level="a" type="main">Distributionally Robust Policy Learning via Adversarial Environment Generation</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2022-07-07">7 Jul 2022</date>
+						</imprint>
+					</monogr>
+					<idno type="arXiv">arXiv:2107.06353v6[cs.RO]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-28T23:04+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<textClass>
+				<keywords>
+					<term>Generalization</term>
+					<term>adversarial training</term>
+					<term>generative modeling</term>
+					<term>grasping</term>
+				</keywords>
+			</textClass>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Our goal is to train control policies that generalize well to unseen environments. Inspired by the Distributionally Robust Optimization (DRO) framework, we propose DRAGEN -Distributionally Robust policy learning via Adversarial Generation of ENvironments -for iteratively improving robustness of policies to realistic distribution shifts by generating adversarial environments. The key idea is to learn a generative model for environments whose latent variables capture costpredictive and realistic variations in environments. We perform DRO with respect to a Wasserstein ball around the empirical distribution of environments by generating realistic adversarial environments via gradient ascent on the latent space. We demonstrate strong Out-of-Distribution (OoD) generalization in simulation for (i) swinging up a pendulum with onboard vision and (ii) grasping realistic 3D objects. Grasping experiments on hardware demonstrate better sim2real performance compared to domain randomization.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>I. INTRODUCTION</head><p>One of the fundamental challenges for learning-based control of robots is the severely limited ability of trained policies to generalize beyond the specific distribution of environments they were trained on. For example, imagine a home-robot with manipulation capabilities that has been trained on a dataset containing thousands of objects. How likely is this system to succeed when deployed in different homes containing objects that the system has never encountered before? Similarly, how likely is a vision-based navigation policy for a drone or autonomous vehicle to succeed when deployed in environments with varying weather conditions, lighting (Fig. <ref type="figure" target="#fig_0">1</ref>), or obstacle densities? Unfortunately, current techniques for learning-based control of robots (e.g., those based on deep reinforcement learning) can fail dramatically when faced with even mild distribution shifts <ref type="bibr" target="#b0">[1]</ref>.</p><p>In this work, we pose the problem of learning policies with Out-of-Distribution (OoD) generalization capabilities in the framework of Distributionally Robust Optimization (DRO); given a dataset of environments (e.g., objects in the case of manipulation), our goal is to learn a policy that minimizes the worst-case expected cost across a set P of distributions around the empirical distribution:</p><formula xml:id="formula_0">inf θ∈Θ sup P ∈P E E∼P [C E (π θ )],<label>(1)</label></formula><p>*This work was supported by the Toyota Research Institute and the Office of Naval Research 1 Allen Z. Ren and Anirudha Majumdar are with Mechanical and Aerospace Engineering Department, Princeton University, United States {allen.ren, ani.majumdar}@princeton.edu where θ are the parameters of the policy (e.g., weights of a neural network), and C E (π θ ) is the cost incurred by policy π θ when deployed in environment E (see Sec. II for a formal problem formulation). One of the key ingredients of this formalism is the choice of the set P of distributions over which one performs worst-case optimization. This choice is crucial in robotics applications and must satisfy two important criteria. First, the set P should contain realistic distributions. Second, it should be broad enough to encompass distributions that vary in task-relevant features (e.g., geometric features of the objects in grasping task are taskrelevant, while colors are not) and thus help improve generalization to real-world OoD environments. The main technical insight of our work is to combine ideas from the theory of Wasserstein metrics with advances in generative modeling and adversarial training to propose a DRO framework for learning policies that are robust to realistic distribution shifts. We highlight key features of our approach next.</p><p>Statement of Contributions. The primary contribution of this work is to propose DRAGEN, a framework based on DRO for iteratively improving the robustness of policies to realistic distribution shifts by generating adversarial environments (Fig. <ref type="figure" target="#fig_0">1</ref>). To this end, we make four specific contributions.</p><p>• Develop an approach for learning a generative model for environments (using a given training dataset) whose latent variables capture task-relevant and realistic variations in environments (Sec. III-A, III-B). This is achieved by training the latent variables to be cost-predictive and regularizing the Lipschitz constant of the cost predictor; this ensures that distances in the latent space correspond to task-relevant differences in environments. • Propose a method for specifying the set P of distributions over which we perform DRO as a Wasserstein ball defined with respect to distance in the latent space (Sec. III-A). This ensures that P contains distributions over taskrelevant and realistic variations in environments. We also provide a distributionally robust bound on the worst-case expected predicted cost of distributions in P.</p><p>• Develop an algorithm for performing DRO with respect to the Wasserstein ball by adversarial generation of environments (Sec. III-C). Our overall approach then iteratively improves the policy by alternating between (i) re-training the generative model, (ii) generating adversarial environments for DRO, and (iii) re-training the policy using the augmented dataset. • Demonstrate the ability of our approach to learn policies with strong OoD generalization in simulation for (i) swing- The training dataset S consists of environments E (e.g., mugs to be grasped) in E. They are embedded in the latent space Z of a generative model. We consider the resulting set of latent embeddings as a discrete distribution around which the uncertainty set P is defined. We apply recent progress in DRO <ref type="bibr" target="#b1">[2]</ref> for performing worst-case optimization over P by perturbing the support of the discrete distribution. Costs C E (π θ ) incurred by the policy trains Z to be cost-predictive, and allows for gradient ascent on Z. Decoding adversarial latent variables generates realistic adversarial environments, such as mugs with smaller openings.</p><p>ing up a pendulum with onboard vision and (ii) grasping realistic 2D/3D objects (Sec. IV). We also validate our approach on grasping experiments in hardware and demonstrate that DRAGEN outperforms domain randomization in sim2real transfer.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Related work</head><p>Distributionally robust optimization. Our work is inspired by the DRO framework in supervised learning <ref type="bibr" target="#b1">[2]</ref>, <ref type="bibr" target="#b2">[3]</ref>, <ref type="bibr" target="#b3">[4]</ref>, <ref type="bibr" target="#b4">[5]</ref>, which minimizes the risk under worst-case distributional shift of data (similar to (1)). Recent progress provides a direct solution to the Lagrangian relaxation of the formulation <ref type="bibr" target="#b1">[2]</ref>, which suits our approach (Sec. III). In terms of the choice of uncertainty set P, <ref type="bibr" target="#b1">[2]</ref>, <ref type="bibr" target="#b3">[4]</ref> defines it using Wasserstein distance; this allows P to include distributions with different support and can thus provide robustness to unseen data. In contrast to <ref type="bibr" target="#b5">[6]</ref> where the Wasserstein distance is defined on the semantic space (output of the last hidden layer) of the classifier, we define Wasserstein distance based on distance on the latent space of a generative model; this allows us to capture realistic distributional shifts of environments. In addition, we train a Lipschitz-regularized cost predictor from the low-dimensional latent space. This provides structure to the latent space by ensuring that nearby points correspond to environments with similar costs, and improves distributional robustness.</p><p>Environment augmentation in policy learning. Domain Randomization techniques generate new training environments by randomizing pre-specified parameters such as object textures or lighting intensities <ref type="bibr" target="#b6">[7]</ref>, <ref type="bibr" target="#b7">[8]</ref>, or randomly chaining shape primitives into new objects <ref type="bibr" target="#b8">[9]</ref> for grasping. Similarly, data augmentation techniques such as random cutout and cropping <ref type="bibr" target="#b9">[10]</ref>, <ref type="bibr" target="#b10">[11]</ref> have been applied to visionbased reinforcement learning (RL). Despite their simplicity, both types of techniques can be inefficient and do not necessarily generate realistic environments. For instance, training on randomly generated objects leads to worse performance in grasping realistic objects than training on the same number of realistic objects <ref type="bibr" target="#b8">[9]</ref>. Another line of work generates increasingly difficult and complex environments <ref type="bibr" target="#b11">[12]</ref>, <ref type="bibr" target="#b12">[13]</ref> using minimax formulations based on the agent's performance with the current policy, which are similar to our approach but do not focus on OoD generalization. Also these approaches are designed for simple environments such as gridworld and 2D bipedal terrains that are fully specified using a set of parameters, whereas our approach addresses more complex environments in the form of images and 3D objects that cannot be parameterized simply.</p><p>Adversarial training with generative modeling. Adversarial training <ref type="bibr" target="#b13">[14]</ref> is popular in supervised learning (especially image classification) for improving the robustness of classifiers. One related direction shows that synthesizing adversarial data by searching over the latent space of a generative model can be more effective in attacking the classifier than searching over the raw image space <ref type="bibr" target="#b14">[15]</ref>. More recent work learns possible perturbations from pairs of datasets <ref type="bibr" target="#b15">[16]</ref> or pairs of original and perturbed data <ref type="bibr" target="#b16">[17]</ref>. A closely related work is <ref type="bibr" target="#b17">[18]</ref>, where a set of image perturbations are prespecified and the model learns to be robust to confusing images through a minimax objective. Among other applications, <ref type="bibr" target="#b18">[19]</ref> attacks 3D point cloud classifiers by perturbing the latent variables of an autoencoder, similar to our setup. However, one key distinction is that while the loss/cost is differentiable through the classifier in supervised learning, the cost of an environment in our approach is determined by non-differentiable simulation. We resort to learning a differentiable cost predictor as a proxy. Adversarial training has also been applied to robotic grasping, either by randomly perturbing mesh vertices or training a Generative Adversarial Network (GAN) <ref type="bibr" target="#b19">[20]</ref>, <ref type="bibr" target="#b20">[21]</ref>. However, the difficulty of the objects is determined by a heuristic approach based on the antipodal metric of sampled grasps, unlike training a policy and evaluating the cost as in our approach.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>II. PROBLEM FORMULATION</head><p>We assume that the discrete-time dynamics of the robot are given by s t+1 = f E (s t , a t ) where s t ∈ S ⊆ R ns is the state of the robot at time-step t, a t ∈ A ⊆ R na is the action, and E ∈ E is the environment that the robot is operating in.</p><p>"Environment" here broadly refers to external factors such as the object that a manipulator is trying to grasp, or the visual backdrop for a vision-based control task. Importantly, we do not assume knowledge of E, which may be extremely high-dimensional and may not be parameterized simply. We assume access to a dataset S := {E 1 , . . . , E M } of M training environments. We let P 0 := M i=1 1 M δ Ei denote the empirical distribution supported on S, where each δ Ei is a Dirac delta distribution on E i .</p><p>We assume that the robot has a sensor which provides observations o t ∈ O of the environment. Let π θ : O → A denote a policy parameterized by θ ∈ Θ (e.g., weights of a neural network). The robot's task is specified via a cost function; we let C E (π θ ) denote the cumulative cost (over a specified time horizon) incurred by the policy π θ when deployed in an environment E. Our goal is to learn a policy π θ that minimizes the worst-case expected cost across a set P of distributions that contains P 0 :</p><formula xml:id="formula_1">θ = arginf Θ sup P ∈P E E∼P [C E (π θ )].<label>(2)</label></formula><p>In the subsequent sections, we will demonstrate how to tackle the two main challenges highlighted in Section I: (1) choosing a meaningful set P of distributions over which the worst-case optimization is performed, and (2) performing the inner maximization (generating meaningful, adversarial distributions over environments) for the outer minimization (training the policy).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>III. APPROACH</head><p>The overall approach is visualized in Fig. <ref type="figure" target="#fig_0">1</ref>. The key idea is to learn a generative model whose latent variables are costpredictive and capture realistic variations in environments. This allows us to define a set P of distributions on this space for capturing realistic and task-relevant distribution shifts. We perform distributionally robust optimization using this set P.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Learning realistic variations in environments</head><p>Defining the uncertainty set P requires first defining the space over which distributions are supported. One option is to use the space of raw observations of environments (e.g., the raw pixel space of images). However, this space can be extremely high-dimensional and perturbations in this space typically do not correspond to realistic variations in environments, which is evident in "imperceptible attacks" in the image classification domain <ref type="bibr" target="#b13">[14]</ref>. Instead, we opt for the latent space Z ⊆ R nz of a generative model that captures realistic variations of environments. Previous work has demonstrated that perturbation or interpolation in the latent space can generate realistic variations in data <ref type="bibr" target="#b21">[22]</ref>, <ref type="bibr" target="#b22">[23]</ref>, <ref type="bibr" target="#b23">[24]</ref>. In the two examples detailed in Sec. IV, the raw environment is either a high-dimensional RGB image or a 3D object mesh. We use an autoencoder <ref type="bibr" target="#b24">[25]</ref> as the generative model (Fig. <ref type="figure" target="#fig_1">2</ref>):</p><formula xml:id="formula_2">z = g(E), E = f (g(E)),<label>(3)</label></formula><p>where the encoder g : E → Z maps the environment to a latent representation, and the decoder f : Z → E reconstructs the environment using the latent variable. Strictly speaking, an autoencoder is not a generative model but rather a representation model; however in practice, perturbations in the latent space generate meaningful variations in environments as shown in Sec. IV and in <ref type="bibr" target="#b22">[23]</ref>, <ref type="bibr" target="#b23">[24]</ref>. We embed the empirical distribution P 0 corresponding to the training dataset S of environments (ref. Sec. II) into the latent space Z. This induces a distribution P Z0 on the latent space:</p><formula xml:id="formula_3">P Z0 := M i=1 1 M δ z0 i , z 0i = g(E i ), E i ∈ S.<label>(4)</label></formula><p>We then define the set P using the Wasserstein distance from optimal transport <ref type="bibr" target="#b25">[26]</ref>. For probability measures X and Y supported on Z, and their couplings Π(X, Y ), the Wasserstein distance over the metric space Z is defined as:</p><formula xml:id="formula_4">W d (X, Y ) := inf H∈Π(X,Y ) E H [d(x, y)],<label>(5)</label></formula><p>where d(•, •) is the metric on the space Z (we use d(x, y) = x -y 2 ). We define the uncertainty set P as a Wasserstein "ball" around P Z0 with radius ρ:</p><formula xml:id="formula_5">P := {P Z : W d (P Z , P Z0 ) ≤ ρ}.<label>(6)</label></formula><p>Intuitively, the Wasserstein distance (also known as the "earth mover's distance") measures the minimum cost of morphing one distribution into the other. There are two key advantages of the Wasserstein distance over other divergences (e.g., the KL-divergence or other f -divergences) that make it appealing in our setting. First, the Wasserstein distance is easier to interpret and more physically meaningful since it takes into account the underlying geometry of the space on which the probability distributions are defined (see, e.g., <ref type="bibr" target="#b26">[27]</ref>). For example, consider distributions over objects only differing in their lengths and embedded in a latent space perfectly based on length (m). Consider three uniform distributions P Z1 , P Z2 , P Z3 with supports [0, 1], <ref type="bibr" target="#b0">[1,</ref><ref type="bibr" target="#b1">2]</ref>, and <ref type="bibr" target="#b1">[2,</ref><ref type="bibr" target="#b2">3]</ref> respectively. The Wasserstein distance captures our intuition that the distance between P Z1 and P Z2 is the same as that between P Z2 and P Z3 while the distance between P Z1 and P Z2 is smaller than that between P Z1 and P Z3 . The Wasserstein distance thus ensures distances in the latent embedding space correspond to differences in physical properties of the environments. Second, the Wasserstein distance between two distributions that do not share the same support can still be finite. This allows us to define a ball P around the distribution P Z0 which contains distributions with differing supports; performing worst-case optimization over P Z0 can thus provide robustness to unseen data.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Learning task-relevant variations in environments</head><p>Ideally, we would like the set P to contain distributions over both realistic and task-relevant features of environments. For example, consider a robotic manipulator learning to grasp objects and suppose that P contains different distributions over colors of objects. Such a set P can be very "large" (in terms of the radius of the Wasserstein ball); however, performing distributionally robust optimization over P will result in a policy that is only robust to the task-irrelevant feature of color and not necessarily robust to task-relevant geometric features. Our key intuition is that the latent space Z captures task-relevant variations in the environments if (i) Z is cost-predictive and (ii) closeness in the latent space corresponds to closeness in terms of costs. Then P captures cost-relevant (i.e., task-relevant) variations in environments.</p><p>By "cost-predictive", we mean that for the latent space Z, there exists a mapping from the latent variable of the environment to the true cost of the environment. To satisfy (ii), such mapping should be Lipschitz continuous.</p><p>Definition 1 (γ-cost-predictive): The latent space Z is γ-cost-predictive if there exists a γ-Lipschitz-continuous function h that maps the latent variable of an environment to the true cost of the environment.</p><p>In practice, we train a cost predictor h ψ : Z → R that maps the latent variable z of an environment E to a predicted cost Cz (π θ ) (the tilde denotes predicted cost instead of true cost) , where π θ is our current policy (Fig. <ref type="figure" target="#fig_1">2</ref>). The training labels are the true cost of the environments evaluated in simulation with the current policy, C E (π θ ) . Furthermore, we constrain the Lipschitz constant γ h ψ of the cost predictor. Now, environments with similar predicted costs are close in the latent space, and a Wasserstein ball with large radius contains distributions over environments with large variations in task-relevant features. As described in Sec. III-C, we iteratively update the policy by performing distributionally robust optimization via adversarial environment generation. Initially the policy may be sensitive to irrelevant features (e.g., color) and the set P contains distributions over irrelevant features. However, once we perform distributionally robust optimization with respect to P, the policy becomes less sensitive to these irrelevant features, and P starts to capture task-relevant features (Fig. <ref type="figure" target="#fig_2">3c</ref>). Without regularizing Lipschitzness, the latent space may be cost-predictive but far away points may have similar costs; in this case, the Wasserstein distance may not capture how much distributions differ in terms of taskrelevant features (see ablation in Sec. IV).</p><p>Embedding training. In our experiments, we use a cost predictor h ψ with two linear layers and sigmoid activation; then γ h ψ can be upper bounded <ref type="bibr" target="#b1">[2]</ref>:</p><formula xml:id="formula_6">γ h ψ γ h ψ := ψ 0 2 ψ 1 2 /16,<label>(7)</label></formula><p>where ψ 0 and ψ 1 are the weight matrices at the two layers. In practice, we constrain γ h ψ to some fixed value γ. Overall, we train the encoder g, decoder f , and cost predictor h ψ concurrently. The total loss function L is a weighted sum of four components:</p><formula xml:id="formula_7">L = L rec + α 1 L pred + α 2 L Lip + α 3 L norm .<label>(8)</label></formula><p>where L rec is the reconstruction loss of the autoencoder, L pred is the l 2 loss between the predicted cost and true cost evaluated with the current policy, L Lip is the l 2 loss between γ h ψ and γ, and L norm minimizes the norm of the embedded latent variables, which prevents the Lipschitz constant from being trivially constrained (by scaling the magnitude of latent variables to some fixed range).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Distributionally Robust Policy Learning via Adversarial Environment Generation</head><p>Next we explain our procedures for solving the minimax optimization (2). From Sec. III-A, we have chosen the uncertainty set as P = {P Z : W d (P Z , P Z0 ) ≤ ρ}. The optimization problem (subject to the uncertainty set constraint) can be re-formulated as:</p><formula xml:id="formula_8">minimize π θ sup P Z E z∼P Z [C f (z) (π θ )],<label>(9)</label></formula><p>where f (z) is the reconstructed environment (passing z through the decoder f ). Searching over P exactly is intractable; we thus follow <ref type="bibr" target="#b1">[2]</ref> by applying a Lagrangian relaxation with a penalty parameter λ ≥ 0: minimize</p><formula xml:id="formula_9">π θ sup P Z {E P Z [C f (z) (π θ )] -λW d (P Z , P Z0 )},<label>(10)</label></formula><p>Maximizing over the distribution P Z is still difficult, and thus we further apply an equivalent dual re-formulation <ref type="bibr" target="#b1">[2]</ref> to allow maximizing over the latent variable z instead: <ref type="bibr" target="#b10">(11)</ref> Equivalence between ( <ref type="formula" target="#formula_9">10</ref>) and ( <ref type="formula">11</ref>) requires C f (z) (π θ ) to be continuous in f (z) <ref type="bibr" target="#b1">[2]</ref>, which is not reasonable as the space E where f (z) belongs can be extremely highdimensional (e.g. pixel space for images), and C f (z) (π θ ) is evaluated using non-differentiable simulation. To eschew the issue, we substitute C f (z) (π θ ) with the predicted cost Cz (π θ ) from the γ-Lipschitz cost predictor,</p><formula xml:id="formula_10">minimize π θ E z0∼P Z 0 {sup z [C f (z) (π θ ) -λd(z, z 0 )]}.</formula><formula xml:id="formula_11">minimize π θ E z0∼P Z 0 {sup z [ Cz (π θ ) -λd(z, z 0 )]},<label>(12)</label></formula><p>Now the inner supremum can be performed with gradient ascent on the latent space (Fig. <ref type="figure" target="#fig_1">2</ref>:</p><formula xml:id="formula_12">z ← z 0 + η∇ z [ Cz (π θ ) -λd(z, z 0 )],<label>(13)</label></formula><p>where η is the step size. In practice we perform the minimax procedure iteratively: during inner maximization, a set of K latent variables {z 0i } K i=1 are sampled from the current latent distribution P Z0 and perturbed into {z i } K i=1 . The reconstructed environments {E i } K i=1 := {f (z i )} K i=1 are added to the dataset S; during the minimization phase, the policy is re-trained using the augmented S. Between the two phases, we train the embedding using all environments in S and their cost evaluated at the current policy π θ ; this is used to update P Z0 , whose support grows over iterations.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Algorithm 1 Distributionally Robust Policy Learning via Adversarial Environment Generation</head><p>Require: S, initial set of environments; π θ , initial policy 1: Pre-train π θ with S 2: for N iterations do Run minimax N times 3:</p><p>Evaluate C E (π θ ), ∀E ∈ S 4:</p><p>Train embedding with (8) and update P Z0</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>5:</head><p>Sample {z 0i } K i=1 ∼ P Z0 ; generate {E i } K i=1 with (13) and add to S 6:</p><p>Improve π θ with S 7: end for Target ascent in the latent space. In practice we find it difficult to tune the number of gradient ascent steps when perturbing a latent variable. Instead, we set a target on how much the predicted cost Cz (π θ ) of the perturbed latent variable should increase from that of the original latent variable Cz0 (π θ ), and run ( <ref type="formula" target="#formula_12">13</ref>) until the target is reached. However, since the cost predictor is Lipschitz-regularized, the range of its output is likely to be smaller than the true range of the cost evaluated in simulation. Thus at each iteration before generating new environments, we calculate the empirical range R( C) (difference of the maximum and minimum predicted cost over all environments in S), and set the target ascent ∆ C using a percentage ∆ Cp ∈ [0, 1] of R( C). We find that ∆ Cp = 0.2 works well for all experiments.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>IV. EXPERIMENTS</head><p>We implement our approach on two robotics tasks in simulation: (1) swinging up a pendulum with onboard vision, and (2) grasping realistic 3D objects. We also test grasping policies on a real robot arm. Through these experiments we aim to investigate the following questions: (1) Does our method offer superior OoD performance compared to data augmentation or domain randomization techniques? (2) Does our method generate seemingly meaningful environments for training? (3) Does regularizing the Lipschitz constant of the cost predictor lead to more meaningful environment variations and better OoD performance? (4) Does our method improve sim2real performance for the grasping task? For all experiments in simulation we run the minimax procedures for 30 iterations, and all results are evaluated at the iteration with the best training performance and averaged over 10 seeds. See App. A4/A5 of the extended version <ref type="bibr" target="#b27">[28]</ref> for more ablation studies, experimental details, and hyperparameters.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Swinging up a pendulum with onboard vision</head><p>Task and environment specification. Imagine a camera mounted to a pendulum and facing a visual backdrop (Fig. <ref type="figure" target="#fig_2">3</ref>); the pendulum needs to swing up and balance itself using visual feedback. This is different from typical image-based pendulum tasks where the virtual camera is located away from the pendulum and is pointed at the rotating pendulum and a static backdrop (distraction). Our onboard camera setup is more representative of robotics tasks (e.g., visionbased navigation) and requires the policy to extract features from the backdrop. We consider an environment E as a backdrop image, and use two types of images (Fig. <ref type="figure" target="#fig_2">3</ref>):</p><p>(1) Landmark: randomly colored backdrop with a randomly colored, elliptical "landmark" at a fixed radial location; (2) Digit: black backdrop with white digits from the MNIST <ref type="bibr" target="#b28">[29]</ref> and USPS <ref type="bibr" target="#b29">[30]</ref> datasets. At each time-step, the robot's policy maps image observations from the past three time-steps to the torque applied at the joint.</p><p>Control policy training. We perform off-policy training using Soft Actor Critic (SAC) <ref type="bibr" target="#b30">[31]</ref>. Episodes are sampled with the pendulum initialized at any angle. The reward function penalizes angle deviation from upright, angular velocity, and torque applied.</p><p>DRAGEN training. The training dataset of images is embedded in the low-dimensional latent vector space of an autoencoder. Both the encoder and decoder consist of convolutional layers and linear layers, and the decoder upsamples bilinearly. For training the cost predictor, we evaluate the cost of each image using average cost of episodes with the pendulum initialized around the lowest point. The cost is normalized between [0, 1]; the lower bound corresponds to the pendulum not moving at all with itself hanging downwards, and the upper bound corresponds to the cost when the policy is trained using the true states of the pendulum instead of the camera image.</p><p>Baselines. We benchmark DRAGEN against commonlyused data augmentation techniques in RL including pixelwise Gaussian noise, Perlin noise <ref type="bibr" target="#b31">[32]</ref>, and random cutout <ref type="bibr" target="#b10">[11]</ref>. Note that since the policy needs to extract spatial information from the image, some other techniques such as flipping and rotating cannot be applied.</p><p>Results: Landmark. We generate a set of training environments ("Normal" in Table <ref type="table">I</ref>, 200 images) where the landmarks are centered along the radial direction and normally sized, and four sets of test environments where the landmarks are closer to or farther away from the center, or smaller or larger in dimensions ("Closer", "Farther", "Smaller", "Larger" in Table <ref type="table">I</ref>). DRAGEN outperforms all baselines among all test datasets. Fig. <ref type="figure" target="#fig_2">3c</ref> demonstrates that DRAGEN learns to focus on generating task-relevant variations such as landmark locations and dimensions over iterations. DRAGEN 0.608 ± 0.016 0.787 ± 0.021 0.626 ± 0.023 0.589 ± 0.018 0.842 ± 0.012 0.841 ± 0.014 0.793 ± 0.018 DRAGEN-NoLip 0.519 ± 0.022 0.771 ± 0.023 0.579 ± 0.025 0.541 ± 0.020 0.789 ± 0.018 0.782 ± 0.014 0.654 ± 0.040 DRAGEN-NoCost 0.553 ± 0.020 0.785 ± 0.023 0.611 ± 0.025 0.522 ± 0.019 0.755 ± 0.020 0.802 ± 0.018 0.741 ± 0.022 Perlin noise 0.540 ± 0.021 0.797 ± 0.018 0.618 ± 0.028 0.529 ± 0.021 0.750 ± 0.023 0.814 ± 0.019 0.732 ± 0.025 Gaussian noise 0.551 ± 0.018 0.754 ± 0.026 0.613 ± 0.027 0.511 ± 0.021 0.679 ± 0.027 0.772 ± 0.022 0.707 ± 0.031 Random cutout 0.549 ± 0.023 0.779 ± 0.016 0.609 ± 0.025 0.543 ± 0.019 0.756 ± 0.020 0.772 ± 0.021 0.648 ± 0.040 None 0.551 ± 0.027 0.761 ± 0.020 0.552 ± 0.037 0.540 ± 0.023 0.733 ± 0.016 0.803 ± 0.017 0.724 ± 0.034 TABLE I: Normalized reward (mean and standard deviation over 10 seeds) for the pendulum task. Top: Landmark; bottom: Digit.</p><p>Results: Digit. We run experiments using digits 2, 3, 4, 5, 6, 7, 9; digits 0, 1, 8 are not suitable due to symmetry about both axes. Policies are trained separately for each digit with 200 training images from the MNIST dataset and then tested on the USPS dataset. The USPS dataset contains human drawings with more cursive digits. Due to space limits, we only show test performance in Table <ref type="table">I</ref>. DRAGEN outperforms all baselines for digits 2, 5, 6, 7, 9, and performs comparably to the strongest baseline for 3, 4. Note that Perlin noise is a strong baseline for this setting as its structure may "augment" the white digit (Fig. <ref type="figure" target="#fig_3">4e</ref>). In App. A4 of <ref type="bibr" target="#b27">[28]</ref>, we show that DRAGEN outperforms Perlin noise in larger margins when colored distractions are added to the black background.</p><p>Ablation: Regularizing Lipschitz constant of the cost predictor. We also investigate whether it is useful to constrain the Lipschitz constant of the cost predictor, which we hypothesize induces task-relevant variations in generated environments. We run the additional baseline without Lipschitz regularization ("DRAGEN-NoLip" in Table <ref type="table">I</ref>) using digit datasets, and it performs worse than DRAGEN across all test datasets. Fig. <ref type="figure" target="#fig_3">4c</ref> shows that DRAGEN-NoLip generates less task-relevant variations in images.</p><p>Ablation: Learning a cost-predictive embedding of environments. We remove the cost prediction loss L pred from (8) -the cost predictor is not learned, and thus it is not possible to perform gradient ascent in the latent space to find adversarial environments. Instead, we randomly perturb the latent variables of existing environments in the latent space to generate new ones. Perturbations are sampled from zero-mean Gaussian distributions with diagonal covariances to roughly match the amount of perturbations generated by DRAGEN. The results are shown in Table . I as DRAGEN-NoCost. Without searching for adversarial environments varying in task-relevant features, the baseline performs worse than DRAGEN and on par with other data augmentation techniques. Fig. <ref type="figure" target="#fig_3">4d</ref> shows that DRAGEN-NoCost generates images with worse qualities than DRAGEN.</p><p>Runtime comparison. Each experiment is run using one Nvidia RTX 2080Ti GPU and 16 server CPU threads. It </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Grasping realistic 3D objects</head><p>Task and environment specification. A robot arm needs to pick up an object placed at a fixed location in the PyBullet simulator <ref type="bibr" target="#b32">[33]</ref>. Before executing the grasp, the robot receives a heightmap image from an overhead camera and decides the 3D positions and yaw orientation of the grasp. We consider an environment E as an object, and diverse synthetic 3D objects from the 3DNet <ref type="bibr" target="#b33">[34]</ref> dataset are used for training. Policies trained in simulation with synthetic data are also transferred to a real setup (Fig. <ref type="figure" target="#fig_5">6</ref>).</p><p>Control policy training. We follow the off-policy Q   learning from <ref type="bibr" target="#b34">[35]</ref>. The Q function is modeled as a fully convolutional network (FCN) that maps a heightmap image to a pixel-wise prediction of success of executing the grasp at the corresponding 2D location. The heightmap image is rotated into six different orientations (30 degree interval) and stacked as input to the network. The pixel with the highest value across the six output maps is used as the 2D position and yaw orientation of the grasp. The grasp height is chosen as 3 centimeters lower than the height value at the picked pixel. The friction coefficient is fixed as 0.3. The reward function is either 0 or 1 based on whether the object is successfully lifted. Due to the use of fully convolutional network and multiple grasp orientations, the cost of an object is invariant to its position and orientation.</p><p>DRAGEN training. The training dataset of object meshes is embedded in the low-dimensional latent vector space of an autoencoder. Generative modeling for 3D object meshes is more involved than that for images. The encoder is a PointNet network <ref type="bibr" target="#b35">[36]</ref> that encodes objects from sampled 3D points on their surfaces. The decoder follows recent work in learning continuous signed distance functions (SDF, distance of a spatial point to the closest surface) for shape representation <ref type="bibr" target="#b22">[23]</ref>, <ref type="bibr" target="#b36">[37]</ref>: it maps the pair of a query 3D location and latent variable to the SDF value at that location. After querying the SDF at many points, the mesh can be rasterized via the Marching cubes algorithm.</p><p>Training the cost predictor requires a continuous cost for the objects to allow for gradient ascent in the latent space. We assign the cost of an object between [0, 1] based on the minimum friction coefficient among [0.10, 0.55] needed for a successful grasp (lower value corresponds to lower cost).</p><p>Baselines. Besides no data augmentation (None), we also implement Domain Randomization (DR) technique from <ref type="bibr" target="#b8">[9]</ref> that randomly chains shape primitives into new objects. We hypothesize that DR does not generate realistic objects and can be less efficient and effective when training policies to be tested on realistic objects. Another baseline (EGAD) is to substitute adversarial objects generated at each iteration with objects from the EGAD dataset <ref type="bibr" target="#b20">[21]</ref>. The EGAD dataset consists of grasping objects of diverse complexities and difficulties, but most of them are not realistic, especially the ones with high complexity and difficulty. Results: Hardware. Policies trained in simulation are tested with 40 common objects (see App. A5 of <ref type="bibr" target="#b27">[28]</ref> for images and discussion) on a Franka Panda arm and a Microsoft Azure Kinect depth camera. For each method, we run 3 out of the 10 policies trained in simulation (corresponding to the 10 different seeds). DRAGEN performs the best in both settings (Table <ref type="table" target="#tab_2">II</ref>). Videos of representative trials are provided in the supplementary materials.</p><p>Runtime comparison. Each experiment is run using 1 RTX 2080Ti GPU and 32 server CPU threads. It takes about 6 hours to run 30 iterations of DRAGEN training. The domain randomization baseline takes longer time (about 8 hours) since generating new objects involves chaining shape primitives and checking if all primitives overlap. Without any data augmentation, the baseline takes about 4 hours to run. EGAD training takes the same time since new objects added to the dataset are pre-available.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>V. CONCLUSION</head><p>We have presented DRAGEN, a framework that iteratively improves the robustness of control policies to realistic distributional shifts. By training a generative model with a cost-predictive latent space, DRAGEN can generate taskrelevant and realistic variations in environments, which are then added to the training dataset to improve the policy. Results on two different robotic tasks in simulation and in sim2real transfer demonstrate the strong OoD performance of our approach.</p><p>Challenges and Future Work. Our current choice of autoencoders for generative modeling limits the ability to generate more fine-grained variations in environments. Using more sophisticated models based on GANs may improve the quality of generated environments. In addition, our current approach learns possible perturbations from the training dataset -one potential direction is to augment this approach by prescribing a set of possible perturbations and training the generative model to select/combine the provided perturbations <ref type="bibr" target="#b17">[18]</ref>, <ref type="bibr" target="#b15">[16]</ref>, <ref type="bibr" target="#b16">[17]</ref>.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Fig. 1 :</head><label>1</label><figDesc>Fig. 1: (Left) Control policies often fail under distributional shift of environments such as changing lighting conditions. (Middle) Our proposed framework, DRAGEN, trains policies to generalize to such test environments (Sec. IV). It alternates between training a cost-predictive latent space of a generative model, generating adversarial environments via the latent space, and re-training the policy using the augmented dataset. (Right)The training dataset S consists of environments E (e.g., mugs to be grasped) in E. They are embedded in the latent space Z of a generative model. We consider the resulting set of latent embeddings as a discrete distribution around which the uncertainty set P is defined. We apply recent progress in DRO<ref type="bibr" target="#b1">[2]</ref> for performing worst-case optimization over P by perturbing the support of the discrete distribution. Costs C E (π θ ) incurred by the policy trains Z to be cost-predictive, and allows for gradient ascent on Z. Decoding adversarial latent variables generates realistic adversarial environments, such as mugs with smaller openings.</figDesc><graphic coords="2,54.00,50.08,504.02,133.43" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Fig. 2 :</head><label>2</label><figDesc>Fig. 2: Training an autoencoder and a cost predictor allows iteratively generating adversarial environments (digit images used as visual backdrops) via gradient ascent on the latent space.</figDesc><graphic coords="4,54.00,393.19,126.00,159.46" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Fig. 3 :</head><label>3</label><figDesc>Fig. 3: (a) Landmark and (b) Digit images used in pendulum task. Top right shows the robot view from the onboard camera. (c) Original and perturbed landmark images (cropped) at different iterations. Initially generated images contain both task-relevant (landmark dimension/location) and irrelevant (landmark/background color) variations, but after iterations only task-relevant variations remain.</figDesc><graphic coords="5,313.20,50.08,246.96,83.17" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Fig. 4 :</head><label>4</label><figDesc>Fig. 4: Samples of images of digit 6 at one iteration: (a) original, (b) DRAGEN, (c) DRAGEN-NoLip, (d) DRAGEN-NoCost, (e) Perlin noise [32], (f) pixel-wise Gaussian noise, and (g) random cutout. Images at the same column are based on the same original image on the top row. DRAGEN generates new images that tend to rotate or straighten the long stroke of digit 6; such features are cost/taskrelevant. Variations generated by DRAGEN-NoLip and DRAGEN-NoCost tend to be irregular and disorganized. Also Perlin noise tends to "augment" the white digit with its structure, and thus provides a strong baseline for the task. takes 3 hours to run 30 iterations of DRAGEN or DRAGEN-NoLip training, and 2.5 hours for DRAGEN-NoCost. All other baselines take about 2 hours.</figDesc><graphic coords="6,313.20,243.48,246.96,196.45" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Fig. 5 :</head><label>5</label><figDesc>Fig. 5: Sample objects generated by (a) DRAGEN, (b) Domain Randomization. Objects in (b) are unrealistic and more irregular in shapes. Although they vary in shapes significantly, they are not realistic and can hinder the training progress. Objects generated by DRAGEN generally contain less perturbations from original objects and tend to be more realistic.</figDesc><graphic coords="7,54.00,138.03,226.80,79.58" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Fig. 6 :</head><label>6</label><figDesc>Fig. 6: Hardware setup for grasping. Results The 60 categories of objects from the 3DNet dataset are split into training and test datasets, each with 255 and 205 objects. Table II shows that DRAGEN outperforms all baselines again in both test datasets. Surprisingly, DRAGEN also performs best in the training dataset. Our generated objects (Fig. 5) may form a better training curriculum than those generated with Domain Randomization or objects from the EGAD dataset. Both DR and EGAD baselines performed worse than no augmentation in training reward.Results: Hardware. Policies trained in simulation are tested with 40 common objects (see App. A5 of<ref type="bibr" target="#b27">[28]</ref> for images and discussion) on a Franka Panda arm and a Microsoft Azure Kinect depth camera. For each method, we run 3 out of the 10 policies trained in simulation (corresponding to the 10 different seeds). DRAGEN performs the best in both settings (TableII). Videos of representative trials are provided in the supplementary materials.Runtime comparison. Each experiment is run using 1 RTX 2080Ti GPU and 32 server CPU threads. It takes about 6 hours to run 30 iterations of DRAGEN training. The domain randomization baseline takes longer time (about 8 hours) since generating new objects involves chaining shape primitives and checking if all primitives overlap. Without any data augmentation, the baseline takes about 4 hours to run. EGAD training takes the same time since new objects added to the dataset are pre-available.</figDesc><graphic coords="7,480.52,203.58,75.60,113.28" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head></head><label></label><figDesc>± 0.025 0.877 ± 0.034 0.939 ± 0.024 0.975, 0.975, 0.95 DR 0.866 ± 0.030 0.723 ± 0.038 0.814 ± 0.035 0.861 ± 0.044 0.90, 0.90, 0.90 EGAD 0.875 ± 0.016 0.721 ± 0.029 0.831 ± 0.040 0.853 ± 0.029 0.925, 0.90, 0.90 None 0.890 ± 0.034 0.703 ± 0.051 0.748 ± 0.045 0.813 ± 0.040 0.85, 0.85, 0.825</figDesc><table><row><cell></cell><cell></cell><cell></cell><cell>Test Success -3DNet</cell><cell></cell><cell></cell></row><row><cell>Method</cell><cell>Train Reward</cell><cell>0.3</cell><cell>0.4</cell><cell>0.5</cell><cell>Hardware</cell></row><row><cell>DRAGEN</cell><cell>0.911 ± 0.011</cell><cell>0.733</cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>TABLE II :</head><label>II</label><figDesc>Results (mean and standard deviation (over 10 seeds) for the grasping task.</figDesc><table /></figure>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>ACKNOWLEDGMENT</head><p>The <rs type="institution">Toyota Research Institute (TRI)</rs> partially supported this work. This article solely reflects the opinions and conclusions of its authors and not TRI or any other Toyota entity. The authors were also partially supported by the <rs type="funder">Office of Naval Research</rs> [Award Number: <rs type="grantNumber">N00014-18-1-2873</rs>], the <rs type="funder">NSF</rs> <rs type="programName">CAREER Award [2044149]</rs>, and the <rs type="funder">School of Engineering and Applied Science at Princeton University</rs> through the generosity of <rs type="institution">William Addy</rs> '<rs type="grantNumber">82</rs>.</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funding" xml:id="_PezuqHp">
+					<idno type="grant-number">N00014-18-1-2873</idno>
+				</org>
+				<org type="funding" xml:id="_Dy4QSu9">
+					<orgName type="program" subtype="full">CAREER Award [2044149]</orgName>
+				</org>
+				<org type="funding" xml:id="_gXvNP6K">
+					<idno type="grant-number">82</idno>
+				</org>
+			</listOrg>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>APPENDIX</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Additional baseline and ablation studies</head><p>Effect of constraining magnitudes of latent variables. We remove the norm loss L norm from the loss function <ref type="bibr" target="#b7">(8)</ref> when training the embedding in the pendulum task. The norm loss is necessary because if the latent variables can grow in magnitude without any regularization, the Lipschitz continuity condition can be trivially satisfied, and then the Wasserstein distance around existing environments in the latent space will not capture shifts in task-relevant features. The results are shown in Table . A1 below. Without the regularization, the baseline performs worse than DRAGEN among all digits.</p><p>Effect of target ascent in cost when generating adversarial environments. As described in Sec. III-C, when performing gradient ascent on the latent space, we set the target ascent (threshold for the increase in predicted cost) using a percentage ∆ Cp ∈ [0, 1] of R( C), the empirical range of cost of all environments. Here we experiment different values of ∆ Cp in the pendulum task with digit 6. The results are shown in Table . A2 below. When target ascent is small, perturbations of the environments are too small and OoD generalization is limited; when target ascent is too big, DRAGEN training becomes highly unstable as generated environments are too difficult, and OoD performance deteriorates significantly.</p><p>Training using digit images with colored background. In Sec. IV we hypothesize that DRAGEN will outperform Perlin noise in larger margins if colored distractions are added to the black background. Here we add uniform, randomly sampled color to the background of both MNIST (training) and USPS (testing) digit images. We perform experiments using digit 3, which is the only digit where DRAGEN performs worse than Perlin noise in regular USPS images with black background (Table <ref type="table">I</ref>). DRAGEN achieves 0.715 ± 0.023% in normalized reward while Perlin noise only achieves 0.627 ± 0.025%. We suspect that with black background, the structured Perlin noise "augments" the white digit (Fig. <ref type="figure">4</ref>), which is less effective if the background is colored.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Experiment details 1) Pendulum task: Control policy training.</head><p>We use an open-sourced implementation of the Soft Actor Critic (SAC) algorithm (<ref type="url" target="https://github.com/astooke/rlpyt">https://github.com/astooke/rlpyt</ref>). Some tricks <ref type="bibr" target="#b9">[10]</ref> are also found to be helpful: (1) actor and critic share the same convolutional layers, and only the critic updates them; (2) before training starts, a fixed number of steps (10% of the replay buffer size) are collected with the initial policy, and these steps are kept in the replay buffer throughout training (to alleviate catastrophic forgetting). During re-training at each iteration, actor and critic models are saved at the step when the reward is the highest, and then loaded at the next iteration. Replay buffer is re-used between iterations.</p><p>For both settings (Landmark and Digit), the same policy network structure is used: two convolutional layers with 16, 32 channels, 6, 4 kernel sizes, 4, 2 strides, zero paddings; additionally the actor has two linear layers each with 128 units, and the critic has two each with 256 units; ReLU activation is applied at all layers. Other hyperparameters are listed below.</p><p>Cost of an image for DRAGEN training. For normalizing the cost of an environment between [0, 1], the lower bound corresponds to the pendulum not moving at all with itself hanging downwards, and the upper bound corresponds to the cost when the policy is trained using the true states of the pendulum instead of the camera image.</p><p>Generative modeling. The encoder and decoder of the autoencoder follow a symmetric pattern: the same number L of layers are used; the encoder uses convolutional layers with 4 kernel size, 2 stride, and 1 padding, which downsizes the image by a factor of 2 at each layer; the decoder uses convolutional layers with 3 kernel size, 1 stride, and 1 padding, which preserves the image size, but uses upsampling with a scale factor of 2 after each convolutional layer. We find that a good autoencoder with low reconstruction loss is essential to generating images of high qualities, and thus we run more epochs of embedding training at the first iteration of DRAGEN training. For all baselines and DRAGEN, the same number K of new images is generated at each iteration. Additional hyperparameters are shown below.</p><p>Sample training and testing images from datasets ; bottom: USPS dataset (testing) <ref type="bibr" target="#b29">[30]</ref>. The USPS dataset contains human drawings with more cursive digits.</p><p>2) Grasping in simulation: Control policy training. The fully convolutional network (FCN) that acts as the Q function first consists of three convolutional layers that each downsamples the image by a factor of 2, and then three convolutional layers with bilinear upsampling to restore the original dimensions of the input image. A 1x1 convolutional layer is applied at the end to set RGB channels of the output. ReLU activation and batch normalization are applied at all layers except for the last one. Since grasp is executed only at the chosen pixel of the output prediction maps, gradients of binary cross-entropy loss are only passed through that pixel. During re-training at each iteration, we apply -greedy exploration with initialized at 1.0 (all actions are random initially) and annealed to 0.     the step when the training reward is the highest, and then loaded at the next iteration. Replay buffer is re-used between iterations. Other hyperparameters are listed below. Generative modeling. The PointNet <ref type="bibr" target="#b35">[36]</ref> encoder consists of three 1D convolutional layers, spatial softmax, and three linear layers to encode an object from its sampled surface points to a low-dimensional latent variable. The decoder network consists of six linear layers and a skip connection at the fourth layer and it decodes the SDF value from a pair of the query 3D location and latent variable.   Cost of an object in DRAGEN training. We initially trained the cost predictor using binary grasping cost (successfully lifted or not) but gradient ascent on the latent space did not generate diverse, task-relevant variations in object shapes. Thus we assign a more continuous cost to an object based on the minimum friction coefficient needed for a successful grasp -each object is evaluated at 10 different friction coefficient values between 0.10 and 0.55 with 0.05 interval (stop if success), and the 10 values corresponds to cost values from 0.0 to 0.9 with 0.1 interval. If a grasp fails with the highest friction coefficient (0.55), the cost is 1.0. Thus there are a total of 11 possible cost values for an object. We hypothesize that using higher resolution of cost values can further improve DRAGEN's performance, but it comes at the cost of running more simulation at each iteration when environments are re-evaluated before the generative model and embedding are re-trained.</p><p>3) Grasping on hardware: Experiments are performed using a Franka Panda arm and a Microsoft Azure Kinect RGB-D camera. Robot Operating System (ROS) Melodic package (on Ubuntu 18.04) is used to integrate robot arm control and perception.  </p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">The limits and potentials of deep learning for robotics</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Sünderhauf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Brock</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Scheirer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Hadsell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Fox</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leitner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Upcroft</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Abbeel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Burgard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Milford</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">The International Journal of Robotics Research</title>
+		<imprint>
+			<biblScope unit="volume">37</biblScope>
+			<biblScope unit="issue">4-5</biblScope>
+			<biblScope unit="page" from="405" to="420" />
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Certifiable distributional robustness with principled adversarial training</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Sinha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Namkoong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Duchi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the International Conference on Learning Representations (ICLR)</title>
+		<meeting>the International Conference on Learning Representations (ICLR)</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Quantifying distributional model risk via optimal transport</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Blanchet</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Murthy</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Mathematics of Operations Research</title>
+		<imprint>
+			<biblScope unit="volume">44</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="565" to="600" />
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Data-driven distributionally robust optimization using the Wasserstein metric: Performance guarantees and tractable reformulations</title>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">M</forename><surname>Esfahani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Kuhn</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Mathematical Programming</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="volume">171</biblScope>
+			<biblScope unit="page" from="115" to="166" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Stochastic gradient methods for distributionally robust optimization with f -divergences</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Namkoong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">C</forename><surname>Duchi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Advances in Neural Information Processing Systems (NIPS)</title>
+		<meeting>the Advances in Neural Information Processing Systems (NIPS)</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="volume">29</biblScope>
+			<biblScope unit="page" from="2208" to="2216" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Generalizing to unseen domains via adversarial data augmentation</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Volpi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Namkoong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Sener</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">C</forename><surname>Duchi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Murino</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Savarese</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Advances in Neural Information Processing Systems (NIPS)</title>
+		<meeting>the Advances in Neural Information Processing Systems (NIPS)</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="5334" to="5344" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Domain randomization for transferring deep neural networks from simulation to the real world</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tobin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Fong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Ray</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Schneider</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zaremba</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Abbeel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)</title>
+		<meeting>the IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="23" to="30" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Active domain randomization</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Mehta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Diaz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Golemo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">J</forename><surname>Pal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Paull</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Conference on Robot Learning (CoRL)</title>
+		<meeting>the Conference on Robot Learning (CoRL)</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="1162" to="1176" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Domain randomization and generative models for robotic grasping</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tobin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Biewald</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Duan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Andrychowicz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Handa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Kumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Mcgrew</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Ray</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Schneider</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Welinder</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)</title>
+		<meeting>the IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="3482" to="3489" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Image augmentation is all you need: Regularizing deep reinforcement learning from pixels</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Yarats</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Kostrikov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Fergus</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the International Conference on Learning Representations (ICLR)</title>
+		<meeting>the International Conference on Learning Representations (ICLR)</meeting>
+		<imprint>
+			<biblScope unit="page">2021</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Reinforcement learning with augmented data</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Laskin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Stooke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Pinto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Abbeel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Srinivas</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Advances in Neural Information Processing Systems (NeurIPS)</title>
+		<meeting>the Advances in Neural Information Processing Systems (NeurIPS)</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page">895</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Emergent complexity and zero-shot transfer via unsupervised environment design</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Dennis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Jaques</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Vinitsky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bayen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Russell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Critch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Levine</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Advances in Neural Information Processing Systems (NeurIPS)</title>
+		<meeting>the Advances in Neural Information Processing Systems (NeurIPS)</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page">61</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<monogr>
+		<title level="m" type="main">Paired openended trailblazer (POET): Endlessly generating increasingly complex and diverse learning environments and their solutions</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lehman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Clune</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">O</forename><surname>Stanley</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1901.01753</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Explaining and harnessing adversarial examples</title>
+		<author>
+			<persName><forename type="first">I</forename><surname>Goodfellow</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Shlens</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Szegedy</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the International Conference on Learning Representations (ICLR)</title>
+		<meeting>the International Conference on Learning Representations (ICLR)</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<title level="m" type="main">The robust manifold defense: Adversarial training using generative models</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Jalal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Ilyas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Daskalakis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">G</forename><surname>Dimakis</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1712.09196</idno>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<monogr>
+		<title level="m" type="main">Model-based robust deep learning</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Robey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Hassani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><forename type="middle">J</forename><surname>Pappas</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2005.10247</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Learning perturbation sets for robust machine learning</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>Wong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">Z</forename><surname>Kolter</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the International Conference on Learning Representations (ICLR)</title>
+		<meeting>the International Conference on Learning Representations (ICLR)</meeting>
+		<imprint>
+			<biblScope unit="page">2021</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">DeceptionNet: Network-driven domain randomization</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Zakharov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Kehl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ilic</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV)</title>
+		<meeting>the IEEE/CVF International Conference on Computer Vision (ICCV)</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="532" to="541" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<monogr>
+		<author>
+			<persName><forename type="first">K</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Yan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Urtasun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Yumer</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2005.11626</idno>
+		<title level="m">ShapeAdv: Generating shape-aware adversarial 3D point clouds</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Adversarial grasp objects</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Tseng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Danielczuk</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Mahler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ichnowski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Goldberg</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE International Conference on Automation Science and Engineering</title>
+		<meeting>the IEEE International Conference on Automation Science and Engineering</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="241" to="248" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">EGAD! an evolved grasping analysis dataset for diversity and reproducibility in robotic manipulation</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Morrison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Corke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leitner</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Robotics and Automation Letters</title>
+		<imprint>
+			<biblScope unit="volume">5</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="4368" to="4375" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Semantic adversarial attacks: Parametric transformations that fool deep classifiers</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Joshi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Mukherjee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Sarkar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Hegde</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV)</title>
+		<meeting>the IEEE/CVF International Conference on Computer Vision (ICCV)</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="4773" to="4783" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">DeepSDF: Learning continuous signed distance functions for shape representation</title>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">J</forename><surname>Park</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Florence</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Straub</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Newcombe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Lovegrove</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR)</title>
+		<meeting>the IEEE Conference on Computer Vision and Pattern Recognition (CVPR)</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="165" to="174" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Learning representations and generative models for 3D point clouds</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Achlioptas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Diamanti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Mitliagkas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Guibas</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the International Conference on Machine Learning (ICML)</title>
+		<meeting>the International Conference on Machine Learning (ICML)</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="40" to="49" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Reducing the dimensionality of data with neural networks</title>
+		<author>
+			<persName><forename type="first">G</forename><forename type="middle">E</forename><surname>Hinton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">R</forename><surname>Salakhutdinov</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Science</title>
+		<imprint>
+			<biblScope unit="volume">313</biblScope>
+			<biblScope unit="issue">5786</biblScope>
+			<biblScope unit="page" from="504" to="507" />
+			<date type="published" when="2006">2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<monogr>
+		<author>
+			<persName><forename type="first">C</forename><surname>Villani</surname></persName>
+		</author>
+		<title level="m">Optimal transport: old and new</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2009">2009</date>
+			<biblScope unit="volume">338</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Wasserstein generative adversarial networks</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Arjovsky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Chintala</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Bottou</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the International Conference on Machine Learning (ICML)</title>
+		<meeting>the International Conference on Machine Learning (ICML)</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="214" to="223" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<monogr>
+		<title level="m" type="main">Distributionally robust policy learning via adversarial environment generation</title>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">Z</forename><surname>Ren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Majumdar</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2107.06353</idno>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Gradient-based learning applied to document recognition</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Lecun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Bottou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Haffner</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Proceedings of the IEEE</title>
+		<imprint>
+			<biblScope unit="volume">86</biblScope>
+			<biblScope unit="issue">11</biblScope>
+			<biblScope unit="page" from="2278" to="2324" />
+			<date type="published" when="1998">1998</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">A database for handwritten text recognition research</title>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">J</forename><surname>Hull</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Pattern Analysis and Machine intelligence</title>
+		<imprint>
+			<biblScope unit="volume">16</biblScope>
+			<biblScope unit="issue">5</biblScope>
+			<biblScope unit="page" from="550" to="554" />
+			<date type="published" when="1994">1994</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Soft Actor-Critic: Off-policy maximum entropy deep reinforcement learning with a stochastic actor</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Haarnoja</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Abbeel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Levine</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the International Conference on Machine Learning (ICML)</title>
+		<meeting>the International Conference on Machine Learning (ICML)</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="1861" to="1870" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">An image synthesizer</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Perlin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Siggraph Computer Graphics</title>
+		<imprint>
+			<biblScope unit="volume">19</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="287" to="296" />
+			<date type="published" when="1985">1985</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<monogr>
+		<title level="m" type="main">PyBullet, a Python module for physics simulation for games, robotics and machine learning</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>Coumans</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bai</surname></persName>
+		</author>
+		<ptr target="http://pybullet.org" />
+		<imprint>
+			<biblScope unit="page" from="2016" to="2021" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">3DNet: Large-scale object class recognition from CAD models</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Wohlkinger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Aldoma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">B</forename><surname>Rusu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Vincze</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE International Conference on Robotics and Automation</title>
+		<meeting>the IEEE International Conference on Robotics and Automation</meeting>
+		<imprint>
+			<date type="published" when="2012">2012</date>
+			<biblScope unit="page" from="5384" to="5391" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Learning synergies between pushing and grasping with selfsupervised deep reinforcement learning</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Zeng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Welker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Rodriguez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Funkhouser</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)</title>
+		<meeting>the IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="4238" to="4245" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">PointNet: Deep learning on point sets for 3D classification and segmentation</title>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">R</forename><surname>Qi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Su</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Mo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">J</forename><surname>Guibas</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition</title>
+		<meeting>the IEEE Conference on Computer Vision and Pattern Recognition</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="652" to="660" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<monogr>
+		<title level="m" type="main">Adversarial generation of continuous implicit shape representations</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Kleineberg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Weichert</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2002.00349</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

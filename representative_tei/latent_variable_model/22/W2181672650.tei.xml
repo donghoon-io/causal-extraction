@@ -1,0 +1,922 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Latent Domain Phrase-based Models for Adaptation</title>
+				<funder ref="#_cYedf9y">
+					<orgName type="full">Netherlands Organization for Scientific Research (NWO)</orgName>
+				</funder>
+				<funder ref="#_NHzXRvd">
+					<orgName type="full">unknown</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Hoang</forename><surname>Cuong</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department">Institute for Logic, Language and Computation</orgName>
+								<orgName type="institution">University of Amsterdam</orgName>
+								<address>
+									<addrLine>Science Park 107</addrLine>
+									<postCode>1098 XG</postCode>
+									<settlement>Amsterdam</settlement>
+									<country key="NL">The Netherlands</country>
+								</address>
+							</affiliation>
+						</author>
+						<author role="corresp">
+							<persName><forename type="first">Khalil</forename><surname>Sima'an</surname></persName>
+							<email>k.simaan@uva.nl</email>
+							<affiliation key="aff0">
+								<orgName type="department">Institute for Logic, Language and Computation</orgName>
+								<orgName type="institution">University of Amsterdam</orgName>
+								<address>
+									<addrLine>Science Park 107</addrLine>
+									<postCode>1098 XG</postCode>
+									<settlement>Amsterdam</settlement>
+									<country key="NL">The Netherlands</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Latent Domain Phrase-based Models for Adaptation</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-21T19:29+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Phrase-based models directly trained on mix-of-domain corpora can be sub-optimal. In this paper we equip phrase-based models with a latent domain variable and present a novel method for adapting them to an in-domain task represented by a seed corpus. We derive an EM algorithm which alternates between inducing domain-focused phrase pair estimates, and weights for mix-domain sentence pairs reflecting their relevance for the in-domain task. By embedding our latent domain phrase model in a sentence-level model and training the two in tandem, we are able to adapt all core translation components together -phrase, lexical and reordering. We show experiments on weighing sentence pairs for relevance as well as adapting phrase-based models, showing significant performance improvement in both tasks.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Mix vs. Latent Domain Models</head><p>Domain adaptation is usually perceived as utilizing a small seed in-domain corpus to adapt an existing system trained on an out-of-domain corpus.</p><p>Here we are interested in adapting an SMT system trained on a large mix-domain corpus C mix to an in-domain task represented by a seed parallel corpus C in . The mix-domain scenario is interesting because often a large corpus consists of sentence pairs representing diverse domains, e.g., news, politics, finance, sports, etc.</p><p>At the core of a standard state-of-the-art phrasebased system <ref type="bibr">(Och and Ney, 2004</ref>) is a phrase table { ẽ, f } extracted from the word-aligned training data together with estimates for P t (ẽ | f ) and P t ( f | ẽ). Because the translations of words often vary across domains, it is likely that in a mix-domain corpus C mix the translation ambiguity will increase with the domain diversity. Furthermore, the statistics in C mix will reflect translation preferences averaged over the diverse domains. In this sense, phrase-based models trained on C mix can be considered domainconfused. This often leads to suboptimal performance <ref type="bibr" target="#b10">(Gascó et al., 2012;</ref><ref type="bibr" target="#b12">Irvine et al., 2013)</ref>.</p><p>Recent adaptation techniques can be seen as mixture models, where two or more phrase tables, estimated from in-and mix-domain corpora, are combined together by interpolation, fill-up, or multiple-decoding paths <ref type="bibr" target="#b13">(Koehn and Schroeder, 2007;</ref><ref type="bibr" target="#b1">Bisazza et al., 2011;</ref><ref type="bibr" target="#b27">Sennrich, 2012;</ref><ref type="bibr" target="#b25">Razmara et al., 2012;</ref><ref type="bibr" target="#b26">Sennrich et al., 2013)</ref>. Here we are interested in the specific question how to induce a phrase-based model from C mix for indomain translation? We view this as in-domain focused training on C mix , a complementary adaptation step which might precede any further combination with other models, e.g., in-, mix-or general-domain.</p><p>The main challenge is how to induce from C mix a phrase-based model for the in-domain task, given only C in as evidence? We present an approach whereby the contrast between in-domain prior distributions and "out-domain" distributions is exploited for softly inviting (or recruiting) C mix phrase pairs to either camp. To this end we in-troduce a latent domain variable D to signify in-(D 1 ) and out-domain (D 0 ) respectively. 1  With the introduction of the latent variables, we extend the translation tables in phrase-based models from generic P t (ẽ | f ) to domain-focused by conditioning them on D, i.e., P t (ẽ | f , D) and decomposing them as follows:</p><formula xml:id="formula_0">P t (ẽ | f , D) = P t (ẽ | f )P(D | ẽ, f ) ẽ P t (ẽ | f )P(D | ẽ, f )</formula><p>.</p><p>(1)</p><p>Where P(D | ẽ, f ) is viewed as the latent phraserelevance models, i.e., the probability that a phrase pair is in-(D 1 ) or out-domain (D 0 ). In the end, our goal is to replace the domain-confused tables, P t (ẽ | f ) and P t ( f | ẽ), with the in-domain focused ones,</p><formula xml:id="formula_1">P t (ẽ | f , D 1 ) and P t ( f | ẽ, D 1 ). 2 Note how P t (ẽ | f , D 1 ) and P t ( f | ẽ, D 1 ) contains P t (ẽ | f ) and P t ( f | ẽ) as special case.</formula><p>Eq. 1 shows that the key to training the latent phrase-based translation models is to train the latent phrase-relevance models, P (D | ẽ, f ). Our approach is to embed P (D | ẽ, f ) in asymmetric sentence-level models P (D | e, f ) and train them on C mix . We devise an EM algorithm where at every iteration, in-or out-domain estimates provide full sentence pairs e, f with expectations {P (D | e, f ) | D ∈ {0, 1}}. Once these expectation are in C mix , we induce re-estimates for the latent phrase-relevance models, P (D | ẽ, f ). Metaphorically, during each EM iteration the current in-or out-domain phrase pairs compete on inviting C mix sentence pairs to be in-or outdomain, which bring in new (weights for) in-and out-domain phrases. Using the same algorithm we also show how to adapt all core translation components in tandem, including also lexical weights and lexicalized reordering models.</p><p>Next we detail our model, the EM-based invitation training algorithm and provide technical solutions to a range of difficulties. We report exper-1 Crucially, the lack of explicit out-domain data in Cmix is a major technical difficulty. We follow <ref type="bibr" target="#b5">(Cuong and Sima'an, 2014)</ref> and in the sequel present a relatively efficient solution based on a kind of "burn-in" procedure.</p><p>2 It is common to use these domain-focused models as additional features besides the domain-confused features. However, here we are more interested in replacing the domain-confused features rather than complementing them. This distinguishes this work from other domain adaptation literature for MT.</p><p>iments showing good instance weighting performance as well as significantly improved phrasebased translation performance.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Model and training by invitation</head><p>Eq. 1 shows that the key to training the latent phrase-based translation models is to train the latent phrase-relevance models, P (D | ẽ, f ). As mentioned, for training P (D | ẽ, f ) on parallel sentences in C mix we embed them in two asymmetric sentence-level models {P (D | e, f ) | D ∈ {0, 1}}.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.1">Domain relevance sentence models</head><p>Intuitively, sentence models for domain relevance P (D | e, f ) are somewhat related to data selection approaches <ref type="bibr" target="#b19">(Moore and Lewis, 2010;</ref><ref type="bibr" target="#b0">Axelrod et al., 2011)</ref>. The dominant approach to data selection uses the contrast between perplexities of in-and mix-domain language models. <ref type="foot" target="#foot_0">3</ref> In the translation context, however, often a source phrase has different senses/translations in different domains, which cannot be distinguished with monolingual language models <ref type="bibr" target="#b5">(Cuong and Sima'an, 2014)</ref>. Therefore, our proposed latent sentencerelevance model includes two major latent components -monolingual domain-focused relevance models and domain-focused translation models derives as follows:</p><formula xml:id="formula_2">P (D | e, f) = P (e, f, D) D∈{D 1 ,D 0 } P (e, f, D) ,<label>(2)</label></formula><p>where P (e, f, D) can be decomposed as:</p><formula xml:id="formula_3">P (f, e, D) = 1 2 P (D)P lm (e | D)P t (f | e, D) + P (D)P lm (f | D)P t (e | f, D) .</formula><p>(3)</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Here</head><p>• P t (e|f, D) and similarly P t (f|e, D): the latent domain-focused translation models aim at capturing the faithfulness of translation with respect to different domains. We simplify this as "bag-of-possible-phrases" translation models:<ref type="foot" target="#foot_1">foot_1</ref> </p><formula xml:id="formula_4">P t (e|f, D) := ẽ, f ∈A(e,f) P t (ẽ| f , D) c(ẽ, f ) ,</formula><p>(4) where A(e, f) is the multiset of phrases in e, f and c(•) denotes their count. Sub-model P t (ẽ| f , D) is given by Eq. 1.</p><p>• P lm (e|D), P lm (f|D): the latent monolingual domain-focused relevance models aim at capturing the relevance of e and f for identifying domain D but here we consider them language models (LMs). <ref type="foot" target="#foot_2">5</ref> As mentioned, the out-domain LMs differ from previous works, e.g., <ref type="bibr" target="#b0">(Axelrod et al., 2011)</ref>, which employ mix-domain LMs. Here, we stress the difficulty in finding data to train out-domain LMs and present a solution based on identifying pseudo out-domain data.</p><p>• P (D): the domain priors aim at modeling the percentage of relevant data that the learning framework induces. It can be estimated via phrase-level parameters but here we prefer sentence-level parameters:<ref type="foot" target="#foot_3">foot_3</ref>  It is obvious that there does not exist a closed-form solution for Equation 6 because of the existence of the log-term log . The EM algorithm <ref type="bibr" target="#b6">(Dempster et al., 1977)</ref> comes as an alternative solution to fit the model. It can be seen to maximize L via blockcoordinate ascent on a lower bound F(q, Θ) using an auxiliary distribution q(D | e, f)</p><formula xml:id="formula_5">F(q, Θ) = e,f D q(D | e, f) log P Θ D (D, e, f) q(D | e, f)<label>(7</label></formula><p>) where the inequality results, i.e., L ≥ F(q, Θ), derived from log being concave and Jensen's inequality. We rewrite the Free Energy F(q, Θ) (Neal and Hinton, 1999) as follows:</p><formula xml:id="formula_6">F = e,f D q(D | e, f) log P Θ D (D | e, f) q(D | e, f) + e,f D q(D | e, f) log P Θ (e, f) = e,f log P Θ (e, f)<label>(8)</label></formula><p>-</p><formula xml:id="formula_7">KL[q(D | e, f) || P Θ D (D | e, f)],</formula><p>where</p><formula xml:id="formula_8">KL[• || •] is the KL-divergence.</formula><p>With the introduction of the KL-divergence, the alternating E and M steps for our EM algorithm are easily derived as</p><formula xml:id="formula_9">E-step : q t+1 (9) argmax q(D | e,f) F(q, Θ t ) = argmin q(D | e,f) KL[q(D|e, f) || P Θ t D (D|e, f)] = P Θ t D (D | e, f) M-step : Θ t+1 (10) argmax Θ F(q t+1 , Θ) = argmax Θ e,f D q(D | e, f) log P Θ D (D, e, f)</formula><p>The iterative procedure is illustrated in Figure 1. <ref type="foot" target="#foot_4">7</ref> At the E-step, a guess for P (D | ẽ, f ) can be used to update P t ( f | ẽ, D) and P t (ẽ | f , D) (i.e., using Eq. 1) and consequently P t (f | e, D) and P t (e | f, D) (i.e., using Eq. 4). These resulting table estimates, together with the domain-focused LMs and the domain priors are served as expected counts to update P (D | e, f).<ref type="foot" target="#foot_5">foot_5</ref> At the M-step,  <ref type="bibr" target="#b20">Hinton, 1999)</ref>.</p><p>Before EM training starts we must provide a "reasonable" initial guess for P (D | ẽ, f ). We must also train the out-domain LMs, which needs the construction of pseudo out-domain data. 9 One simple way to do that is inspired by burnin in sampling, under the guidance of an indomain data set, C in as prior. At the beginning, we train P t (ẽ | f , D 1 ) and P t ( f | ẽ, D 1 ) for all phrases learned from C in . We also train P t (ẽ | f ) and P t ( f | ẽ) for all phrases learned from C mix . During burn-in we assume that the out-domain phrase-based models are the domainconfused phrase-based models, i.e., P t</p><formula xml:id="formula_10">(ẽ | f , D 0 ) ≈ P t (ẽ | f ) and P t ( f | ẽ, D 0 ) ≈ P t ( f | ẽ).</formula><p>We isolate all the LMs and the prior models from our model, and apply a single EM iteration to update P (D | e, f) based on those domain-focused models</p><formula xml:id="formula_11">P t (ẽ | f , D) and P t ( f | ẽ, D).</formula><p>In the end, we use P (D | e, f) to fill in the values of hidden variable D in C mix , so it provides us with an initialization for P (D | ẽ, f ). Subsequently, we also rank sentence pairs in C mix with is important to scale the probabilities of the four LMs to make them comparable: we normalize the probability that a LM assigns to a sentence by the total probability this LM assigns to all sentences in C mix .</p><formula xml:id="formula_12">P (D 1 | e, f)</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Intrinsic evaluation</head><p>We evaluate the ability of our model to retrieve "hidden" in-domain data in a large mix-domain corpus, i.e., we hide some in-domain data in a large mix-domain corpus. We weigh sentence pairs under our model with P (D 1 | ẽ, f ) and P (D 1 | e, f) respectively. We report pseudoprecision/recall at the sentence-level using a range of cut-off criteria for selecting the top scoring instances in the mix-domain corpus. A good relevance model expects to score higher for the hidden in-domain data.</p><p>Baselines Two standard perplexity-based selection models in the literature have been implemented as the baselines: cross-entropy difference <ref type="bibr" target="#b19">(Moore and Lewis, 2010)</ref> and bilingual cross-entropy difference <ref type="bibr" target="#b0">(Axelrod et al., 2011)</ref>, investigating their ability to retrieve the hiding data as well. Training them over the data to learn the sentences with their relevance, we then rank the sentences to select top of pairs to evaluate the pseudo-precision/recall at the sentence-level.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Results</head><p>We use a mix-domain corpus C g of 770K sentence pairs of different genres. <ref type="foot" target="#foot_6">10</ref> There is also a Legal corpus of 183K pairs that serves as the in-domain data. We create C mix by selecting an arbitrary 83K pairs of in-domain pairs and adding them to C g (the hidden in-domain data); we use the remaining 100k in-domain pairs as C in .</p><p>To train the baselines, we construct interpolated 4-gram Kneser-Ney LMs using BerkeleyLM <ref type="bibr" target="#b23">(Pauls and Klein, 2011)</ref>. Training our model on the data takes six EM-iterations to converge.<ref type="foot" target="#foot_7">foot_7</ref>  Fig. <ref type="figure" target="#fig_3">2</ref> helps us examine how the pseudo sentence invitation are done during each EM iteration. For later iterations we observe a better pseudo-precision and pseudo-recall at sentencelevel (Fig. <ref type="figure" target="#fig_3">2</ref>(a), Fig. <ref type="figure" target="#fig_3">2(b)</ref>). Fig. <ref type="figure" target="#fig_3">2</ref> also reveals a good learning capacity of our learning framework. Nevertheless, we observe that the baselines do not work well for this task. This is not new, as pointed out in our previous work <ref type="bibr" target="#b5">(Cuong and Sima'an, 2014)</ref>.</p><p>Which component type contributes more to the performance, the latent domain language models or the latent domain translation models? Further experiments have been carried on to neutralize each component type in turn and build a selection system with the rest of our model parameters. It turns out that the latent domain translation models are crucial for performance for the learning framework, while the latent domain LMs make a far smaller yet substantial contribution. We refer readers to our previous work <ref type="bibr" target="#b5">(Cuong and Sima'an, 2014)</ref>, which provides detail analysis of the data selection problem.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Translation experiments: Setting</head><p>Data We use a mix-domain corpus consisting of 4M sentence pairs, collected from multiple resources including EuroParl <ref type="bibr" target="#b17">(Koehn, 2005)</ref> phrase-based system, using it as the baseline. <ref type="foot" target="#foot_8">12</ref>There are three main kinds of features for the translation model in the baseline -phrase-based translation features, lexical weights <ref type="bibr" target="#b14">(Koehn et al., 2003)</ref> and lexicalized reordering features <ref type="bibr" target="#b15">(Koehn et al., 2005)</ref>. <ref type="foot" target="#foot_9">13</ref> Other features include the penalties for word, phrase and distance-based reordering.</p><p>The mix-domain corpus is word-aligned using GIZA++ <ref type="bibr" target="#b21">(Och and Ney, 2003)</ref> and symmetrized with grow(-diag)-final-and <ref type="bibr" target="#b14">(Koehn et al., 2003)</ref>. We limit phrase length to a maximum of seven words. The LMs are interpolated 4-grams with Kneser-Ney, trained on 2.2M English sentences from Europarl augmented with 248.8K sentences from News Commentary Corpus (WMT 2013). We tune the system using k-best batch MIRA <ref type="bibr" target="#b3">(Cherry and Foster, 2012)</ref> </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Electrics (Training Data: 1 Million)</head><p>Figure <ref type="figure">3</ref>: BLEU averaged over multiple runs. <ref type="bibr">(Koehn et al., 2007)</ref> as decoder. <ref type="foot" target="#foot_10">14</ref>We report BLEU <ref type="bibr" target="#b22">(Papineni et al., 2002)</ref>, ME-TEOR 1.4 <ref type="bibr" target="#b7">(Denkowski and Lavie, 2011)</ref> and TER <ref type="bibr" target="#b28">(Snover et al., 2006)</ref>, with statistical significance at 95% confidence interval under paired bootstrap re-sampling <ref type="bibr" target="#b24">(Press et al., 1992)</ref>. For every system reported, we run the optimizer at least three times, before running MultEval <ref type="bibr" target="#b4">(Clark et al., 2011)</ref> for resampling and significance testing. Outlook In Section 5 we examine the effect of training only the latent domain-focused phrase table using our model. In Section 6 we proceed further to estimate also latent domain-focused lexical weights and lexicalized reordering models, examining how they incrementally improve the translation as well.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Adapting phrase table only</head><p>Here we investigate the effect of adapting the phrase table only; we will delay adapting the lexical weights and lexicalized reordering features to Section 6. We build a phrase-based system with the usual features as the baseline, including two bi-directional phrase-based models, plus the penalties for word, phrase and distortion. We also build a latent domain-focused phrasebased system with the two bi-directional latent phrase-based models, and the standard penalties described above.</p><p>We explore training data sizes 1M , 2M and 4M sentence pairs. Three baselines are trained yielding 95.77M , 176.29M and 323.88M phrases respectively. We run 5 EM iterations to train our learning framework. We use the parameter estimates for P (D | ẽ, f ) derived at each EM iteration to train our latent domain-focused phrase-based systems. Fig. <ref type="figure">3</ref> presents the results (in BLEU) at each iteration in detail for the case of 1M sentence pairs. Similar improvements are observed for METEOR and TER. Here, we consistently observe improvements at p-value = 0.0001 for all cases.</p><p>It should be noted that when doubling the training data to 2M and 4M , we observe the similar results.</p><p>Finally, for all cases we report their best result in Table <ref type="table" target="#tab_3">2</ref>. Here, note how the improvement could be gained when doubling the training data.  Following <ref type="bibr" target="#b11">(Hasler et al., 2014)</ref> in Table <ref type="table" target="#tab_5">3</ref> we also show that the entropy decreases significantly in the adapted tables in all cases, which indicates that the distributions over translations of phrases have become sharper.  In practice, the third iteration systems usually produce best translations. This is somewhat expected because as EM invites more pseudo indomain pairs in later iterations, it sharpens the estimates of P (D 1 | ẽ, f ), making pseudo outdomain pairs tend to 0.0. Table <ref type="table" target="#tab_6">4</ref> shows the percentage of entries with P (D 1 | ẽ, f ) &lt; 0.01 at every iteration, e.g., 34.52% at the fifth iteration. This induced schism in C mix diminishes the difference between the relevance scores for certain sentence pairs, limiting the ability of the latent phrase-based models to further discriminate in the gray zone. Finally, to give a sense of the improvement in translation, we (randomly) select cases where the systems produce different translations and present some of them in Table <ref type="table">5</ref>. These examples are indeed illuminating, e.g., "can reproduce signs of audio"/"can play signals audio", "password teacher"/"password master", revealing thoroughly the benefit derived from adapting the phrase models from being domain-confused to being domain-focused. Table <ref type="table">6</ref> presents phrase table entries, i.e., p t (e | f ) and p t (e | f, D 1 ), for the "can reproduce signs of audio"/"can play signals audio" example.</p><formula xml:id="formula_13">Entries P (D 1 | f , ẽ) &lt; 0.</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Fully adapted translation model</head><p>The preceding experiments reveal that adapting the phrase tables significantly improves translation performance. Now we also adapt the lexical Briefly, the lexical weights provide smooth estimates for the phrase pair based on word translation scores P (e | f ) between pairs of words e, f , i.e., P (e | f ) = c(e,f ) e c(e,f ) <ref type="bibr" target="#b14">(Koehn et al., 2003)</ref>. Our latent domain-focused lexical weights, on the other hand, are estimated according to P (e | f, D 1 ), i.e., P (e | f, D 1 ) =</p><formula xml:id="formula_14">P (e | f )P (D 1 | e, f ) f P (e | f )P (D 1 | e, f ) .</formula><p>The lexicalized reordering models with orientation variable O, P (O | ẽ, f ), model how likely a phrase ẽ, f directly follows a previous phrase (monotone), swaps positions with it (swap), or is not adjacent to it (discontinous) <ref type="bibr" target="#b15">(Koehn et al., 2005)</ref>. We make these domain-focused:</p><formula xml:id="formula_15">P (O | ẽ, f , D 1 ) = P (O | ẽ, f )P (D 1 | O, ẽ, f ) O P (O | ẽ, f )P (D 1 | O, ẽ, f ) (11) Estimating P (D 1 | O, ẽ, f ) and P (D 1 | e, f</formula><p>) is similar to estimating P (D 1 | ẽ, f ) and hinges on the estimates of P (D 1 | e, f) during EM.</p><p>The baseline for the following experiments is a standard state-of-the-art phrase-based system, including two bi-directional phrase-based translation features, two bi-directional lexical weights, six lexicalized reordering features, as well as the penalties for word, phrase and distortion. We develop three kinds of domain-adapted systems that are different at their adaptation level to fit the task. The first (Sys. 1) adapts only the phrase-based models, using the same lexical weights, lexicalized reordering models and other penalties as the baseline. The second (Sys. 2) adapts also the lexical weights, fixing all other features as the baseline. The third (Sys. 3) adapts both the phrasebased models, lexical weights and lexicalized re-</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Translation Examples</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Input</head><p>El reproductor puede reproducir señales de audio grabadas en mix-mode cd, cd-g, cd-extra y cd text.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Reference</head><p>The player can play back audio signals recorded in mix-mode cd, cd-g, cd-extra and cd text.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Baseline</head><p>The player can reproduce signs of audio recorded in mix-mode cd, cd-g, cd-extra and cd text.</p><p>Our System The player can play signals audio recorded in mix-mode cd, cd-g, cd-extra and cd text.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Input</head><p>Se puede crear un archivo autodescodificable cuando el archivo codificado se abre con la contraseña maestra.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Reference</head><p>A self-decrypting file can be created when the encrypted file is opened with the master password.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Baseline</head><p>To create an file autodescodificable when the file codified commenced with the password teacher.</p><p>Our System You can create an archive autodescodificable when the file codified opens with the password master.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Input</head><p>Repite todas las pistas (únicamente cds de vídeo sin pbc)</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Reference</head><p>Repeat all tracks (non-pbc video cds only)</p><p>Baseline Repeated all avenues (only cds video without pbc)</p><p>Our System Repeated all the tracks (only cds video without pbc)</p><p>Table <ref type="table">5</ref>: Translation examples yielded by a domain-confused phrase-based system (the baseline) and a domain-focused phrase-based system (our system).</p><p>ordering models 15 , fixing other penalties as the baseline. Table <ref type="table">7</ref>: Metric scores for the systems, which are averages over multiple runs.</p><p>Table <ref type="table">7</ref> presents results for training data size of 4M parallel sentences. It shows that the fully domain-focused system (Sys. 3) significantly improves over the baseline. The table also shows that the latent domain-focused phrase-based models and lexical weights are crucial for the improved performance, whereas adapting the reordering models makes a far smaller contribution.</p><p>Finally we also apply our approach to other 15 We run three EM iterations to train our invitation framework, and then use the parameter estimates for P (D1 | ẽ, f ), P (D1 | e, f ) and P (D1 | O, ẽ, f ) to train these domainfocused features. We adopt this training setting for all other different tasks in the sequel.</p><p>tasks where the relation between their in-domain data and the mix-domain data varies substantially. Table <ref type="table" target="#tab_9">8</ref> presents their in-domain, tuning and test data in detail, as well as the translation results over them. It shows that the fully domain-focused systems consistently and significantly improve the translation accuracy for all the tasks.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7">Combining multiple models</head><p>Finally, we proceed further to test our latent domain-focused phrase-based translation model on standard domain adaptation. We conduct experiments on the task "Professional &amp; Business Services" as an example. <ref type="foot" target="#foot_11">16</ref> For standard adaptation we follow <ref type="bibr" target="#b13">(Koehn and Schroeder, 2007)</ref> where we pass multiple phrase tables directly to the Moses decoder and tune them together. For baseline we combine the standard phrase-based system trained on C mix with the one trained on the in-domain data C in . We also combine our latent domain-focused phrase-based system with the one trained on C in . Table <ref type="table" target="#tab_10">9</ref> presents the results showing that combining our domain-focused system adapted from C mix with the in-domain model outperforms the baseline. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="8">Related work</head><p>A distantly related, but clearly complementary, line of research focuses on the role of document topics <ref type="bibr" target="#b8">(Eidelman et al., 2012;</ref><ref type="bibr" target="#b29">Zhang et al., 2014;</ref><ref type="bibr" target="#b11">Hasler et al., 2014)</ref>. An off-the-shelf Latent Dirichlet Allocation tool is usually used to infer document-topic distributions. On one hand, this setting may not require in-domain data as prior.</p><p>On the other hand, it requires meta-information (e.g., document information).</p><p>Part of this work (the latent sentence-relevance models) relates to data selection <ref type="bibr" target="#b19">(Moore and Lewis, 2010;</ref><ref type="bibr" target="#b0">Axelrod et al., 2011)</ref>, where sentence-relevance weights are used for hard- filtering rather than weighting. The idea of using sentence-relevance estimates for phrase-relevance estimates relates to <ref type="bibr" target="#b18">Matsoukas et al. (2009)</ref> who estimate the former using meta-information over documents as main features. In contrast, our work overcomes the mutual dependence of sentence and phrase estimates on one another by training both models in tandem. Adaptation using small in-domain data has a different but complementary goal to another line of research aiming at combining a domainadapted system with the another trained on the indomain data <ref type="bibr" target="#b13">(Koehn and Schroeder, 2007;</ref><ref type="bibr" target="#b1">Bisazza et al., 2011;</ref><ref type="bibr" target="#b27">Sennrich, 2012;</ref><ref type="bibr" target="#b25">Razmara et al., 2012;</ref><ref type="bibr" target="#b26">Sennrich et al., 2013)</ref>. Our work is somewhat related to, but markedly different from, phrase pair weighting <ref type="bibr" target="#b9">(Foster et al., 2010)</ref>. Finally, our latent domain-focused phrase-based models and invitation training paradigm can be seen to shift attention from adaptation to making explicit the role of domain-focused models in SMT.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="9">Conclusion</head><p>We present a novel approach for in-domain focused training of a phrase-based system on a mix-of-domain corpus by using prior distributions from a small in-domain corpus. We derive an EM training algorithm for learning latent domain relevance models for the phrase-and sentence-levels in tandem. We also show how to overcome the difficulty of lack of explicit out-domain data by bootstrapping pseudo out-domain data.</p><p>In future work, we plan to explore generative Bayesian models as well as discriminative learning approaches with different ways for estimat-ing the latent domain relevance models. We hypothesize that bilingual, but also monolingual, relevance models can be key to improved performance.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>P</head><label></label><figDesc>(D) := e,f ∈C mix P (D | e, f) D e,f ∈C mix P (D | e, f) model can be viewed to have latent parameters Θ = {Θ D 0 , Θ D 1 }. The training procedure seeks Θ that maximize the log-likelihood of the observed sentence pairs e, f ∈ C mix : L = e,f ∈C mix log D P Θ D (D, e, f). (6)</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: Our probabilistic invitation framework.the new estimates for P (D | e, f) can be used to (softly) fill in the values of hidden variable D and estimate parameters P (D | ẽ, f ) and P (D). The EM is guaranteed to converge to a local maximum of the likelihood under mild conditions<ref type="bibr" target="#b20">(Neal and Hinton, 1999)</ref>.Before EM training starts we must provide a "reasonable" initial guess for P (D | ẽ, f ). We must also train the out-domain LMs, which needs the construction of pseudo out-domain data. 9 One simple way to do that is inspired by burnin in sampling, under the guidance of an indomain data set, C in as prior. At the beginning, we train P t (ẽ | f , D 1 ) and P t ( f | ẽ, D 1 ) for all phrases learned from C in . We also train P t (ẽ | f ) and P t ( f | ẽ) for all phrases learned from C mix . During burn-in we assume that the out-domain phrase-based models are the domainconfused phrase-based models, i.e., P t (ẽ | f , D 0 )≈ P t (ẽ | f ) and P t ( f | ẽ, D 0 ) ≈ P t ( f | ẽ).We isolate all the LMs and the prior models from our model, and apply a single EM iteration to update P (D | e, f) based on those domain-focused models P t (ẽ | f , D) and P t ( f | ẽ, D).In the end, we use P (D | e, f) to fill in the values of hidden variable D in C mix , so it provides us with an initialization for P (D | ẽ, f ). Subse-</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head></head><label></label><figDesc>and select a subset of smallest scoring pairs as a pseudo out-domain subset to train P lm (e | D 0 ) and P lm (f | D 0 ). Once the latent domain-focused LMs have been trained, the LM probabilities stay fixed during EM. Crucially, it 9 The in-domain LMs P lm (e | D1) and P lm (f | D1) can be simply trained on the source and target sides of Cin respectively.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: Intrinsic evaluation.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>Table 1 :</head><label>1</label><figDesc>, Common Crawl Corpus, UN Corpus, News Commentary. As in-domain corpus we use "Consumer and Industrial Electronics" manually collected by Translation Automation Society (TAUS.com). The corpus statistics are summarized in Table 1. System We train a standard state-of-the-art The data preparation.</figDesc><table><row><cell></cell><cell></cell><cell>English</cell><cell>Spanish</cell></row><row><cell></cell><cell>C mix</cell><cell>Sents Words 113.7M</cell><cell>4M 127.1M</cell></row><row><cell></cell><cell></cell><cell>Sents</cell><cell>109K</cell></row><row><cell></cell><cell>C in</cell><cell cols="2">Words 1, 485, 558 1, 685, 716</cell></row><row><cell>Domain: Electronics</cell><cell>Dev</cell><cell>Sents Words 13130</cell><cell>984 14, 955</cell></row><row><cell></cell><cell>Test</cell><cell>Sents Words 13, 493</cell><cell>982 15, 392</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head></head><label></label><figDesc>. Finally, we use Moses</figDesc><table><row><cell>21.2</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>21</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>20.8</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell>20.64</cell><cell></cell></row><row><cell>20.6</cell><cell></cell><cell>20.48</cell><cell>20.5</cell><cell></cell><cell>20.51</cell><cell>20.52</cell></row><row><cell>20.4</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>20.2</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>20</cell><cell>19.91</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>19.8</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell>Baseline</cell><cell>Iter. 1</cell><cell>Iter. 2</cell><cell>Iter. 3</cell><cell>Iter. 4</cell><cell>Iter. 5</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 2 :</head><label>2</label><figDesc>BLEU averaged over multiple runs.</figDesc><table><row><cell cols="4">It is also interesting to consider the average</cell></row><row><cell cols="4">entropy of phrase table entries in the domain-</cell></row><row><cell cols="3">confused systems, i.e.,</cell></row><row><cell></cell><cell>-</cell><cell>ẽ, f p t (ẽ| f ) log p t (ẽ| f )</cell></row><row><cell></cell><cell></cell><cell>number of phrases ẽ, f</cell></row><row><cell cols="3">against that in the domain-focused systems</cell></row><row><cell>-</cell><cell cols="2">ẽ, f p t (ẽ| f , D 1 ) log p t (ẽ| f , D 1 ) number of phrases ẽ, f</cell><cell>.</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Table 3 :</head><label>3</label><figDesc>Average entropy of distributions.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>Table 4 :</head><label>4</label><figDesc>Phrase analyses.</figDesc><table><row><cell></cell><cell>01</cell></row><row><cell>Iter. 1</cell><cell>22.82%</cell></row><row><cell>Iter. 2</cell><cell>27.06%</cell></row><row><cell>Iter. 3</cell><cell>30.07%</cell></row><row><cell>Iter. 4</cell><cell>32.47%</cell></row><row><cell>Iter. 5</cell><cell>34.52%</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_9"><head>Table 8 :</head><label>8</label><figDesc>Metric scores for the systems, which are averages over multiple runs.</figDesc><table><row><cell>Metric</cell><cell>System</cell><cell>Avg</cell><cell>∆</cell><cell>p-value</cell></row><row><cell cols="2">Professional &amp; Business Services</cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="5">(In-domain: 23K pairs; Dev: 1, 000 pairs; Test: 998 pairs)</cell></row><row><cell>BLEU</cell><cell>Baseline Our System</cell><cell cols="3">22.0 -23.1 +1.1 0.0001 -</cell></row><row><cell>METEOR</cell><cell>Baseline Our System</cell><cell cols="3">30.8 -31.4 +0.6 0.0001 -</cell></row><row><cell>TER</cell><cell>Baseline Our System</cell><cell cols="2">58.0 -56.6 -1.4</cell><cell>-0.0001</cell></row><row><cell>Financials</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="5">(In-domain: 31K pairs; Dev: 1, 000 pairs; Test: 1, 000 pairs)</cell></row><row><cell>BLEU</cell><cell>Baseline Our System</cell><cell cols="3">31.1 -31.8 +0.7 0.0001 -</cell></row><row><cell>METEOR</cell><cell>Baseline Our System</cell><cell cols="3">36.3 -36.6 +0.3 0.0001 -</cell></row><row><cell>TER</cell><cell>Baseline Our System</cell><cell cols="2">48.8 -48.3 -0.5</cell><cell>-0.0001</cell></row><row><cell cols="2">Computer Hardware</cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="5">(In-domain: 52K pairs; Dev: 1, 021 pairs; Test: 1, 054 pairs)</cell></row><row><cell>BLEU</cell><cell>Baseline Our System</cell><cell cols="3">24.6 -25.3 +0.7 0.0001 -</cell></row><row><cell>METEOR</cell><cell>Baseline Our System</cell><cell cols="3">32.4 -33.1 +0.7 0.0001 -</cell></row><row><cell>TER</cell><cell>Baseline Our System</cell><cell cols="2">56.4 -55.0 -1.4</cell><cell>-0.0001</cell></row><row><cell cols="2">Computer Software</cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="5">(In-domain: 65K pairs; Dev: 1, 100 pairs; Test: 1, 000 pairs)</cell></row><row><cell>BLEU</cell><cell>Baseline Our System</cell><cell cols="3">27.4 -28.3 +0.9 0.0001 -</cell></row><row><cell>METEOR</cell><cell>Baseline Our System</cell><cell cols="3">34.0 -34.7 +0.7 0.0001 -</cell></row><row><cell>TER</cell><cell>Baseline Our System</cell><cell cols="2">51.7 -50.6 -1.1</cell><cell>-0.0001</cell></row><row><cell cols="2">Pharmaceuticals &amp; Biotechnology</cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="5">(In-domain: 85K pairs; Dev: 920 pairs; Test: 1, 000 pairs)</cell></row><row><cell>BLEU</cell><cell>Baseline Our System</cell><cell cols="3">31.6 -32.4 +0.8 0.0001 -</cell></row><row><cell>METEOR</cell><cell>Baseline Our System</cell><cell cols="3">34.0 -34.4 +0.4 0.0001 -</cell></row><row><cell>TER</cell><cell>Baseline Our System</cell><cell cols="2">51.4 -50.6 -0.8</cell><cell>-0.0001</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_10"><head>Table 9 :</head><label>9</label><figDesc>23K pairs; Dev: 1, 000 pairs; Test: 998 pairs) Domain adaptation experiments. Metric scores for the systems, which are averages over multiple runs.</figDesc><table><row><cell>Metric</cell><cell>System</cell><cell>Avg</cell><cell>∆</cell><cell>p-value</cell></row><row><cell cols="3">Professional &amp; Business Services</cell><cell></cell><cell></cell></row><row><cell>(In-domain: BLEU</cell><cell cols="3">In-domain + Mix-domain 46.6 -46.5 -</cell><cell>--</cell></row><row><cell></cell><cell>+ Our system</cell><cell cols="3">47.9 +1.3 0.0001</cell></row><row><cell>METEOR</cell><cell cols="3">In-domain + Mix-domain 40.1 -39.8 -</cell><cell>--</cell></row><row><cell></cell><cell>+ Our System</cell><cell cols="3">41.1 +1.0 0.0001</cell></row><row><cell>TER</cell><cell cols="3">In-domain + Mix-domain 38.0 -38.2 -</cell><cell>--</cell></row><row><cell></cell><cell>+ Our System</cell><cell cols="2">36.9 -1.1</cell><cell>0.0001</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="3" xml:id="foot_0"><p>Note that earlier work on data selection exploits the contrast between in-and mix-domain. In<ref type="bibr" target="#b5">(Cuong and Sima'an, 2014)</ref>, we present the idea of using the language and translation models derived separately from in-and out-domain data, and show how it helps for data selection.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="4" xml:id="foot_1"><p>We design our latent domain translation models with efficiency as our main concern. Future extensions could include the lexical and reordering sub-models (as suggested by an anonymous reviewer.)</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="5" xml:id="foot_2"><p>Relevance for identification or retrieval could be different from frequency or fluency. We leave this extension for future work.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="6" xml:id="foot_3"><p>It should be noted that in most phrase-based SMT systems bilingual phrase probabilities are estimated heuristically from word alignmened data which often leads to overfitting. Estimating P (D) from sentence-level parameters rather than from phrase-level parameters helps us avoid the overfitting which often accompanies phrase extraction.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="7" xml:id="foot_4"><p>For simplicity, we ignore the LMs and prior models in the illustration in Fig.1.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="8" xml:id="foot_5"><p>Since we only use the in-domain corpus as priors to initilize the EM parameters, in technical perspective we do not want P (D | e, f) parameters to go too far off from the initialization. We therefore prefer the averaged style in practice, i.e., at the iteration n we update the P (D |e, f) parameters, P (n) (D|e, f) as 1 n (P (n) (D | e, f) + n-1 i=1 P (i) (D | e, f)).</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="10" xml:id="foot_6"><p>Count of sentence pairs: European Parliament(Koehn,  2005): 183, 793; Pharmaceuticals: 190, 443, Software:  196, 168, Hardware: 196, 501.   </p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="11" xml:id="foot_7"><p>After the fifth EM iteration we do not observe any significant increase in the likelihood of the data. Note that we use the same setting as for the baselines to train the latent domain-focused LMs for use in our model -interpolated 4gram Kneser-Ney LMs using BerkeleyLM. This training setting is used for all experiments in this work.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="12" xml:id="foot_8"><p>We use Stanford Phrasal -a standard state-of-the-art phrase-based translation system developed by<ref type="bibr" target="#b2">Cer et al. (2010)</ref>.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="13" xml:id="foot_9"><p>The lexical weights and the lexical reordering features will be described in more detail in Section 6.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="14" xml:id="foot_10"><p>While we implement the latent domain phrase-based models using Phrasal for some advantages, we to use Moses for decoding.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="16" xml:id="foot_11"><p>We choose this task for additional experiments because it has very small in-domain data (23K). This is supposed to make adaptation difficult because of the robust large-scale systems trained on Cmix.</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>Acknowledgements</head><p>We thank <rs type="person">Ivan Titov</rs> for stimulating discussions, and three anonymous reviewers for their comments on earlier versions. The first author is supported by the <rs type="programName">EXPERT (EXPloiting Empirical ap-pRoaches to Translation) Initial Training Network (ITN)</rs> of the European Union's <rs type="programName">Seventh Framework Programme</rs>. The second author is supported by <rs type="grantName">VICI grant nr</rs>. <rs type="grantNumber">277-89-002</rs> from the <rs type="funder">Netherlands Organization for Scientific Research (NWO)</rs>. We thank <rs type="institution">TAUS</rs> for providing us with suitable data.</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funding" xml:id="_NHzXRvd">
+					<orgName type="program" subtype="full">EXPERT (EXPloiting Empirical ap-pRoaches to Translation) Initial Training Network (ITN)</orgName>
+				</org>
+				<org type="funding" xml:id="_cYedf9y">
+					<idno type="grant-number">277-89-002</idno>
+					<orgName type="grant-name">VICI grant nr</orgName>
+					<orgName type="program" subtype="full">Seventh Framework Programme</orgName>
+				</org>
+			</listOrg>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Domain adaptation via pseudo in-domain data selection</title>
+		<author>
+			<persName><forename type="first">Amittai</forename><surname>Axelrod</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaodong</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianfeng</forename><surname>Gao</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Conference on Empirical Methods in Natural Language Processing, EMNLP &apos;11</title>
+		<meeting>the Conference on Empirical Methods in Natural Language Processing, EMNLP &apos;11<address><addrLine>Stroudsburg, PA, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="page" from="355" to="362" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Fill-up versus interpolation methods for phrase-based smt adaptation</title>
+		<author>
+			<persName><forename type="first">Arianna</forename><surname>Bisazza</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nick</forename><surname>Ruiz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marcello</forename><surname>Federico</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IWSLT</title>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="page" from="136" to="143" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Phrasal: A toolkit for statistical machine translation with facilities for extraction and incorporation of arbitrary model features</title>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Cer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michel</forename><surname>Galley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Jurafsky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><forename type="middle">D</forename><surname>Manning</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the NAACL HLT 2010 Demonstration Session, HLT-DEMO &apos;10</title>
+		<meeting>the NAACL HLT 2010 Demonstration Session, HLT-DEMO &apos;10<address><addrLine>Stroudsburg, PA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+			<biblScope unit="page" from="9" to="12" />
+		</imprint>
+	</monogr>
+	<note>Association for Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Batch tuning strategies for statistical machine translation</title>
+		<author>
+			<persName><forename type="first">Colin</forename><surname>Cherry</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">George</forename><surname>Foster</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2012 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, NAACL HLT &apos;12</title>
+		<meeting>the 2012 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, NAACL HLT &apos;12<address><addrLine>Stroudsburg, PA, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2012">2012</date>
+			<biblScope unit="page" from="427" to="436" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Better hypothesis testing for statistical machine translation: Controlling for optimizer instability</title>
+		<author>
+			<persName><forename type="first">Jonathan</forename><forename type="middle">H</forename><surname>Clark</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Dyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alon</forename><surname>Lavie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noah</forename><forename type="middle">A</forename><surname>Smith</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 49th Annual Meeting of the Association for Computational Linguistics: Human Language Technologies: Short Papers</title>
+		<meeting>the 49th Annual Meeting of the Association for Computational Linguistics: Human Language Technologies: Short Papers<address><addrLine>Strouds-burg, PA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page" from="176" to="181" />
+		</imprint>
+	</monogr>
+	<note>Association for Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Latent domain translation models in mix-of-domains haystack</title>
+		<author>
+			<persName><forename type="first">Hoang</forename><surname>Cuong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Khalil</forename><surname>Sima'an</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of COLING 2014, the 25th International Conference on Computational Linguistics: Technical Papers</title>
+		<meeting>COLING 2014, the 25th International Conference on Computational Linguistics: Technical Papers<address><addrLine>Dublin, Ireland</addrLine></address></meeting>
+		<imprint>
+			<publisher>Dublin City University and Association for Computational Linguistics</publisher>
+			<date type="published" when="2014-08">2014. August</date>
+			<biblScope unit="page" from="1928" to="1939" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Maximum likelihood from incomplete data via the em algorithm</title>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">P</forename><surname>Dempster</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">M</forename><surname>Laird</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">B</forename><surname>Rubin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">JOURNAL OF THE ROYAL STATIS-TICAL SOCIETY</title>
+		<imprint>
+			<biblScope unit="volume">39</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="1" to="38" />
+			<date type="published" when="1977">1977</date>
+		</imprint>
+	</monogr>
+	<note>SERIES B</note>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Meteor 1.3: Automatic metric for reliable optimization and evaluation of machine translation systems</title>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Denkowski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alon</forename><surname>Lavie</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Sixth Workshop on Statistical Machine Translation</title>
+		<meeting>the Sixth Workshop on Statistical Machine Translation<address><addrLine>Stroudsburg, PA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="page" from="85" to="91" />
+		</imprint>
+	</monogr>
+	<note>Association for Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Topic models for dynamic translation model adaptation</title>
+		<author>
+			<persName><forename type="first">Vladimir</forename><surname>Eidelman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jordan</forename><surname>Boyd-Graber</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Philip</forename><surname>Resnik</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 50th Annual Meeting of the Association for Computational Linguistics: Short Papers</title>
+		<meeting>the 50th Annual Meeting of the Association for Computational Linguistics: Short Papers<address><addrLine>Stroudsburg, PA, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2012">2012</date>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page" from="115" to="119" />
+		</imprint>
+	</monogr>
+	<note>ACL &apos;12</note>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Discriminative instance weighting for domain adaptation in statistical machine translation</title>
+		<author>
+			<persName><forename type="first">George</forename><surname>Foster</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Cyril</forename><surname>Goutte</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Roland</forename><surname>Kuhn</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2010 Conference on Empirical Methods in Natural Language Processing, EMNLP &apos;10</title>
+		<meeting>the 2010 Conference on Empirical Methods in Natural Language Processing, EMNLP &apos;10<address><addrLine>Stroudsburg, PA, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2010">2010</date>
+			<biblScope unit="page" from="451" to="459" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Does more data always yield better translations?</title>
+		<author>
+			<persName><forename type="first">Guillem</forename><surname>Gascó</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martha-Alicia</forename><surname>Rocha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Germán</forename><surname>Sanchis-Trilles</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jesús</forename><surname>Andrés-Ferrer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Francisco</forename><surname>Casacuberta</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 13th Conference of the European Chapter</title>
+		<meeting>the 13th Conference of the European Chapter<address><addrLine>Stroudsburg, PA, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2012">2012</date>
+			<biblScope unit="page" from="152" to="161" />
+		</imprint>
+	</monogr>
+	<note>EACL &apos;12</note>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Dynamic topic adaptation for phrase-based mt</title>
+		<author>
+			<persName><forename type="first">Eva</forename><surname>Hasler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Phil</forename><surname>Blunsom</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Philipp</forename><surname>Koehn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Barry</forename><surname>Haddow</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 14th Conference of the European Chapter of the Association for Computational Linguistics</title>
+		<meeting>the 14th Conference of the European Chapter of the Association for Computational Linguistics<address><addrLine>Gothenburg, Sweden</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2014-04">2014. April</date>
+			<biblScope unit="page" from="328" to="337" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<monogr>
+		<title level="m" type="main">Measuring machine translation errors in new domains</title>
+		<author>
+			<persName><forename type="first">Ann</forename><surname>Irvine</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">John</forename><surname>Morgan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marine</forename><surname>Carpuat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daume</forename><surname>Hal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Iii</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dragos</forename><surname>Munteanu</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page" from="429" to="440" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Experiments in domain adaptation for statistical machine translation</title>
+		<author>
+			<persName><forename type="first">Philipp</forename><surname>Koehn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Josh</forename><surname>Schroeder</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Second Workshop on Statistical Machine Translation, StatMT &apos;07</title>
+		<meeting>the Second Workshop on Statistical Machine Translation, StatMT &apos;07<address><addrLine>Stroudsburg, PA, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2007">2007</date>
+			<biblScope unit="page" from="224" to="227" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Statistical phrase-based translation</title>
+		<author>
+			<persName><forename type="first">Philipp</forename><surname>Koehn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Franz</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Josef</forename><surname>Och</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Marcu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2003 Conference of the North American Chapter of the Association for Computational Linguistics on Human Language Technology -Volume 1, NAACL &apos;03</title>
+		<meeting>the 2003 Conference of the North American Chapter of the Association for Computational Linguistics on Human Language Technology -Volume 1, NAACL &apos;03<address><addrLine>Stroudsburg, PA, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2003">2003</date>
+			<biblScope unit="page" from="48" to="54" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Edinburgh System Description for the 2005 IWSLT Speech Translation Evaluation</title>
+		<author>
+			<persName><forename type="first">Philipp</forename><surname>Koehn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amittai</forename><surname>Axelrod</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexandra</forename><surname>Birch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Callison-Burch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Miles</forename><surname>Osborne</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Talbot</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Workshop on Spoken Language Translation</title>
+		<imprint>
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Moses: Open source toolkit for statistical machine translation</title>
+		<author>
+			<persName><forename type="first">Philipp</forename><surname>Koehn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hieu</forename><surname>Hoang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexandra</forename><surname>Birch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Callison-Burch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marcello</forename><surname>Federico</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicola</forename><surname>Bertoldi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Brooke</forename><surname>Cowan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wade</forename><surname>Shen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christine</forename><surname>Moran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Richard</forename><surname>Zens</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Dyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ondřej</forename><surname>Bojar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexandra</forename><surname>Constantin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Evan</forename><surname>Herbst</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 45th Annual Meeting of the ACL on Interactive Poster and Demonstration Sessions, ACL &apos;07</title>
+		<meeting>the 45th Annual Meeting of the ACL on Interactive Poster and Demonstration Sessions, ACL &apos;07<address><addrLine>Stroudsburg, PA, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2007">2007</date>
+			<biblScope unit="page" from="177" to="180" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Europarl: A Parallel Corpus for Statistical Machine Translation</title>
+		<author>
+			<persName><forename type="first">Philipp</forename><surname>Koehn</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Conference Proceedings: the tenth Machine Translation Summit</title>
+		<meeting><address><addrLine>Phuket, Thailand. AAMT, AAMT</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2005">2005</date>
+			<biblScope unit="page" from="79" to="86" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Discriminative corpus weight estimation for machine translation</title>
+		<author>
+			<persName><forename type="first">Spyros</forename><surname>Matsoukas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Antti-Veikko</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bing</forename><surname>Rosti</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2009 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2009 Conference on Empirical Methods in Natural Language Processing<address><addrLine>Stroudsburg, PA, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2009">2009</date>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page" from="708" to="717" />
+		</imprint>
+	</monogr>
+	<note>EMNLP &apos;09</note>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Intelligent selection of language model training data</title>
+		<author>
+			<persName><forename type="first">Robert</forename><forename type="middle">C</forename><surname>Moore</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">William</forename><surname>Lewis</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the ACL 2010 Conference Short Papers, ACLShort &apos;10</title>
+		<meeting>the ACL 2010 Conference Short Papers, ACLShort &apos;10<address><addrLine>Stroudsburg, PA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+			<biblScope unit="page" from="220" to="224" />
+		</imprint>
+	</monogr>
+	<note>Association for Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<monogr>
+		<title level="m" type="main">Learning in graphical models. chapter A View of the EM Algorithm That Justifies Incremental, Sparse, and Other Variants</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Radford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Geoffrey</forename><forename type="middle">E</forename><surname>Neal</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Hinton</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1999">1999</date>
+			<publisher>MIT Press</publisher>
+			<biblScope unit="page" from="355" to="368" />
+			<pubPlace>Cambridge, MA, USA</pubPlace>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Franz Josef Och and Hermann Ney. 2004. The alignment template approach to statistical machine translation</title>
+		<author>
+			<persName><forename type="first">Josef</forename><surname>Franz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hermann</forename><surname>Och</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Ney</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Comput. Linguist</title>
+		<imprint>
+			<biblScope unit="volume">29</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="417" to="449" />
+			<date type="published" when="2003-03">2003. March</date>
+		</imprint>
+	</monogr>
+	<note>Comput. Linguist.. December</note>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Bleu: A method for automatic evaluation of machine translation</title>
+		<author>
+			<persName><forename type="first">Kishore</forename><surname>Papineni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Salim</forename><surname>Roukos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Todd</forename><surname>Ward</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei-Jing</forename><surname>Zhu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 40th Annual Meeting on Association for Computational Linguistics, ACL &apos;02</title>
+		<meeting>the 40th Annual Meeting on Association for Computational Linguistics, ACL &apos;02<address><addrLine>Stroudsburg, PA, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2002">2002</date>
+			<biblScope unit="page" from="311" to="318" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Faster and smaller n-gram language models</title>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Pauls</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dan</forename><surname>Klein</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 49th Annual Meeting of the Association for Computational Linguistics: Human Language Technologies</title>
+		<meeting>the 49th Annual Meeting of the Association for Computational Linguistics: Human Language Technologies<address><addrLine>Stroudsburg, PA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="258" to="267" />
+		</imprint>
+	</monogr>
+	<note>Association for Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<monogr>
+		<author>
+			<persName><forename type="first">H</forename><surname>William</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Saul</forename><forename type="middle">A</forename><surname>Press</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">William</forename><forename type="middle">T</forename><surname>Teukolsky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Brian</forename><forename type="middle">P</forename><surname>Vetterling</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Flannery</surname></persName>
+		</author>
+		<title level="m">The Art of Scientific Computing</title>
+		<meeting><address><addrLine>Nd Ed; New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Cambridge University Press</publisher>
+			<date type="published" when="1992">1992</date>
+		</imprint>
+	</monogr>
+	<note>Numerical Recipes in C</note>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Mixing multiple translation models in statistical machine translation</title>
+		<author>
+			<persName><forename type="first">Majid</forename><surname>Razmara</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">George</forename><surname>Foster</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Baskaran</forename><surname>Sankaran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anoop</forename><surname>Sarkar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 50th Annual Meeting of the Association for Computational Linguistics: Long Papers</title>
+		<meeting>the 50th Annual Meeting of the Association for Computational Linguistics: Long Papers<address><addrLine>Stroudsburg, PA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2012">2012</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="940" to="949" />
+		</imprint>
+	</monogr>
+	<note>ACL &apos;12. Association for Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">A multi-domain translation model framework for statistical machine translation</title>
+		<author>
+			<persName><forename type="first">Rico</forename><surname>Sennrich</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Holger</forename><surname>Schwenk</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Walid</forename><surname>Aransa</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 51st Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 51st Annual Meeting of the Association for Computational Linguistics<address><addrLine>Sofia, Bulgaria</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2013-08">2013. August</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="832" to="840" />
+		</imprint>
+	</monogr>
+	<note>Long Papers)</note>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Perplexity minimization for translation model domain adaptation in statistical machine translation</title>
+		<author>
+			<persName><forename type="first">Rico</forename><surname>Sennrich</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 13th Conference of the European Chapter of the Association for Computational Linguistics, EACL &apos;12</title>
+		<meeting>the 13th Conference of the European Chapter of the Association for Computational Linguistics, EACL &apos;12<address><addrLine>Stroudsburg, PA, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2012">2012</date>
+			<biblScope unit="page" from="539" to="549" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">A study of translation edit rate with targeted human annotation</title>
+		<author>
+			<persName><forename type="first">Matthew</forename><surname>Snover</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bonnie</forename><surname>Dorr</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Schwartz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Micciulla</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Makhoul</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of Association for Machine Translation in the Americas</title>
+		<meeting>Association for Machine Translation in the Americas</meeting>
+		<imprint>
+			<date type="published" when="2006">2006</date>
+			<biblScope unit="page" from="223" to="231" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Topic-based dissimilarity and sensitivity models for translation rule selection</title>
+		<author>
+			<persName><forename type="first">Min</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xinyan</forename><surname>Xiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Deyi</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qun</forename><surname>Liu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Artificial Intelligence Research</title>
+		<imprint>
+			<biblScope unit="volume">50</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="1" to="30" />
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

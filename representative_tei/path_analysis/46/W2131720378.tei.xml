@@ -1,0 +1,779 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">A Space-Efficient Parallel Algorithm for Computing Betweenness Centrality in Distributed Memory</title>
+				<funder>
+					<orgName type="full">Lilly Endowment</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author role="corresp">
+							<persName><forename type="first">Nick</forename><surname>Edmonds</surname></persName>
+							<email>ngedmond@osl.iu.edu</email>
+						</author>
+						<author>
+							<persName><forename type="first">Torsten</forename><surname>Hoefler</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Andrew</forename><surname>Lumsdaine</surname></persName>
+						</author>
+						<author>
+							<affiliation key="aff0">
+								<orgName type="department">National Center of Supercomputing Applications</orgName>
+								<orgName type="institution">Open Systems Laboratory Indiana University Bloomington</orgName>
+								<address>
+									<postCode>47405</postCode>
+									<region>IN</region>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff1">
+								<orgName type="institution">University of Illinois at Urbana-Champaign Urbana</orgName>
+								<address>
+									<postCode>61801</postCode>
+									<region>IL</region>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff2">
+								<orgName type="institution">Open Systems Laboratory Indiana University Bloomington</orgName>
+								<address>
+									<postCode>47405</postCode>
+									<region>IN</region>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">A Space-Efficient Parallel Algorithm for Computing Betweenness Centrality in Distributed Memory</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-29T01:22+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Betweenness centrality is a measure based on shortest paths that attempts to quantify the relative importance of nodes in a network. As computation of betweenness centrality becomes increasingly important in areas such as social network analysis, networks of interest are becoming too large to fit in the memory of a single processing unit, making parallel execution a necessity. Parallelization over the vertex set of the standard algorithm, with a final reduction of the centrality for each vertex, is straightforward but requires Ω(|V | 2 ) storage. In this paper we present a new parallelizable algorithm with low spatial complexity that is based on the best known sequential algorithm. Our algorithm requires O(|V | + |E|) storage and enables efficient parallel execution. Our algorithm is especially well suited to distributed memory processing because it can be implemented using coarse-grained parallelism. The presented time bounds for parallel execution of our algorithm on CRCW PRAM and on distributed memory systems both show good asymptotic performance. Experimental results with a distributed memory computer show the practical applicability of our algorithm.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>I. INTRODUCTION</head><p>Centrality indices are an important measure of the relative importance of nodes in sparse networks <ref type="bibr" target="#b28">[29]</ref>.</p><p>Here we discuss betweenness centrality <ref type="bibr" target="#b1">[2]</ref>, <ref type="bibr" target="#b15">[16]</ref> as it is one of the more commonly used metrics and one of the more difficult to compute efficiently. Betweenness centrality is based on determining the number of shortest paths from s to t (σ st ) in a graph G = (V, E) for all possible vertex pairs (s, t) ∈ V × V . The betweenness centrality of v is defined as follows:</p><formula xml:id="formula_0">BC(v) = s =v =t∈V σ st (v) σ st</formula><p>where σ st (v) is the number of shortest paths from s to t which pass through v. A straightforward method for computing betweenness centrality is to solve the all-pairs * Most work performed while the author was at Indiana University shortest paths (APSP) problem. Fast sequential methods for solving APSP are known <ref type="bibr" target="#b14">[15]</ref>, <ref type="bibr" target="#b21">[22]</ref>, <ref type="bibr" target="#b30">[31]</ref>. These dynamic-programming methods are straightforward to parallelize but require O(|V | 2 ) space to store their result.</p><p>A space and time efficient algorithm has been proposed by <ref type="bibr">Brandes [9]</ref> but it is difficult to parallelize in a coarse grained fashion because it is based on a label-setting single-source shortest path algorithm.</p><p>The key idea in Brandes' algoritm is that pairwise dependencies δ st (v) = σst (v)  σst can be aggregated without storing all of them explicitly. By defining the dependency of a source vertex s ∈ V on a vertex v ∈ V as δ s (v) = t∈V δ st (v) the betweenness centrality of a vertex v can be expressed as BC(v) = s =v∈V δ s (v). Brandes shows that the dependency values δ s (v) satisfy the following recursive relation:</p><formula xml:id="formula_1">δ s (v) = w:d(s,w)=d(s,v)+c(u,v) σ sv σ sw • (1 + δ s (w))</formula><p>Where the weight function c(u, v) returns the positive weight of an edge from u → v.</p><p>The sequential algorithm described in Algoritm 1 thus computes betweenness by first determining the distance and shortest path counts from s to each vertex (lines 9 to 18). Second, S is used to revisit the vertices by non-increasing distance from s and dependencies are accumulated (lines 20 to 24).</p><p>In this work we present a space efficient algorithm for computing the betweenness centrality of the vertices in a sparse graph. We present analyses using the CRCW PRAM <ref type="bibr" target="#b19">[20]</ref> and LogGP <ref type="bibr" target="#b0">[1]</ref> models which demonstrate that our algorithm is appropriate for both fine and coarse-grained parallelism and discuss tradeoffs that we made during the algorithm design. Finally we present experimental results which demonstrate the strong and weak scalability of our algorithm using the Parallel Boost Graph Library <ref type="bibr" target="#b17">[18]</ref>. </p><formula xml:id="formula_2">enqueue w → P Q; if dist[w] = dist[v] + c(v, w) then σ[w] ← σ[w] + σ[v]; append v → P [w]; ∀ w ∈ V : δ[v] ← 0;</formula><p>while S not empty do pop w ← S;</p><formula xml:id="formula_3">foreach v ∈ P [w] do δ[v] ← δ[v] + σ[v] σ[w] • (1 + δ[w]); if w = s then C B [w] ← C B [w] + δ[w];</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Previous Work</head><p>Our algorithm makes use of a parallelizable labelcorrecting single-source shortest path (SSSP) algorithm such as <ref type="bibr" target="#b11">[12]</ref>, <ref type="bibr" target="#b26">[27]</ref>. A variety of performance results for parallel solutions to the single-source shortest paths problem have been presented <ref type="bibr" target="#b13">[14]</ref>, <ref type="bibr" target="#b23">[24]</ref>. Parallel solutions to the all-pairs shortest paths problem have also been presented <ref type="bibr" target="#b20">[21]</ref>, <ref type="bibr" target="#b22">[23]</ref>.</p><p>A parallel algorithm for betweenness centrality has been presented in <ref type="bibr" target="#b3">[4]</ref>, however the algorithm uses a label-setting algorithm to solve the SSSP problem and leverages fine-grained parallelism by relaxing edges incident to each vertex in parallel. This approach exposes some parallelism for symmetric multiprocessors but is unsuitable for distributed memory systems due to the high overhead of distributing the available work, and the relatively small amount of work available at any given time. The algorithm presented also leverages coarse grained parallelism by solving the SSSP problem from multiple sources in parallel. This approach requires storing the solution to the SSSP problem for each source and is thus contrary to our goal of a space efficient algorithm. While greater speedup per processing unit may be attained by leveraging fine-grained parallelism on SMPs, our distributed memory implementation is capable of scaling beyond the size of the available memory on a single SMP. Moreover, each node in a distributed memory cluster is not constrained to a single thread of execution. This presents the possibility of leveraging fine-grained parallelism at the node level and coarse-grained parallelism to enable scaling as well as providing additional computational resources. Subsequent work observes that successor sets yield better locality than predecessor sets for unweighted betweenness centrality <ref type="bibr" target="#b24">[25]</ref>, but this work still leverages only fine-grained parallelism and uses breadth-first search to compute unweighted betweenness centrality rather than SSSP to compute weighted betweenness centrality.</p><p>The time-optimal coarse-grained method of solving each SSSP in parallel has been presented <ref type="bibr" target="#b31">[32]</ref> but as previously stated, is space inefficient. This algorithm requires the graph to be replicated as in Figure <ref type="figure" target="#fig_1">1</ref>. We have previously implemented this algorithm but it proved incapable of dealing with large scale graphs which cannot be stored in the memory of a single processing unit. Given the large networks which need to be analyzed such as web graphs or global social networks, a scalable algorithm able to operate on a distributed representation of the network is essential. Our algorithm operates on graphs distributed by vertex with edges stored with their sources, as shown in Figure <ref type="figure" target="#fig_2">2</ref>. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Notation</head><p>Here we introduce the notation we will use in the remainder of the paper. The input graph is defined by G = (V, E), the number of vertices in G is |V | = n and the number of edges is |E| = m, d denotes the average vertex degree. U (X, Y ] denotes a uniform distribution on the interval (X, Y ]. σ s [v] denotes the number of shortest paths which pass through a vertex v for a given source s, while d(s, t) denotes the minimal distance between s and t, i.e., the length of a shortest path from s → t.</p><p>We describe our algorithm in detail in the next section. In Section III, we analyze the time and space complexity of the algorithm on random Erdős-Rényi graphs with random edge weights. Erdős-Rényi graphs were chosen for these analyses due to the rich theoretical foundations available on which to build. Performance and simulation results of our algorithm on both Erdős-Rényi and scalefree graphs are presented in Section IV.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>II. REVISED BETWEENNESS CENTRALITY ALGORITHM</head><p>Our proposed algorithm consists of three phases. The first phase is, similarly to Brandes' betweenness centrality algorithm, the computation of all shortest path counts and the subgraph G s = (V, E ) of G representing all shortest paths in G from s. Informally, an edge (u, v) ∈ E is also an edge in G s iff there exists a shortest path from s to v that contains (u, v). In Brandes' original algorithm <ref type="bibr" target="#b8">[9]</ref>, the subgraph G s was represented by the set of predecessors</p><formula xml:id="formula_4">P s (v) = {u ∈ V : (u, v) ∈ E, d(s, v) = d(s, u) + c(u, v)} of a vertex v. The shortest-path count σ s [v]</formula><p>of a vertex v is updated when a vertex is finished (all shortest paths from s → v have been determined). The combinatorial shortest path counting (Line 23 in Algorithm 1 and Lemma 3 in <ref type="bibr" target="#b8">[9]</ref>) is only correct for label-setting SSSP algorithms, such as Dijkstra's algorithm <ref type="bibr" target="#b12">[13]</ref> in weighted graphs or breadth first search (BFS) in unweighted graphs. However, labelsetting algorithms often offer very low parallelism due to the requirement that only the vertices with equal minimal distance to the start vertex can be relaxed in parallel. Label-correcting algorithms, such as Bellman-Ford <ref type="bibr" target="#b4">[5]</ref> and ∆-stepping <ref type="bibr" target="#b26">[27]</ref> offer more parallelism and linear average runtime on random graphs. For a discussion of label-setting versus label-correcting algorithms, refer to <ref type="bibr" target="#b25">[26]</ref>. Thus, it is often useful to employ label-correcting algorithms in parallel environments.</p><p>In our method, outlined in Algorithm 2, we relax the label-setting requirement of Brandes' algorithm in order to enable the use of different label-correcting algorithms that can be implemented on parallel computers. We do this by storing not only the predecessor set P s (v) for each vertex, but also the successor set S s (v) = {u ∈ V : (v, u) ∈ E, d(s, v) = d(s, u) + c(u, v)}. This set can be used to traverse G s in non-decreasing distance from s after all shortest paths have been found. This allows us to accumulate the number of shortest paths, σ s , accordingly. An example shortest path DAG G (and thus P s and S s ) is shown in Figure <ref type="figure" target="#fig_3">3</ref>. For example, P s (g) = {h, i} and S s (i) = {g} in the depicted graph.</p><p>We note that the successor set S s can be derived from the predecessor set P s , and vice versa, by transposing the graph represented by the set (see Step 2 in Algorithm 2). Thus, a shortest path algorithm only needs to return one of the sets; however, under some circumstances, it might be beneficial to generate both sets at the same time (which would effectively merge Steps 1 and 2 in Algorithm 2).</p><p>We chose ∆-stepping to compute shortest paths (Step 1 in Algorithm 2) because it is work efficient and readily lends itself to being implemented in distributed memory. ∆-stepping replaces the priority queue in Dijkstra's algorithm with an array B of buckets such that</p><formula xml:id="formula_5">B[i] stores {v ∈ V : tent[v] ∈ [i∆, (i + 1)∆]} where tent[v]</formula><p>is the tentative distance from s to v. ∆-stepping for weighted graphs is outlined in Algorithm 3 and 4 while the algorithm degenerates to breadth first search in the unweighted case.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Algorithm 2: Distributed Betweenness Centrality</head><p>Input: If a label-correcting algorithm provides some information about when the distance to a node is settled then path counts can be computed incrementally during the course of the shortest paths algorithm and S s is unnecessary (merging Step 1, 2 and 3 in Algorithm 2).</p><formula xml:id="formula_6">Graph G ∀ v ∈ V : C B (v) = 0; 1 foreach s ∈ V do 2 //</formula><p>Algorithm 3: shortestpaths(G, s) -find shortest paths predecessor map -∆-stepping <ref type="bibr" target="#b26">[27]</ref> Input:</p><formula xml:id="formula_7">Weighted graph G = (V, E), vertex s Output: ∀ v ∈ V : predecessors P s = {p i } on all i shortest paths (s, . . . , p i , v) ∀ v ∈ V : tent[v] = ∞; P s [v] = ∅; 1 i = 0; B[0] = s; tent[s] = 0; 2 while B not empty do 3 D = ∅; 4 while B[i] = ∅ do 5 R = {(v, w)| ∀ v ∈ B[i] ∧ c(v, w) ≤ ∆}; 6 D = D ∪ B[i]; B[i] = ∅; 7 foreach (v, w) ∈ R do relax(v, w); 8 R = {(v, w)| ∀ v ∈ D ∧ c(v, w) &gt; ∆}; 9 foreach (v, w) ∈ R do relax(v, w); 10 i = i + 1;</formula><p>11 For ∆-stepping, this means that once a bucket B[i] is emptied (line 11 in Algorithm 3), all vertices removed from B[i] are settled and it would be possible to determine the path count σ s</p><formula xml:id="formula_8">[v], v ∈ B[i]. However, this requires finding the set A = {u ∈ B[0..i -1] : tent[u] + c(u, v) = tent[v]</formula><p>} and then traversing B[i] in non-increasing order of distance from s starting with the vertices in A. Finding A can be done in two ways. A data structure containing all settled vertices that have paths to non-settled vertices can be maintained and traversed </p><formula xml:id="formula_9">Algorithm 4: relax(v, w) -relax part of ∆-stepping Input: Vertices v, w ∈ V Output: Updated B, P s [w], and tent[w] dist = tent[v] + c(v, w); 1 if dist &lt; tent[w] then 2 if tent[w] &lt; ∞ then 3 B[ tent[w]/∆ ] = B[ tent[w]/∆ ]\{w}; 4 B[ dist/∆ ] = B[ dist/∆ ] ∪ {w}; 5 tent[w] = dist; 6 P s [w] = {v}; 7 else if dist = tent[v] then 8 P s [w] = P s [w] ∪ {v};</formula><formula xml:id="formula_10">5 foreach w ∈ S[v] do 6 σ[w] = σ[w] + σ[v]; 7 enqueue w → localQ; 8 if S s [v] = empty list then 9 enqueue v → Q; 10</formula><p>We chose to compute the pathcount σ s [v] from s to all v ∈ V after all shortest paths have been found. This is done in Step 3 of Algorithm 2 which is outlined in Algorithm 5 as a level-synchronized breadth first search. Level-synchronized means that no vertex in level i + 1 is discovered before every vertex in level i is discovered. This traversal requires the successor set The fourth and final phase of our algorithm consists of traversing G in order of non-increasing distance from s and calculating the dependency (δ) and centrality (C B ), for all vertices similarly to Brandes' algorithm. This is shown in Algorithm 6.</p><formula xml:id="formula_11">S s [v], v ∈ V . When G is</formula><p>Algorithm 6: updatecentrality(P s , Q, σ, δ) -update betweenness centrality</p><p>Input:</p><formula xml:id="formula_12">Predecessor set P s [v], queue Q, betweenness centrality C B [v], shortest path counts σ[v], ∀v ∈ V , Output: Updated betweenness centrality C B [v],</formula><p>∀v ∈ V // Compute dependency and centrality, Q returns vertices in non-increasing distance from s ∀t ∈ V :</p><formula xml:id="formula_13">updates[t] = δ[t] = 0; 1 while Q not empty do 2 dequeue w ← Q; 3 foreach v ∈ P s [w] do 4 updates[v] = updates[v] + 1; 5 if updates[v] ≥ |S s [v]| then 6 δ[v] = δ[v] + σ[v] σ[w] • (1 + δ[w]); 7 enqueue v → Q; 8 if w = s then 9 C B [w] = C B [w] + δ[w]; 10 III. ANALYSIS</formula><p>In our analysis, we consider random Erdős-Rényi graphs G(n, p) with the edge-probability p = d /n. We analyze unweighted graphs as well as weighted graphs where the weight function c(u, v) returns values from a uniform random distribution (0, 1], as well as integers in (0, C] : C &lt; ∞. The actual number of edges in G is m = Θ(dn) whp<ref type="foot" target="#foot_0">foot_0</ref> . Our analysis assumes the most interesting case, d = O(log n) (whp all but the c log n smallest edges per node can be ignored without changing the shortest path for some constant c <ref type="bibr" target="#b16">[17]</ref>, <ref type="bibr" target="#b18">[19]</ref>).</p><p>Our main motivation in designing this algorithm was to be more space efficient than all-pairs shortest paths algorithms such as Floyd-Warshall <ref type="bibr" target="#b14">[15]</ref>, <ref type="bibr" target="#b30">[31]</ref> and to be capable of benefiting from both coarse grained and fine grained parallelism with large graphs. It is straightforward to observe that betweenness centrality can be implemented in terms of n independent SSSP calculations and a reduction operation on the results of those n SSSPs. The time-optimal method to compute betweenness centrality would thus be to perform n SSSPs in parallel. This approach requires Ω(n 2 ) space to store any of the several O(n) data structures such as the path count or dependency of each vertex. Our algorithm requires O(m + n) space in practice and is therefore more appropriate for the analysis of very large graphs on distributed memory machines.</p><p>First, we analyze the structure of the shortest paths subgraph G ; m denotes the number of edges in G .</p><p>Lemma 1. The number of equal weight paths in G, with c(u, v) returning values from U (0, 1], is 0 whp. Proof: By the Central Limit Theorem, the path length F, a sum of independent samples from the continuous uniform distribution U (0, 1] approximates a normal distribution for large n. If we assume that U (0, 1] ⊂ R + , i.e., U (0, 1] is infinitely discretizable, then the probability that a random sample from F is equal to a specific b ∈ U (0, 1] is ≈ 0. In general, given a path of weight δ, the probability that there exists another path of weight δ approaches 0 as the number of possible edge weights approaches ∞. Thus there are no equal weight paths in G, with c(u, v) returning values from U (0, 1], whp.</p><p>Lemma 2. When G has edges weighted from U (0, 1], then m ≤ n -1 whp.</p><p>Proof: In a connected graph any edge set which connects all the vertices contains at least n-1 edges. We conclude with Lemma 1 that there are no equal length paths whp, so that the number of edges m can be at most n -1 if the graph is connected and must be less than n -1 if the graph is not connected. The term m appears in a number of subsequent bounds. Determining a tight bound on m when c(u, v) returns integers in (0, C], C &lt; ∞ remains an open problem <ref type="bibr" target="#b5">[6]</ref>. We have shown that when c(u, v) returns values from U (0, 1], m ≤ n -1 whp. We conclude that in the most interesting cases of finitely discretizable edge weights and d ∈ O(log n), m is bounded between O(n) (Lemma 2) and O(n log n) (Lemma 3).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Space complexity</head><p>Our algorithm contains a number of data structures which store data for each vertex including C B , σ, δ, the tentative distance (tent) for the SSSP calculations, and updates, a counter we utilize to traverse the graph in dependency order from sink(s) to source. Additionally we maintain P s and S s which record adjacencies in G . We maintain several queues including the queue for the SSSP calculation (which in our implementation is actually the array of buckets for ∆-stepping) as well as the queues used to traverse the graph in path count and dependency/centrality computations.</p><p>Data Distribution: Vertices in G can be randomly assigned to processing units (PUs) by generating an array of random PU indices. This can be performed in O( n /P ) time. Edges can be stored on the PU which owns the source of the edge. Storing the graph in this fashion requires Θ(m + n) space.</p><p>Values Associated With Vertices: C B , σ, δ, tent, and dep are all arrays of size Θ(n).</p><p>SSSP Queue: Each of the P PUs maintains its own queues and stores there the queued vertices it is responsible for. At most m edges can be queued, therefore, each queue is O(m/P ) whp.</p><p>Predecessor and Successor Adjacencies: Each node will have m /n expected entries in the predecessor map. For random graphs, predecessors are evenly distributed and each node has an expected number of predecessors m /n. By Chernoff bounds, a buffer of size O( m /n + log m ) per node suffices whp. Data can be placed in the buffer using randomized dart throwing <ref type="bibr" target="#b27">[28]</ref>. Periodically checking to see if dart throwing has terminated and increasing the buffer size if necessary preserves correctness in the unlikely case that a buffer is too small. This additional space is only necessary for arbitrary-write CRCW PRAMs to handle concurrent updates to the predecessor set of a single vertex. In models that do not have to handle concurrent writes (including our implementation), O( m /n) space suffices by using a dynamic table <ref type="bibr" target="#b10">[11]</ref>. Thus the space required to store all predecessor and successor adjacencies is O(m + n log m ).</p><p>Shortest Paths Queue: Traversing G can be performed in O(log n) phases whp. Each phase contains O( n /log n) nodes therefore O( n /P log n) space per PU suffices whp.</p><p>Dependency/Centrality Dequeue: Computing dependency/centrality is equivalent to a breadth first search from sink to source and thus the space from the shortest paths queue above can be reused. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. PRAM Analysis</head><p>We now explain how Algorithm 2 can be efficiently implemented on an arbitrary-write CRCW PRAM.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Shortest Paths Calculation:</head><p>A variety of shortest paths algorithms could be used in the portion of the algorithm which computes predecessor and successor maps in G <ref type="bibr" target="#b11">[12]</ref>, <ref type="bibr" target="#b26">[27]</ref>. ∆-stepping has reasonable expected runtime and is straightforward to implement in distributed memory. ∆-stepping can solve the single source shortest path problem on graphs of the aforementioned class in O(log 3 n/ log log n) time using dn log log n log 3 n processing units (PUs) on a CRCW PRAM <ref type="bibr" target="#b26">[27]</ref>. When G is unweighted the shortest paths calculation degenerates to a breadth first search and can be solved in O(log n) time.</p><p>Placing predecessors in P s can be performed using randomized dart throwing without adding more than O(1) time per edge relaxation. The output of the shortest paths computation is P s which represents the edges in G .</p><p>Calculating Successors given Predecessors: The predecessor lists allow G to be traversed from sink to source. If G is unweighted, successor lists can be computed at the same time as the predecessor lists with no cost because there are no deletions in P s . In the case of weighted graphs it is straightforward to calculate successors given predecessors in O(log 2 n) time. Each vertex is assigned to a PU, the expected number of predecessors per vertex is m /n which is O(log n) when edges have integer weights uniformly distributed in (0, C] : C &lt; ∞ (O(1) if edge weights are infinitely discretizable). Each PU writes the corresponding successor entry in S s for each of its predecessors. Reducing the writes by each of the n PUs to S s requires O(log n) time.</p><p>Computing Path Counts: Computing path counts in G can be done in O(log 2 n) time using n PUs. Each vertex is assigned to a PU, in each iteration every PU checks to see if the path count at its vertex is non-zero. If so it increments the path count at each of its successors in Updating Dependency and Centrality: Rather than traversing G from source to sink as when computing path counts, computing dependency and centrality requires traversing G from sink to source. The operation is fundamentally the same however, updating the dependency of the predecessors of a vertex, rather than the path count of its successors. Care must be taken that all successors of a vertex v have updated the dependency of v before v in turn updates the dependencies of its predecessors. This is easily accounted for by counting the updates to v. </p><formula xml:id="formula_14">G Unweighted Weighted SSSP O(log n) O( log 3 n log log n ) (expected) Compute S 0 (in SSSP) O(log 2 n) Compute σ s 0 (in SSSP) O(log 2 n) Compute δ and C B O(log 2 n) O(log 2 n) Total (∀s ∈ V ) O(n log 2 n) O( n log 3 n log log n )</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Distributed Memory Analysis</head><p>Our analysis utilizes the well-known LogGP model <ref type="bibr" target="#b0">[1]</ref> as framework for formal analysis. The LogGP model incorporates three of the four main network parameters: L is the maximum latency between any two processes, o is the CPU injection overhead of a single message, g is the "gap" between two messages, i.e., the inverse of the injection rate, G is the "gap" per byte, i.e., the inverse bandwidth, and P is the number of processes.</p><p>Let T p2p (s) denote the time that is needed to transmit a message of size s between two arbitrary PUs. Furthermore, let T coll (s) denote the time that is needed to perform a global reduction operation where the result of a binary function F(a, b), applied to the values on all PUs, is returned on all PUs. This simplified network model was used in <ref type="bibr" target="#b26">[27]</ref> to analyze the ∆-stepping algorithm on a distributed system. In the BSP <ref type="bibr" target="#b29">[30]</ref> model, we would simply substitute T p2p (s) = O(l + g(s + log P ))</p><p>and T coll (s) = O(log p(l + gk)). In LogGP, we could replace T p2p (s) = 2o+L+g+(s-1)G if we assume that messages are sent in batches (g has to be charged) and T coll (s) = O(log P ) • T p2p (s) for small s, if we assume an implementation based on point-to-point messages in a tree pattern.</p><p>Shortest Paths Calculation: Meyer et al. showed in <ref type="bibr" target="#b26">[27]</ref> that for ∆-stepping on weighted random graphs, the number of phases h = O( log 2 n log log n ) whp. In our analysis, we assume the practically most interesting case P ≤ n h log n . Each PU stores n /P rows of the adjacency matrix which contain whp, nd /P edges of G. Vertices have a global identifier that can be used to determine the owner PU of that vertex in constant time (e.g., a hash function). It is intuitive that load balancing is already achieved due to the properties of the random graph G. Whenever an edge (u, v) leading to a remote PU is relaxed, a relaxation request with the vertex and dist(u) + w(u, v) is sent to the owner of v. If all requests are collected, and communicated at the end of each phase (i.e., only the shortest edge to a vertex v is communicated), then the runtime can be estimated by O( nd /P + h(T coll (1) + T p2p ( dn /P h))).</p><p>Calculating Successors given Predecessors: This step can simply be achieved by sending all remote edges to the PUs that own the target vertex and by "flipping" all edges, i.e., ∀s ∈ V do ∀v ∈ P s [u] : add u to S <ref type="bibr">[v]</ref>. Each process has Θ(dn P -1 P ) remote edges evenly distributed on P -1 peer PUs whp. Thus, the expected time for this step is O(T p2p (dn P -1 P 2 ) • P + dn/P ). Computing Path Counts: For this, we use the same distribution as in the previous step. The algorithm is started at s and runs until all queues on all PUs are empty. Dequeue operations act on a separate queue on each PU and enqueue operations enqueue the vertex at the owning PU by sending a control message. When a PU's queue is empty, it starts a new communication round and waits for the other nodes in order to check if all queues are empty. Communication complexity can be quantified by the maximum number of communication rounds r which is the longest path in the communication tree (i.e., when the last node finishes the algorithm). Lemma 5. The time to compute the shortest path counts on a distributed memory parallel machine is O( n log n /P + h(T coll (1) + T p2p (n log n/P h))).</p><p>Proof: The number of edges in G is bounded by n log n whp (cf. Lemma 3). Thus, in a random graph, the expected number of edges per process is n log n /P and each edge is traversed once. Lemma 4 shows that a maximum of r &lt; h rounds are performed in the algorithm. Each of the h phases and the r rounds consists of a collective operation that checks if the next round/phase can be started and the same number of point-to-point message sends. It is easy to see that each edge is communicated at most once during the computation of the shortest path counts. As P → ∞, this is also the expected communication volume.</p><p>Updating Dependency and Centrality: This computation is similar to the computation of the shortest path counts, with the only difference that G is traversed backwards. Lemma 4 can also be applied to this traversal. Each edge e ∈ E needs to be considered and the distributed queue implementation could enforce a collective synchronization operation during each round. Thus, the time required to update the dependency is of the the same order as for the path count computation in Lemma 5.</p><p>Theorem 3. Betweenness centrality on random graphs from G(n, d n ) with d = O(log n) and random edge weights can be computed in expected time O( n 2 log n /P + nh(T coll (1) + T p2p ( dn /P h))) whp on a distributed memory parallel machine with P processors.</p><p>In unweighted graphs, where breadth first search can be used to compute all shortest paths and the predecessor set, the shortest path computation is bounded by O( nd /P + r(T coll (1) + T p2p ( dn /P h)). Computing betweenness centrality is bounded by O( n 2 log n /P + n log n(T coll (1) + T p2p ( dn /P log n)) whp.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>IV. SIMULATION AND IMPLEMENTATION</head><p>In this section, we evaluate the performance and scalability of the revised betweenness centrality algorithm. All performance evaluations were performed on the Indiana University Computer Science Department's "Odin" research cluster. Odin consists of 128 InfiniBandconnected compute nodes with 4 GiB memory each. We used a single process per node in our tests. We implemented our algorithm in the Parallel Boost Graph Library (PBGL) <ref type="bibr" target="#b17">[18]</ref> and built it against Boost 1.42.0 <ref type="bibr" target="#b7">[8]</ref> (containing the sequential BGL) in our tests.</p><p>Calculating betweenness centrality requires solving the SSSP problem starting at each vertex. For graphs with tens of millions of vertices or larger, solving n SSSPs is infeasible. We instead solve the SSSPs for a randomly chosen subset of vertices in V . In practice this approach generates a reasonably good approximation of the centrality scores for several real-world networks <ref type="bibr" target="#b2">[3]</ref>. We assume in this case that one instance of the full graph needs all available memory. Although our focus lies on the parallel performance of Algorithm 2, we present the performance of Brandes' sequential algorithm in order to provide a baseline. Table <ref type="table">I</ref> demonstrates the performance of the sequential algorithm as implemented in BGL. Due to the additional overhead imposed by the distributed data structures and communication code needed to support parallel computation, the parallel implementation is noticeably slower on a single processor. Differences in runtime between the weighted and unweighted version illustrate the tradeoff between the lower complexity of the SSSP algorithm in the unweighted case vs. smaller m in the weighted case which reduces the complexity of subsequent stages of the algorithm. All single processor numbers beyond this table are the results of running the parallel algorithm with the required parallel data structures on a single processor.</p><p>The ∆ parameter to the ∆-stepping algorithm determines the width of each bucket in the data structure used to sort edges by weight. This parameter determines the amount of work available to be performed in parallel at each step, and consequently how work-inefficient the algorithm is. We have set ∆ to maximum edge weight maximum vertex degree for all results presented. It is likely that further tuning of the ∆ parameter would lead to additional performance improvement.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Strong Scaling</head><p>To understand how well Algorithm 2 scales as more computational resources are provided, we evaluated the performance on fixed-size graphs.</p><p>Figures <ref type="figure" target="#fig_9">5(a</ref>) and 5(b) illustrate the strong scalability (scaling with a fixed-size input) of Algorithm 2. Once the communication overhead is subsumed, the algorithm scales well until insufficient work is available to benefit from the additional resources. This occurs around 64 to 96 processors and depends both on the number of edges and number of equal weight paths. It is clear that the parallel implementation exhibits significant overhead due to parallel data structures and communication, in most cases, the parallel algorithm is not faster than the sequential version until 16 processors or more are available. Due to the generic programming techniques employed in the Parallel BGL most of the distributed data structures exhibit no overhead in the P = 1 case. One source of overhead that cannot be avoided is the determination of ownership of elements of the graph. In order to locate vertices and edges in the graph and their associated properties a processor performs either a computation or a lookup in an array that maps vertices to PUs. In the P = 1 case this lookup always returns the index of the only existing processor, but cannot be eliminated by the compiler. When the amount of work per vertex is small this ownership determination can have a large effect on the runtime of the algorithm.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Weak Scaling</head><p>To understand how the parallel implementation of Algorithm 2 scales as the problem size scales, we evaluated the performance of each algorithm on graphs where n ∝ m ∝ P . Weak scalability is perhaps the most appropriate test of Algorithm 2 because it illustrates the algorithm's ability to compute betweenness centrality on graphs which the sequential implementation is unable to process due to memory constraints per node. Figures <ref type="figure" target="#fig_9">5(c</ref>) and 6(a) show that the runtime increases even though the amount of data per processor remains constant. This is because the time complexity of Algorithm 2 is O( n log 3 n log log n ). As we vary n linearly with the number of processors the amount of work increases faster than the number of processors. This yields more work per processor which gives rise to the sub-linear speedup exhibited.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Scale-Free Graphs</head><p>We also evaluated the performance of Algorithm 2 on scale-free graphs which are representative of real-world networks. We used the Recursive MATrix (R-MAT) <ref type="bibr" target="#b9">[10]</ref> random graph generation algorithm to generate input data sampled from a Kronecker product.</p><p>Figure <ref type="figure" target="#fig_10">6</ref>(b) shows that Algorithm 2 scales relatively well in the unweighted case, though adding more than 16 processors does not decrease the runtime. This leveling off of performance occurs earlier with R-MAT graphs than with Erdős-Rényi graphs, possibly due to the smaller diameter of the graph.</p><p>Figure <ref type="figure" target="#fig_10">6</ref>(c) shows that Algorithm 2 is able to compute betweenness centrality on R-MAT graphs too large to fit in the memory of a single machine. As with Erdős-Rényi graphs the amount of work increases faster than the number of processes leading to sub-linear scaling. The smaller diameter of the R-MAT graphs means that the maximum size of the ∆-stepping bucket data structure is greater than with Erdős-Rényi graphs, which can lead to paging and thus reduced performance at large processor counts (this is particularly evident in the avg. degree = 12 plot in Figure <ref type="figure" target="#fig_10">6(c)</ref>).</p><p>Performance results on weighted R-MAT graphs were omitted due to space constraints.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>V. CONCLUSIONS AND FUTURE WORK</head><p>We have presented a new parallel algorithm for betweenness centrality that has expected time in a CRCW PRAM equal to the sequential algorithm by Brandes. Rather than parallelizing betweenness centrality by solving multiple single source shortest paths problems at once, we have exposed parallelism within the shortest paths computation by leveraging existing label-correcting single-source shortest path algorithms. This method allows us to demonstrate good parallel performance while maintaining low space complexity.</p><p>This algorithm has lower time complexity on sparse graphs than solutions which utilize all-pairs shortest path algorithms such as Floyd-Warshall. In addition this algorithm has low space complexity relative to allpairs shortest paths algorithms which makes it especially suitable the analysis of very large graphs on distributed memory machines.</p><p>We have presented results on Erdős-Rényi and R-MAT random graphs which demonstrate that our algorithm is both computationally efficient and scalable. Greater speedup could be achieved by leveraging finegrained parallelism at the node level. Hybrid approaches leverage fine-grained parallelism to maximize use of local resources and coarse-grained parallelism to allow problem scaling and provide additional performance benefits. Hybrid approaches will become increasingly important given increasing problem size and the growing processing capability of individual machines. We are currently developing a new version of the Parallel BGL which leverages hybrid parallelism and reduces overhead in the communication layer and anticipate presenting new performance results in the near future.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Algorithm 1 : 1 foreach s ∈ V do 2 S ← empty stack; 3 ∀ 4 ∀ 5 ∀</head><label>112345</label><figDesc>Sequential algorithm for computing betweenness centrality in a weighted graph using Brandes' technique for aggregating dependenciesInput: Graph G, a weight function c(u, v) returning the weight of an edge from u → v Output:∀ v ∈ V : C B [v] the betweenness centrality ∀ v ∈ V : C B (v) = 0; w ∈ V : P [w] ← empty list; t ∈ V : σ[t] ← 0; σ[s] ← 1; t ∈ V : dist[t] ← ∞; dist[s] ← 0;6 P Q ← empty priority queue which returns 7 elements in non-decreasing order by dist; enqueue s → P Q; 8 while P Q not empty do 9 dequeue v ← P Q; push v → S; foreach neighbor w of v do if dist[v] + c(v, w) &lt; dist[w] then dist[w] = dist[v] + c(v, w);</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Fig. 1 :</head><label>1</label><figDesc>Fig. 1: Single graph replicated across three processes.</figDesc><graphic coords="2,316.14,166.05,106.12,91.14" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Fig. 2 :</head><label>2</label><figDesc>Fig. 2: Single graph distributed across three processes.</figDesc><graphic coords="3,106.06,139.13,79.44,73.90" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Fig. 3 :</head><label>3</label><figDesc>Fig. 3: An example shortest path DAG (G ). Dotted edges represent edges in G but not in G .</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Lemma 3 .</head><label>3</label><figDesc>The number of edges m in G , when G has integer weighted edges in (0, C] : C &lt; ∞, is O(dn).Proof: The number of edges in G is Θ(dn) whp, E ⊆ E thus m must be O(dn).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Theorem 1 .</head><label>1</label><figDesc>Our modified betweenness centrality algorithm on random graphs from G(n, d n ) with d ∈ O(log n) requires O(m + n log m ) space on an arbitrary-write CRCW PRAM. In a machine which does not allow concurrent writes O(m + n) space suffices. Proof: The space required by the various Θ(n) data structures and the queues used in the shortest paths and dependency/centrality computation is subsumed by the space required by P s and S s , which are O(m +n log m ) and the size of the SSSP queue which is O(m). Because m ≤ m, O(m + n log m + m) = O(m + n log m ). In a machine where concurrent writes to the same location are not allowed a reduction must be done requiring O(log P ) time, reducing the space required to O(m+n).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>Fig. 4 :</head><label>4</label><figDesc>Fig. 4: Expected case runtime for each phase of the presented betweenness centrality algorithm for each of the possible classes of edge weights</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head>Theorem 2 . 3 n</head><label>23</label><figDesc>Betweenness centrality on random graphs from G(n, d n ) with d ∈ O(log n) can be computed in expected time O( n log 3 n log log n ) using dn log log n log PUs on a CRCW PRAM. If G is unweighted this can be reduced to O(n log n) expected time using n PUs.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head>Lemma 4 .</head><label>4</label><figDesc>The number of communication rounds r = O(log n) whp. Proof: The longest path in the subgraph G has as many edges as the diameter of the giant component of G which is O(log n) whp. Only remote edges (edges leading to other PUs) cause message sends and can potentially cause a new communication round. G is traversed in breadth first search order, and thus, whp, r = O(log n).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_9"><head>Fig. 5 :</head><label>5</label><figDesc>Fig. 5: Scaling of Algorithm 2 applied to Erdős-Rényi graphs (time is per source vertex).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_10"><head>Fig. 6 :</head><label>6</label><figDesc>Fig.6: Scaling of Algorithm 2 applied to Erdős-Rényi (ER) and RMAT graphs (time is per source vertex).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head></head><label></label><figDesc>Step 1: Compute shortest path predecessors P s = shortestpaths(G, s); = updatecentrality(P s , Q, σ s , C B );</figDesc><table><row><cell>3</cell><cell></cell></row><row><cell></cell><cell>// Step 2: Compute shortest path</cell></row><row><cell></cell><cell>successors from predecessors</cell></row><row><cell>4</cell><cell>S s = transpose(P s );</cell></row><row><cell></cell><cell>// Step 3: Compute path counts in</cell></row><row><cell></cell><cell>DAG of shortest paths</cell></row><row><cell>5</cell><cell>(σ s , Q) = pathcounts(S s , s);</cell></row><row><cell></cell><cell>// Step 4: Update betweenness</cell></row><row><cell></cell><cell>centrality</cell></row><row><cell cols="2">C B 6</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head></head><label></label><figDesc>unweighted S s can easily be computed at the same time as P s in the shortest paths calculation. When G is weighted however, P s [v] is cleared when a shorter path to v is found. Clearing P s [v] requires an update to S s of the form ∀w ∈ P s [v] : S s [w] = S s [w] \ v. This operation adds Θ(|P s [v]|) work to each edge relaxation, and might require time-consuming communication in distributed memory. For this reason when G is weighted, we determine P s during the shortest paths calculation and calculate S s from P s after the shortest paths calculation is complete in the optional Step 2 of Algorithm 2.</figDesc><table /></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>We use the term "whp" throughout the document to say "with high probability", i.e., the probability for some event is at least 1 -n for a constant &gt; 0.</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>Acknowledgements</head><p>This work was supported by a grant from the <rs type="funder">Lilly Endowment</rs>. The authors would also like to thank <rs type="person">Jeremiah Willcock</rs> for useful discussions regarding proofs.</p></div>
+			</div>
+			<listOrg type="funding">
+			</listOrg>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Incorporating Long Messages into the LogP Model</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Alexandrov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">F</forename><surname>Ionescu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">E</forename><surname>Schauser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Scheiman</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Loggp</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Par. and Distrib. Computing</title>
+		<imprint>
+			<biblScope unit="volume">44</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="71" to="79" />
+			<date type="published" when="1995">1995</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">The rush in a directed graph</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Anthonisse</surname></persName>
+		</author>
+		<idno>BN9/71</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Stichting Mathematisch Centrum</title>
+		<imprint>
+			<date type="published" when="1971">1971</date>
+			<pubPlace>Amsterdam</pubPlace>
+		</imprint>
+	</monogr>
+	<note type="report_type">Technical Report</note>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Approximating betweenness centrality. In Alg. and Models for the Web-Graph</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Bader</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Kintali</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Madduri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Mihail</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">LNCS</title>
+		<imprint>
+			<biblScope unit="volume">4863</biblScope>
+			<biblScope unit="page" from="124" to="137" />
+			<date type="published" when="2007">2007</date>
+			<publisher>Springer-Verlag</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Parallel algorithms for evaluating centrality indices in real-world networks</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">A</forename><surname>Bader</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Madduri</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Parallel Processing</title>
+		<imprint>
+			<date type="published" when="2006">2006</date>
+			<biblScope unit="page" from="539" to="550" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">On a routing problem</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Bellman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Quarterly of Applied Mathematics</title>
+		<imprint>
+			<biblScope unit="volume">16</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="87" to="90" />
+			<date type="published" when="1958">1958</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Distance distribution in random graphs and application to network exploration</title>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">D</forename><surname>Blondel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J.-L</forename><surname>Guillaume</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">M</forename><surname>Hendrickx</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">M</forename><surname>Jungers</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Physical Review E</title>
+		<imprint>
+			<biblScope unit="volume">76</biblScope>
+			<biblScope unit="issue">066101</biblScope>
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<monogr>
+		<title level="m" type="main">Random Graphs</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Bollobas</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2001">2001</date>
+			<publisher>Cambridge University Press</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title/>
+		<ptr target="http://www.boost.org/" />
+	</analytic>
+	<monogr>
+		<title level="j">Boost. Boost C++ Libraries</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">A faster algorithm for betweenness centrality</title>
+		<author>
+			<persName><forename type="first">U</forename><surname>Brandes</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Mathematical Sociology</title>
+		<imprint>
+			<biblScope unit="volume">25</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="163" to="177" />
+			<date type="published" when="2001">2001</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">R-MAT: A recursive model for graph mining</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Chakrabarti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Faloutsos</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of 4th International Conference on Data Mining</title>
+		<meeting>4th International Conference on Data Mining</meeting>
+		<imprint>
+			<date type="published" when="2004-04">April 2004</date>
+			<biblScope unit="page" from="442" to="446" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<author>
+			<persName><forename type="first">T</forename><surname>Cormen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Leiserson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Rivest</surname></persName>
+		</author>
+		<title level="m">Introduction to Algorithms</title>
+		<imprint>
+			<publisher>McGraw-Hill</publisher>
+			<date type="published" when="1990">1990</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">A parallelization of Dijkstra&apos;s shortest path algorithm</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Crauser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Mehlhorn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">U</forename><surname>Meyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Sanders</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Mathematical Foundations of Computer Science, volume 1450 of LNCS</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="1998">1998</date>
+			<biblScope unit="page" from="722" to="731" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">A note on two problems in connexion with graphs</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>Dijkstra</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Numerische Mathematik</title>
+		<imprint>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="269" to="271" />
+			<date type="published" when="1959">1959</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Singlesource shortest paths with the Parallel Boost Graph Library</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Edmonds</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Breuer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Gregor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Lumsdaine</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">The Ninth DIMACS Implementation Challenge: The Shortest Path Problem</title>
+		<meeting><address><addrLine>Piscataway, NJ</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2006-11">November 2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Algorithm 97: Shortest path</title>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">W</forename><surname>Floyd</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Commun. ACM</title>
+		<imprint>
+			<biblScope unit="volume">5</biblScope>
+			<biblScope unit="issue">6</biblScope>
+			<biblScope unit="page">345</biblScope>
+			<date type="published" when="1962">1962</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">A set of measures of centrality based on betweenness</title>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">C</forename><surname>Freeman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Sociometry</title>
+		<imprint>
+			<biblScope unit="volume">40</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="35" to="41" />
+			<date type="published" when="1977-03">March 1977</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">The shortest-path problem for graphs with random arc-lengths</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Frieze</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Grimmett</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Discrete Applied Mathematics</title>
+		<imprint>
+			<biblScope unit="volume">10</biblScope>
+			<biblScope unit="page" from="57" to="77" />
+			<date type="published" when="1985">1985</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<monogr>
+		<author>
+			<persName><forename type="first">D</forename><surname>Gregor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Edmonds</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Breuer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Gottschling</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Barrett</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Lumsdaine</surname></persName>
+		</author>
+		<ptr target="http://www.osl.iu.edu/research/pbgl" />
+		<title level="m">The Parallel Boost Graph Library</title>
+		<imprint>
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">On shortest paths in graphs with random weights</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Hassin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Zemel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Mathematics of Operations Research</title>
+		<imprint>
+			<biblScope unit="volume">10</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="557" to="564" />
+			<date type="published" when="1985-11">November 1985</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<monogr>
+		<title level="m" type="main">An Introduction to Parallel Algorithms</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Jájá</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1992">1992</date>
+			<publisher>Addison-Wesley Professional</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">All pairs shortest paths on a hypercube multiprocessor</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Jenq</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Sahni</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the International Conference on Parallel Processing</title>
+		<meeting>the International Conference on Parallel Processing</meeting>
+		<imprint>
+			<date type="published" when="1987">1987</date>
+			<biblScope unit="page" from="713" to="716" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Efficient algorithms for shortest paths in sparse networks</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">B</forename><surname>Johnson</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of the ACM</title>
+		<imprint>
+			<biblScope unit="volume">24</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="1" to="13" />
+			<date type="published" when="1977">1977</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Scalability of parallel algorithms for the all-pairs shortest path problem</title>
+		<author>
+			<persName><forename type="first">V</forename><surname>Kumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Singh</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Parallel Processing</title>
+		<imprint>
+			<date type="published" when="1991">1991</date>
+			<biblScope unit="page" from="124" to="138" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">An experimental study of a parallel shortest path algorithm for solving large-scale graph instances</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Madduri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Bader</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Berry</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Crobak</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Workshop on Algorithm Engineering and Experiments (ALENEX)</title>
+		<meeting><address><addrLine>New Orleans, LA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2007-01">January 2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">A faster parallel algorithm and efficient multithreaded implementations for evaluating betweenness centrality on massive datasets</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Madduri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Ediger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Bader</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Chavarria-Miranda</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Multithreaded Architectures and Applications</title>
+		<imprint>
+			<publisher>IEEE Computer Society</publisher>
+			<date type="published" when="2009-05">2009. May 2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<monogr>
+		<title level="m" type="main">Design and analysis of sequential and parallel single-source shortest-paths algorithms</title>
+		<author>
+			<persName><forename type="first">U</forename><surname>Meyer</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2002">2002</date>
+		</imprint>
+		<respStmt>
+			<orgName>Universität Saarbrücken</orgName>
+		</respStmt>
+	</monogr>
+	<note type="report_type">PhD thesis</note>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">∆-stepping: A parallelizable shortest path algorithm</title>
+		<author>
+			<persName><forename type="first">U</forename><surname>Meyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Sanders</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">J. Algorithms</title>
+		<imprint>
+			<biblScope unit="volume">49</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="114" to="152" />
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Parallel tree contraction and its application</title>
+		<author>
+			<persName><forename type="first">G</forename><forename type="middle">L</forename><surname>Miller</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">H</forename><surname>Reif</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 26th Annual Symposium on Foundations of Computer Science</title>
+		<meeting>the 26th Annual Symposium on Foundations of Computer Science<address><addrLine>Washington, DC, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="1985">1985</date>
+			<biblScope unit="page" from="478" to="489" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">The centrality index of a graph</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Sabidussi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Psychometrika</title>
+		<imprint>
+			<biblScope unit="volume">31</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="581" to="603" />
+			<date type="published" when="1966-12">December 1966</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">A bridging model for parallel computation</title>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">G</forename><surname>Valiant</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Commun. ACM</title>
+		<imprint>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="issue">8</biblScope>
+			<biblScope unit="page" from="103" to="111" />
+			<date type="published" when="1990">1990</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">A theorem on boolean matrices</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Warshall</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">J. ACM</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="11" to="12" />
+			<date type="published" when="1962">1962</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">A parallel algorithm for clustering protein-protein interaction networks</title>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Lonardi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Computational Systems Bioinformatics Conference -Workshops</title>
+		<meeting><address><addrLine>Washington, DC, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>IEEE Computer Society</publisher>
+			<date type="published" when="2005">2005</date>
+			<biblScope unit="page" from="174" to="177" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

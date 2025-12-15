@@ -1,0 +1,1565 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Lossy Image Compression with Quantized Hierarchical VAEs</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability  status="unknown">
+					<licence/>
+				</availability>
+				<date type="published" when="2023-03-25">25 Mar 2023</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Zhihao</forename><surname>Duan</surname></persName>
+							<email>duan90@purdue.edu</email>
+							<affiliation key="aff0">
+								<orgName type="institution">Purdue University</orgName>
+								<address>
+									<settlement>West Lafayette Indiana</settlement>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Ming</forename><surname>Lu</surname></persName>
+							<email>luming@smail.nju.edu.cn</email>
+						</author>
+						<author>
+							<persName><roleName>Dr</roleName><forename type="first">Zhan</forename><surname>Ma</surname></persName>
+							<email>mazhan@nju.edu.cn</email>
+							<affiliation key="aff0">
+								<orgName type="institution">Purdue University</orgName>
+								<address>
+									<settlement>West Lafayette Indiana</settlement>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Fengqing</forename><surname>Zhu</surname></persName>
+							<email>zhu0@purdue.edu</email>
+							<affiliation key="aff0">
+								<orgName type="institution">Purdue University</orgName>
+								<address>
+									<settlement>West Lafayette Indiana</settlement>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff1">
+								<orgName type="institution">U.S. † Nanjing University</orgName>
+								<address>
+									<settlement>Nanjing</settlement>
+									<region>Jiangsu</region>
+									<country key="CN">China</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff2">
+								<orgName type="institution">Microsoft Research Asia</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Lossy Image Compression with Quantized Hierarchical VAEs</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2023-03-25">25 Mar 2023</date>
+						</imprint>
+					</monogr>
+					<idno type="arXiv">arXiv:2208.13056v2[eess.IV]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-14T17:27+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Recent research has shown a strong theoretical connection between variational autoencoders (VAEs) and the rate-distortion theory. Motivated by this, we consider the problem of lossy image compression from the perspective of generative modeling. Starting with ResNet VAEs, which are originally designed for data (image) distribution modeling, we redesign their latent variable model using a quantization-aware posterior and prior, enabling easy quantization and entropy coding at test time. Along with improved neural network architecture, we present a powerful and efficient model that outperforms previous methods on natural image lossy compression. Our model compresses images in a coarse-to-fine fashion and supports parallel encoding and decoding, leading to fast execution on GPUs. Code is made available online.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1.">Introduction</head><p>Data (in our context, image) compression and generative modeling are two fundamentally related tasks. Intuitively, the essence of compression is to find all "patterns" in the data and assign fewer bits to more frequent patterns. To know exactly how frequent each pattern occurs, one would need a good probabilistic model of the data distribution, which coincides with the objective of (likelihood-based) generative modeling. This connection between compression and generative modeling has been well established, both theoretically and experimentally, for the lossless setting. In fact, many modern image generative models are also best-performing lossless image compressors <ref type="bibr" target="#b42">[43,</ref><ref type="bibr" target="#b55">56]</ref>.</p><p>A similar connection can be drawn for the lossy compression setting. In particular, a popular class of image generative models, variational autoencoders (VAEs) <ref type="bibr" target="#b18">[19]</ref>, has been proved to have a rate distortion (R-D) theory interpretation <ref type="bibr" target="#b1">[2,</ref><ref type="bibr" target="#b53">54]</ref>. With a distortion metric specified, VAEs learn to "compress" data by minimizing a tight upper bound on their information R-D function <ref type="bibr" target="#b53">[54]</ref>, showing great potential for application to lossy image compression. However, existing best-performing VAEs <ref type="bibr" target="#b10">[11,</ref><ref type="bibr" target="#b44">45]</ref> employ continuous latent variables, which cannot be straightforwardly coded into bits, and thus cannot be used for practical image compression. Although several methods have been developed to turn VAEs into practical codecs, e.g., by communicating samples <ref type="bibr" target="#b13">[14]</ref> and post-training quantization <ref type="bibr" target="#b52">[53]</ref>, neither achieved satisfactory R-D performance compared to existing methods such as VVC intra codec <ref type="bibr" target="#b31">[32]</ref>.</p><p>Despite the lack of a practical coding algorithm, the potential of VAEs in lossy compression has also been reflected in the image coding community. Although independently developed from the perspective of transform coding, many learning-based image compressors resemble a simple VAE in which the latent variables are first-order Markov <ref type="bibr" target="#b5">[6]</ref>. Given that such simple VAEs are shown to be suboptimal in generative image modeling <ref type="bibr" target="#b38">[39]</ref>, we hypothesize that a more powerful VAE architecture, e.g., hierarchical VAEs, would also achieve a better lossy compression performance.</p><p>Motivated by this, we adopt hierarchical VAE architectures that are originally designed for generative image modeling and use them for lossy compression. We redesign their probabilistic model to allow easy quantization and practical entropy coding, in a way similar to popular lossy compression methods <ref type="bibr" target="#b5">[6,</ref><ref type="bibr" target="#b29">30]</ref>. Specifically, we start from a powerful hierarchical VAE architecture, ResNet VAEs <ref type="bibr" target="#b19">[20]</ref>, and introduce modifications including 1) a uniform posterior, 2) a Gaussian convolved with uniform prior, and 3) revised network architectures. Our new model, QRes-VAE (for quantized ResNet VAE), achieves better R-D performance on natural image compression than existing lossy compression methods. Furthermore, our model compresses images in a coarse-to-fine manner (Fig. <ref type="figure" target="#fig_0">1</ref>) thanks to its hierarchical architecture, while avoids the slow sequential encoding/decoding as experienced by spatially autoregressive image models <ref type="bibr" target="#b29">[30]</ref>.</p><p>Our contributions are summarized as follows. We propose to use a quantization-aware latent variable model for modern hierarchical VAEs, making practical entropy coding feasible. We present a powerful and efficient VAE model that outperforms previous hand-crafted and learning-based methods on lossy image compression. Our method narrows the gap between image compression and generation, at the same time providing insights into designing better image compression systems.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.">Background and Related Work</head><p>In this section, we briefly summarize the preliminaries, introduce our notation, and review previous works.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.1.">Variational Autoencoder (VAE)</head><p>Let X be the random variable representing data (in our case, natural images), with an unknown data distribution p data (•). VAEs <ref type="bibr" target="#b18">[19]</ref> model the data distribution by assuming a latent variable model as shown in Fig. <ref type="figure">2a</ref>, where Z is the assumed latent variable. In VAEs, there is a prior p Z (•), a conditional data likelihood (or decoder) p X|Z (•) for sampling, and an approximate posterior (or encoder) q Z|X (•) for variational inference. Note that we omit the model parameters for simplified notation.</p><p>The training objective of VAE is to minimize a variational upper bound on the negative log-likelihood:</p><formula xml:id="formula_0">L = D KL (q Z|x p Z ) + E q Z|x log 1 p X|Z (x|Z) ≥ -log p X (x),<label>(1)</label></formula><p>where x is a an image, q Z|x is a shorthand notation for q Z|X (• |x), and the minimization of L is w.r.t. the model parameters of q Z|X (•), p Z (•), and p X|Z (•).</p><p>Hierarchical VAEs: To improve the flexibility of VAEs, the latent variable is often divided into disjoint groups, Z {Z 1 , Z 2 , ..., Z N } where N is the number of groups, to form a hierarchical VAE. Many best-performing VAEs <ref type="bibr" target="#b10">[11,</ref><ref type="bibr" target="#b36">37,</ref><ref type="bibr" target="#b44">45]</ref> follow a ResNet VAE <ref type="bibr" target="#b19">[20]</ref> architecture, whose probabilistic model is shown in Fig. <ref type="figure">2b</ref>. During sampling, each latent variable Z i is conditionally dependent on all previous variables Z &lt;i , where i ∈ {1, 2, ..., N } is the index, and</p><formula xml:id="formula_1">X Z ∼ p Z (•) q Z|X (•) p X|Z (•) Inference (encoding) Sampling (decoding) (a) VAE X Z 2 Z 1 (b) 2-layer ResNet VAE [20]</formula><p>Figure during inference, Z i is also conditionally dependent on X in addition to Z &lt;i . For notational simplicity, we define</p><formula xml:id="formula_2">q i (•) q Zi|X,Z&lt;i (•) p i (•) p Zi|Z&lt;i (•)<label>(2)</label></formula><p>to denote the approximate posterior and prior distributions for Z i , respectively. We also define Z &lt;1 to be an empty set, so we have p 1 (•) p Z1 (•) and q 1 (•) q Z1|X (•). Discrete VAEs: A number of works have been proposed to develop VAEs with a discrete latent space. Among them, vector quantized VAEs (VQ-VAE) <ref type="bibr" target="#b33">[34,</ref><ref type="bibr" target="#b46">47]</ref> are able to generate high-fidelity images, but they rely on a separately learned prior and cannot be trained end-to-end. Several works extend VQ-VAEs to form a hierarchy <ref type="bibr" target="#b49">[50,</ref><ref type="bibr" target="#b50">51]</ref>, but they suffer from the same problem as VQ-VAE. Another line of work, Discrete VAEs (DVAE) <ref type="bibr" target="#b34">[35,</ref><ref type="bibr" target="#b43">44,</ref><ref type="bibr" target="#b45">46]</ref>, assumes binary latent variables and use Boltzmann machines as the prior. However, none of them are able to scale to high resolution images. In this work, we tackle these issues through test-time quantization.</p><p>Data compression with VAEs: VAEs have a very strong theoretical connection to data compression. When X is discrete, VAEs can be directly used for lossless compression <ref type="bibr" target="#b20">[21,</ref><ref type="bibr" target="#b41">42]</ref> using the bits-back coding algorithm <ref type="bibr" target="#b17">[18]</ref>. When X is continuously valued, the VAE objective (Eq. 1) has a rate-distortion (R-D) theory interpretation <ref type="bibr" target="#b1">[2]</ref> and has been used to estimate the information R-D function for natural images <ref type="bibr" target="#b53">[54]</ref>. However, there lacks an entropy coding algorithm to turn VAEs into practical lossy coders. Various works <ref type="bibr" target="#b0">[1,</ref><ref type="bibr" target="#b13">14,</ref><ref type="bibr" target="#b14">15,</ref><ref type="bibr" target="#b39">40]</ref> have been conducted towards this goal, but they either require an intractable execution time or do not achieve competitive performance compared to existing lossy image coders. In this work, we provide another pathway for turning VAEs into practical coders, i.e., by using a quantization-aware probabilistic model for latent variables.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.2.">Lossy Image Compression</head><p>Most existing lossy image coders follows the transform coding <ref type="bibr" target="#b15">[16]</ref> paradigm. Conventional, handcrafted image codecs such as JPEG <ref type="bibr" target="#b47">[48]</ref>, JPEG 2000 <ref type="bibr" target="#b37">[38]</ref>, BPG <ref type="bibr" target="#b22">[23]</ref>, VVC intra <ref type="bibr" target="#b31">[32]</ref> use orthogonal linear transformations such as discrete cosine transform (DCT) and discrete wavelet transform (DWT) to decorrelate the image pixels before quantization and coding. Learning-based coders achieve this in a non-linear way <ref type="bibr" target="#b2">[3]</ref> by implementing the transformations and an entropy model using neural networks. To improve compression efficiency, most previous works either explore efficient neural network blocks, such as residual networks <ref type="bibr" target="#b9">[10]</ref>, self-attention <ref type="bibr" target="#b8">[9]</ref>, and transformers <ref type="bibr" target="#b27">[28,</ref><ref type="bibr" target="#b56">57]</ref>, or develop more expressive entropy models, such as hierarchical <ref type="bibr" target="#b5">[6]</ref> and autoregressive models <ref type="bibr" target="#b16">[17,</ref><ref type="bibr" target="#b29">30,</ref><ref type="bibr" target="#b30">31]</ref>.</p><p>Interestingly, the learned transform coding paradigm can be equivalently viewed as a simple VAE <ref type="bibr" target="#b5">[6,</ref><ref type="bibr" target="#b40">41]</ref>, where the encoder (with additive noise), entropy model, and decoder in transform coding correspond to the posterior, prior, and conditional data likelihood in VAEs, respectively. Along this direction, we propose to use a more powerful hierarchical VAE architecture for lossy image compression.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.">Quantization-Aware Hierarchical VAE</head><p>In this section, we first present our overall network architecture in Sec. 3.1. Next, we describe our probabilistic model and loss function in Sec. 3.2. We detail how to implement practical image coding in Sec. 3.3. Finally, we provide discussion in Sec. 3.4, highlighting the relationship of our approach to previous methods.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1.">Network Architecture</head><p>Our overall architecture is similar to the framework of ResNet VAEs <ref type="bibr" target="#b10">[11,</ref><ref type="bibr" target="#b19">20,</ref><ref type="bibr" target="#b44">45]</ref>, on which we made modifications to adapt them for practical compression. We briefly describe our network architecture in this section and refer readers to the Appendix 6.1 and our code for full implementation details.</p><p>Overall architecture: Fig. <ref type="figure" target="#fig_1">3a</ref> overviews the general framework of ResNet VAE, which consists of a bottomup path and a top-down path. Given an input image x, the bottom-up path produces a set of deterministic features, which are subsequently sent to the top-down path for (approximate) inference. In the top-down path, the model starts with a learnable constant feature and then pass it into a sequence of latent blocks, where each latent block adds "information", carried by the latent variables z i , into the feature. At the end of the top-down path, a reconstruction x is predicted by an upsampling layer. Our latent blocks behaves differently for training, compression, and decompression, which we describe in details in Sec. 3.2 and Sec. 3.3.</p><p>Network components: We use patch embedding <ref type="bibr" target="#b11">[12]</ref> (i.e., convolutional layer with the stride equal to kernel size) for downsampling operations. We use sub-pixel convolution <ref type="bibr" target="#b35">[36]</ref> (i.e., 1x1 convolution followed by pixel shuffling) for upsampling, which can be viewed as an "inverse" of the patch embedding layer. Our choices for the downsampling/upsampling layers are motivated by their success in computer vision tasks <ref type="bibr" target="#b11">[12,</ref><ref type="bibr" target="#b35">36]</ref> as well as their efficiency compared to overlapped convolutions. The residual blocks in our network can be chosen arbitrarily in a plug-and-play fashion. We use the ConvNeXt <ref type="bibr" target="#b26">[27]</ref> block as our choice, since we empirically found it achieves better performance than alternatives (see ablation study in Sec. 4.4).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2.">Probabilistic Model and Training Objective</head><p>As we mentioned in Sec. 2, VAEs with continuous latent variables cannot be straightforwardly used for lossy compression (due to the lack of an entropy coding algorithm). We also note that a combination of a) uniform quantization at test time and b) additive uniform noise at training time allows easy entropy coding, as well as having an elegant VAE interpretation <ref type="bibr" target="#b4">[5,</ref><ref type="bibr" target="#b5">6]</ref>. Inspired by this, we redesign the probabilistic model in ResNet VAEs, using uniform posteriors to enable quantization-aware training. For the prior, we use a Gaussian distribution convolved with uniform distribution, which has enough flexibility to match the posterior <ref type="bibr" target="#b29">[30]</ref>. Note that under this configuration, the probabilistic model in each latent block closely resembles the mean &amp; scale hyperprior entropy model <ref type="bibr" target="#b29">[30]</ref>.</p><p>We now give formal description for our probabilistic model. In this section, we assume every variable is a scalar in order to simplify the presentation. In implementation, we apply all the operations element-wise.</p><p>Posteriors: The (approximate) posterior for the i-th latent variable, Z i , is defined to be a uniform distribution:</p><formula xml:id="formula_3">q i (• |z &lt;i , x) U (µ i - 1 2 , µ i + 1 2 ),<label>(3)</label></formula><p>where µ i is the output of the posterior branch in the i-th latent block (see Fig. <ref type="figure" target="#fig_1">3b</ref>). From Fig. <ref type="figure" target="#fig_1">3a</ref> and Fig. <ref type="figure" target="#fig_1">3b</ref>, we can see that µ i (and thus z i ) depends on the image x as well as previous latent variables z &lt;i . Priors: The prior distribution for Z i is defined as a Gaussian convolved with a uniform distribution <ref type="bibr" target="#b5">[6]</ref>:</p><formula xml:id="formula_4">p i (• |z &lt;i ) N (μ i , σ2 i ) * U (- 1 2 ,<label>1 2 )</label></formula><formula xml:id="formula_5">⇔ p i (z i |z &lt;i ) = zi+ 1 2 zi-1 2 N (t; μi , σ2 i ) dt<label>(4)</label></formula><p>where N (t; μi , σ2 i ) denotes the Gaussian probability density function evaluated at t. The mean μi and scale σi are predicted by the prior branch (see Fig. <ref type="figure" target="#fig_1">3b</ref>) in the i-th latent block. Note that the prior mean μi and scale σi are dependent only on z &lt;i , but not on image x. Sampling from p i (• |z &lt;i ) can be done by:</p><formula xml:id="formula_6">z i ← μi + t • (σ i w + u),<label>(5)</label></formula><p>where w ∼ N (0, 1) and u ∼ U (-1 2 , 1 2 ) are random noise, and t ∈ [0, 1] is a temperature parameter to control the noise level. When t = 1, z i is an unbiased sample from the prior p i (• |z &lt;i ), and when t = 0, z i is simply the prior mean.</p><p>Data likelihood: For lossy compression, the form of the likelihood distribution p X|Z (•) depends on which distortion metric d(•) is used. In general, we define</p><formula xml:id="formula_7">p X|Z (x|z) ∝ e -λ•d(x,x) ,<label>(6)</label></formula><p>where λ is a scalar hyperparameter that we can manually set, and x is the final output of the top-down path network (see Fig. <ref type="figure" target="#fig_1">3a</ref>). Notice that x depends on all latent variables z {z 1 , ..., z N }. In image compression, d(•) is often chosen to be the mean squared error (MSE), in which case the data likelihood forms a (conditional) Gaussian distribution.</p><p>Training objective: Given an image x, our training objective is then to minimize the loss function of VAE (Eq. 1), which can be written as:</p><formula xml:id="formula_8">L = D KL (q Z|x p Z ) + E q Z|x log 1 p X|Z (x|Z) , = E q Z|x N i=1 log 1 p i (z i |z &lt;i ) + λ • d(x, x) + constant,<label>(7)</label></formula><p>where the expectation w.r.t. Z ∼ q Z|x is estimated by drawing a sample at each training step. The detailed derivation of Eq. 7 is given in the Appendix 6.2. We can see that the first term in Eq. 7 corresponds to a continuous relaxation of the test-time bit rate (up to a constant factor log 2 e), and the second term corresponds to the distortion of reconstruction, where we can tune λ to balance the trade-off between rate and distortion. Note that the model parameters should be optimized independently for each λ. That is, we use separately trained models for different bit rates.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3.">Compression</head><p>In actual compression and decompression, the overall framework (i.e., Fig. <ref type="figure" target="#fig_1">3a</ref>) is unchanged, except the latent variables are quantized for entropy coding. Similar to the Hyperprior model <ref type="bibr" target="#b5">[6]</ref>, we quantize µ i instead of sampling from the posterior, and we discretize the prior to form a discretized Gaussian probability mass function.</p><p>The compression process is detailed in Fig. <ref type="figure" target="#fig_1">3c</ref>, in which the residual rounding operation is defined as follows:</p><formula xml:id="formula_9">z i ← μi + µ i -μi , (<label>8</label></formula><formula xml:id="formula_10">)</formula><p>where • is the nearest integer rounding function. That is, we quantize µ i to its nearest neighbour in the set {μ i + n | n ∈ Z}, denoted by z i , which we can encode into bits using the probability mass function (PMF) P i (•):</p><formula xml:id="formula_11">P i (n) p i (μ i + n|Z &lt;i ), n ∈ Z.<label>(9)</label></formula><p>It can be shown that P i (•) is a valid PMF, or specifically, a discretized Gaussian <ref type="bibr" target="#b5">[6]</ref>. Note that each of our latent block produces a separate bitstream, so a compressed image consists of N bitstreams, corresponding to the N latent variables z 1 , z 2 , ..., z N . In the implementation, we use the range-based Asymmetric Numeral Systems (rANS) <ref type="bibr" target="#b12">[13]</ref> for entropy coding. Decompression (Fig. <ref type="figure" target="#fig_1">3d</ref>) is done in a similar way. Starting from the constant feature, we iteratively compute P i (•) for i = 1, 2, ..., N . At each step, we decode z i from the i-th bitstream using rANS and transform z i using convolution layers before adding it to the feature. Once this is done for all i = 1, 2, ..., N , we can obtain the reconstruction x using the final upsampling layer in the top-down decoder.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.4.">Relationship to Previous Methods</head><p>Our hierarchical architecture (same as ResNet VAEs) may seem similar to the Hyperprior <ref type="bibr" target="#b5">[6]</ref> model at the first glance, but they are in fact fundamentally different in many aspects. The inference (encoding) order in the Hyperprior framework is the first order Markov, while our inference is bidirectional <ref type="bibr" target="#b19">[20]</ref>. Similarly, the sampling order of latent variables in the Hyperprior model is also first order Markov, while in our model, X depends on all latent variables Z.</p><p>A nice property of the ResNet VAE architecture is that, if sufficiently deep, it generalizes autoregressive models <ref type="bibr" target="#b10">[11]</ref>, which are widely adopted in lossy image coders and gives strong compression performance. Note that this conclusion is not limited to spatial autoregressive models. Other types of autoregressive models, such as channel-wise <ref type="bibr" target="#b30">[31]</ref> and checkerboard <ref type="bibr" target="#b16">[17]</ref> models, can also be viewed as special cases of the ResNet VAE framework.</p><p>From the perspective of (non-linear) transform coding <ref type="bibr" target="#b2">[3]</ref>, our model transforms image x into z {z 1 , ..., z N } and losslessly code z instead, so z can be viewed as the transform coefficients (after quantization). Note that z contains a feature hierarchy at different resolutions, in contrast to many transform coding frameworks where only a single feature is used. Since z i is only a quantized version of the posterior mean µ i , we can also view {µ 1 , ..., µ N } as the transform coefficients (before quantization). Unlike existing methods, there is no separate entropy model in our method, and instead, our top-down decoder itself acts as the entropy model for all the transform coefficients z.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.">Experiments</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1.">Implementation</head><p>We build two models based on our QRes-VAE architecture as described in Sec. 3.1, one with 34M parameters and the other with 17M parameters. We use the larger model, QRes-VAE (34M), for natural image compression, and we use the smaller one QRes-VAE (17M) for additional ex-periments and ablation analysis. Data augmentation, exponential moving averaging, and gradient clipping are applied during training. We list the full details of architecture configurations in the Appendix 6.1 and training hyperparameters in the Appendix 6.3.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2.">Datasets and Metrics</head><p>COCO: We use the COCO <ref type="bibr" target="#b23">[24]</ref> train2017 split, which contains 118,287 images with around 640 × 420 pixels, for training our QRes-VAE (34M). We randomly crop the images to 256 × 256 patches during training.</p><p>Kodak: The Kodak <ref type="bibr" target="#b21">[22]</ref> image set is a commonly used test set for evaluating image compression performance. It contains 24 natural images with 768 × 512 pixels.</p><p>CLIC: We also use the CLIC <ref type="foot" target="#foot_0">1</ref> 2022 test set for evaluation. It contains 30 high resolution natural images with around 2048 × 1365 pixels.</p><p>CelebA (64x64): We train and test our smaller model, QRes-VAE (17M), on the CelebA <ref type="bibr" target="#b25">[26]</ref> dataset for ablation study and additional experiments. CelebA is a human face dataset that contains more than 200k images (182,637 for train/val and 19,962 for test), all of which we have resized and center-cropped to have 64 × 64 pixels.</p><p>Metrics: As a standard practice, we use MSE as the distortion metric d(•) during training, and we report the peak signal-to-noise ratio (PSNR) during evaluation: PSNR -10 • log 10 MSE. <ref type="bibr" target="#b9">(10)</ref> We measure data rate by bits per pixel (bpp). To compute the overall metrics (PSNR and bpp) for the entire dataset, we first compute the metric for each image and then average over all images. We also use the BD-rate metric <ref type="bibr" target="#b7">[8]</ref> to compute the average bit rate saving over all PSNRs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3.">Main Results for Lossy Image Compression</head><p>We compare our method to open-source learned image coders from public implementations. We use VVC intra <ref type="bibr" target="#b31">[32]</ref> (version 12.1), the current best hand crafted codec and a common lossy image coding baseline, as the anchor for computing BD-rate for all methods. Thus, our reported BD-rates represent average bit rate savings over VVC intra.</p><p>Evaluation results are shown in Fig. <ref type="figure">4</ref>. We observe that at lower bit rates, our method is on par with previous best methods, while at higher bit rates, our approach outperforms them by a clear margin. We attribute this bias towards high bit rates to the architecture design of our model. We reconstruct the image from a feature map that is 4× down-sampled w.r.t. the original image, which can preserve more high-frequency information of the image. In contrast, most previous methods aggressively predict the image  † We use implementations from authors' official releases (Off.), TensorFlow Compression (TFC) <ref type="bibr" target="#b3">[4]</ref>, and CompressAI (CAI) <ref type="bibr" target="#b6">[7]</ref>.</p><p>Table <ref type="table">1</ref>. Computational complexity and BD-rate w.r.t. VVC intra <ref type="bibr" target="#b31">[32]</ref> (VTM version 12.1). FLOPs are for 256 × 256 input resolution. Note some values cannot be obtained using author released implementations. Our method outperforms previous methods in terms of BD-rate and at the same time maintains a relatively low computational complexity. from a 16× down-sampled feature map, which may be too "coarse" to preserve fine-grained pixel information.</p><p>In Table <ref type="table">1</ref>, we compare the BD-rate and computational complexity of our method against previous ones. For all methods, we use the highest bit rate model for measuring complexity, which represents the worst case scenario. Because parameter counts and FLOPs are poorly correlated with the actual encoding and decoding latency, we mainly focus on the CPU and GPU execution time for comparison.</p><p>Our method outperforms all previous ones in terms of BD-rate on both datasets. Furthermore, our model runs orders of magnitude faster than the spatial autoregressive models <ref type="bibr" target="#b9">[10,</ref><ref type="bibr" target="#b29">30,</ref><ref type="bibr" target="#b32">33,</ref><ref type="bibr" target="#b32">33]</ref>, both on CPU and GPU. Since our approach is fully convolutional and can be easily parallelized, our encoding/decoding latency can be drastically reduced by 10× when a powerful GPU is available, requiring less than 0.1 seconds to decode a 768 × 512 image. Note that there are indeed a few baseline methods, such as the Hyper-prior <ref type="bibr" target="#b5">[6]</ref> and Factorized model <ref type="bibr" target="#b4">[5]</ref>, execute faster than our method. However, this speed difference does not exceed an order of magnitude (e.g., our 0.558s vs. 0.411s <ref type="bibr" target="#b4">[5]</ref> for CPU decoding) and is acceptable given that our method achieves significant better compression efficiency (e.g., our -4.076% vs. 67.81% <ref type="bibr" target="#b4">[5]</ref> for the Kodak dataset in terms of BD-rate).</p><p>Another noticeable difference is that for most previous methods encoding is faster than decoding, while for our QRes-VAE (34M) this trend is reversed. Since in most image compression applications, encoding is done only once but decoding is performed many times, our ResNet VAEbased framework shows great potential for real-world deployment. For example, our model takes 1.124s/0.558s for encoding/decoding on CPU, in contrast to, e.g., the Channel-wise model <ref type="bibr" target="#b30">[31]</ref>, which takes 0.524s/0.665s. This paradigm of higher encoding cost but cheaper decoding of our model is due to the bidirectional inference structure of ResNet VAEs, in which the entire network (both the bottom-   up and top-down path) is executed for encoding, but only the top-down path is executed for decoding.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.4.">Ablative Analysis</head><p>To analyze the network design, we train our smaller model, QRes-VAE (17M), with different configurations on the CelebA (64x64) training set and compare their resulting losses on the test set.</p><p>Number of latent blocks. We first study the impact of the number of latent blocks, N , by varying it from 4 to 12 and compare their testing loss. For fair comparison, we adjust the latent variable dimensions (i.e., number of channels of z) to keep the same total number of latent variable elements. We also adjust the number of feature channels to keep approximately the same computational complexity. We train models with different N on CelebA (64x64) and compare their testing loss in Table <ref type="table" target="#tab_3">2</ref>. All models use λ = 32 (recall that λ is the scalar parameter to adjust R-D trade-off). We observe that with the same number of parameters and FLOPs, deeper model is better, but the improvement is negligible when N ≥ 10. We conclude that N = 12 achieves a good balance between complexity and performance, which we choose as the default setting for our models.</p><p>Choice of residual network blocks: As we mentioned in Sec. 3.1, the choice of the residual blocks in our network is arbitrary, and different network blocks can be applied in a plug-and-play fashion. We experiment with three choices: 1) standard convolutions followed by residual connection as in Very Deep VAE <ref type="bibr" target="#b10">[11]</ref>, 2) Swin Transformer block <ref type="bibr" target="#b24">[25]</ref>, and 3) ConvNext block <ref type="bibr" target="#b26">[27]</ref>. Again, for fair comparison, we adjust the number of feature channels to keep a similar computational complexity. We observe that at λ = 32, the  three choices achieve about the same testing loss. However, when λ = 4, which corresponds to a lower bit rate, the ConvNext block clearly outperforms the alternatives. We thus use the ConvNext block as our residual block since it achieves a better overall performance.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.5.">Additional Experiments</head><p>To further analyze our model, we provide a number of additional experiments in the Appendix, including bit rate distribution (Appendix 6.6), generalization to different resolutions (Appendix 6.7), MS-SSIM <ref type="bibr" target="#b54">[55]</ref> training (Appendix 6.8), and lossless compression (Appendix 6.9). We refer interested readers to these sections for more details. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.6.">Latent Representation Analysis</head><p>In this section, we show visualization results to analyze how QRes-VAE represents images in the latent space.</p><p>Progressive decoding:</p><p>We show examples for progressive image decoding in Fig. <ref type="figure" target="#fig_3">5</ref>. In Fig. <ref type="figure" target="#fig_3">5a</ref>, we can observe that our method is able to reconstruct the gender, face orientation, and expression of the original face image given only a small subset of bitstreams (&lt; 0.1 bpp), which correspond to low-dimensional latent variables. This suggests that the low-dimensional latent variables can encode high-level, semantic information, while the remaining high-dimensional latent variables mainly encode low-level, pixel information. We also note a similar fact for natural image patches (Fig. <ref type="figure" target="#fig_3">5b</ref>): the low-dimensional latent variables encode the global image structure with only a small amount of bits. However, due to the complexity of the natural image distribution, semantic information is much harder to parse.</p><p>Latent space interpolation. We encode different images into latent variables (without additive uniform noise), linearly interpolate between their latent variables, and decode the latent interpolations. Results are shown in Fig. <ref type="figure" target="#fig_5">6a</ref>. We observe that when trained on CelebA with λ = 1 (i.e., the lowest bit rate), our model learns a semantically meaningful latent space, in the sense that a linear interpolation in the latent space corresponds to a semantic interpolation in the image space. However, when λ = 64, latent space interpolation becomes equivalent to pixel space interpolation, indicating that the latent representation mainly carries pixel information. A similar pixel space interpolation pattern can be observed from the results of our COCO model, suggesting that the COCO model does not learn to extract semantic information, but instead the pixel information.</p><p>Unconditional sampling. Our model can unconditionally generates images in the same way as VAEs, and the samples could give a visualization of how well our model learns the image distribution. If it learns well, the sam-ples should look similar to real face images (for the CelebA model) or natural image patches (for the COCO model). The results are shown in Fig. <ref type="figure" target="#fig_5">6b</ref>. We observe that the CelebA model generates blurred images when λ = 1 and artifacts when λ = 64, indicating that the model learns global structure but not the pixels arrangements. Similarly, the COCO model generates samples with some global consistency, but still being different from natural image patches.</p><p>Image inpainting. We also show results on image inpainting in Fig. <ref type="figure" target="#fig_5">6c</ref> (the algorithm used is similar to <ref type="bibr" target="#b28">[29]</ref> and is given in our code). The visualization of inpainting, again, reflects how well our model learns the image distribution. We obtain a similar conclusion as in previous experiments that our model succeeds in learning the image distribution when trained on the simpler, human face images, while the reconstruction quality degrades for natural image patches.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.">Conclusion</head><p>In this paper, we propose a new lossy image coder based on hierarchical VAE architectures. We show that with a quantization-aware posterior and prior model, hierarchical VAEs can achieve state-of-the-art lossy image compression performance with a relatively low computational complexity. Our work takes a step closer towards semantically meaningful compression and a unified framework for compression and generative modeling. However, like most learned lossy coders, our method requires a separately trained model for each bit rate, making it less flexible for real-world deployment. This could potentially be addressed by leveraging adaptive quantization as used in traditional image codecs, which we leave to our future work.   percentage of the extra bit rate caused by entropy coding will asymptotically decreases to zero. As we can observe in Table <ref type="table" target="#tab_7">6</ref>, on CLIC images (around 2048 × 1365), the actual bit rate is very close to the estimated bit rate, sometimes even smaller than estimated ones, for example when λ = 2048.</p><p>Note that the reported results of QRes-VAE in the main experiments are the actual bit rates, which is computed after entropy coding.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.5.">Comparison with theoretical bounds</head><p>As we introduced in the related works, VAEs can be used for computing upper bounds on the information R-D function of images. We compare our method with one such upper bound, which is computed by a ResNet VAE by Yang et al. <ref type="bibr" target="#b53">[54]</ref>, in Fig. <ref type="figure">8</ref>. The blue curve in the figure is an upper bound of the (information) R-D function of Kodak images, and when viewed in the PSNR-bpp plane, it is a lower bound of the optimal achievable PSNR-bpp curve. We observe that although our approach improves upon previous method, it is still far from (a lower bound of) the theoretical limit, and further research is required to approach the limit of compression.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.6.">Bit Rate Distribution</head><p>Recall that our model produces 12 bitstreams for each image, where each bitstream corresponds to a separate latent variable. We visualize how the overall bit rate distributes over latent variables in Fig. <ref type="figure">9</ref>. Results are averaged over the Kodak images. We also notice the posterior collapse, i.e., VAEs learn to ignore latent variables, in our models. For example, Z 2 is ignored by our λ = 64 model. Posterior collapse is a commonly known problem is VAEs, and future work need to be conducted to address this issue.  <ref type="bibr" target="#b53">[54]</ref>. We can observe that there is still a large room for improvement (around 1dB at all bit rates) for lossy coders.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.7.">Generalization to Various Image Resolutions</head><p>In our main experiments on natural image compression, we can observe that our model behaves stronger on Kodak than on the CLIC 2022 test set, in the sense that our BDrate on Kodak is more than 3% better than the Invertible Enc. model <ref type="bibr" target="#b51">[52]</ref>, while on CLIC this advantage reduces to around 1.5%. We hypothesize that this is because our model is trained on COCO dataset, which has a relatively low resolution (around 640×420 pixels) that better matches Kodak than CLIC. A better match between training/testing image resolution causes the probabilistic model optimized for the training set also match the testing set, leading to better compression efficiency.</p><p>To study this effect quantitatively, we resize the CLIC test set images, whose original resolutions are around 1, 365×2, 048, such that the longer sides of all images equal to r, which we choose from the following resolutions:</p><p>r ∈ {192, 256, 384, 512, 768, 1024, 1536, 2048}. ( <ref type="formula">16</ref>)</p><p>Then, we evaluate our model as well as two baselines, Minnen 2018 Joint AR &amp; H <ref type="bibr" target="#b29">[30]</ref> and Cheng 2020 LIC <ref type="bibr" target="#b9">[10]</ref>, at each resolution. Both of the two baselines are obtained from the CompressAI<ref type="foot" target="#foot_1">foot_1</ref> codebase and have been trained on the same high resolution dataset. Results are shown in Fig. <ref type="figure" target="#fig_0">10</ref>. We observe that as the resolution r increases, the BD-rate of our model w.r.t. the baseline gets worse, from -24.6% at r = 192 to -16.2% at r = 2048. In contrast, the BD-rate between two baselines remains relatively unchanged, ranging from -8.6% to -10.0%. We thus conclude that QRes-VAE (34M) model, which is trained on COCO dataset, is stronger at lower resolutions than higher resolutions. How to design lossy coders that generalize to all resolution images is an interesting but challenging problem, which we leave to future work.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.8.">MS-SSIM as the distortion metric</head><p>Our model posit no constraints on the distortion metric d(•), so a different metric other than MSE could be used. For an example, we train our smaller model, QRes-VAE (17M), on the CelebA 64 × 64 dataset to optimize for MS-SSIM <ref type="bibr" target="#b54">[55]</ref>. Since MS-SSIM is a similarity metric, we let d(x, x) 1 -MS-SSIM(x, x).</p><p>(</p><formula xml:id="formula_12">)<label>17</label></formula><p>Results are shown in Fig. <ref type="figure" target="#fig_0">11</ref>, where we also train the Joint AR &amp; H model <ref type="bibr" target="#b29">[30]</ref> as the baseline. We observe that our smaller model outperforms the baseline at all bit rates in terms of MS-SSIM, showing that our approach could generalize to using different distortion metrics.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.9.">Lossless Compression</head><p>Although our method is primarily designed for lossy compression, it can be easily extended to the lossless setting </p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 .</head><label>1</label><figDesc>Figure 1. Our QRes-VAE (for Quantized ResNet VAE) model learns a deep hierarchy of features and compresses/decompresses images in a coarse-to-fine fashion. Models are separately trained on each dataset.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 3 .</head><label>3</label><figDesc>Figure 3. Overview of our quantized ResNet VAE (QRes-VAE). In (a), we show the general framework of ResNet VAEs [20]. In our implementation, we use a 12-layer (i.e., 12 latent blocks) architecture for QRes-VAE. The gray blocks represent neural networks, ↑ and ↓ denote upsampling and downsampling operations, respectively, c denotes feature concatenation, and + denotes addition. The latent blocks behave differently for training, compression, and decompression, which are illustrated in (b), (c), and (d), respectively. See Sec. 3 for detailed description.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head></head><label></label><figDesc>(b) QRes-VAE (34M), trained on COCO patches, λ = 1024. Image resolution is 256 × 256.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 5 .</head><label>5</label><figDesc>Figure 5. Examples of progressive decoding. We decode only the low-dimensional latent variables from the bitstream, and we sample the remaining ones with temperature t = 0 (i.e., simply using the prior mean). Note that the leftmost images (annotated by 0.0 bpp) can represent the "average image" in the training dataset. Better viewed by zooming in.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>N</head><label></label><figDesc></figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Figure 6 .</head><label>6</label><figDesc>Figure 6. Analysis of the latent space. Image resolution is 64 × 64. A lower λ represents a model with lower bit rate. We note that our QRes-VAE learns a semantically meaningful latent space when trained on CelebA with a small λ while failed in other settings. Despite the weakness when considered as a generative model, our model takes a step towards unifying compression and generative modeling. See text for detailed discussion.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head></head><label></label><figDesc>QRes-VAE (17M). We train this model on CelebA dataset (human face images) and use it for ablation study. Note that in addition to pixel shuffle, we also use nearest upsampling and transposed convolutions for feature map upsampling. The choices of these upsampling operations are arbitrary and do not visibly impact the model performance. We adopt this combination in early development and did not further tune them.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head>Figure 7 .</head><label>7</label><figDesc>Figure 7. Detailed architecture of QRes-VAE (64x64 input as an example). Numbers on the arrows denote the feature map dimension. For example, "16x16 192" means a feature map that is 16 × 16 in height and width, with 192 channels. "Conv 4x4, s4" means a convolutional layer with kernel size 4 × 4 and stride 4. "ConvNeXt"<ref type="bibr" target="#b26">[27]</ref> is a modern residual block with depth-wise convolution, layer normalization, linear layers, and GeLU activation. "Shuffle" is the pixel shuffle operation<ref type="bibr" target="#b35">[36]</ref> as often used in super resolution methods.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head></head><label></label><figDesc>2. Probabilistic model of VAEs, where X represents data, and Z denotes latent variable(s). In this work, we use a 12-layer ResNet VAE for image compression.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head></head><label></label><figDesc>Latency is the time to code/decode the first Kodak image (W, H=768,512), including entropy coding. CPU is Intel 10700K, and GPU is Nvidia 3090.</figDesc><table><row><cell></cell><cell></cell><cell></cell><cell>Kodak</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="2">CLIC 2022 test set</cell></row><row><cell></cell><cell>44</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>44</cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell>42</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>42</cell><cell></cell><cell></cell><cell></cell></row><row><cell>PSNR</cell><cell>32 34 36 38 40</cell><cell></cell><cell></cell><cell></cell><cell>PSNR</cell><cell>32 34 36 38 40</cell><cell></cell><cell></cell><cell></cell><cell>QRes-VAE 34M (ours) Wang 2022 Data-Depend.+ Xie 2021 Invertible Enc. Qian 2021 Global Ref. Minnen 2020 Channel-wise VVC intra (VTM 12.1) Cheng 2020 LIC Minnen 2018 Joint AR &amp; H Minnen 2018 M &amp; S Hyper. Balle 2017 Factorized</cell></row><row><cell></cell><cell>30</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>30</cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell>0.0 28</cell><cell>0.5</cell><cell cols="2">1.0 Bits per pixel (bpp) 1.5</cell><cell>2.0</cell><cell>0.0 28</cell><cell>0.5</cell><cell cols="2">1.0 Bits per pixel (bpp) 1.5</cell><cell>2.0</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="2">Estimated</cell><cell cols="2">Latency (CPU)*</cell><cell>Latency (GPU)*</cell><cell>BD-rate ↓</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="7">Impl.  † Parameters end-to-end FLOPs Encode Decode Encode Decode</cell><cell>Kodak</cell><cell>CLIC</cell></row><row><cell cols="4">QRes-VAE (34M) (ours)</cell><cell>-</cell><cell>34.0M</cell><cell cols="2">23.3B</cell><cell>1.124s</cell><cell>0.558s</cell><cell>0.109s</cell><cell>0.076s</cell><cell>-4.076% -4.067%</cell></row><row><cell cols="4">Wang 2022 Data-Depend. + [49]</cell><cell>Off.</cell><cell>53.0M</cell><cell>523B</cell><cell></cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-0.821%</cell><cell>-</cell></row><row><cell cols="4">Xie 2021 Invertible Enc. [52]</cell><cell>Off.</cell><cell>50.0M</cell><cell cols="2">68.0B</cell><cell>2.780s</cell><cell>6.343s</cell><cell>2.607s</cell><cell>5.531s</cell><cell>-0.475% -2.433%</cell></row><row><cell cols="4">Qian 2021 Global Ref. [33]</cell><cell>Off.</cell><cell>35.8M</cell><cell cols="2">32.1B</cell><cell>341s</cell><cell>352s</cell><cell>35.3s</cell><cell>47.6s</cell><cell>6.034%</cell><cell>8.133%</cell></row><row><cell cols="4">Minnen 2020 Channel-wise [31]</cell><cell>TFC</cell><cell>116M</cell><cell cols="2">38.1B</cell><cell>0.524s</cell><cell>0.665s</cell><cell>0.136s</cell><cell>0.124s</cell><cell>0.580%</cell><cell>6.852%</cell></row><row><cell cols="3">Cheng 2020 LIC [10]</cell><cell></cell><cell>CAI</cell><cell>26.6M</cell><cell cols="2">60.7B</cell><cell>2.231s</cell><cell>5.944s</cell><cell>2.626s</cell><cell>5.564s</cell><cell>2.919%</cell><cell>3.300%</cell></row><row><cell cols="4">Minnen 2018 Joint AR &amp; H [30]</cell><cell>CAI</cell><cell>25.5M</cell><cell cols="2">29.5B</cell><cell>5.327s</cell><cell>9.337s</cell><cell>2.640s</cell><cell>5.566s</cell><cell>10.61%</cell><cell>13.64%</cell></row><row><cell cols="4">Minnen 2018 M &amp; S Hyper. [6, 30]</cell><cell>CAI</cell><cell>17.6M</cell><cell cols="2">28.8B</cell><cell>0.241s</cell><cell>0.442s</cell><cell>0.043s</cell><cell>0.033s</cell><cell>21.03%</cell><cell>27.06%</cell></row><row><cell cols="4">Balle 2017 Factorized [5]</cell><cell>CAI</cell><cell>7.03M</cell><cell cols="2">26.7B</cell><cell>0.204s</cell><cell>0.411s</cell><cell>0.040s</cell><cell>0.032s</cell><cell>67.81%</cell><cell>89.77%</cell></row></table><note><p><p><p><p>Figure 4. Lossy compression performance on Kodak (left) and CLIC 2022 test set (right).</p>Our approach is on par with previous methods at low bit rates but outperforms them by a clear margin at higher bit rates. BD-rates are shown in Table</p>1</p>. *</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 2 .</head><label>2</label><figDesc>Ablation analysis on the number of latent blocks N in QRes-VAE (17M), trained on CelebA64. ∆ is the loss decrement by increasing N by 2. Deeper model is better, but the amount of improvement decreases as N increases.</figDesc><table><row><cell></cell><cell>4</cell><cell>6</cell><cell>8</cell><cell>10</cell><cell>12</cell></row><row><cell># parameters</cell><cell>16.7M</cell><cell>16.9M</cell><cell>16.8M</cell><cell>16.9M</cell><cell>16.7M</cell></row><row><cell>FLOPs (64x64)</cell><cell>1.12B</cell><cell>1.20B</cell><cell>1.22B</cell><cell>1.24B</cell><cell>1.26B</cell></row><row><cell cols="3">Test loss (λ = 32) 0.2368 0.2186</cell><cell>0.2121</cell><cell>0.2079</cell><cell>0.2078</cell></row><row><cell>∆</cell><cell>-</cell><cell cols="4">-0.0182 -0.0065 -0.0042 -0.0001</cell></row><row><cell cols="6">Res. block choice Convs [11] Swin [25] ConvNeXt [27]</cell></row><row><cell># parameters</cell><cell cols="2">17.2M</cell><cell>17.0M</cell><cell cols="2">16.7M</cell></row><row><cell>FLOPs (64x64)</cell><cell cols="2">1.40B</cell><cell>1.38B</cell><cell cols="2">1.26B</cell></row><row><cell>Test loss (λ = 4)</cell><cell cols="2">0.0783</cell><cell>0.0790</cell><cell cols="2">0.0757</cell></row><row><cell>Test loss (λ = 32)</cell><cell cols="2">0.2072</cell><cell>0.2077</cell><cell cols="2">0.2078</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 3 .</head><label>3</label><figDesc>Ablation analysis on the choice of the residual block in QRes-VAE (17M), trained on CelebA64 . Overall, ConvNext<ref type="bibr" target="#b26">[27]</ref> blocks give a better performance.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>𝑍 3 ,</head><label>3</label><figDesc>𝑍 6 , 𝑍 5 , 𝑍 4 𝑍 9 , 𝑍 8 , 𝑍 7 𝑍 12 , 𝑍 11 , 𝑍 10 (a) QRes-VAE (34M). We train this model on COCO dataset and use it for natural image compression. 𝑍 2 𝑍 7 , 𝑍 6 , 𝑍 5 , 𝑍 4 𝑍 12 , 𝑍 11 , 𝑍 10 , 𝑍 9 , 𝑍 8</figDesc><table><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>×6</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>×6</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>×6</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>×4</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>×2</cell></row><row><cell>64</cell><cell>64 𝑋</cell><cell>Conv 4x4, s4</cell><cell cols="2">16x16 192</cell><cell>ConvNeXt</cell><cell cols="2">16x16 192</cell><cell>ConvNeXt</cell><cell>Conv 2x2, s2</cell><cell></cell><cell>ConvNeXt</cell><cell cols="2">8x8 384</cell><cell>ConvNeXt</cell><cell>Conv 2x2, s2</cell><cell></cell><cell>ConvNeXt</cell><cell cols="2">4x4 384</cell><cell>ConvNeXt</cell><cell>Conv 2x2, s2</cell><cell></cell><cell>ConvNeXt</cell><cell cols="2">2x2 384</cell><cell>ConvNeXt</cell><cell>Conv 2x2, s2</cell><cell>ConvNeXt</cell><cell>1x1 384</cell></row><row><cell>64</cell><cell>64 𝑋</cell><cell>Shuffle</cell><cell>s1 1x1, Conv</cell><cell cols="2">16x16 192</cell><cell>blocks</cell><cell>Latent</cell><cell cols="2">16x16 192</cell><cell>Shuffle</cell><cell>s1 Conv 1x1,</cell><cell>blocks</cell><cell>Latent</cell><cell cols="2">8x8 384</cell><cell>Shuffle</cell><cell>s1 Conv 1x1,</cell><cell>blocks</cell><cell>Latent</cell><cell cols="2">4x4 384</cell><cell>Shuffle</cell><cell>s1 Conv 1x1,</cell><cell>blocks</cell><cell>Latent</cell><cell cols="2">2x2 384</cell><cell>Shuffle</cell><cell>s1 Conv 1x1,</cell><cell>blocks</cell><cell>Latent</cell><cell>1x1, 384</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="2">×3</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="2">×3</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="2">×3</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="2">×2</cell><cell></cell><cell></cell><cell>×1</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="2">𝑍 3 , 𝑍 2</cell><cell></cell><cell></cell><cell>𝑍 1</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>×6</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>×6</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>×4</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>×2</cell></row><row><cell>64</cell><cell>64 𝑋</cell><cell>Conv 4x4, s4</cell><cell cols="2">16x16 144</cell><cell>ConvNeXt</cell><cell cols="2">16x16 144</cell><cell>ConvNeXt</cell><cell>Conv 2x2, s2</cell><cell></cell><cell>ConvNeXt</cell><cell cols="2">8x8 288</cell><cell>ConvNeXt</cell><cell>Conv 2x2, s2</cell><cell></cell><cell>ConvNeXt</cell><cell cols="2">4x4 288</cell><cell>ConvNeXt</cell><cell>Conv 4x4, s4</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>ConvNeXt</cell><cell>1x1 288</cell></row><row><cell>64</cell><cell>64 𝑋</cell><cell>Shuffle</cell><cell>s1 1x1, Conv</cell><cell cols="2">16x16 144</cell><cell>blocks</cell><cell>Latent</cell><cell cols="2">16x16 144</cell><cell></cell><cell></cell><cell>blocks</cell><cell>Latent</cell><cell cols="2">8x8 288</cell><cell></cell><cell></cell><cell>blocks</cell><cell>Latent</cell><cell cols="2">4x4 288</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>blocks</cell><cell>Latent</cell><cell>1x1, 288</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="2">×5</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="2">×4</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="2">×2</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>×1</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>𝑍 1</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>Table 5 .</head><label>5</label><figDesc>Rate-distortion performance of QRes-VAE (34M) on Kodak images.</figDesc><table><row><cell>λ</cell><cell>16</cell><cell>32</cell><cell>64</cell><cell>128</cell><cell>256</cell><cell>512</cell><cell>1024</cell><cell>2048</cell></row><row><cell>Bpp (estimated)</cell><cell cols="8">0.17960 0.29680 0.44780 0.66960 0.94993 1.28291 1.74430 2.35219</cell></row><row><cell cols="9">Bpp (entropy coding) 0.18352 0.30125 0.45200 0.67388 0.95406 1.28697 1.74814 2.35659</cell></row><row><cell>PSNR</cell><cell cols="8">30.0210 31.9801 33.8986 36.1126 38.1649 40.2613 42.2478 44.3549</cell></row><row><cell>λ</cell><cell>16</cell><cell>32</cell><cell>64</cell><cell>128</cell><cell>256</cell><cell>512</cell><cell>1024</cell><cell>2048</cell></row><row><cell>Bpp (estimated)</cell><cell cols="8">0.15370 0.24236 0.35435 0.54013 0.79785 1.10251 1.55179 2.14681</cell></row><row><cell cols="9">Bpp (entropy coding) 0.15405 0.24315 0.35457 0.54065 0.79773 1.10183 1.55027 2.14379</cell></row><row><cell>PSNR</cell><cell cols="8">30.6719 32.7126 34.1318 36.2879 38.2443 40.2436 42.1072 44.0814</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head>Table 6 .</head><label>6</label><figDesc>Rate-distortion performance of QRes-VAE (34M) on CLIC 2022 test set.Figure 8. Comparing QRes-VAE (34M) with the an achievable PSNR-rate curve computed by ResNet VAE (blue line), taken from</figDesc><table><row><cell></cell><cell></cell><cell></cell><cell>Lossy compression on Kodak</cell></row><row><cell></cell><cell>44</cell><cell></cell><cell></cell></row><row><cell></cell><cell>42</cell><cell></cell><cell></cell></row><row><cell></cell><cell>40</cell><cell></cell><cell></cell></row><row><cell>PSNR</cell><cell>38</cell><cell></cell><cell></cell></row><row><cell></cell><cell>36</cell><cell></cell><cell></cell></row><row><cell></cell><cell>34</cell><cell></cell><cell></cell></row><row><cell></cell><cell>0.0 30 32</cell><cell>0.5</cell><cell>1.0 Bits per pixel (bpp) 1.5 Achievable RD, estimated by a ResNet VAE 2.0 QRes-VAE 34M (ours)</cell><cell>2.5</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_8"><head>Table 7 .</head><label>7</label><figDesc>Figure 11. MS-SSIM results of QRes-VAE (17M) on CelebA. Our model is better than the baseline method. Results on lossless compression. Although not designed for lossless compression, our model achieves similar performance compared to common methods.</figDesc><table><row><cell></cell><cell>0.998</cell><cell></cell><cell></cell><cell>CelebA (64x64)</cell></row><row><cell></cell><cell>0.996</cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell>0.994</cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell>0.992</cell><cell></cell><cell></cell><cell></cell></row><row><cell>MS-SSIM</cell><cell>0.988 0.990</cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell>0.986</cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell>0.2 0.982 0.984</cell><cell>0.3</cell><cell>0.4</cell><cell>0.5 Bits per pixel (bpp) 0.6 0.7 QRes-VAE (17M) Minnen 2018 Joint AR &amp; H, fine-tuned 0.8 0.9</cell><cell>1.0</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>http://compression.cc/</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_1"><p>github.com/InterDigitalInc/CompressAI</p></note>
+		</body>
+		<back>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.">Appendix 6.1. Detailed Architecture</head><p>We show the detailed architecture of QRes-VAE (34M) in Fig. <ref type="figure">7</ref>, in which we assume the input resolution is 64×64 as an example. Detailed description of network blocks is provided in the caption.</p><p>Since our model is fully convolutional, the input image size is arbitrary as long as both sides are divisible by 64 pixels. This requirement is because our model downsamples an image by a ratio of 64 at maximum. In practical cases where the input resolution is not divisible by 64 pixels, we pad the image on the right and bottom borders using the edge values (also known as the replicate padding) to make both sides divisible by 64 pixels. When computing evaluation metrics, we crop the reconstructed image to the original resolution (i.e., the one before padding).</p><p>Also note that our model has a learnable constant at the beginning of the top-down path (i.e., on the right most side of Fig. <ref type="figure">7a</ref> and Fig. <ref type="figure">7b</ref>). The constant feature has a shape of 1 × 1 × C, where C denotes the number of channels, for 64 × 64 images. When the input image is larger, say, 256 × 256, we simply replicate the constant feature accordingly, e.g., 4 × 4 × C in this case.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.2.">Loss Function</head><p>Recall that the training objective of VAE is to minimize the variational upper bound on the data log-likelihood:</p><p>where x is a given image in the training set. In the ResNet VAE, the posterior and prior has the form:</p><p>Plug this into the VAE objective, we have</p><p>.</p><p>(13) In our model, the posteriors q i are uniform, so on the support of the PDF q Z|x , we have q i (z i |z &lt;i , x) = 1, ∀i. Also recall our likelihood term p X|Z (x|Z) ∝ e -λ•d(x,x) . Putting them altogether, we have</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.3.">Training Details</head><p>Detailed hyperparameters are listed in Table. <ref type="bibr" target="#b3">4</ref>, where "h-clip" denotes random horizontal flipping, and EMA stands for weights exponential moving averaging. In our experiments, we find that the learning rate and gradient clip should be set carefully to avoid gradient exploding, possibly caused by the large KL divergence (i.e., high bit rates) when the prior fails to match the posterior.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.4.">Rate-Distortion Performance</head><p>We provide the numbers of our rate-distortion curves in Table <ref type="table">5</ref> and Table <ref type="table">6</ref>, where we show both the estimated, theoretical bit rate (computed from the KL divergence) as well as the actual bit rate (after entropy coding). We note that on Kodak images (Table <ref type="table">5</ref>), our actual bit rate results in an overhead when compared to the estimated bit rate. This overhead remains approximately a constant of about 0.003 bpp for all bit rates. In experiments, we find that this overhead is rooted in the entropy coding algorithm, which constantly uses extra 64 bits in each bitstream. Since our model produces 12 bitstreams for each image, for Kodak images (512 × 768) we obtain a constant bpp overhead of 12 × 64 bits 512 × 768 ≈ 0.002 bits, <ref type="bibr" target="#b14">(15)</ref> which approximately matches the overhead we observed in Table <ref type="table">5</ref>. Note that as the image resolution increases, the   <ref type="figure">7a</ref> for correspondence. We observe a similar trend for all models: latent variables with higher dimension cost more bit rates. . We resize the CLIC 2022 test set images such that their longer size equals to r (shown in each subplot), and we evaluate our approach as well as baseline methods on these downsampled images. At each resolution, BD-rate is computed w.r.t. the Joint AR &amp; H model. We observe that our QRes-VAE (34M) is stronger at lower image resolutions. by using a discrete data likelihood term p X|Z (•). Specifically, we let p X|Z (•) be a discretized Gaussian, which is the same as our prior distributions when at compression/decompression. Instead of predicting a reconstruction x as in lossy compression, we predict the mean and scale (i.e., standard deviation) of the discretized Gaussian using a single convolutional layer at the end of the top-down path, which enables losslessly coding of the original image x.</p><p>We start from the QRes-VAE (34M) trained at λ = 2048, and we fine-tune for lossless compression for 200 epochs on COCO. Other training settings are the same as QRes-VAE (34M) shown in Table <ref type="table">4</ref>. We show the lossless compression results in Table <ref type="table">7</ref>. The QRes-VAE (lossless) is better than PNG but is still behind better lossless codecs such as WebP. We want to emphasize that our network architecture is not optimized for lossless compression, and this preliminary result nevertheless shows the potential possibility of a unified neural network model for both lossy and lossless image compression.</p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Universally quantized neural compression</title>
+		<author>
+			<persName><forename type="first">Eirikur</forename><surname>Agustsson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lucas</forename><surname>Theis</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2002">Dec. 2020. 2</date>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="12367" to="12376" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Fixing a broken elbo</title>
+		<author>
+			<persName><forename type="first">Alexander</forename><surname>Alemi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ben</forename><surname>Poole</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ian</forename><surname>Fischer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joshua</forename><surname>Dillon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rif</forename><forename type="middle">A</forename><surname>Saurous</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kevin</forename><surname>Murphy</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the International Conference on Machine Learning</title>
+		<meeting>the International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2018-07">Jul. 2018</date>
+			<biblScope unit="volume">80</biblScope>
+			<biblScope unit="page">2</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Nonlinear transform coding</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ballé</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">A</forename><surname>Chou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Minnen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Singh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Johnston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Agustsson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Hwang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Toderici</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Journal of Selected Topics in Signal Processing</title>
+		<imprint>
+			<biblScope unit="volume">15</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="339" to="353" />
+			<date type="published" when="2005">Feb. 2021. 3, 5</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Sung Jin Hwang, and Eirikur Agustsson</title>
+		<author>
+			<persName><forename type="first">Johannes</forename><surname>Ballé</surname></persName>
+		</author>
+		<ptr target="http://github.com/tensorflow/compression,2022.6" />
+	</analytic>
+	<monogr>
+		<title level="m">TensorFlow Compression: Learned data compression</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">End-to-end optimization of nonlinear transform codes for perceptual quality</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ballé</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Laparra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Simoncelli</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Picture Coding Symposium</title>
+		<imprint>
+			<date type="published" when="2006">Dec. 2016. 3, 6</date>
+			<biblScope unit="page" from="1" to="5" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Variational image compression with a scale hyperprior</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ballé</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Minnen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Singh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Hwang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Johnston</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ternational Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2006">Apr. 2018. 1, 3, 4, 5, 6</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<monogr>
+		<title level="m" type="main">Compressai: a pytorch library and evaluation platform for end-to-end compression research</title>
+		<author>
+			<persName><forename type="first">Jean</forename><surname>Bégaint</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fabien</forename><surname>Racapé</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Simon</forename><surname>Feltman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Akshay</forename><surname>Pushparaja</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2011.03029</idno>
+		<imprint>
+			<date type="published" when="2006">Nov. 2020. 6</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Calculation of average psnr differences between rd-curves</title>
+		<author>
+			<persName><forename type="first">Gisle</forename><surname>Bjontegaard</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Video Coding Experts Group -M</title>
+		<imprint>
+			<biblScope unit="volume">33</biblScope>
+			<date type="published" when="2001-04">Apr. 2001. 5</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Endto-end learnt image compression via non-local attention optimization and improved context modeling</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Shen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Cao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Image Processing</title>
+		<imprint>
+			<biblScope unit="volume">30</biblScope>
+			<biblScope unit="page" from="3179" to="3191" />
+			<date type="published" when="2003">Feb. 2021. 3</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Learned image compression with discretized gaussian mixture likelihoods and attention modules</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Cheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Takeuchi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Katto</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition</title>
+		<meeting>the IEEE/CVF Conference on Computer Vision and Pattern Recognition</meeting>
+		<imprint>
+			<date type="published" when="2020-06-03">Jun. 2020. 3, 6, 13</date>
+			<biblScope unit="page" from="7936" to="7945" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<title level="m" type="main">Very deep vaes generalize autoregressive models and can outperform them on images. International Conference on Learning Representations</title>
+		<author>
+			<persName><forename type="first">Rewon</forename><surname>Child</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2007">Apr. 2021. 1, 2, 3, 5, 7</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<author>
+			<persName><forename type="first">Alexey</forename><surname>Dosovitskiy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lucas</forename><surname>Beyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexander</forename><surname>Kolesnikov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dirk</forename><surname>Weissenborn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaohua</forename><surname>Zhai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Unterthiner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mostafa</forename><surname>Dehghani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Minderer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Georg</forename><surname>Heigold</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sylvain</forename><surname>Gelly</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jakob</forename><surname>Uszkoreit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Neil</forename><surname>Houlsby</surname></persName>
+		</author>
+		<title level="m">An image is worth 16x16 words: Transformers for image recognition at scale. International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2003">May. 2021. 3</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<monogr>
+		<title level="m" type="main">Asymmetric numeral systems: entropy coding combining speed of huffman coding with compression rate of arithmetic coding</title>
+		<author>
+			<persName><forename type="first">Jarek</forename><surname>Duda</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1311.2540</idno>
+		<imprint>
+			<date type="published" when="2013-12">Dec. 2013</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Compressing images by encoding their latent representations with relative entropy coding</title>
+		<author>
+			<persName><forename type="first">Gergely</forename><surname>Flamich</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marton</forename><surname>Havasi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">José</forename><surname>Miguel Hernández-Lobato</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2020-12-01">Dec. 2020. 1, 2</date>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="16131" to="16141" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Fast relative entropy coding with a* coding</title>
+		<author>
+			<persName><forename type="first">Gergely</forename><surname>Flamich</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stratis</forename><surname>Markou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">José</forename><surname>Miguel Hernández-Lobato</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the International Conference on Machine Learning</title>
+		<meeting>the International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2002">Jul. 2022. 2</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Theoretical foundations of transform coding</title>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">K</forename><surname>Goyal</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Signal Processing Magazine</title>
+		<imprint>
+			<biblScope unit="volume">18</biblScope>
+			<biblScope unit="issue">5</biblScope>
+			<biblScope unit="page" from="9" to="21" />
+			<date type="published" when="2001-09">Sep. 2001. 3</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Checkerboard context model for efficient learned image compression</title>
+		<author>
+			<persName><forename type="first">Dailan</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yaoyan</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Baocheng</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yan</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongwei</forename><surname>Qin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition</title>
+		<meeting>the IEEE/CVF Conference on Computer Vision and Pattern Recognition</meeting>
+		<imprint>
+			<date type="published" when="2005">Jun. 2021. 3, 5</date>
+			<biblScope unit="page" from="14766" to="14775" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Keeping the neural networks simple by minimizing the description length of the weights</title>
+		<author>
+			<persName><forename type="first">Geoffrey</forename><forename type="middle">E</forename><surname>Hinton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Drew</forename><surname>Van Camp</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Sixth Annual Conference on Computational Learning Theory</title>
+		<meeting>the Sixth Annual Conference on Computational Learning Theory</meeting>
+		<imprint>
+			<date type="published" when="1993">1993</date>
+			<biblScope unit="page" from="5" to="13" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Auto-encoding variational bayes</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2014-04-01">Apr. 2014. 1, 2</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Improved variational inference with inverse autoregressive flow</title>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Durk P Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rafal</forename><surname>Salimans</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xi</forename><surname>Jozefowicz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ilya</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Sutskever</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">29</biblScope>
+			<date type="published" when="2005">Dec. 2016. 2, 3, 4, 5</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Bit-swap: Recursive bits-back coding for lossless compression with hierarchical latent variables</title>
+		<author>
+			<persName><forename type="first">Friso</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pieter</forename><surname>Abbeel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jonathan</forename><surname>Ho</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the International Conference on Machine Learning</title>
+		<meeting>the International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2002">Jun 2019. 2</date>
+			<biblScope unit="volume">97</biblScope>
+			<biblScope unit="page" from="3408" to="3417" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<monogr>
+		<title level="m" type="main">Kodak lossless true color image suite</title>
+		<author>
+			<persName><forename type="first">Eastman</forename><surname>Kodak</surname></persName>
+		</author>
+		<ptr target="http://r0k.us/graphics/kodak/.5" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Intra coding of the hevc standard</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lainema</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Bossen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Han</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Min</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Ugur</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE Transactions on Circuits and Systems for Video Technology</title>
+		<imprint>
+			<date type="published" when="2003">Dec. 2012. 3</date>
+			<biblScope unit="volume">22</biblScope>
+			<biblScope unit="page" from="1792" to="1801" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<monogr>
+		<author>
+			<persName><forename type="first">T</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Maire</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Belongie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Hays</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Perona</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Ramanan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Dollár</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">L</forename><surname>Zitnick</surname></persName>
+		</author>
+		<title level="m">Microsoft coco: Common objects in context. Proceedings of the European Conference on Computer Vision</title>
+		<imprint>
+			<date type="published" when="2005">Sep. 2014. 5</date>
+			<biblScope unit="page" from="740" to="755" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Swin transformer: Hierarchical vision transformer using shifted windows</title>
+		<author>
+			<persName><forename type="first">Ze</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yutong</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yue</forename><surname>Cao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Han</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yixuan</forename><surname>Wei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephen</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Baining</forename><surname>Guo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE/CVF International Conference on Computer Vision</title>
+		<imprint>
+			<date type="published" when="2007">Oct. 2021. 7</date>
+			<biblScope unit="page" from="9992" to="10002" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Deep learning face attributes in the wild</title>
+		<author>
+			<persName><forename type="first">Ziwei</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ping</forename><surname>Luo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaogang</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaoou</forename><surname>Tang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE International Conference on Computer Vision</title>
+		<meeting>the IEEE International Conference on Computer Vision</meeting>
+		<imprint>
+			<date type="published" when="2005">Dec. 2015. 5</date>
+			<biblScope unit="page" from="3730" to="3738" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<monogr>
+		<author>
+			<persName><forename type="first">Zhuang</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hanzi</forename><surname>Mao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chao-Yuan</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christoph</forename><surname>Feichtenhofer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Trevor</forename><surname>Darrell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Saining</forename><surname>Xie</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2201.03545</idno>
+		<title level="m">A convnet for the 2020s</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="volume">7</biblScope>
+			<biblScope unit="page">12</biblScope>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Transformer-based image compression</title>
+		<author>
+			<persName><forename type="first">Ming</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peiyao</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Huiqing</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chuntong</forename><surname>Cao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhan</forename><surname>Ma</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Data Compression Conference</title>
+		<imprint>
+			<date type="published" when="2003">Mar. 2022. 3</date>
+			<biblScope unit="page" from="469" to="469" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Repaint: Inpainting using denoising diffusion probabilistic models</title>
+		<author>
+			<persName><forename type="first">Andreas</forename><surname>Lugmayr</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>Danelljan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andres</forename><surname>Romero</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fisher</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Radu</forename><surname>Timofte</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luc</forename><surname>Van Gool</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)</title>
+		<meeting>the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)</meeting>
+		<imprint>
+			<date type="published" when="2008">Jun. 2022. 8</date>
+			<biblScope unit="page" from="11461" to="11471" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Joint autoregressive and hierarchical priors for learned image compression</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Minnen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ballé</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Toderici</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2018-12-01">Dec. 2018. 1, 2, 3, 6, 13</date>
+			<biblScope unit="volume">31</biblScope>
+			<biblScope unit="page" from="10794" to="10803" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Channel-wise autoregressive entropy models for learned image compression</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Minnen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Singh</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE International Conference on Image Processing</title>
+		<meeting>the IEEE International Conference on Image Processing</meeting>
+		<imprint>
+			<date type="published" when="2006">Oct. 2020. 3, 5, 6</date>
+			<biblScope unit="page" from="3339" to="3343" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Van der Auwera. Intra prediction and mode coding in vvc</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Pfaff</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Filippov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>De-Luxán-Hernández</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Wiegand</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Rufitskiy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">K</forename><surname>Ramasubramonian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Circuits and Systems for Video Technology</title>
+		<imprint>
+			<biblScope unit="volume">31</biblScope>
+			<biblScope unit="issue">10</biblScope>
+			<biblScope unit="page" from="3834" to="3847" />
+			<date type="published" when="2006">Oct. 2021. 1, 3, 5, 6</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Learning accurate entropy model with global reference for image compression</title>
+		<author>
+			<persName><forename type="first">Yichen</forename><surname>Qian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiyu</forename><surname>Tan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiuyu</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dongyang</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhenhong</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Li</forename><surname>Hao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rong</forename><surname>Jin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2006">May 2021. 6</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Generating diverse high-fidelity images with vq-vae-2</title>
+		<author>
+			<persName><forename type="first">Ali</forename><surname>Razavi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aaron</forename><surname>Van Den Oord</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oriol</forename><surname>Vinyals</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2002">Dec. 2019. 2</date>
+			<biblScope unit="volume">32</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Discrete variational autoencoders</title>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Tyler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rolfe</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ternational Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2002">Apr. 2016. 2</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Real-time single image and video super-resolution using an efficient sub-pixel convolutional neural network</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Caballero</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Huszár</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Totz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Aitken</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Bishop</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Rueckert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Wang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition</title>
+		<meeting>the IEEE Conference on Computer Vision and Pattern Recognition</meeting>
+		<imprint>
+			<date type="published" when="2016-06-03">Jun. 2016. 3, 12</date>
+			<biblScope unit="page" from="1874" to="1883" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Consistency regularization for variational auto-encoders</title>
+		<author>
+			<persName><forename type="first">Samarth</forename><surname>Sinha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adji</forename><surname>Bousso</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dieng</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">34</biblScope>
+			<date type="published" when="2002">Dec. 2021. 2</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">The jpeg 2000 still image compression standard</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Skodras</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Christopoulos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Ebrahimi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Signal Processing Magazine</title>
+		<imprint>
+			<biblScope unit="volume">18</biblScope>
+			<biblScope unit="issue">5</biblScope>
+			<biblScope unit="page" from="36" to="58" />
+			<date type="published" when="2001-09">Sep. 2001. 3</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Lars Maalø e, Søren Kaae Sø nderby, and Ole Winther. Ladder variational autoencoders</title>
+		<author>
+			<persName><forename type="first">Casper</forename><surname>Kaae Sø Nderby</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tapani</forename><surname>Raiko</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">29</biblScope>
+			<date type="published" when="2001">Dec. 2016. 1</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Algorithms for the communication of samples</title>
+		<author>
+			<persName><forename type="first">Lucas</forename><surname>Theis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noureldin Y</forename><surname>Ahmed</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the International Conference on Machine Learning</title>
+		<meeting>the International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2002">Jul 2022. 2</date>
+			<biblScope unit="volume">162</biblScope>
+			<biblScope unit="page" from="21308" to="21328" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Lossy image compression with compressive autoencoders</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Theis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Cunningham</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Huszár</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2003">Apr. 2017. 3</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Practical lossless compression with latent variables using bits back coding</title>
+		<author>
+			<persName><forename type="first">James</forename><surname>Townsend</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Bird</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Barber</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2002">May 2019. 2</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">Hilloc: lossless image compression with hierarchical latent variable models</title>
+		<author>
+			<persName><forename type="first">James</forename><surname>Townsend</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Bird</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Julius</forename><surname>Kunze</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Barber</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2001">Apr. 2020. 1</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">Dvae#: Discrete variational autoencoders with relaxed boltzmann priors</title>
+		<author>
+			<persName><forename type="first">Arash</forename><surname>Vahdat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Evgeny</forename><surname>Andriyash</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">William</forename><surname>Macready</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">31</biblScope>
+			<date type="published" when="2002">Dec. 2018. 2</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">Nvae: A deep hierarchical variational autoencoder</title>
+		<author>
+			<persName><forename type="first">Arash</forename><surname>Vahdat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jan</forename><surname>Kautz</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2020">19667-19679, Dec. 2020. 1, 2, 3</date>
+			<biblScope unit="volume">33</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<title level="a" type="main">Dvae++: Discrete variational autoencoders with overlapping transformations</title>
+		<author>
+			<persName><forename type="first">Arash</forename><surname>Vahdat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">William</forename><surname>Macready</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhengbing</forename><surname>Bian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amir</forename><surname>Khoshaman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Evgeny</forename><surname>Andriyash</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ternational Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2002">Jul. 2018. 2</date>
+			<biblScope unit="page" from="5035" to="5044" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<analytic>
+		<title level="a" type="main">Neural discrete representation learning</title>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<publisher>Aaron van den Oord</publisher>
+			<date type="published" when="2002">Dec. 2017. 2</date>
+			<biblScope unit="volume">30</biblScope>
+		</imprint>
+	</monogr>
+	<note>Oriol Vinyals, and koray kavukcuoglu</note>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<analytic>
+		<title level="a" type="main">The jpeg still picture compression standard</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Wallace</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Consumer Electronics</title>
+		<imprint>
+			<biblScope unit="volume">38</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<date type="published" when="1992-02">Feb. 1992. 3</date>
+		</imprint>
+	</monogr>
+	<note>):xviiixxxiv</note>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<monogr>
+		<title level="m" type="main">Neural data-dependent transform for learned image compression</title>
+		<author>
+			<persName><forename type="first">Dezhao</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wenhan</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yueyu</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiaying</forename><surname>Liu</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2203.04963</idno>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<analytic>
+		<title level="a" type="main">Relaxed-responsibility hierarchical discrete vaes</title>
+		<author>
+			<persName><forename type="first">Matthew</forename><surname>Willetts</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xenia</forename><surname>Miscouridou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephen</forename><surname>Roberts</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Holmes</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Neural Information Processing Systems Workshop on Bayesian Deep Learning</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<analytic>
+		<title level="a" type="main">Hierarchical quantized autoencoders</title>
+		<author>
+			<persName><forename type="first">Will</forename><surname>Williams</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sam</forename><surname>Ringer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tom</forename><surname>Ash</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Macleod</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jamie</forename><surname>Dougherty</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">John</forename><surname>Hughes</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2002">Dec. 2020. 2</date>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="4524" to="4535" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b51">
+	<analytic>
+		<title level="a" type="main">Enhanced invertible encoding for learned image compression</title>
+		<author>
+			<persName><forename type="first">Yueqi</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ka</forename><forename type="middle">Leong</forename><surname>Cheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qifeng</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the ACM International Conference on Multimedia</title>
+		<meeting>the ACM International Conference on Multimedia</meeting>
+		<imprint>
+			<date type="published" when="2021-10">Oct. 2021</date>
+			<biblScope unit="volume">6</biblScope>
+			<biblScope unit="page">13</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b52">
+	<analytic>
+		<title level="a" type="main">Variational bayesian quantization</title>
+		<author>
+			<persName><forename type="first">Yibo</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Robert</forename><surname>Bamler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephan</forename><surname>Mandt</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the International Conference on Machine Learning</title>
+		<meeting>the International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2001">Jul. 2020. 1</date>
+			<biblScope unit="volume">119</biblScope>
+			<biblScope unit="page" from="10670" to="10680" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b53">
+	<analytic>
+		<title level="a" type="main">Towards empirical sandwich bounds on the rate-distortion function</title>
+		<author>
+			<persName><forename type="first">Yibo</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephan</forename><surname>Mandt</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">International Conference on Learning Representations</title>
+		<imprint>
+			<biblScope unit="page">13</biblScope>
+			<date type="published" when="2022-04-01">Apr. 2022. 1, 2, 12</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b54">
+	<analytic>
+		<title level="a" type="main">Image quality assessment: from error visibility to structural similarity</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">C</forename><surname>Bovik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><forename type="middle">R</forename><surname>Sheikh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">P</forename><surname>Simoncelli</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Image Processing</title>
+		<imprint>
+			<biblScope unit="volume">13</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page">13</biblScope>
+			<date type="published" when="2004-04">Apr. 2004</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b55">
+	<analytic>
+		<title level="a" type="main">On the out-of-distribution generalization of probabilistic image modelling</title>
+		<author>
+			<persName><forename type="first">Mingtian</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andi</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Steven</forename><surname>Mcdonagh</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2001">Dec. 2021. 1</date>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="page" from="3811" to="3823" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b56">
+	<analytic>
+		<title level="a" type="main">The devil is in the details: Window-based attention for image compression</title>
+		<author>
+			<persName><forename type="first">Renjie</forename><surname>Zou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chunfeng</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhaoxiang</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition</title>
+		<meeting>the IEEE/CVF Conference on Computer Vision and Pattern Recognition</meeting>
+		<imprint>
+			<date type="published" when="2003">Jun. 2022. 3</date>
+			<biblScope unit="page" from="17492" to="17501" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

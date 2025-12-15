@@ -1,0 +1,928 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Learning Discourse-level Diversity for Neural Dialog Models using Conditional Variational Autoencoders</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author role="corresp">
+							<persName><roleName>Ran Zhao</roleName><forename type="first">Tiancheng</forename><surname>Zhao</surname></persName>
+							<email>tianchez@cs.cmu.edu</email>
+							<affiliation key="aff0">
+								<orgName type="institution">Language Technologies Institute Carnegie Mellon University Pittsburgh</orgName>
+								<address>
+									<region>Pennsylvania</region>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Maxine</forename><surname>Eskenazi</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Language Technologies Institute Carnegie Mellon University Pittsburgh</orgName>
+								<address>
+									<region>Pennsylvania</region>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Learning Discourse-level Diversity for Neural Dialog Models using Conditional Variational Autoencoders</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+					<idno type="DOI">10.18653/v1/P17-1061</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-14T17:23+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>While recent neural encoder-decoder models have shown great promise in modeling open-domain conversations, they often generate dull and generic responses. Unlike past work that has focused on diversifying the output of the decoder at word-level to alleviate this problem, we present a novel framework based on conditional variational autoencoders that captures the discourse-level diversity in the encoder. Our model uses latent variables to learn a distribution over potential conversational intents and generates diverse responses using only greedy decoders. We have further developed a novel variant that is integrated with linguistic prior knowledge for better performance. Finally, the training procedure is improved by introducing a bag-of-word loss. Our proposed models have been validated to generate significantly more diverse responses than baseline approaches and exhibit competence in discourse-level decision-making.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>The dialog manager is one of the key components of dialog systems, which is responsible for modeling the decision-making process. Specifically, it typically takes a new utterance and the dialog context as input, and generates discourse-level decisions <ref type="bibr" target="#b7">(Bohus and Rudnicky, 2003;</ref><ref type="bibr" target="#b35">Williams and Young, 2007)</ref>. Advanced dialog managers usually have a list of potential actions that enable them to have diverse behavior during a conversation, e.g. different strategies to recover from non-understanding <ref type="bibr">(Yu et al., 2016)</ref>. However, the conventional approach of designing a dialog manager <ref type="bibr" target="#b35">(Williams and Young, 2007)</ref> does not scale well to open-domain conversation models because of the vast quantity of possible decisions. Thus, there has been a growing interest in applying encoder-decoder models <ref type="bibr" target="#b32">(Sutskever et al., 2014)</ref> for modeling open-domain conversation <ref type="bibr" target="#b34">(Vinyals and Le, 2015;</ref><ref type="bibr">Serban et al., 2016a)</ref>. The basic approach treats a conversation as a transduction task, in which the dialog history is the source sequence and the next response is the target sequence. The model is then trained end-to-end on large conversation corpora using the maximum-likelihood estimation (MLE) objective without the need for manual crafting.</p><p>However recent research has found that encoder-decoder models tend to generate generic and dull responses (e.g., I don't know), rather than meaningful and specific answers <ref type="bibr" target="#b15">(Li et al., 2015;</ref><ref type="bibr">Serban et al., 2016b)</ref>. There have been many attempts to explain and solve this limitation, and they can be broadly divided into two categories (see Section 2 for details): <ref type="bibr" target="#b1">(1)</ref> the first category argues that the dialog history is only one of the factors that decide the next response. Other features should be extracted and provided to the models as conditionals in order to generate more specific responses <ref type="bibr">(Xing et al., 2016;</ref><ref type="bibr">Li et al., 2016a)</ref>; <ref type="bibr" target="#b2">(2)</ref> the second category aims to improve the encoder-decoder model itself, including decoding with beam search and its variations (Wiseman and Rush, 2016), encouraging responses that have long-term payoff <ref type="bibr">(Li et al., 2016b)</ref>, etc.</p><p>Building upon the past work in dialog managers and encoder-decoder models, the key idea of this paper is to model dialogs as a one-to-many problem at the discourse level. Previous studies indicate that there are many factors in open-domain dialogs that decide the next response, and it is nontrivial to extract all of them. Intuitively, given a similar dialog history (and other observed inputs), there may exist many valid responses (at the discourse-level), each corresponding to a certain configuration of the latent variables that are not presented in the input. To uncover the potential responses, we strive to model a probabilistic distribution over the distributed utterance embeddings of the potential responses using a latent variable (Figure <ref type="figure" target="#fig_0">1</ref>). This allows us to generate diverse responses by drawing samples from the learned distribution and reconstruct their words via a decoder neural network. Specifically, our contributions are three-fold: 1. We present a novel neural dialog model adapted from conditional variational autoencoders (CVAE) <ref type="bibr" target="#b29">(Yan et al., 2015;</ref><ref type="bibr" target="#b29">Sohn et al., 2015)</ref>, which introduces a latent variable that can capture discourse-level variations as described above 2. We propose Knowledge-Guided CVAE (kgC-VAE), which enables easy integration of expert knowledge and results in performance improvement and model interpretability. 3. We develop a training method in addressing the difficulty of optimizing CVAE for natural language generation <ref type="bibr" target="#b8">(Bowman et al., 2015)</ref>. We evaluate our models on human-human conversation data and yield promising results in: (a) generating appropriate and discourse-level diverse responses, and (b) showing that the proposed training method is more effective than the previous techniques.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Related Work</head><p>Our work is related to both recent advancement in encoder-decoder dialog models and generative models based on CVAE.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.1">Encoder-decoder Dialog Models</head><p>Since the emergence of the neural dialog model, the problem of output diversity has received much attention in the research community. Ideal output responses should be both coherent and diverse. However, most models end up with generic and dull responses. To tackle this problem, one line of research has focused on augmenting the input of encoder-decoder models with richer context information, in order to generate more spe-cific responses. <ref type="bibr">Li et al., (2016a)</ref> captured speakers' characteristics by encoding background information and speaking style into the distributed embeddings, which are used to re-rank the generated response from an encoder-decoder model. <ref type="bibr">Xing et al., (2016)</ref> maintain topic encoding based on Latent Dirichlet Allocation (LDA) <ref type="bibr" target="#b6">(Blei et al., 2003)</ref> of the conversation to encourage the model to output more topic coherent responses.</p><p>On the other hand, many attempts have also been made to improve the architecture of encoderdecoder models. <ref type="bibr" target="#b15">Li et al,. (2015)</ref> proposed to optimize the standard encoder-decoder by maximizing the mutual information between input and output, which in turn reduces generic responses. This approach penalized unconditionally high frequency responses, and favored responses that have high conditional probability given the input. <ref type="bibr" target="#b36">Wiseman and Rush (2016)</ref> focused on improving the decoder network by alleviating the biases between training and testing. They introduced a searchbased loss that directly optimizes the networks for beam search decoding. The resulting model achieves better performance on word ordering, parsing and machine translation. Besides improving beam search, <ref type="bibr">Li et al., (2016b)</ref> pointed out that the MLE objective of an encoder-decoder model is unable to approximate the real-world goal of the conversation. Thus, they initialized a encoderdecoder model with MLE objective and leveraged reinforcement learning to fine tune the model by optimizing three heuristic rewards functions: informativity, coherence, and ease of answering.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.2">Conditional Variational Autoencoder</head><p>The variational autoencoder (VAE) <ref type="bibr" target="#b14">(Kingma and Welling, 2013;</ref><ref type="bibr" target="#b24">Rezende et al., 2014)</ref> is one of the most popular frameworks for image generation. The basic idea of VAE is to encode the input x into a probability distribution z instead of a point encoding in the autoencoder. Then VAE applies a decoder network to reconstruct the original input using samples from z. To generate images, VAE first obtains a sample of z from the prior distribution, e.g. N (0, I), and then produces an image via the decoder network. A more advanced model, the conditional VAE (CVAE), is a recent modification of VAE to generate diverse images conditioned on certain attributes, e.g. generating different human faces given skin color <ref type="bibr" target="#b29">(Yan et al., 2015;</ref><ref type="bibr" target="#b29">Sohn et al., 2015)</ref>. Inspired by CVAE, we view the dialog contexts as the conditional attributes and adapt CVAE to generate diverse responses instead of images.</p><p>Although VAE/CVAE has achieved impressive results in image generation, adapting this to natural language generators is non-trivial. <ref type="bibr" target="#b8">Bowman et al., (2015)</ref> have used VAE with Long-Short Term Memory (LSTM)-based recognition and decoder networks to generate sentences from a latent Gaussian variable. They showed that their model is able to generate diverse sentences with even a greedy LSTM decoder. They also reported the difficulty of training because the LSTM decoder tends to ignore the latent variable. We refer to this issue as the vanishing latent variable problem. <ref type="bibr">Serban et al., (2016b)</ref> have applied a latent variable hierarchical encoder-decoder dialog model to introduce utterance-level variations and facilitate longer responses. To improve upon the past models, we firstly introduce a novel mechanism to leverage linguistic knowledge in training end-to-end neural dialog models, and we also propose a novel training technique that mitigates the vanishing latent variable problem. 1. Sample a latent variable z from the prior network p θ (z|c).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Proposed Models</head><p>2. Generate x through the response decoder p θ (x|z, c).</p><p>CVAE is trained to maximize the conditional log likelihood of x given c, which involves an intractable marginalization over the latent variable z. As proposed in <ref type="bibr" target="#b29">(Sohn et al., 2015;</ref><ref type="bibr" target="#b29">Yan et al., 2015)</ref>, CVAE can be efficiently trained with the Stochastic Gradient Variational Bayes (SGVB) framework <ref type="bibr" target="#b14">(Kingma and Welling, 2013</ref>) by maximizing the variational lower bound of the conditional log likelihood. We assume the z follows multivariate Gaussian distribution with a diagonal covariance matrix and introduce a recognition network q φ (z|x, c) to approximate the true posterior distribution p(z|x, c). <ref type="bibr" target="#b29">Sohn and et al,. (2015)</ref> have shown that the variational lower bound can be written as:</p><formula xml:id="formula_0">L(θ, φ; x, c) = -KL(q φ (z|x, c) p θ (z|c)) + E q φ (z|c,x) [log p θ (x|z, c)] (1) ≤ log p(x|c)</formula><p>Figure <ref type="figure" target="#fig_2">3</ref> demonstrates an overview of our model. The utterance encoder is a bidirectional recurrent neural network (BRNN) (Schuster and Paliwal, 1997) with a gated recurrent unit (GRU) <ref type="bibr" target="#b10">(Chung et al., 2014)</ref> to encode each utterance into fixedsize vectors by concatenating the last hidden states of the forward and backward RNN</p><formula xml:id="formula_1">u i = [ h i , h i ].</formula><p>x is simply u k . The context encoder is a 1-layer GRU network that encodes the preceding k-1 utterances by taking u 1:k-1 and the corresponding conversation floor as inputs. The last hidden state h c of the context encoder is concatenated with meta features and c = [h c , m]. Since we assume z follows isotropic Gaussian distribution, the recognition network q φ (z|x, c) ∼ N (µ, σ 2 I) and the prior network p θ (z|c) ∼ N (µ , σ 2 I), and then we have:</p><formula xml:id="formula_2">µ log(σ 2 ) = W r x c + b r (2) µ log(σ 2 ) = MLP p (c)<label>(3)</label></formula><p>We then use the reparametrization trick <ref type="bibr" target="#b14">(Kingma and Welling, 2013)</ref> to obtain samples of z either </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Knowledge-Guided CVAE (kgCVAE)</head><p>In practice, training CVAE is a challenging optimization problem and often requires large amount of data. On the other hand, past research in spoken dialog systems and discourse analysis has suggested that many linguistic cues capture crucial features in representing natural conversation. For example, dialog acts <ref type="bibr">(Poesio and Traum, 1998)</ref> have been widely used in the dialog managers <ref type="bibr" target="#b18">(Litman and Allen, 1987;</ref><ref type="bibr" target="#b23">Raux et al., 2005;</ref><ref type="bibr">Zhao and Eskenazi, 2016)</ref> to represent the propositional function of the system. Therefore, we conjecture that it will be beneficial for the model to learn meaningful latent z if it is provided with explicitly extracted discourse features during the training.</p><p>In order to incorporate the linguistic features into the basic CVAE model, we first denote the set of linguistic features as y. Then we assume that the generation of x depends on c, z and y. y relies on z and c as shown in Figure <ref type="figure" target="#fig_1">2</ref>. Specifically, during training the initial state of the response decoder is s 0 = W i [z, c, y] + b i and the input at every step is [e t , y] where e t is the word embedding of t th word in x. In addition, there is an MLP to predict y = MLP y (z, c) based on z and c. In the testing stage, the predicted y is used by the response decoder instead of the oracle decoders. We denote the modified model as knowledge-guided CVAE (kgCVAE) and developers can add desired discourse features that they wish the latent variable z to capture. KgCVAE model is trained by maximizing:</p><formula xml:id="formula_3">L(θ, φ; x, c, y) = -KL(q φ (z|x, c, y) P θ (z|c)) + E q φ (z|c,x,y) [log p(x|z, c, y)] + E q φ (z|c,x,y) [log p(y|z, c)] (4)</formula><p>Since now the reconstruction of y is a part of the loss function, kgCVAE can more efficiently encode y-related information into z than discovering it only based on the surface-level x and c. Another advantage of kgCVAE is that it can output a highlevel label (e.g. dialog act) along with the wordlevel responses, which allows easier interpretation of the model's outputs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3">Optimization Challenges</head><p>A straightforward VAE with RNN decoder fails to encode meaningful information in z due to the vanishing latent variable problem <ref type="bibr" target="#b8">(Bowman et al., 2015)</ref>. <ref type="bibr" target="#b8">Bowman et al., (2015)</ref> proposed two solutions: (1) KL annealing: gradually increasing the weight of the KL term from 0 to 1 during training;</p><p>(2) word drop decoding: setting a certain percentage of the target words to 0. We found that CVAE suffers from the same issue when the decoder is an RNN. Also we did not consider word drop decoding because Bowman et al,. ( <ref type="formula">2015</ref>) have shown that it may hurt the performance when the drop rate is too high.</p><p>As a result, we propose a simple yet novel technique to tackle the vanishing latent variable problem: bag-of-word loss. The idea is to introduce an auxiliary loss that requires the decoder network to predict the bag-of-words in the response x as shown in Figure <ref type="figure" target="#fig_2">3</ref>(b). We decompose x into two variables: x o with word order and x bow without order, and assume that x o and x bow are conditionally independent given z and c: p(x, z|c) = p(x o |z, c)p(x bow |z, c)p(z|c). Due to the conditional independence assumption, the latent variable is forced to capture global information about the target response. Let f = MLP b (z, x) ∈ R V where V is vocabulary size, and we have:</p><formula xml:id="formula_4">log p(x bow |z, c) = log |x| t=1 e fx t V j e f j (5)</formula><p>where |x| is the length of x and x t is the word index of t th word in x. The modified variational lower bound for CVAE with bag-of-word loss is (see Appendix A for kgCVAE):</p><formula xml:id="formula_5">L (θ, φ; x, c) = L(θ, φ; x, c) + E q φ (z|c,x,y) [log p(x bow |z, c)] (6)</formula><p>We will show that the bag-of-word loss in Equation 6 is very effective against the vanishing latent variable and it is also complementary to the KL annealing technique.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Experiment Setup</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Dataset</head><p>We chose the Switchboard (SW) 1 Release 2 Corpus (Godfrey and Holliman, 1997) to evaluate the proposed models. SW has 2400 two-sided telephone conversations with manually transcribed speech and alignment. In the beginning of the call, a computer operator gave the callers recorded prompts that define the desired topic of discussion. There are 70 available topics. We randomly split the data into 2316/60/62 dialogs for train/validate/test. The pre-processing includes (1) tokenize using the NLTK tokenizer <ref type="bibr" target="#b5">(Bird et al., 2009)</ref>; (2) remove non-verbal symbols and repeated words due to false starts; (3) keep the top 10K frequent word types as the vocabulary. The final data have 207, 833/5, 225/5, 481 (c, x) pairs for train/validate/test. Furthermore, a subset of SW was manually labeled with dialog acts <ref type="bibr" target="#b31">(Stolcke et al., 2000)</ref>. We extracted dialog act labels based on the dialog act recognizer proposed in <ref type="bibr" target="#b25">(Ribeiro et al., 2015)</ref>. The features include the uni-gram and bi-gram of the utterance, and the contextual features of the last 3 utterances. We trained a Support Vector Machine (SVM) <ref type="bibr" target="#b33">(Suykens and Vandewalle, 1999)</ref> with linear kernel on the subset of SW with human annotations. There are 42 types of dialog acts and the SVM achieved 77.3% accuracy on held-out data. Then the rest of SW data are labelled with dialog acts using the trained SVM dialog act recognizer.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Training</head><p>We trained with the following hyperparameters (according to the loss on the validate dataset): word embedding has size 200 and is shared across everywhere. We initialize the word embedding from Glove embedding pre-trained on Twitter <ref type="bibr" target="#b22">(Pennington et al., 2014)</ref>. The utterance encoder has a hidden size of 300 for each direction. The context encoder has a hidden size of 600 and the response decoder has a hidden size of 400. The prior network and the MLP for predicting y both have 1 hidden layer of size 400 and tanh non-linearity. The latent variable z has a size of 200. The context window k is 10. All the initial weights are sampled from a uniform distribution [-0.08, 0.08]. The mini-batch size is 30. The models are trained end-to-end using the Adam optimizer <ref type="bibr" target="#b13">(Kingma and Ba, 2014)</ref> with a learning rate of 0.001 and gradient clipping at 5. We selected the best models based on the variational lower bound on the validate data. Finally, we use the BOW loss along with KL annealing of 10,000 batches to achieve the best performance. Section 5.4 gives a detailed argument for the importance of the BOW loss.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Results</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1">Experiments Setup</head><p>We compared three neural dialog models: a strong baseline model, CVAE, and kgCVAE. The baseline model is an encoder-decoder neural dialog model without latent variables similar to <ref type="bibr">(Serban et al., 2016a)</ref>. The baseline model's encoder uses the same context encoder to encode the dialog history and the meta features as shown in Figure <ref type="figure" target="#fig_2">3</ref>. The encoded context c is directly fed into the decoder networks as the initial state. The hyperparameters of the baseline are the same as the ones reported in Section 4.2 and the baseline is trained to minimize the standard cross entropy loss of the decoder RNN model without any auxiliary loss.</p><p>Also, to compare the diversity introduced by the stochasticity in the proposed latent variable versus the softmax of RNN at each decoding step, we generate N responses from the baseline by sam-pling from the softmax. For CVAE/kgCVAE, we sample N times from the latent z and only use greedy decoders so that the randomness comes entirely from the latent variable z.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2">Quantitative Analysis</head><p>Automatically evaluating an open-domain generative dialog model is an open research challenge <ref type="bibr" target="#b19">(Liu et al., 2016)</ref>. Following our one-tomany hypothesis, we propose the following metrics. We assume that for a given dialog context c, there exist M c reference responses</p><formula xml:id="formula_6">r j , j ∈ [1, M c ]. Meanwhile a model can generate N hypothesis re- sponses h i , i ∈ [1, N ].</formula><p>The generalized responselevel precision/recall for a given dialog context is:</p><formula xml:id="formula_7">precision(c) = N i=1 max j∈[1,Mc] d(r j , h i ) N recall(c) = Mc j=1 max i∈[1,N ] d(r j , h i ))</formula><p>M c where d(r j , h i ) is a distance function which lies between 0 to 1 and measures the similarities between r j and h i . The final score is averaged over the entire test dataset and we report the performance with 3 types of distance functions in order to evaluate the systems from various linguistic points of view:</p><p>1. Smoothed Sentence-level BLEU <ref type="bibr" target="#b9">(Chen and Cherry, 2014)</ref>: BLEU is a popular metric that measures the geometric mean of modified ngram precision with a length penalty <ref type="bibr" target="#b21">(Papineni et al., 2002;</ref><ref type="bibr" target="#b15">Li et al., 2015)</ref>. We use BLEU-1 to 4 as our lexical similarity metric and normalize the score to 0 to 1 scale.</p><p>2. Cosine Distance of Bag-of-word Embedding: a simple method to obtain sentence embeddings is to take the average or extrema of all the word embeddings in the sentences <ref type="bibr" target="#b11">(Forgues et al., 2014;</ref><ref type="bibr" target="#b4">Adi et al., 2016)</ref>. The d(r j , h i ) is the cosine distance of the two embedding vectors. We used Glove embedding described in Section 4 and denote the average method as A-bow and extrema method as E-bow.</p><p>3. Dialog Act Match: to measure the similarity at the discourse level, the same dialogact tagger from 4.1 is applied to label all the generated responses of each model. We set d(r j , h i ) = 1 if r j and h i have the same dialog acts, otherwise d(r j , h i ) = 0.</p><p>One challenge of using the above metrics is that there is only one, rather than multiple reference responses/contexts. This impacts reliability of our measures. Inspired by <ref type="bibr" target="#b30">(Sordoni et al., 2015)</ref> The proposed models outperform the baseline in terms of recall in all the metrics with statistical significance. This confirms our hypothesis that generating responses with discourse-level diversity can lead to a more comprehensive coverage of the potential responses than promoting only word-level diversity. As for precision, we observed that the baseline has higher or similar scores than CVAE in all metrics, which is expected since the baseline tends to generate the mostly likely and safe responses repeatedly in the N hypotheses. However, kgCVAE is able to achieve the highest precision and recall in the 4 metrics at the same time (BLEU1-4, E-BOW). One reason for kgCVAE's good performance is that the predicted dialog act label in kgCVAE can regularize the generation process of its RNN decoder by forcing it to generate more coherent and precise words. We further analyze the precision/recall of BLEU-4 by looking at the average score versus the number of distinct reference dialog acts. A low number of distinct dialog acts represents the situation where the dialog context has a strong constraint on the range of the next response (low entropy), while a high number indicates the opposite (highentropy). Figure <ref type="figure" target="#fig_3">4</ref> shows that CVAE/kgCVAE achieves significantly higher recall than the baseline in higher entropy contexts. Also it shows that CVAE suffers from lower precision, especially in low entropy contexts. Finally, kgCVAE gets higher precision than both the baseline and CVAE in the full spectrum of context entropy. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.3">Qualitative Analysis</head><p>Table <ref type="table">2</ref> shows the outputs generated from the baseline and kgCVAE. In example 1, caller A begins with an open-ended question. The kgCVAE model generated highly diverse answers that cover multiple plausible dialog acts. Further, we notice that the generated text exhibits similar dialog acts compared to the ones predicted separately by the model, implying the consistency of natural language generation based on y. On the contrary, the responses from the baseline model are limited to local n-gram variations and share a similar prefix, i.e. "I'm". Example 2 is a situation where caller A is telling B stories. The ground truth response is a back-channel and the range of valid answers is more constrained than example 1 since B is playing the role of a listener. The baseline successfully predicts "uh-huh". The kgCVAE model is also able to generate various ways of back-channeling. This implies that the latent z is able to capture context-sensitive variations, i.e. in low-entropy dialog contexts modeling lexical diversity while in high-entropy ones modeling discourse-level diversity. Moreover, kgCVAE is occasionally able to generate more sophisticated grounding (sample 4) beyond a simple back-channel, which is also an acceptable response given the dialog context.</p><p>In addition, past work <ref type="bibr" target="#b14">(Kingma and Welling, 2013)</ref> has shown that the recognition network is able to learn to cluster high-dimension data, so we conjecture that posterior z outputted from the recognition network should cluster the responses into meaningful groups. Figure <ref type="figure" target="#fig_4">5</ref> visualizes the posterior z of responses in the test dataset in 2D space using t-SNE <ref type="bibr" target="#b20">(Maaten and Hinton, 2008)</ref>. We found that the learned latent space is highly correlated with the dialog act and length of responses, which confirms our assumption. Table <ref type="table" target="#tab_1">3</ref> shows the reconstruction perplexity and the KL cost on the test dataset. The standard VAE fails to learn a meaningful latent variable by hav-Table <ref type="table">2</ref>: Generated responses from the baselines and kgCVAE in two examples. KgCVAE also provides the predicted dialog act for each response. The context only shows the last utterance due to space limit (the actual context window size is 10).</p><p>ing a KL cost close to 0 and a reconstruction perplexity similar to a small LSTM LM <ref type="bibr">(Zaremba et al., 2014)</ref>. KLA helps to improve the reconstruction loss, but it requires early stopping since the models will fall back to the standard VAE after the KL weight becomes 1. At last, the models with BOW loss achieved significantly lower perplexity and larger KL cost. Figure <ref type="figure" target="#fig_5">6</ref> visualizes the evolution of the KL cost. We can see that for the standard model, the KL cost crashes to 0 at the beginning of training and never recovers. On the contrary, the model with only KLA learns to encode substantial information in latent z when the KL cost weight is small. However, after the KL weight is increased to 1 (after 5000 batch), the model once again decides to ignore the latent z and falls back to the naive implementation. The model with BOW loss, however, consistently converges to a non-trivial KL cost even without KLA, which confirms the importance of BOW loss for training latent variable models with the RNN decoder. Last but not least, our experiments showed that the conclusions drawn from LM using VAE also apply to training CVAE/kgCVAE, so we used BOW loss together with KLA for all previous experiments. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Model</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Conclusion and Future Work</head><p>In conclusion, we identified the one-to-many nature of open-domain conversation and proposed two novel models that show superior performance in generating diverse and appropriate responses at the discourse level. While the current paper addresses diversifying responses in respect to dialogue acts, this work is part of a larger research direction that targets leveraging both past linguistic findings and the learning power of deep neural networks to learn better representation of the latent factors in dialog. In turn, the output of this novel neural dialog model will be easier to explain and control by humans. In addition to dialog acts, we plan to apply our kgCVAE model to capture other different linguistic phenomena including sentiment, named entities,etc. Last but not least, the recognition network in our model will serve as the foundation for designing a datadriven dialog manager, which automatically discovers useful high-level intents. All of the above suggest a promising research direction. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A Supplemental Material</head><p>Variational Lower Bound for kgCVAE</p><p>We assume that even with the presence of linguistic feature y regarding x, the prediction of x bow still only depends on the z and c. Therefore, we have:</p><p>L(θ, φ; x, c, y) = -KL(q φ (z|x, c, y) P θ (z|c))</p><p>+ E q φ (z|c,x,y) <ref type="bibr">[log p(x|z, c, y)</ref>]</p><p>+ E q φ (z|c,x,y) [log p(y|z, c)]</p><p>+ E q φ (z|c,x,y) [log p(x bow |z, c)] (7)</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Collection of Multiple Reference Responses</head><p>We collected multiple reference responses for each dialog context in the test set by information retrieval techniques combining with traditional a machine learning method. First, we encode the dialog history using Term Frequency-Inverse Document Frequency (TFIDF) <ref type="bibr" target="#b26">(Salton and Buckley, 1988)</ref> weighted bag-of-words into vector representation h. Then we denote the topic of the conversation as t and denote f as the conversation floor, i.e. if the speakers of the last utterance in the dialog history and response utterance are the same f = 1 otherwise f = 0. Then we computed the similarity d(c i , c j ) between two dialog contexts using:</p><formula xml:id="formula_8">d(c i , c j ) = 1(t i = t j )1(t i = t j ) h i • h j ||h i ||||h j ||<label>(8)</label></formula><p>Unlike past work <ref type="bibr" target="#b30">(Sordoni et al., 2015)</ref>, this similarity function only cares about the distance in the context and imposes no constraints on the response, therefore is suitbale for finding diverse responses regarding to the same dialog context. Secondly, for each dialog context in the test set, we retrieved the 10 nearest neighbors from the training set and treated the responses from the training set as candidate reference responses. Thirdly, we further sampled 240 context-responses pairs from 5481 pairs in the total test set and post-processed the selected candidate responses by two human computational linguistic experts who were told to give a binary label for each candidate response about whether the response is appropriate regarding its dialog context. The filtered lists then served as the ground truth to train our reference response classifier. For the next step, we extracted bigrams, part-of-speech bigrams and word part-of-speech pairs from both dialogue contexts and candidate reference responses with rare threshold for feature extraction being set to 20. Then L2-regularized logistic regression with 10-fold cross validation was applied as the machine learning algorithm. Cross validation accuracy on the human-labelled data was 71%. Finally, we automatically annotated the rest of test set with this trained classifier and the resulting data were used for model evaluation.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: Given A's question, there exists many valid responses from B for different assumptions of the latent variables, e.g., B's hobby.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: Graphical models of CVAE (a) and kgC-VAE (b)</figDesc><graphic coords="3,79.09,395.54,204.09,82.27" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: The neural network architectures for the baseline and the proposed CVAE/kgCVAE models. denotes the concatenation of the input vectors. The dashed blue connections only appear in kgCVAE.</figDesc><graphic coords="4,72.00,62.81,453.49,173.40" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 4 :</head><label>4</label><figDesc>Figure 4: BLEU-4 precision/recall vs. the number of distinct reference dialog acts.</figDesc><graphic coords="7,75.46,319.21,104.31,65.19" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 5</head><label>5</label><figDesc>Figure 5: t-SNE visualization of the posterior z for test responses with top 8 frequent dialog acts. The size of circle represents the response length.</figDesc><graphic coords="7,312.09,264.07,208.63,166.36" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Figure 6 :</head><label>6</label><figDesc>Figure 6: The value of the KL divergence during training with different setups on Penn Treebank.</figDesc><graphic coords="8,314.36,292.76,204.09,109.46" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>Table 1 :</head><label>1</label><figDesc>Performance of each model on automatic measures. The highest score in each row is in bold. Note that our BLEU scores are normalized to [0, 1].</figDesc><table><row><cell>, we</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 3 :</head><label>3</label><figDesc>The reconstruction perplexity and KL terms on Penn Treebank test set.</figDesc><table><row><cell></cell><cell>Perplexity</cell><cell>KL cost</cell></row><row><cell>Standard</cell><cell>122.0</cell><cell>0.05</cell></row><row><cell>KLA</cell><cell>111.5</cell><cell>2.02</cell></row><row><cell>BOW</cell><cell>97.72</cell><cell>7.41</cell></row><row><cell cols="2">BOW+KLA 73.04</cell><cell>15.94</cell></row></table></figure>
+		</body>
+		<back>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<title level="m" type="main">Example 1-Topic: Recycling Context: A: are they doing a lot of recycling out in Georgia? Target-B (statement): well at my workplace we have palaces for aluminium cans and we have a separate trash can for recyclable paper Baseline+Sampling kgCVAE+Greedy</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<title level="m" type="main">well I&apos;m a graduate student and have two kids 1</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<monogr>
+		<title level="m" type="main">well I was in last year and so we&apos;ve had lots of recycling 2. (statement) oh you&apos;re not going to have a curbside pick up here</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<title level="m" type="main">Topic: Child Care Context: A: you know a private home to take their children to when they&apos;re young until they hit the preschool age and they Target-B uh-huh Baseline+Sampling kgCVAE+Greedy</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<monogr>
+		<title level="m" type="main">Fine-grained analysis of sentence embeddings using auxiliary prediction tasks</title>
+		<author>
+			<persName><forename type="first">Einat</forename><surname>Adi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yonatan</forename><surname>Kermany</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ofer</forename><surname>Belinkov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoav</forename><surname>Lavi</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Goldberg</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1608.04207</idno>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+	<note>oh yeah I think that&apos;s part of the problem References Yossi</note>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<monogr>
+		<title level="m" type="main">Natural language processing with Python</title>
+		<author>
+			<persName><forename type="first">Steven</forename><surname>Bird</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ewan</forename><surname>Klein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Edward</forename><surname>Loper</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+			<publisher>Reilly Media, Inc</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Latent dirichlet allocation</title>
+		<author>
+			<persName><forename type="first">Andrew</forename><forename type="middle">Y</forename><surname>David M Blei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><forename type="middle">I</forename><surname>Ng</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Jordan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of machine Learning research</title>
+		<imprint>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="page" from="993" to="1022" />
+			<date type="published" when="2003-01">2003. Jan</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<title level="m" type="main">Ravenclaw: Dialog management using hierarchical task decomposition and an expectation agenda</title>
+		<author>
+			<persName><forename type="first">Dan</forename><surname>Bohus</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexander</forename><forename type="middle">I</forename><surname>Rudnicky</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<monogr>
+		<author>
+			<persName><forename type="first">Luke</forename><surname>Samuel R Bowman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oriol</forename><surname>Vilnis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><forename type="middle">M</forename><surname>Vinyals</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rafal</forename><surname>Dai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Samy</forename><surname>Jozefowicz</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Bengio</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1511.06349</idno>
+		<title level="m">Generating sentences from a continuous space</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">A systematic comparison of smoothing techniques for sentencelevel bleu</title>
+		<author>
+			<persName><forename type="first">Boxing</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Colin</forename><surname>Cherry</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACL</title>
+		<imprint>
+			<biblScope unit="page">362</biblScope>
+			<date type="published" when="2014">2014. 2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<author>
+			<persName><forename type="first">Junyoung</forename><surname>Chung</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Caglar</forename><surname>Gulcehre</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kyunghyun</forename><surname>Cho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1412.3555</idno>
+		<title level="m">Empirical evaluation of gated recurrent neural networks on sequence modeling</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Bootstrapping dialog systems with word embeddings</title>
+		<author>
+			<persName><forename type="first">Gabriel</forename><surname>Forgues</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joelle</forename><surname>Pineau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jean-Marie</forename><surname>Larchevêque</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Réal</forename><surname>Tremblay</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NIPS, Modern Machine Learning and Natural Language Processing Workshop</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<monogr>
+		<title level="m" type="main">Switchboard-1 release 2. Linguistic Data Consortium</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>John</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Edward</forename><surname>Godfrey</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Holliman</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1997">1997</date>
+			<pubPlace>Philadelphia</pubPlace>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<monogr>
+		<author>
+			<persName><forename type="first">Diederik</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jimmy</forename><surname>Ba</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1412.6980</idno>
+		<title level="m">Adam: A method for stochastic optimization</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<author>
+			<persName><forename type="first">P</forename><surname>Diederik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1312.6114</idno>
+		<title level="m">Autoencoding variational bayes</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<monogr>
+		<author>
+			<persName><forename type="first">Jiwei</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michel</forename><surname>Galley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Brockett</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianfeng</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bill</forename><surname>Dolan</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1510.03055</idno>
+		<title level="m">A diversity-promoting objective function for neural conversation models</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<monogr>
+		<author>
+			<persName><forename type="first">Jiwei</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michel</forename><surname>Galley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Brockett</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianfeng</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bill</forename><surname>Dolan</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1603.06155</idno>
+		<title level="m">A persona-based neural conversation model</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<monogr>
+		<title level="m" type="main">Deep reinforcement learning for dialogue generation</title>
+		<author>
+			<persName><forename type="first">Jiwei</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Will</forename><surname>Monroe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alan</forename><surname>Ritter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dan</forename><surname>Jurafsky</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1606.01541</idno>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">A plan recognition model for subdialogues in conversations</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Diane</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><forename type="middle">F</forename><surname>Litman</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Allen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Cognitive science</title>
+		<imprint>
+			<biblScope unit="volume">11</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="163" to="200" />
+			<date type="published" when="1987">1987</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<monogr>
+		<title level="m" type="main">How not to evaluate your dialogue system: An empirical study of unsupervised evaluation metrics for dialogue response generation</title>
+		<author>
+			<persName><forename type="first">Chia-Wei</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ryan</forename><surname>Lowe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Iulian V Serban</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Laurent</forename><surname>Noseworthy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joelle</forename><surname>Charlin</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Pineau</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1603.08023</idno>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Visualizing data using t-sne</title>
+		<author>
+			<persName><forename type="first">Laurens</forename><surname>Van Der Maaten</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Geoffrey</forename><surname>Hinton</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Machine Learning Research</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="page" from="2579" to="2605" />
+			<date type="published" when="2008-11">2008. Nov</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Bleu: a method for automatic evaluation of machine translation</title>
+		<author>
+			<persName><forename type="first">Kishore</forename><surname>Papineni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Salim</forename><surname>Roukos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Todd</forename><surname>Ward</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei-Jing</forename><surname>Zhu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 40th annual meeting on association for computational linguistics</title>
+		<meeting>the 40th annual meeting on association for computational linguistics</meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2002">2002</date>
+			<biblScope unit="page" from="311" to="318" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Glove: Global vectors for word representation</title>
+		<author>
+			<persName><forename type="first">Jeffrey</forename><surname>Pennington</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Richard</forename><surname>Socher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><forename type="middle">D</forename><surname>Manning</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Twente Workshop on the Formal Semantics and Pragmatics of Dialogues (13th Twente Workshop on Language Technology</title>
+		<meeting>the Twente Workshop on the Formal Semantics and Pragmatics of Dialogues (13th Twente Workshop on Language Technology</meeting>
+		<imprint>
+			<publisher>Citeseer</publisher>
+			<date type="published" when="1998">2014. 1998</date>
+			<biblScope unit="volume">14</biblScope>
+			<biblScope unit="page" from="1532" to="1543" />
+		</imprint>
+	</monogr>
+	<note>EMNLP</note>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Lets go public! taking a spoken dialog system to the real world</title>
+		<author>
+			<persName><forename type="first">Antoine</forename><surname>Raux</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Brian</forename><surname>Langner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dan</forename><surname>Bohus</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alan</forename><forename type="middle">W</forename><surname>Black</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maxine</forename><surname>Eskenazi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. of Interspeech</title>
+		<meeting>of Interspeech</meeting>
+		<imprint>
+			<publisher>Citeseer</publisher>
+			<date type="published" when="2005">2005. 2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<monogr>
+		<author>
+			<persName><forename type="first">Danilo</forename><surname>Jimenez Rezende</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shakir</forename><surname>Mohamed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daan</forename><surname>Wierstra</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1401.4082</idno>
+		<title level="m">Stochastic backpropagation and approximate inference in deep generative models</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<monogr>
+		<author>
+			<persName><forename type="first">Eugénio</forename><surname>Ribeiro</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ricardo</forename><surname>Ribeiro</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename></persName>
+		</author>
+		<idno type="arXiv">arXiv:1506.00839</idno>
+		<title level="m">The influence of context on dialogue act recognition</title>
+		<imprint>
+			<date type="published" when="2015">Martins de Matos. 2015</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Termweighting approaches in automatic text retrieval</title>
+		<author>
+			<persName><forename type="first">Gerard</forename><surname>Salton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Buckley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mike</forename><surname>Schuster</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kuldip K</forename><surname>Paliwal</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Signal Processing</title>
+		<imprint>
+			<biblScope unit="volume">24</biblScope>
+			<biblScope unit="issue">5</biblScope>
+			<biblScope unit="page" from="2673" to="2681" />
+			<date type="published" when="1988">1988. 1997</date>
+		</imprint>
+	</monogr>
+	<note>Information processing &amp; management</note>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Building end-to-end dialogue systems using generative hierarchical neural network models</title>
+		<author>
+			<persName><forename type="first">Alessandro</forename><surname>Iulian V Serban</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Sordoni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aaron</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joelle</forename><surname>Courville</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Pineau</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 30th AAAI Conference on Artificial Intelligence (AAAI-16)</title>
+		<meeting>the 30th AAAI Conference on Artificial Intelligence (AAAI-16)</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<monogr>
+		<author>
+			<persName><forename type="first">Iulian</forename><surname>Vlad Serban</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alessandro</forename><surname>Sordoni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ryan</forename><surname>Lowe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Laurent</forename><surname>Charlin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joelle</forename><surname>Pineau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aaron</forename><surname>Courville</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1605.06069</idno>
+		<title level="m">A hierarchical latent variable encoder-decoder model for generating dialogues</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Learning structured output representation using deep conditional generative models</title>
+		<author>
+			<persName><forename type="first">Kihyuk</forename><surname>Sohn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Honglak</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xinchen</forename><surname>Yan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="3483" to="3491" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<monogr>
+		<author>
+			<persName><forename type="first">Alessandro</forename><surname>Sordoni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michel</forename><surname>Galley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Auli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Brockett</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yangfeng</forename><surname>Ji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Margaret</forename><surname>Mitchell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian-Yun</forename><surname>Nie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianfeng</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bill</forename><surname>Dolan</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1506.06714</idno>
+		<title level="m">A neural network approach to context-sensitive generation of conversational responses</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Dialogue act modeling for automatic tagging and recognition of conversational speech</title>
+		<author>
+			<persName><forename type="first">Andreas</forename><surname>Stolcke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noah</forename><surname>Coccaro</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rebecca</forename><surname>Bates</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Paul</forename><surname>Taylor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Carol</forename><surname>Van Ess-Dykema</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Klaus</forename><surname>Ries</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Elizabeth</forename><surname>Shriberg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Jurafsky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rachel</forename><surname>Martin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marie</forename><surname>Meteer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Computational linguistics</title>
+		<imprint>
+			<biblScope unit="volume">26</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="339" to="373" />
+			<date type="published" when="2000">2000</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Sequence to sequence learning with neural networks</title>
+		<author>
+			<persName><forename type="first">Ilya</forename><surname>Sutskever</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oriol</forename><surname>Vinyals</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Quoc V</forename><surname>Le</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="3104" to="3112" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Least squares support vector machine classifiers</title>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">K</forename><surname>Johan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joos</forename><surname>Suykens</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Vandewalle</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Neural processing letters</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="293" to="300" />
+			<date type="published" when="1999">1999</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<monogr>
+		<author>
+			<persName><forename type="first">Oriol</forename><surname>Vinyals</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Quoc</forename><surname>Le</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1506.05869</idno>
+		<title level="m">A neural conversational model</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Partially observable markov decision processes for spoken dialog systems</title>
+		<author>
+			<persName><forename type="first">Jason D</forename><surname>Williams</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Steve</forename><surname>Young</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Computer Speech &amp; Language</title>
+		<imprint>
+			<biblScope unit="volume">21</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="393" to="422" />
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<monogr>
+		<title level="m" type="main">Sequence-to-sequence learning as beam-search optimization</title>
+		<author>
+			<persName><forename type="first">Sam</forename><surname>Wiseman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexander</forename><forename type="middle">M</forename><surname>Rush</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1606.02960</idno>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

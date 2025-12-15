@@ -1,0 +1,695 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Relevant CommonSense Subgraphs for &quot;What if...&quot; Procedural Reasoning</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author role="corresp">
+							<persName><forename type="first">Chen</forename><surname>Zheng</surname></persName>
+							<email>zhengc12@msu.edu</email>
+							<affiliation key="aff0">
+								<orgName type="institution" key="instit1">Michigan State University</orgName>
+								<orgName type="institution" key="instit2">Michigan State University</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Parisa</forename><surname>Kordjamshidi</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution" key="instit1">Michigan State University</orgName>
+								<orgName type="institution" key="instit2">Michigan State University</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Relevant CommonSense Subgraphs for &quot;What if...&quot; Procedural Reasoning</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-14T18:26+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>We study the challenge of learning causal reasoning over procedural text to answer "What if..." questions when external commonsense knowledge is required. We propose a novel multi-hop graph reasoning model to 1) efficiently extract a commonsense subgraph with the most relevant information from a large knowledge graph; 2) predict the causal answer by reasoning over the representations obtained from the commonsense subgraph and the contextual interactions between the questions and context. We evaluate our model on WIQA benchmark and achieve state-of-the-art performance compared to the recent models.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>In recent years, large-scale pre-trained language models (LMs) have made a breakthrough progress and demonstrate a high performance in many NLP tasks, including procedural text reasoning <ref type="bibr" target="#b18">(Tandon et al., 2019;</ref><ref type="bibr" target="#b11">Rajagopal et al., 2020)</ref>. There is a large amount of knowledge that is stored implicitly in language models that help in solving various NLP tasks <ref type="bibr">(Devlin et al., 2019b)</ref>. When we reason over text, sometimes, the knowledge contained in a given text is sufficient to predict the answer, as it is shown in the question 1 of Figure <ref type="figure">1</ref>. This knowledge is directly encoded and used by LMs models <ref type="bibr" target="#b18">(Tandon et al., 2019)</ref>. However, there are many cases in which the required knowledge is not included in the procedural text itself. For example, for the question 2 in Figure <ref type="figure">1</ref>, the information about the "nutrient" on the seeds does not exist in the procedural text. Therefore, the external commonsense knowledge is required.</p><p>There are several existing resources that contain world knowledge and commonsense. Examples are knowledge graphs (KGs) like ConceptNet <ref type="bibr" target="#b15">(Speer et al., 2017)</ref> and ATOMIC <ref type="bibr" target="#b12">(Sap et al., 2019)</ref>. Looking back at the question 2, we observe that through providing the external knowledge triplets (nutrient, Procedural Text: 1. A plant produces a seed. 2. The seed falls to the ground. 3. The seed is buried. 4. The seed germinates. 5. A plant grows. 6. The plant produces flowers. 7. The flowers produce more seeds Questions and Answers: 1. suppose plants will produce more seeds happens, how will it affect less plants. (A) More (B) Less (C) No effect 2. suppose the soil is rich in nutrients happens, how will it affect more seeds are produced. relatedto, soil) and (soil, relatedto, seed) derived from ConceptNet, we can build an explicit reasoning chain and choose an explainable answer.</p><p>Two challenges exist in procedural text reasoning and using external KBs. The first challenge is effectively extracting the most relevant external information and reducing the noise from the KB. The second challenge is reasoning over the extracted knowledge. Several works enhance the QA model with commonsense knowledge <ref type="bibr" target="#b6">(Lin et al., 2019;</ref><ref type="bibr" target="#b8">Lv et al., 2020)</ref>. However, the noisy knowledge from KG will seriously mislead the QA model in predicting the answer. Moreover, using KBs is often investigated in the tasks that perform QA directly over KB itself, such as CommonsenseQA <ref type="bibr" target="#b17">(Talmor et al., 2019)</ref>, etc. There are less sophisticated techniques proposed for using external knowledge explicitly (i.e. not through training LMs) in reading comprehension for aiding QA over text. REM-Net <ref type="bibr" target="#b4">(Huang et al., 2021)</ref> is the only work that uses commonsense for WIQA and uses a memory network to extract the external triplets to solve the first challenge. However, this work has no reasoning process over the extracted knowledge and uses a simple multi-head attention operator to predict the answer. EIGEN <ref type="bibr" target="#b9">(Madaan et al., 2020)</ref> constructs an influence graph to find the chain of reasoning given procedural text. However, EIGEN cannot deal with the challenge when the required knowledge is not in the given document.</p><p>To solve these two challenges, we propose a Multi-hop Reasoning network over Relevant Com-monSense SubGraphs (MRRG) for casual reasoning over procedural Text. Our motivation is to effectively and efficiently extract the most relevant information from a large KG to help procedural reasoning. First, we extract the entities, retrieve related external triplets from KG, and learn to extract the most relevant triplets to a given the procedure and question input by a novel KG attention mechanism. Then, we construct a commonsense subgraph based on the extracted KG triplets in a pipeline. We use the extracted subgraphs as a part of end-to-end QA model to help in filling the knowledge gaps in the procedure and performing multi-hop reasoning. The final model predicts the causal answer by reasoning over the contextual interaction representations over the question and the document and learning graph representations over the KB subgraphs. We evaluate our MRRG on the "what if" WIQA benchmark. MRRG model achieves SOTA and brings significant improvements compared to the existing baselines.</p><p>The contributions of our work are: 1) We train a separate module that extracts the relevant parts of the KB given the procedure and question to avoid the noisy and inefficient usage of the information in large KBs. 2) We design an end-to-end model that uses the extracted QA-dependent KB as a subgraph to guide the reasoning over the procedural text to answer the questions. 3) Our MRRG achieves SOTA on the WIQA benchmark.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Model Description</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.1">Problem Formulation and Overview</head><p>Formally, the problem is to predict an answer a from a set of pre-defined answers given input question q, a document C which is composed of several sentences C = {s 1 , . . . , s n }, and a large knowledge graph KG.</p><p>Figure <ref type="figure">2</ref> shows the proposed architecture.</p><p>(1) We extract the entities from question and context in preprocessing step and use them to retrieve the set of candidate triples from the ConceptNet. ( <ref type="formula">2</ref>) We train the KG Attention module to extract the most relevant triplets given the procedure and question and reduce the noisy concepts from candidate triplets. (3) We augment the commonsense subgraph based on the relevant triplets. ( <ref type="formula">4</ref>) We train a model that uses two components, the commonsense subgraph as a relational graph network and a text encoder including question and document to do procedural reasoning. Below, we describe the details of each module.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.2">Candidate Triplet Extraction from KG</head><p>Given the input q and C, we extract the contextual entities (concepts) by a open Information Extraction (OpenIE) model <ref type="bibr" target="#b16">(Stanovsky et al., 2018)</ref>. For each extracted entity t in , we retrieve the relational triplets t = (t in , r, t out ) from KG, where t out is the concept taken from ConceptNet and r is a semantic relation type. We then apply a pre-trained Language Model, RoBERTa, to obtain the representation of each triplet:</p><formula xml:id="formula_0">E t = f LM ([t in , r, t out ]) ∈ R 3×d</formula><p>, where f LM denotes the language model operation and the triplets are given as a sequence of concepts and relations to the LM.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.3">KG Attention</head><p>The KG attention module is shown in Figure <ref type="figure">2-A</ref> and Figure <ref type="figure" target="#fig_1">3</ref>. We concatenate q and C to form Q = [[CLS]; q; [SEP ]; C], where [CLS] and [SEP] are special tokens in the LMs tokenizer process <ref type="bibr" target="#b7">(Liu et al., 2019)</ref>. We use RoBERTa to obtain the list of token representations E [CLS] , E q , and E C . E <ref type="bibr">[CLS]</ref> is the summary representation of the question and paragraph, E q is the list of the question tokens embeddings, and E C is the list of the paragraph tokens embeddings output of Roberta.</p><p>Given triplet E t that is generated based on the triplet extraction described in Section 2.2, we build a context-triplet pair</p><formula xml:id="formula_1">E t z = [E [CLS] ; E t in ; E t r ; E t out ]</formula><p>, where E t in is the representation of the head entity from text, E t out is the representation of the tail entity from KG, and E t r is the representation of the relation. Afterwards, we compute context-triplet pair attention and a softmax layer to output the Context-Triplet pairwise importance Score CT S. The process is computed as follows:</p><formula xml:id="formula_2">CTS t = exp(M LP (E t z )) m j=1 exp(M LP (E t z )</formula><p>) . Then we choose the top-k relevant triplets with the top CT S scores and then use the relevant triplets to construct the subgraph. For each selected triplet, we obtain the triplet representation</p><formula xml:id="formula_3">E ′t = [E ′t in , E t r , E ′t out ] ∈ R 3×d</formula><p>, where</p><formula xml:id="formula_4">E ′t in = f in ([CT S t • E t in ; CT S t • E t r ]) and E ′t out = f out ([CT S t • E t out ; CT S t • E t r ]</formula><p>). Notice that f in and f out are MLP layers, [; ] is the concatenation, and [•] is the scalar product. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.4">Commonsense Subgraph Construction</head><p>We construct the subgraph G s based on the relevant triplets from KG attention for each question and answer pair. We add more edges to the subgraph as follows: Two entities in the triplets will have an edge if a relation r in the KG exists between them.</p><p>The assumption is that the augmented commonsense subgraph will contain the reasoning paths.</p><p>We use E ′t in and E ′t out for the KG subgraph initial node representation h (0) which is used in RGCN formulation in Section 2.5.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.5">Procedural Reasoning</head><p>Procedural Reasoning composes of two parts: Multi-Hop Graph Reasoning and Text Contextual Interaction Encoder. (I) Multi-Hop Graph Reasoning: this is the Graph Reasoning part of Figure <ref type="figure">2-B</ref>. Given the subgraph G s , we use RGCN <ref type="bibr" target="#b13">(Schlichtkrull et al., 2018)</ref> to learn the representations of the relational graph. RGCN learns graph representations by aggregating messages from its direct neighbors and relational semantic edges. The (l + 1)-th layer node representation h (l+1) i is updated based on the neighborhood node representations h l j from the l-layer multiplied by the relational matrices W</p><formula xml:id="formula_5">(l) r 1 , . . . , W (l) r |R| . The representation h (l+1) i is computed as follows: h (l+1) i = σ( r∈R j∈N r i 1 |N r i | W (l) r h (l) j + W (l) 0 h (l) i ),</formula><p>where σ denotes a non-linear activation function, N r i represents a set that includes neighbor indices of node i under semantic relation r. Finally, we obtain the E Gs after several hops of message passing.</p><p>(II) Text Contextual Interaction Encoder: We have obtained the contextual token representations E [CLS] , E q , and E C in the KG attention module that described in Section 2.3. Followed by Seo et al., we utilize Bi-DAF style contextual interaction module to feed E q and E C to Context-to-Question Attention E C→q = sof tmax(sim(E T q , E C ))E q and Question-to-Context Attention E q→C to obtain the contextual interaction between question and context. Then we use LSTM to obtain the hidden state representations: F q→C = LST M (E q→C ), and F C→q = LST M (E C→q ).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.6">Answer Prediction</head><p>We concatenate E ; E q ; E C ; E ′t 1 ; . . . ; E ′t k ] to predict the answer. We use the cross-entropy as the loss function to train the model.</p><p>(II) Training End-to-End MRRG: After pretraining the KG attention, we keep the learned parameters and extract the most relevant concepts and construct the multi-relational commonsense subgraph G s . We combine subgraph representation and text interaction representation as input to train the answer prediction module by crossentropy loss.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Experiments and Results</head><p>We implemented our MRRG framework using Py-Torch 1 . We use a pre-trained RoBERTa <ref type="bibr" target="#b7">(Liu et al., 2019)</ref> to encode the contextual information in the input. The maximum number of triplets is 50 and the maximum number of nodes in the graph is 100. Further details of hyper-parameters of the graph are shown in Table <ref type="table" target="#tab_7">3</ref>. The maximum number of words for the paragraph context is 256. For the graph construction module, we utilize open Information Extraction model <ref type="bibr" target="#b16">(Stanovsky et al., 2018)</ref> from AllenNLP 2 to extract the entities. The maximum number of hops for the graph module is 3. The learning rate is 1e -5. The model is optimized using Adam optimizer <ref type="bibr" target="#b5">(Kingma and Ba, 2015)</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Datasets</head><p>WIQA is a large dataset for "what if" causal reasoning. WIQA contains three types of questions: 1) the questions can be directly answered based on the text, called in-paragraph questions. 2) the questions require external knowledge to be answered, called out-of-paragraph questions, and 3) irrelevant causes and effects, called no-effect questions. WIQA contains 29808 training samples, 6894 development samples, 3993 test samples (test V1), and 3003 test samples (test V2).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Baseline Description</head><p>We briefly describe the most recent baselines that use the Transformer-based language model as the backbone. We separately fine-tune the BERT and RoBERTa as the first two baselines. EIGEN <ref type="bibr" target="#b9">(Madaan et al., 2020</ref>) is a baseline that builds an event influence graph based on a document and leverages LMs to create the chain of reasoning to predict the answer. However, EIGEN does not use any external knowledge to solve the problem. Logic-Guided <ref type="bibr" target="#b0">(Asai and Hajishirzi, 2020</ref>) is a baseline that combines neural networks and logic rules. Specifically, the Logic-Guided model uses logic rules including symmetry and transitivity rules to augment the training data. Moreover, the base language model uses the rules as a regularization term during training to impose the consistency between the answers of multiple questions. RGN <ref type="bibr" target="#b20">(Zheng and Kordjamshidi, 2021)</ref> is the recent SOTA baseline that utilizes a gating network <ref type="bibr" target="#b19">(Zheng et al., 2020)</ref> to effectively filter out the key entities and relationships in the given document and learns the contextual representations to predict the answer. RGN does not consider the external knowledge for procedural reasoning challenges. REM-Net <ref type="bibr" target="#b4">(Huang et al., 2021)</ref> proposes a recursive erasure memory network to find out the causal evidence. Specifically, REM-Net refines the evidence by a recursive memory mechanism and then uses a generative model to predict the causal answer. REM-Net is the only work that uses external knowledge for WIQA. REM-Net uses the external knowledge by training an attention mechanism that considers the KG triplet representations for finding the answer. It does not explicitly select the most relevant triplets as we do, and the graph reasoning is not exploited for finding the chain of reasoning. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3">Results</head><p>Table <ref type="table" target="#tab_2">1</ref> and Table <ref type="table" target="#tab_4">2</ref> show the performance of MRRG on the WIQA task compared to other baselines on two different test sets V1 and V2. First, Both tables show that our proposed KG Attention triplet selection model outperforms the RoBERTa and has 3.3% improvement on the out-of-para category. Second, our MRRG achieves SOTA results compared to all baseline models. MRRG achieves the SOTA on both in-para, out-of-para, and noeffect questions in WIQA V1 and V2.  Question: suppose the soil is rich in nutrients happens, how will it affect more seeds are produced. Content: ["A plant produces a seed", "The seed falls to the ground", "The seed is buried", "The seed germinates", "A plant grows", "The plant produces flowers", "The flowers produce more seeds."] Gold Answer: More X X (nutrient, relatedto, soil) (soil, relatedto, seed) √ √</p><p>Question: suppose more land available happens, how will it affect less igneous rock forming. Content: ["Different kinds of rocks melt into magma", "Magma cools in the crust", "Magma goes to the surface and becomes lava", "Lava cools", "Cooled magma and lava become igneous rock."] Gold Answer: Less </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Analysis</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Effects of Using External Knowledge</head><p>In the WIQA, all the baseline models achieve significantly lower accuracy in the out-of-para than in-para and no-effect categories. MRRG achieves SOTA in the out-of-para category because of using the highly relevant commonsense subgraphs and the combination of reasoning over text interaction and the graph reasoning modules. As is shown in table <ref type="table" target="#tab_4">2</ref>, the advantage of the MRRG model is reflected on out-of-para questions. MRRG improves 4.61% over REM-Net. Notice that REM-Net is the only model that utilizes external knowledge on WIQA. Figure <ref type="figure">4</ref> shows a case in which the "soil" and "nutrient" only appear in the question and do not exist in the text. The baseline models fail to answer this out-of-para question due to missing external knowledge. However, our model predicts the correct answer by explicitly incorporating the (nutrient, relatedto, soil), (soil, relatedto, seed) that connects the critical information between the question and document.  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Relational Reasoning and Multi-Hops</head><p>Both in-para and out-of-para question types require multiple hops of reasoning to find the answer in the WIQA. As shown in the right side of Figure <ref type="figure">4</ref>, the MRRG model accuracy improved 2% for 1 hop, 8% for 2 hops, and 2% for 3 hops compared to EIGEN. MRRG made a sharp improvement in reasoning with multiple hops due to the relational graph reasoning and the effectiveness of the extracted commonsense subgraph. We study some cases to analyze the multi-hop reasoning and the reasoning chains. In the third case in Figure <ref type="figure">4</ref>, the extracted relevant triplets (land, relatedto, surface), (surface, relatedto, igneous rock) construct a two-hop reasoning chain "land→surface→igneous rock" that helps MRRG to find the correct answer.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">Ablation Study</head><p>Table <ref type="table" target="#tab_7">3</ref> shows the ablation study results of MRRG using WIQA. Firstly, we remove the commonsense subgraph and graph network. The accuracy decreases 3.4% compared to MRRG. Second, we remove the contextual interaction module and the accuracy decreases 1.3%. In an additional experiment, we use the KG attention triplet selection module to directly predict the answer without the pipeline of constructing the subgraph and using the graph reasoning module. We show the result as KG Attention Triplet Selection in Table <ref type="table" target="#tab_7">3</ref>. The result shows that removing the triplet selection module decreases the accuracy by 1.8%. In the same table 3, we report results about the impact of including the relation types in the RGCN graph and the influence of changing the dimensionality of the node representations in the model.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Conclusion</head><p>We propose MRRG model for using external knowledge graph in reasoning over procedural text. Our model extracts a relevant subgraph for each question from the KG and uses that knowledge subgraph for answering the question. The extracted subgraph includes the reasoning path for answering the question and helps multi-hop reasoning to predict an explainable answer. We evaluate MRRG on the WIQA and achieve SOTA performance.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head></head><label></label><figDesc>Figure 1: WIQA contains procedural text, and different types of questions. The bold choices are the answers.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: The architecture of training the KG Attention module.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head></head><label></label><figDesc>[CLS] , F q→C , F C→q , and the compact subgraph representation E ′ Gs obtained from attentive pooling, and use it as the final representation: F = [E [CLS] ; F q→C ; F C→q ; E ′ Gs ]. Then we utilize a classifier MLP (F ) to predict the answer. Our MRRG has two separate training modules used in a pipeline for triplet selection and procedural reasoning. (I) Training KG Attention for Triplet Selection: Figure 3 and the left block of Figure 2 show the same triplet selection model. The architecture of Figure 2.B is taken and 3 extra MLP layers added to it for training as shown in Figure 3. The MLP is applied on the concatenation of the concatenation of [E [CLS]</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>Triplet x] Relational Graph Representation Question + document Contextual Interaction Highly Relevant Commonsense Subgraph Construction Text Interaction Encoder Multi-Hop Graph Encoder Answer Prediction CLS Ques token rep Doc token rep A. KG-attention Triplet Selection B. Multi-hop Reasoning MLP concat Pretrain A concat (1) (1) (1)</head><label></label><figDesc></figDesc><table><row><cell>Open Information Extraction</cell><cell>[CLS ;Triplet 1] [CLS ;Triplet 2] … CLS Triplet 1 Triplet 2 … Triplet n</cell><cell>KG Attention [CLS ; (2) Relevant Triplets [CLS ;Triplet i] [CLS ;Triplet j] … (2)</cell><cell>(3)</cell><cell>(4)</cell><cell>(4)</cell></row><row><cell></cell><cell>[CLS ; Triplet n]</cell><cell></cell><cell></cell><cell>(4)</cell><cell></cell></row><row><cell>Question+</cell><cell>LM</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>Document</cell><cell>(2)</cell><cell>(I)</cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="6">Figure 2: MRRG Model is composed of Candidate Triplet Extraction, KG Attention, Commonsense Subgraph</cell></row><row><cell cols="6">Construction, Text encoder with contextual interaction, Graph Reasoning, and Answer prediction modules.</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 1 :</head><label>1</label><figDesc>Model Comparisons on WIQA test V1 dataset.</figDesc><table><row><cell>Models</cell><cell cols="4">in-para out-of-para no-effect Test V1 Acc</cell></row><row><cell>Majority</cell><cell>45.46</cell><cell>49.47</cell><cell>55.0</cell><cell>30.66</cell></row><row><cell>Polarity</cell><cell>76.31</cell><cell>53.59</cell><cell>27.0</cell><cell>39.43</cell></row><row><cell>Adaboost (Freund and Schapire, 1995)</cell><cell>49.41</cell><cell>36.61</cell><cell>48.42</cell><cell>43.93</cell></row><row><cell>emphDecomp-Attn (Parikh et al., 2016)</cell><cell>56.31</cell><cell>48.56</cell><cell>73.42</cell><cell>59.48</cell></row><row><cell>BERT (no para) (Devlin et al., 2019a)</cell><cell>60.32</cell><cell>43.74</cell><cell>84.18</cell><cell>62.41</cell></row><row><cell>BERT (Tandon et al., 2019)</cell><cell>79.68</cell><cell>56.13</cell><cell>89.38</cell><cell>73.80</cell></row><row><cell>RoBERTa (Tandon et al., 2019)</cell><cell>74.55</cell><cell>61.29</cell><cell>89.47</cell><cell>74.77</cell></row><row><cell>EIGEN (Madaan et al., 2020)</cell><cell>73.58</cell><cell>64.04</cell><cell>90.84</cell><cell>76.92</cell></row><row><cell>REM-Net (Huang et al., 2021)</cell><cell>75.67</cell><cell>67.98</cell><cell>87.65</cell><cell>77.56</cell></row><row><cell>Logic-Guided (Asai and Hajishirzi, 2020)</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>78.50</cell></row><row><cell>RoBERTa+KG-attention Triplet Selection</cell><cell>72.21</cell><cell>64.60</cell><cell>89.13</cell><cell>75.22</cell></row><row><cell>MRRG (RoBERTa-base)</cell><cell>79.85</cell><cell>69.93</cell><cell>91.02</cell><cell>80.06</cell></row><row><cell>Human</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>96.33</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 2 :</head><label>2</label><figDesc>Model Comparisons on WIQA test V2 dataset. The seed germinates.", "The plant grows.", "The plant flowers.", "Produces fruit.", "The fruit releases seeds."</figDesc><table><row><cell>Question and Document Content</cell><cell>RoBERTa</cell><cell>+Interaction</cell><cell>Incorporating Triplets</cell><cell>+KG</cell><cell>+Graph</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell>Attention</cell><cell></cell></row><row><cell>Question: suppose more fruit is produced happens,</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>how will it affect MORE plants?</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>Content: ["Gold Answer: More</cell><cell>X</cell><cell>√</cell><cell>(fruit, createdby, plant)</cell><cell>√</cell><cell>√</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head></head><label></label><figDesc>Case study of the MRRG Framework. "+interaction" means adding the contextual interaction module. "KG ATTN" means adding the KG Attention Triplet Selection module. 'X' indicates the model failed to predict the correct answer and "✓" means the prediction was successful with the included module. Right: Comparing the results over different number of hops.</figDesc><table><row><cell></cell><cell></cell><cell></cell><cell></cell><cell>Model</cell><cell># hop = 1 # hop = 2 # hop = 3</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell>BERT</cell><cell>71.6%</cell><cell>62.5%</cell><cell>59.5%</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="2">RoBERTa 73.5%</cell><cell>63.9%</cell><cell>61.1%</cell></row><row><cell></cell><cell></cell><cell>(igneous rock, isa, rock) (land, relatedto, rock)</cell><cell></cell><cell>EIGEN</cell><cell>78.8%</cell><cell>63.5%</cell><cell>68.3%</cell></row><row><cell>X</cell><cell>X</cell><cell>(land, relatedto, surface)</cell><cell>X</cell><cell>√</cell></row><row><cell></cell><cell></cell><cell>(surface, relatedto, igneous rock)</cell><cell></cell><cell>MRRG</cell><cell>81.0%</cell><cell>72.3%</cell><cell>70.4%</cell></row><row><cell>Figure 4: Left:</cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head>Table 3 :</head><label>3</label><figDesc>Ablation and hyper-para. choices on WIQA. "GNN dim" is the dimension of graph representation.</figDesc><table /></figure>
+		</body>
+		<back>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Logicguided data augmentation and regularization for consistent question answering</title>
+		<author>
+			<persName><forename type="first">Akari</forename><surname>Asai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hannaneh</forename><surname>Hajishirzi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 58th Annual Meeting of the Association for Computational Linguistics</meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="5642" to="5650" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Bert: Pre-training of deep bidirectional transformers for language understanding</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Devlin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming-Wei</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kenton</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kristina</forename><surname>Toutanova</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NAACL-HLT</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">BERT: Pre-training of deep bidirectional transformers for language understanding</title>
+		<author>
+			<persName><forename type="first">Jacob</forename><surname>Devlin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming-Wei</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kenton</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kristina</forename><surname>Toutanova</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/N19-1423</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</title>
+		<title level="s">Long and Short Papers</title>
+		<meeting>the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies<address><addrLine>Minneapolis, Minnesota</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="4171" to="4186" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">A decision-theoretic generalization of on-line learning and an application to boosting</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Freund</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Schapire</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">EuroCOLT</title>
+		<imprint>
+			<date type="published" when="1995">1995</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Rem-net: Recursive erasure memory network for commonsense evidence refinement</title>
+		<author>
+			<persName><forename type="first">Yinya</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Meng</forename><surname>Fang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xunlin</forename><surname>Zhan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qingxing</forename><surname>Cao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaodan</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Liang</forename><surname>Lin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<monogr>
+		<title level="m" type="main">Adam: A method for stochastic optimization</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Diederik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jimmy</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Ba</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+	<note>In ICLR</note>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">KagNet: Knowledge-aware graph networks for commonsense reasoning</title>
+		<author>
+			<persName><forename type="first">Xinyue</forename><surname>Bill Yuchen Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jamin</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiang</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Ren</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/D19-1282</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)</title>
+		<meeting>the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)<address><addrLine>Hong Kong, China</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="2829" to="2839" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<author>
+			<persName><forename type="first">Yinhan</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Myle</forename><surname>Ott</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Naman</forename><surname>Goyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jingfei</forename><surname>Du</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mandar</forename><surname>Joshi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danqi</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Omer</forename><surname>Levy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mike</forename><surname>Lewis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luke</forename><surname>Zettlemoyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Veselin</forename><surname>Stoyanov</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1907.11692</idno>
+		<title level="m">Roberta: A robustly optimized bert pretraining approach</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Graph-based reasoning over heterogeneous external knowledge for commonsense question answering</title>
+		<author>
+			<persName><forename type="first">Shangwen</forename><surname>Lv</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daya</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jingjing</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Duyu</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nan</forename><surname>Duan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming</forename><surname>Gong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Linjun</forename><surname>Shou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daxin</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guihong</forename><surname>Cao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Songlin</forename><surname>Hu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="page" from="8449" to="8456" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<monogr>
+		<title level="m" type="main">Eigen: Event influence generation using pre-trained language models</title>
+		<author>
+			<persName><forename type="first">Aman</forename><surname>Madaan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dheeraj</forename><surname>Rajagopal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yiming</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abhilasha</forename><surname>Ravichander</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eduard</forename><surname>Hovy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shrimai</forename><surname>Prabhumoye</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2010.11764</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">A decomposable attention model for natural language inference</title>
+		<author>
+			<persName><forename type="first">Ankur</forename><surname>Parikh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oscar</forename><surname>Täckström</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dipanjan</forename><surname>Das</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jakob</forename><surname>Uszkoreit</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2016 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2016 Conference on Empirical Methods in Natural Language Processing<address><addrLine>Austin, Texas</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="2249" to="2255" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">What-if I ask you to explain: Explaining the effects of perturbations in procedural text</title>
+		<author>
+			<persName><forename type="first">Dheeraj</forename><surname>Rajagopal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Niket</forename><surname>Tandon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Clark</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bhavana</forename><surname>Dalvi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eduard</forename><surname>Hovy</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.findings-emnlp.300</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Findings of the Association for Computational Linguistics: EMNLP 2020</title>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="3345" to="3355" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Atomic: An atlas of machine commonsense for ifthen reasoning</title>
+		<author>
+			<persName><forename type="first">Maarten</forename><surname>Sap</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Le</forename><surname>Ronan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Emily</forename><surname>Bras</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chandra</forename><surname>Allaway</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicholas</forename><surname>Bhagavatula</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hannah</forename><surname>Lourie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Brendan</forename><surname>Rashkin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noah</forename><forename type="middle">A</forename><surname>Roof</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yejin</forename><surname>Smith</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Choi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="3027" to="3035" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Modeling relational data with graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Schlichtkrull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><forename type="middle">N</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Bloem</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rianne</forename><surname>Van Den</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ivan</forename><surname>Berg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Titov</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">European semantic web conference</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="593" to="607" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<title level="m" type="main">Bidirectional attention flow for machine comprehension</title>
+		<author>
+			<persName><forename type="first">Minjoon</forename><surname>Seo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aniruddha</forename><surname>Kembhavi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ali</forename><surname>Farhadi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hannaneh</forename><surname>Hajishirzi</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note>In ICLR</note>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Conceptnet 5.5: An open multilingual graph of general knowledge</title>
+		<author>
+			<persName><forename type="first">Robyn</forename><surname>Speer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joshua</forename><surname>Chin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Catherine</forename><surname>Havasi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="volume">31</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Supervised open information extraction</title>
+		<author>
+			<persName><forename type="first">Gabriel</forename><surname>Stanovsky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Julian</forename><surname>Michael</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luke</forename><surname>Zettlemoyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ido</forename><surname>Dagan</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/N18-1081</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2018 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</title>
+		<title level="s">Long Papers</title>
+		<meeting>the 2018 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies<address><addrLine>New Orleans, Louisiana</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="885" to="895" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">CommonsenseQA: A question answering challenge targeting commonsense knowledge</title>
+		<author>
+			<persName><forename type="first">Alon</forename><surname>Talmor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jonathan</forename><surname>Herzig</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicholas</forename><surname>Lourie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jonathan</forename><surname>Berant</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/N19-1421</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</title>
+		<title level="s">Long and Short Papers</title>
+		<meeting>the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies<address><addrLine>Minneapolis, Minnesota</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="4149" to="4158" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">reasoning over procedural text</title>
+		<author>
+			<persName><forename type="first">Niket</forename><surname>Tandon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bhavana</forename><surname>Dalvi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Keisuke</forename><surname>Sakaguchi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Clark</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Antoine</forename><surname>Bosselut</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)</title>
+		<meeting>the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)<address><addrLine>Hong Kong, China</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="6076" to="6085" />
+		</imprint>
+	</monogr>
+	<note>WIQA: A dataset for &quot;what if. Association for Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Cross-modality relevance for reasoning on language and vision</title>
+		<author>
+			<persName><forename type="first">Chen</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Quan</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Parisa</forename><surname>Kordjamshidi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 58th Annual Meeting of the Association for Computational Linguistics</meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="7642" to="7651" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Relational gating for &quot;what if&quot; reasoning</title>
+		<author>
+			<persName><forename type="first">Chen</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Parisa</forename><surname>Kordjamshidi</surname></persName>
+		</author>
+		<idno type="DOI">10.24963/ijcai.2021/553</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Thirtieth International Joint Conference on Artificial Intelligence, IJCAI-21</title>
+		<meeting>the Thirtieth International Joint Conference on Artificial Intelligence, IJCAI-21</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="4015" to="4022" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

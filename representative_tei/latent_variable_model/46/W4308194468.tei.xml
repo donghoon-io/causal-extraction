@@ -1,0 +1,613 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">A supervised topic embedding model and its application</title>
+				<funder>
+					<orgName type="full">National Institute of Informatics, Research Organization of Information</orgName>
+				</funder>
+				<funder ref="#_RNBTjkW">
+					<orgName type="full">ROIS NII Open Collaborative Research</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability  status="unknown">
+					<licence/>
+				</availability>
+				<date type="published" when="2022-11-04">November 4, 2022</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Weiran</forename><surname>Xu</surname></persName>
+							<idno type="ORCID">0000-0002-7988-080X</idno>
+						</author>
+						<author>
+							<persName><forename type="first">Koji</forename><surname>Eguchi</surname></persName>
+						</author>
+						<author>
+							<affiliation key="aff0">
+								<orgName type="department">Graduate School of Advanced Science and Engineering</orgName>
+								<orgName type="institution">Hiroshima University</orgName>
+								<address>
+									<settlement>Higashihiroshima</settlement>
+									<region>Hiroshima</region>
+									<country key="JP">Japan</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff1">
+								<orgName type="institution">Pontificia Universidad Catolica de Chile</orgName>
+								<address>
+									<country key="CL">CHILE</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">A supervised topic embedding model and its application</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2022-11-04">November 4, 2022</date>
+						</imprint>
+					</monogr>
+					<idno type="DOI">10.1371/journal.pone.0277104</idno>
+					<note type="submission">Received: April 25, 2022 Accepted: October 19, 2022</note>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-28T22:59+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>We propose rTopicVec, a supervised topic embedding model that predicts response variables associated with documents by analyzing the text data. Topic modeling leverages document-level word co-occurrence patterns to learn latent topics of each document. While word embedding is a promising text analysis technique in which words are mapped into a low-dimensional continuous semantic space by exploiting the local word co-occurrence patterns within a small context window. Recently developed topic embedding benefits from combining those two approaches by modeling latent topics in a word embedding space. Our proposed rTopicVec and its regularized variant incorporate regression into the topic embedding model to model each document and a numerical label paired with the document jointly. In addition, our models yield topics predictive of the response variables as well as predict response variables for unlabeled documents. We evaluated the effectiveness of our models through experiments on two regression tasks: predicting stock return rates using news articles provided by Thomson Reuters and predicting movie ratings using movie reviews. Results showed that the prediction performance of our models was more accurate in comparison to three baselines with a statistically significant difference.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Introduction</head><p>Topic models are statistical machine learning models that find latent semantic structure in a corpus. They have been commonly applied as a tool for analyzing large amounts of text data in a variety of fields. Most topic models focus on the words that appear in documents. In some fields, however, a document is generally accompanied by a response, such as a movie review with a rating of the movie, or a financial news article accompanied by a financial indicator. Thus, to tackle such regression problems, we developed a supervised topic embedding model to infer latent topics predictive of the response.</p><p>Latent Dirichlet Allocation (LDA) <ref type="bibr" target="#b0">[1]</ref> is a representative topic model which assumes a latent topic hidden behind each word in a document and infers the topics which compose the document by employing a hierarchical Bayesian structure. In LDA, the co-occurrence patterns of words can express semantic relevance when the corpus is large enough. However, the input documents in LDA are represented as bag-of-words (BoW), which have issues with high dimensionality and sparsity since the words are represented as one-hot representations that lack the notion of similarity between similar words. For instance, according to Dieng et al. <ref type="bibr" target="#b1">[2]</ref>, the quality of LDA topics decreases as the vocabulary size grows larger. Therefore, conventional topic models like LDA find latent topics from a corpus-level perspective with a drawback of igonoring word-level features because of the one-hot representations.</p><p>A solution to the drawback is word embedding, which introduces a semantic space where words are represented as n-dimensional vectors and the distance of the words can be used to measure the similarity of them, where n is much smaller than the vocabulary size. That is, word embedding maps words with similar meanings closely in a low-dimensional space where a vocabulary with tens of thousands is embedded. The semantic space is constructed by analyzing semantic similarity denoted by word co-occurrences in a sufficiently large corpus since words with similar contexts usually have similar meanings according to the distributional hypothesis <ref type="bibr" target="#b2">[3]</ref>.</p><p>Hence topic models and word embedding methods are both constructed by analyzing word co-occurrences but in different ways. A variety of approaches aiming to capture the global semantic structure and local word-level features by combining topic models and word embedding have been proposed in the literature <ref type="bibr" target="#b1">[2,</ref><ref type="bibr" target="#b3">[4]</ref><ref type="bibr" target="#b4">[5]</ref><ref type="bibr" target="#b5">[6]</ref><ref type="bibr" target="#b6">[7]</ref><ref type="bibr" target="#b7">[8]</ref>. Such models have been shown to outperform LDA in terms of topic quality, predictive performance, and document classification tasks. In this paper, we extend TopicVec <ref type="bibr" target="#b4">[5]</ref>, a topic embedding model that seamlessly integrates topic models and word embedding, which is based on the idea that latent topics are also included in the word embedding space by combining the notion of topics with the generative word embedding model PSDVec <ref type="bibr" target="#b8">[9]</ref>. The topic distributions for each document in TopicVec, like LDA, are assumed to be drawn from Dirichlet priors. In addition, each word in a document is assumed to be extracted from a link function that considers both surrounding context and global topics represented by word embeddings and topic embeddings respectively.</p><p>On the other hand, the topic distributions for each document suitably discovered by topic models can be leveraged for downstream tasks like regression problems. However, the topics learned by unsupervised topic models may be inappropriate to describe the coefficients of the post-processed regression since the supervisory signals such as numerical labels associated with documents are not involved in the topics learning procedure. Therefore, there exist approaches that share the goal of learning topics and regression coefficients jointly when each document is paired with a label or a response <ref type="bibr" target="#b9">[10]</ref><ref type="bibr" target="#b10">[11]</ref><ref type="bibr" target="#b11">[12]</ref><ref type="bibr" target="#b12">[13]</ref>. However, such models using sparse representations suffer from the same problem with LDA. By replacing the one-hot representations with dense vectors, the topics and the prediction accuracy could be improved intuitively.</p><p>This paper is extended from our preliminary work <ref type="bibr" target="#b13">[14]</ref>. To the best of our knowledge, this study is the first to extend topic embedding models like TopicVec for regression tasks. Inspired by sLDA <ref type="bibr" target="#b9">[10]</ref>, in this paper, assuming a response variable is drawn from a Gaussian whose expectation is the inner product of the expectation of the topics for the corresponding document and the regression coefficients, we propose rTopicVec as a supervised topic embedding model for modeling the link between each document and a numerical label paired with it. Moreover, by assuming Gaussian priors to the regression coefficients, we propose a regularized version rTopicVec-Ridge. A variational Bayesian inference approach is used to simultaneously learn the parameters of both models, including the regression coefficients and latent variables. We conducted two experiments to verify the effectiveness of our proposed models. The objective of the first experiment was to predict stock return rates using news articles provided by Thomson Reuters and stock prices from the Tokyo Stock Exchange. The second experiment was to predict movie rating scores using movie reviews. In comparison to baseline models, our proposed models improved prediction performance significantly and also have the advantage of providing interpretability with latent topics for advanced regression analysis. The contributions of this work are summarized as follows:</p><p>1. We developed a supervised topic embedding model where words and topics are represented by embeddings and a regularized variant of the model. To the best of our knowledge, this work is the first to extend an unsupervised topic embedding model to a supervised one for regression tasks.</p><p>2. Our models learn topic parameters and regression parameters simultaneously and introduce word embeddings to improve the topic quality and prediction accuracy.</p><p>3. Our models outperformed three baseline models in prediction accuracy on two tasks that predict numerical labels associated with documents in two languages, respectively. The topic coherence was also improved by taking numerical labels into account.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Related work</head><p>The model TopicVec <ref type="bibr" target="#b4">[5]</ref> we extend in this paper is a topic embedding model incorporating a generative word embedding PSDVec <ref type="bibr" target="#b8">[9]</ref> with latent topics. There exist other models that share the idea of combining topic models with word embedding methods. All of those are unsupervised models, while our model is a supervised extension of topic embedding.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>GaussianLDA</head><p>GaussianLDA proposed by Das et al. <ref type="bibr" target="#b3">[4]</ref>, uses pre-fitted word embeddings to benefit topic models. It replaces the categorical distributions representing topic-word distributions in LDA with multivariate Gaussian distributions so that topics and words share the same embedding space where the word embeddings are assumed to be drawn from a multivariate Gaussian centered at a topic embedding that is drawn from a multivariate Gaussian with zero mean and an inverse Wishart distribution as covariance.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>STE</head><p>Assuming that a word may have different representations under different topics, a unified framework STE (Skip-gram Topical word Embedding) proposed by Shi et al. <ref type="bibr" target="#b6">[7]</ref> learns latent topics and topic-specific word embeddings jointly rather than learns them separately in a twostep way. The learned word embeddings are useful to address the issue of polysemy. They proposed two variants of STE by modeling each skip-gram in two different ways depending on whether the topics behind the two words in each skip-gram are the same or not.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>GPU-DMM</head><p>Focusing on analyzing short texts, Li et al. <ref type="bibr" target="#b5">[6]</ref> proposed a topic model for shot texts that is based on Dirichlet Mixture Model with pre-fitted word embeddings incorporated by a generalized Po ´lya urn (GPU) model. The word embedding trained on a large corpus can supplement short text analysis where the context and word co-occurrence are limited. The GPU model promotes the semantically related words under the same topic, which is efficient for short text analysis.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>WEI-FTM</head><p>WEI-FTM is another topic model that uses pre-fitted word embeddings as prior knowledge to boost the topic quality when analyzing short texts proposed by Zhao et al. <ref type="bibr" target="#b7">[8]</ref>. They assumed that the topic distributions over words are affected by the inner product of the word embeddings and topic embeddings. They also applied sparsity-enforcing prior on topics to make each of them focus on a subset of words rather than the whole vocabulary, leading to better topic quality.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>ETM</head><p>More recently, ETM (embedded topic model) developed by Dieng et al. <ref type="bibr" target="#b1">[2]</ref> learns topics and the embeddings of them either fitting word embeddings jointly or using pre-fitted word embeddings by an amortized variational inference algorithm for which they replaced the Dirichlet with the logistic-normal distribution to model the topic distributions. They assumed that each word is generated according to the agreement between the word embeddings and the embedding of its assigned topic.</p><p>Regarding the supervised models that use topic representations of documents for regression problems, most of them mainly focus on extending LDA. Such models can be used to predict the label given an unlabeled document by inferring its latent topics. Mcauliffe et al. <ref type="bibr" target="#b9">[10]</ref> proposed Supervised LDA (sLDA), in which the response paired with each document is presumed to be drawn from a Gaussian whose expectation is the product of the topic distribution of each document and the regression coefficients. MedLDA proposed by Zhu et al. <ref type="bibr" target="#b11">[12]</ref> has a similar goal with sLDA and trains LDA with SVM by integrating the max-margin principle with the topic models. More recently, Wang et al. <ref type="bibr" target="#b12">[13]</ref> proposed TAM, in which attention RNN is exploited to extend neural topic models for regression and classification tasks. While in our work, following sLDA, we propose rTopicVec that integrates the topic embedding model TopicVec with linear regression for regression problems and its regularized version rTopic-Vec-Ridge. We believe that our models should yield higher prediction accuracy than learning a regression model using the already estimated topic distributions as the explanatory variables, and also than sLDA, by involving word embeddings.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Background</head><p>We briefly review the generative word embedding PSDVec <ref type="bibr" target="#b8">[9]</ref> and topic embedding TopicVec <ref type="bibr" target="#b4">[5]</ref> as the basic background of our work. The notations used in this paper are listed in Table <ref type="table">1</ref>.</p><p>Table <ref type="table">1</ref>. Notations. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Name Description</head><formula xml:id="formula_0">S Vocabulary{s 1 , � � �, s W } V Embedding martix(v s 1 ; � � � ; v s W ) D Document set{d 1 , � � �, d M } v s m Embedding of word type s m μ Tiknov regularization coefficients (μ 1 , � � �, μ W ) h mn Bigram empirical probability of bigram (s m , s n ) a s m s n ; A Bigram residuals t k , T Topic embeddings r k , r Topic residuals w ij j-th word in document d i L i Length of document d i z ij</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>PSDVec</head><p>Positive-Semidefinite Vectors (PSDVec) <ref type="bibr" target="#b8">[9]</ref> is a generative word embedding method based on which TopicVec was developed. In PSDVec, the conditional distribution of a focus word given its context words is assumed to be factorized approximately into independent log-bilinear terms and it is defined by the following link function:</p><formula xml:id="formula_1">Pðw ij jw i;jÀ c : w i;jÀ 1 Þ � Pðw ij Þ exp v &gt; w ij X jÀ 1 l¼jÀ c v w il þ X jÀ 1 l¼jÀ c a w ij w il ( ) :<label>ð1Þ</label></formula><p>The link function connects the word embeddings with the corpus statistics. Here, the focus word w ij is assumed to be generated depending on context of size c. v T w ij v w il captures the linear correlations of two words and bigram residual a w ij w il captures the non-linear part.</p><p>Given the hyperparameter μ = (μ 1 , � � �, μ W ) and a weight function on the bigram probability f(h mn ), the generative process for the corpus is as follows:</p><p>1. For each word type s m , draw the embedding v s m from N 0;</p><formula xml:id="formula_2">1 2m m I � � ; 2. For each bigram (s m , s n ), draw a s m s n from N 0; 1 2f ðh mn Þ � � ;</formula><p>3. For each document d i , draw the j-th word w ij from vocabulary S according to the probability defined by <ref type="bibr" target="#b0">(1)</ref>.</p><p>We omit the derivation process here. The derived optimization objective is to fit pointwise mutual information PMIðs m ;</p><formula xml:id="formula_3">s n Þ ¼ log Pðs m ;s n Þ Pðs m ÞPðs n Þ using v &gt; s n v s m ,</formula><p>and it is optimized by a block coordinate descent algorithm.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>TopicVec</head><p>TopicVec <ref type="bibr" target="#b4">[5]</ref> was developed by taking topics into account in PSDVec described in the previous section. The conditional distribution of the focus word in TopicVec is therefore affected by its context as well as the topic assigned to the word and it is defined by the following function:</p><formula xml:id="formula_4">Pðw ij jw i;jÀ c : w i;jÀ 1 ; z ij ; d i Þ � Pðw ij Þexp � v &gt; w ij ð P jÀ 1 l¼jÀ c v w il þ t z ij Þ þ P jÀ 1 l¼jÀ c a w il w ij þ r z ij � :<label>ð2Þ</label></formula><p>Here, t z ij is the embedding of the topic assigned to the focus word and can be treated as one of the context words. r z ij is the residual of the topic z ij . With the link function, the distance between each word and each topic encodes the relevance of them in the embedding space. The generative process of TopicVec is as follows:</p><p>1. For each topic k, randomly draw a topic embedding t k , each element of which is sampled from the standard Gaussian N ð0; 1Þ.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.">For each document d i :</head><p>(a). Draw the mixing proportions ϕ i from the Dirichlet prior Dir(α);</p><p>(b). For the j-th word:</p><p>i. Draw topic assignment z ij from the categorical distribution Cat(ϕ i );</p><p>ii. Draw word w ij from vocabulary S according to P(w ij |w i,j-c : The complete data loglikelihood of the whole corpus (the full joint log-probability of the corpus D, word embeddings V, bigram residuals A, topic embeddings T, topic assignments Z, and topic distributions ϕ) can be written as log pðD; A; V; Z; T; ϕjα; g; μÞ</p><formula xml:id="formula_5">w i,j-1 , z ij , d i ).</formula><formula xml:id="formula_6">¼ C 0 À log ZðH; μÞ À kAk 2 f ðHÞ À P W m¼1 m m kv s m k 2 þ P M i¼1 � P K k¼1 log � ik ðb ik þ a k À 1Þ þ P L i j¼1 � r z ij þv &gt; w ij ð P jÀ 1 l¼jÀ c v w il þ t z ij Þ þ P jÀ 1 l¼jÀ c a w il w ij Þ � ;<label>ð3Þ</label></formula><p>where b ik ¼ P L i j¼1 dðz ij ¼ kÞ indicates the number of words assigned to topic k. C 0 is constant given the hyperparameters. Given the hyperparameters α, γ, and μ, the optimal V, T, and p(Z, ϕ|D, A, V, T) are estimated to maximize the loglikelihood as follows:</p><p>Step1 V and A are optimized using the original PSDVec;</p><p>Step2 Given optimal V and A, the optimal T and p(Z, ϕ|D, A, V, T) are optimized using the loglikelihood function.</p><p>Since the posterior p(Z, ϕ|D, T) is analytically intractable, the posterior is approximated by the variational distribution q(Z, ϕ; π, θ) = q(ϕ; θ)q(Z; π). Here, the KL divergence is introduced and the estimation task is replaced with the problem of maximizing the variational lower bound Lðq; TÞ:</p><formula xml:id="formula_7">KLðqkpÞ ¼ log pðDjTÞ À ðE q ½log pðD; Z; ϕjTÞ� þ HðqÞÞ ¼ log pðDjTÞ À Lðq; TÞ<label>ð4Þ</label></formula><p>where HðqÞ is the entropy of q. The variational lower bound Lðq; TÞ is as follows:</p><p>Lðq;</p><formula xml:id="formula_8">TÞ ¼ P M i¼1 f P K k¼1 ð P K j¼1 p k ij þ a k À 1Þðcðy ik Þ À cðy i0 ÞÞ þTrðT &gt; P L i j¼1 v w ij π &gt; ij Þ þ r &gt; P L i j¼1 π ij g þ HðqÞ þ C 1 :<label>ð5Þ</label></formula><formula xml:id="formula_9">Here, C 1 ¼ C 0 À log ZðH; μÞ À kAk 2 f ðHÞ À P W m¼1 m m kv s m k 2 þ P M;L i i;j¼1 ðv &gt; w ij P jÀ 1 l¼jÀ c v w il þ P jÀ 1 l¼jÀ c a w il w ij Þ is constant.</formula><p>Then the generalized EM algorithm is used to find the optimal q � and T � that maximize Lðq; TÞ as shown in Algorithm 1. Here, u is the unigram probability of the words occurring in the corpus. lð';</p><formula xml:id="formula_10">P M i¼1 L i Þ ¼ L 0 l 0 '�maxf P M i¼1 L i ;L 0 g</formula><p>is the learning rate, where ℓ is the number of iterations in the learning process, L 0 is a predetermined threshold of the number of words, and λ 0 is the initial value of λ.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Algorithm 1 The generalized EM algorithm</head><p>Initialize T, r, θ repeat E-Step:</p><formula xml:id="formula_11">p k ij / expfcðy ik Þ þ v &gt; w ij t k þ r k g y ik ¼ P L i j¼1 p k ij þ a k M-Step: T new ¼ T þ l l; P M i¼1 L i À � @Lðq;TÞ @T r = -log(u exp{V &gt; T}) until converged</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Supervised topic embedding model</head><p>In this section, we introduce our supervised topic embedding model for regression, rTopicVec, which incorporates regression into TopicVec mentioned in the previous section, and its regularized version, rTopicVec-Ridge.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Generative process</head><p>In rTopicVec, we assume that the document d i and an accompanying response variable y i are generated following the generative process as follows:</p><p>1. Generate words and topic assignments of each document d i following the generative process of TopicVec;</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.">Draw response variable y</head><formula xml:id="formula_12">i � N ðη &gt; � Z i ; d 2 Þ.</formula><p>Step 2 is newly added here to generate a response variable given the latent topics of the document generated in step 1. The expectation of the Gaussian distribution in step 2 is the inner product of the regression coefficients η and the expectation of topic assignments � Z i for d i . </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Estimation of parameters</head><p>For rTopicVec, we estimate the parameters including the ones for regression using the generalized EM algorithm after deriving the loglikelihood function similar to TopicVec. First, we rewrite the complete data loglikelihood in (3) to include response variables y = {y i } as: log pðD; A; V; Z; T; ϕ; yjα; g; μ; η;</p><formula xml:id="formula_13">d 2 Þ ¼ C 0 À log ZðH; μÞ À kAk 2 f ðHÞ À P W m¼1 m m kv s m k 2 þ P M i¼1 � P K k¼1 log � ik b ik þ a k À 1 ð Þ À 1 2 log ð2pd 2 Þ À 1 2d 2 ðy 2 i À 2y i η &gt; � Z i þ η &gt; � Z i � Z &gt; i ηÞ þ P L i j¼1 � v &gt; w ij � P jÀ 1 l¼jÀ c v w il þ t z ij � þ P jÀ 1 l¼jÀ c a w il w ij þ r z ij �� :<label>ð6Þ</label></formula><p>Then by introducing a variational distribution q(Z, ϕ; π, θ) = q(ϕ; θ)q(Z; π) as in TopicVec, the expectation of the variational distribution of the loglikelihood of the response variable y i is obtained by</p><formula xml:id="formula_14">E q ½log pðy i jZ i ; η; d 2 Þ� ¼ À 1 2 log 2pd 2 À � À 1 2d 2 y 2 i À 2y i η &gt; E q ½ � Z i � þ η &gt; E q � Z i � Z &gt; i � � η � � ;<label>ð7Þ</label></formula><p>where</p><formula xml:id="formula_15">E q ½ � Z i � ¼ � π i ¼ 1 L i X L i j¼1 π ij ; E q � Z i � Z &gt; i � � ¼ 1 L i 2 X L i j¼1 X j 0 6 ¼j π ij π &gt; ij 0 þ X L i j¼1 diagfπ ij g � � :</formula><p>Thus, the objective L r ðq; TÞ is obtained by adding (7) to (5):</p><formula xml:id="formula_16">L r ðq; TÞ ¼ P M i¼1 � P K k¼1 ð P L i j¼1 π k ij þ a k À 1Þðcðy ik Þ À cðy i0 ÞÞ þ À 1 2 log ð2pd 2 Þ À y 2 i 2d 2 � � þ Tr T &gt; P L i j¼1 v w ij π &gt; ij � � þ r &gt; þ y i η &gt; L i d 2 � � P L i j¼1 π ij þ À η &gt; � 1 2L i 2 d 2 X L i j¼1 X L i j 0 6 ¼j π ij π &gt; ij 0 þ X L i j¼1 diagfπ ij g � � η � �� þHðqÞ þ C 1<label>ð8Þ</label></formula><p>Here, ψ(�) is the digamma function. θ ik and T are updated following the corresponding equations in E-step and M-step in Algorithm 1 respectively. The solution is obtained by setting the partial derivative w.r.t. p k ij to 0 after isolating the terms containing p k ij :</p><formula xml:id="formula_17">p k ij / exp � cðy ik Þ þ v &gt; w ij t k þ r k þ y i Z k L i d 2 À 2η &gt; Π ðkÞ i;À j η þ ðZ k Þ 2 2L i 2 d 2 � ;<label>ð9Þ</label></formula><p>where</p><formula xml:id="formula_18">Π ðkÞ i;À j ≔ P L i j 0 6 ¼j π ij 0 ð0 ð1Þ ; � � � ; 1 ðkÞ ; � � � ; 0 ðKÞ Þ &gt; þ ð0 ð1Þ ; � � � ; 1 ðkÞ ; � � � ; 0 ðKÞ Þ P L i j 0 6 ¼j π &gt; ij 0</formula><p>is the partial derivative of <ref type="bibr" target="#b6">(7)</ref> contains the regression parameters in the learning objective. To involve the learning of the bias term in regression, we define a M × (K + 1) matrix A whose row is a topic proportion vector of a document attached by a 1: ð � Z i ; 1Þ with the (K + 1)-th element corresponding to the bias. Over the whole corpus, Eq (7) can be rewritten as</p><formula xml:id="formula_19">P L i j¼1 P L i j 0 6 ¼j π ij π &gt; ij 0 w.r.t. p k ij . Eq</formula><formula xml:id="formula_20">η 0 ¼ Concatðη; Z bias Þ; E q ½log pðyjA; η 0 ; d 2 Þ� ¼ À M 2 log ð2pd 2 Þ À 1 2d 2 E q ðy À Aη 0 Þ &gt; ðy À Aη 0 Þ � � ;<label>ð10Þ</label></formula><p>where η 0 is obtained by the function Concat(�) that concatenates the bias term to the end of the coefficients voctor η. Taking the partial derivative w.r.t. η 0 and δ 2 and setting them to 0, we obtain the following to update η 0 and δ 2 :</p><formula xml:id="formula_21">η 0 new ¼ ðE q ½A &gt; A�Þ À 1 E q ½A� &gt; y;<label>ð11Þ</label></formula><formula xml:id="formula_22">d 2 new ¼ 1 M fy &gt; y À y &gt; E q ½A� E q A &gt; A ½ �Þ À 1 E q ½A� &gt; yg �<label>ð12Þ</label></formula><p>where we define π 0 ij ≔Concatðπ ij ; 1Þ to involve the bias term, and correspondingly</p><formula xml:id="formula_23">E A ½ � ¼ 1 L i X L i j¼1 π 0 ij ; E A &gt; A ½ � ¼ P M i¼1 1 L i 2 X L i j¼1 X L i j 0 6 ¼j π 0 ij π 0 &gt; ij 0 þ X L i j¼1 diagfπ 0 ij g � � � � :</formula><p>For rTopicVec-Ridge, we use MAP estimation by adding ℓ 2 regularization to Eq <ref type="bibr" target="#b9">(10)</ref>. Then similarly we obtain the following:</p><formula xml:id="formula_24">η 0 new ¼ ðE q ½A &gt; A� þ lI mod Þ À 1 E q ½A� &gt; y;<label>ð13Þ</label></formula><formula xml:id="formula_25">d 2 new ¼ 1 M fy &gt; y À y &gt; E q ½A� E q A &gt; A ½ � þ lI mod Þ À 1 E q ½A� &gt; yg �<label>ð14Þ</label></formula><p>where λ is the strength of the regularizer, and I mod = diag(1 (1) , � � �, 1 (K) , 0 (K+1) ) implies that the bias corresponding to the last element is excluded from the regularization.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Experimental results</head><p>To evaluate the prediction performance of our proposed models, we performed experiments on two prediction problems. The first is to predict stock return rates using news articles provided by Thomson Reuters and stock prices from the Tokyo Stock Exchange. The second experiment, as performed by Mcauliffe et al. <ref type="bibr" target="#b9">[10]</ref>, is to predict movie rating scores using movie reviews. For each experiment, we first determined the number of topics for optimal prediction performance through validation tests with our proposed model rTopicVec.</p><p>We compared the performance of the proposed models rTopicVec and rTopicVec-Ridge with the following three baseline models:</p><p>TopicVec+LR: Perform linear regression as post-process using topics learned by TopicVec <ref type="bibr" target="#b4">[5]</ref> as a baseline.</p><p>TopicVec+Ridge: Perform ridge regression as post-process using topics learned by TopicVec as a baseline.</p><p>sLDA: Supervised topic model <ref type="bibr" target="#b9">[10]</ref> using BoW representations as a baseline.</p><p>The word embeddings V for the two TopicVec-based models in the two experiments were trained by PSDVec using Japanese Wikipedia and English Wikipedia following PSDVec <ref type="bibr" target="#b8">[9]</ref>. The Dirichlet hyperparameter α is fixed to (0.1, � � �, 0.1) <ref type="bibr" target="#b14">[15]</ref> for all models in both experiments. The regularizer λ is set to 1 for rTopicVec-Ridge and TopicVec+Ridge.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Stock price return rates prediction</head><p>Setup. For text data, we used financial articles in Japanese distributed by Thomson Reuters from January 2015 to June 2017. We preprocessed the corpus by removing intractable tables and unneeded expressions, and performing morphological analysis using MeCab with mecab-ipadic-NEologd <ref type="bibr" target="#b15">[16]</ref><ref type="bibr" target="#b16">[17]</ref><ref type="bibr" target="#b17">[18]</ref>, a dictionary of neologisms and named entities, to segment words. We replaced stop words such as particles and conjunctions with � as the link function learns conditional distribution of a word in a context window. Moreover, we excluded low-frequency words occurring in fewer than five documents and documents of shorter than 50 words.</p><p>As response variables associated with the financial articles, the stock return rate of the company mentioned in each article is defined as following using the Tokyo Stock Exchange's historical data for stock prices:</p><formula xml:id="formula_26">R ¼ V f À V 0 f V 0 f ;</formula><p>where V f is the final value on the day after the article was published and V 0 f is the final value on the day before the article was published. When multiple companies appeared in one article, we sorted the return rates of those companies in descending order, then removed those whose absolute value was lower than the mean plus one standard deviation since the return rates of such companies may have not been affected by the content of the article. Articles that mentioned more than five companies were excluded because they likely focused on industry trends rather than specific companies.</p><p>As shown in Table <ref type="table" target="#tab_1">2</ref>, we divided the articles into five collections: those from the first half of 2015 (H1 2015), the latter half of 2015 (H2 2015), the first half of 2016 (H1 2016), the latter half of 2016 (H2 2016), and the first half of 2017 (H1 2017). Then we further divided each of the collections into two-monthly segments and prepared four preprocessed datasets in time order. We assumed that the topics in the financial markets would change gradually over time. Therefore, we set the data for adjacent terms to overlap by one month to capture this nature. We also show in the table the number of documents contained in each term of each dataset, as well as the average number of words per document (some of the documents were short as the � aforementioned were not included. Nevertheless, there is no unfairness in the comparison of the models.).</p><p>To determine the optimal number of topics to be used in the open tests, 20% of the data in each training set were randomly drawn as hold-out for validation with ten different numbers of topics K 2 {5, 10, 15, 20, 25, 30, 35, 40, 45, 50}. A validation test on the data of an overlapped month was performed with the model parameters learned by the latter of two datasets containing the data of this month, e.g., the validation test on Feb. 2016 data was performed with the model parameters learned in Term 2 rather than those learned in Term 1.</p><p>The model parameters that would be used in the open tests on Term 4 would be learned with 100% of the data in each training set and the optimal number of topics K � determined by the validation tests for rTopicVec. During the training procedure, for Term 1, topic embeddings T were initialized randomly from the standard Gaussian distribution, and the variational parameter π was randomly initialized following a Dirichlet distribution. For Term 2, T were initialized by the ones learned on Term 1. We followed the same procedure for the following terms, but we used T and η estimated with the previous term as the initial states of T and η, respectively. The regression coefficient η was updated every five iterations, and we used the same experimental procedure for the other models as that for rTopicVec.</p><p>For models except sLDA in the open tests, with the optimal K � , we used TopicVec to estimate the topics on Term 4 with T learned from Term 3 as the initial T. While for sLDA in the open tests, with the optimal K � , we used LDA to learn the topics on Term 4 with the topicterms distributions β learned from Term 3 as the initial β.</p><p>For all experiments, the convergence condition was that the rate of change of π (or ϕ in sLDA) must be lower than 0.1% three times in a row during learning.</p><p>The response variables are predicted as following:</p><formula xml:id="formula_27">π 0 ij ¼ Concatðπ ij ; 1Þ ŷi ¼ η &gt; E q ½ � Z i � þ Z bias ¼ η 0 &gt; 1 L i X L i j¼1 π 0 ij</formula><p>To measure the performance, we used the mean squared error (MSE) between the predicted response variables and the ground truth:</p><formula xml:id="formula_28">MSE ¼ 1 M X M i¼1 ðy i À ŷi Þ 2</formula><p>Results. Fig <ref type="figure" target="#fig_4">3</ref> shows the MSEs obtained by the five models as the average result of the five validation tests. The solid line which denotes rTopicVec shows that the proposed model yields higher prediction accuracy when K = 30 on average for the five validation tests. The results of TopicVec+LR when K &gt; 35 are not shown here since the coefficients are too large due to overfitting. Besides, the two models whose regression coefficients are penalized have higher prediction accuracy when K is larger than 30.</p><p>Table <ref type="table" target="#tab_2">3</ref> presents the topics with two of the highest absolute values of the regression coefficients learned by all the models on Term 3 in Dataset 2 when K = 30. Each of the topics is represented by the ten most relevant words translated from the original Japanese. The topics of TopicVec+LR are not shown here because overfitting during the linear regression learning leads to coefficients that are too large. We argue that the topics learned by our proposed models presented here are more coherent and reflect a rise/drop on stock price return rates.</p><p>Since K � = 30 was the optimal number of topics in validation tests, we performed open tests on test sets when K � = 30. Table <ref type="table" target="#tab_3">4</ref> shows that in predicting the return rates of the unlabeled articles, one or both of the proposed models are more accurate than the baselines in four out of the five open tests. We also performed the Wilcoxon signed-rank test and the Paired-t test between the predicted response variables of our proposed models and those of the three baseline models. We found that four out of the five cases in which at least one of our proposed models had lower MSE values, and the p-values were less than 10%, indicating that the prediction performance of our models was more accurate than the three baseline models with a statistically significant difference. However, the MSE of rTopicVec was marginally higher than that of the baselines on Term 4 of Dataset 5, which may be due to the slight overfitting that occurred during the training process, while was mitigated by ℓ 2 regularization shown by rTo-picVec-Ridge. Thus we argue that the proposed models offers the advantage of explainability on the relationship between the latent topics and regression coefficients. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Movie rating scores prediction</head><p>Setup. We additionally evaluated the prediction performance of our proposed models on predicting rating scores from movie reviews by 5-fold cross-validation as performed in sLDA <ref type="bibr" target="#b9">[10]</ref>. The dataset was first used in Pang and Lee <ref type="bibr" target="#b18">[19]</ref>. The corpus contains 5006 documents. The scores associated with the documents were transformed to approximate normality by taking logs as Blei and McAuliffe <ref type="bibr" target="#b9">[10]</ref> did. 10% of the data randomly drawn from the dataset was used as a test set for the open test, and the remaining data was used for cross-validation, which was performed with ten different numbers of topics K 2 {5, 10, 15, 20, 25, 30, 35, 40, 45, 50} to determine the optimal number of topics K � with the smallest average MSE over the five validation tests with rTopicVec. The open test was performed using the model parameters learned with the remaining 90% of the dataset and the optimal number of topics K � . We used MSE as the measure of prediction performance for the validation tests and the open test.</p><p>Results. <ref type="bibr">Fig 4</ref> shows the MSEs obtained as the average of the results of the 5-fold crossvalidation. The solid line which denotes rTopicVec shows that K = 15 is the optimal number of topics in this prediction problem. The results of TopicVec+LR when K &gt; 35 are not shown here since the coefficients are too large due to overfitting. Table <ref type="table" target="#tab_4">5</ref> presents the topics with two of the highest absolute values of the regression coefficients learned by all the models on the training set when K = 15 except TopicVec+LR due to overfitting, and topic coherence measured by NPMI which is commonly applied to verify the topic quality. The NPMI is calculated by using reference counts from an external corpus (English Wikipedia), and is calculated by using the top ten words of each topic, averaging over all the NPMI scores of the topics. Despite the averaged NPMI scores of our proposed models are lower than that of sLDA, the topic coherence increased by incorporating supervisory signals to the unsupervised TopicVec. Table <ref type="table" target="#tab_5">6</ref> shows that in the open test when K = 15, the prediction performance of the proposed model rTopicVec is more accurate than that of the three baselines and two of them with a statistically significant difference. The lowest prediction accuracy achieved by the regularized version rTopicVec-Ridge may be due to underfitting caused by the regularization factor.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Conclusions and discussions</head><p>We proposed rTopicVec, a supervised topic embedding model combining a topic model in the embedding space and linear regression, and furthermore its regularized version rTopicVec-Ridge, to predict the numerical response variables labeled with documents. Through the experiments in predicting stock return rates using news articles and predicting movie ratings using movie reviews, the results showed that the prediction accuracy of our proposed models was higher than that of three baseline models since the topics learned by our proposed models are guided to be predictive of the response variables, and the topics were more coherent than those of TopicVec measured by NPMI and more interpretable to describe a rise/drop in the response variables. In summary, our models are capable of making more accurate predictions on the numerical labels and increasing the interpretability of topics by taking account of the associated labels while reducing the dimensionality of complex text data. We argue that incorporating word embeddings brought our models better prediction accuracy and comparable interpretability than the LDA-based supervised topic model like sLDA, and that learning topics and regression simultaneously brought our models the advantage of higher interpretability and accuracy of the predictions than the models that perform linear regression as post-process. Moreover, the overfitting that occurred in rTopicVec can be alleviated by putting priors on the regression coefficients. We also noticed that there is a huge gap between training and test errors for our proposed models. To narrow this gap as well as to prevent underfitting, the optimal regularization factor needs to be more explored, which will be left for future work. Furthermore, by using the state-of-the-art word embedding based on Transformer <ref type="bibr" target="#b19">[20]</ref>, the prediction performance and the quality of topics could be improved, which will also be left for future work. Our models can be applied to various applications of predicting response variables using text. Also, our models that assumed regression tasks in this paper can easily be modified to classification tasks.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Fig 1</head><label>1</label><figDesc>Fig 1 presents a graphical model for the generative process above. The complete data loglikelihood of the whole corpus (the full joint log-probability of the corpus D, word embeddings V, bigram residuals A, topic embeddings T, topic assignments Z, and topic distributions ϕ) can be written as</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Fig 1 .</head><label>1</label><figDesc>Fig 1. Graphical model of TopicVec. https://doi.org/10.1371/journal.pone.0277104.g001</figDesc><graphic coords="6,200.01,308.52,286.87,371.96" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head></head><label></label><figDesc>Fig 2 presents a graphical model of rTopicVec. The orange colored circles correspond to step 2 in the generative process, indicating the nodes added to the previous graphical model in Fig 1. To prevent overfitting, we propose a regularized version named rTopicVec-Ridge, by further assuming standard normal priors on the coefficients η, which is equivalent to ridge regression.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Fig 2 .</head><label>2</label><figDesc>Fig 2. Graphical model of rTopicVec. https://doi.org/10.1371/journal.pone.0277104.g002</figDesc><graphic coords="8,200.01,281.76,323.72,371.85" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Fig 3 .</head><label>3</label><figDesc>Fig 3. Average MSE for varying number of topics K on validation sets of stock return rates prediction. https://doi.org/10.1371/journal.pone.0277104.g003</figDesc><graphic coords="13,160.44,375.59,415.56,302.63" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Fig 4 .</head><label>4</label><figDesc>Fig 4. Average MSE for varying number of topics K on validation sets of movie rating score prediction. https://doi.org/10.1371/journal.pone.0277104.g004</figDesc><graphic coords="15,173.14,376.72,402.80,302.63" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 2 . Overview of datasets for stock price prediction. Training Sets (80% for training, 20% for validation) Test Sets (Open Test)</head><label>2</label><figDesc></figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 3 . Top 10 words of two topics with highest absolute values of regression coefficients.</head><label>3</label><figDesc></figDesc><table><row><cell>Model</cell><cell>Top 10 words</cell></row><row><cell>rTopicVec</cell><cell>coefficient: 0.092</cell></row><row><cell></cell><cell>hot, stock, material, favor, rebound, leading, buying, the company, dividend, announcement</cell></row><row><cell></cell><cell>coefficient: -0.055</cell></row><row><cell></cell><cell>disappoint, downward revision, hot, stock, linking, sound, deficit, fluctuation, bring down,</cell></row><row><cell></cell><cell>reverse</cell></row><row><cell>rTopicVec-</cell><cell>coefficient: 0.062</cell></row><row><cell>Ridge</cell><cell>favor, linking, increased profit, forecast, contribute, raise, hot, stock, dividend, achievement</cell></row><row><cell></cell><cell>coefficient: -0.041</cell></row><row><cell></cell><cell>disappoint, hot, stock, rebound, softness, reverse, sound, newspaper, report, report</cell></row><row><cell>TopicVec</cell><cell>coefficient: 0.104</cell></row><row><cell>+Ridge</cell><cell>acquisition, treasury stock, stock, self, stock, conduct, issue, total, upper limit, hold</cell></row><row><cell></cell><cell>coefficient:-0.071</cell></row><row><cell></cell><cell>money, rebuild, procurement, sponsor, debt, insolvency, investment, fund, cost, group</cell></row><row><cell>sLDA</cell><cell>coefficient: 0.078</cell></row><row><cell></cell><cell>dollar, near, the U.S.A., euro, not, rise, domestic, increase in interest rates, financial institutions,</cell></row><row><cell></cell><cell>the day before</cell></row><row><cell></cell><cell>coefficient: -0.063</cell></row><row><cell></cell><cell>announcement, forecast, linking, stock, hot, downward revision, disappoint, deficit, forecast,</cell></row><row><cell></cell><cell>revision</cell></row><row><cell cols="2">These words are translated from the original Japanese into English.</cell></row><row><cell cols="2">https://doi.org/10.1371/journal.pone.0277104.t003</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 4 . MSE and sample standard deviation on the three test sets of stock price prediction when K = 30.</head><label>4</label><figDesc>indicates that rTopicVec improved MSE with statistical significance using the Wilcoxn signed-rank test or the Paired-t test at the significance level of 0.1. ‡ indicates that rTopicVec-Ridge improved MSE with statistical significance using the Paired-t test or the Wilcoxn signed-rank test at the significance level of 0.1.</figDesc><table><row><cell></cell><cell>May*June 2015</cell><cell>Nov.*Dec. 2015</cell><cell>May*June 2016</cell><cell>Nov.*Dec. 2016</cell><cell>May*June 2017</cell></row><row><cell>TopicVec+LR</cell><cell>0:00540 y;z �0:03061</cell><cell>- ‡</cell><cell>0:00857 y �0:04040</cell><cell>- †</cell><cell>0:01350 z �0:07111</cell></row><row><cell>TopicVec+Ridge</cell><cell>0:00523 y;z �0:03088</cell><cell>0:00495 z �0:01283</cell><cell>0.00845 ±0.04107</cell><cell>0:00856 y �0:02451</cell><cell>0:01346 z �0:07102</cell></row><row><cell>sLDA</cell><cell>0:00562 y �0:03090</cell><cell>0:00484 y �0:01395</cell><cell>0.00776 ±0.03823</cell><cell>0.00818 ±0.02457</cell><cell>0:01367 z �0:07353</cell></row><row><cell>rTopicVec</cell><cell>0.00493 ±0.03100</cell><cell>0.00474 ±0.01252</cell><cell>0.00854 ±0.04138</cell><cell>0.00839 ±0.02509</cell><cell>0.01369 ±0.07296</cell></row><row><cell>rTopicVec-Ridge</cell><cell>0.00498 ±0.03193</cell><cell>0.00436 ±0.01159</cell><cell>0.00800 ±0.04101</cell><cell>0.00818 ±0.02419</cell><cell>0.01340 ±0.07097</cell></row><row><cell cols="3">Bold face indicates the best performance for each test set.</cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="3">-indicates that the MSE of TopicVec+LR is too large due to overfitting.</cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table><note><p><p>†</p>https://doi.org/10.1371/journal.pone.0277104.t004</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 5 . Top 10 words of two topics with highest absolute values of regression coefficients and the topic coherence measured in NPMI on the training set when K = 15.</head><label>5</label><figDesc>, important, captivating, cuts, fear, minimum, problem, movie's, michael https://doi.org/10.1371/journal.pone.0277104.t005</figDesc><table><row><cell>Model (NPMI)</cell><cell>Top 10 words</cell></row><row><cell>rTopicVec / rTopicVec-Ridge (-0.035 /</cell><cell>coefficient: 0.307 / 0.303</cell></row><row><cell>-0.046)</cell><cell>review, critical, task, offer, captivating, explanation, movie, director, turn,</cell></row><row><cell></cell><cell>providing</cell></row><row><cell></cell><cell>coefficient: -0.362 / -0.406</cell></row><row><cell></cell><cell>movie, captivating, task, director, offer, soul, debut, rarely, turn, breakdown</cell></row><row><cell>TopicVec+Ridge (-0.052)</cell><cell>coefficient: 0.131</cell></row><row><cell></cell><cell>review, offer, critical, explanation, movie, captivating, director, providing,</cell></row><row><cell></cell><cell>looked, forces</cell></row><row><cell></cell><cell>coefficient: -0.459</cell></row><row><cell></cell><cell>captivating, task, debut, screwball, trite melodramatic, movie's, delightfully,</cell></row><row><cell></cell><cell>perceptive, banal</cell></row><row><cell>sLDA (-0.031)</cell><cell>coefficient: 0.524</cell></row><row><cell></cell><cell>captivating, important, director, camera, explanation, task, material, club,</cell></row><row><cell></cell><cell>twists, movie</cell></row><row><cell></cell><cell>coefficient: -0.329</cell></row><row><cell></cell><cell>opinion, full</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Table 6 . MSE and sample standard deviation on test set of movie rating score prediction when K = 15.</head><label>6</label><figDesc>Bold face indicates the best performance for the test set. † indicates that the proposed model (rTopicVec) improved MSE with statistical significance using the Wilcoxon signed-rank test at the significance level of 0.1. ‡ indicates that the proposed model (rTopicVec) improved MSE with statistical significance using the Paired-t test at the significance level of 0.1.</figDesc><table><row><cell>TopicVec+LR</cell><cell>0:13850 y;z �0:27308</cell></row><row><cell>TopicVec+Ridge</cell><cell>0:13842 y;z �0:27389</cell></row><row><cell>sLDA</cell><cell>0.13854 ±0.29474</cell></row><row><cell>rTopicVec</cell><cell>0.13477 ±0.26940</cell></row><row><cell>rTopicVec-Ridge</cell><cell>0.13979 ±0.27665</cell></row></table><note><p>https://doi.org/10.1371/journal.pone.0277104.t006</p></note></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" xml:id="foot_0"><p>PLOS ONE | https://doi.org/10.1371/journal.pone.0277104 November 4, 2022</p></note>
+		</body>
+		<back>
+
+			<div type="funding">
+<div><p>K.E. received <rs type="funder">ROIS NII Open Collaborative Research</rs> (Grant Number: <rs type="grantNumber">22FS01</rs>), provided by the <rs type="funder">National Institute of Informatics, Research Organization of Information</rs> and Systems: &lt;https<ref type="url" target="://www.nii.ac.jp/en/">://www.nii.ac.jp/en/</ref>&gt;. The funders had no role in study design, data collection and analysis, decision to publish, or preparation of the manuscript.</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funding" xml:id="_RNBTjkW">
+					<idno type="grant-number">22FS01</idno>
+				</org>
+			</listOrg>
+
+			<div type="availability">
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>The data used in the first experiment and the information on the data used in the second experiment are available from the Github repository (<ref type="url" target="https://github.com/WelandXu/rTopicVec-PLOSONE">https://github.com/ WelandXu/rTopicVec-PLOSONE</ref>). Since the dataset used in the second experiment was provided by another researcher, the authors have described, in the Github repository, who constructed the dataset and how to obtain it. They also describe, in the article and Github repository, how the original data is available at <ref type="url" target="https://www.cs.cornell.edu/people/pabo/movie-review-data/">https://www.cs.cornell.edu/people/ pabo/movie-review-data/</ref>, provided by Pang and Lee.</p></div>
+			</div>
+
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Author Contributions</head><p>Supervision: Koji Eguchi.</p><p>Writing -original draft: Weiran Xu.</p><p>Writing -review &amp; editing: Koji Eguchi.</p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Latent dirichlet allocation</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">M</forename><surname>Blei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">Y</forename><surname>Ng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">I</forename><surname>Jordan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of machine Learning research</title>
+		<imprint>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="page" from="993" to="1022" />
+			<date type="published" when="2003-01">2003. Jan</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Topic modeling in embedding spaces</title>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">B</forename><surname>Dieng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><forename type="middle">J</forename><surname>Ruiz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">M</forename><surname>Blei</surname></persName>
+		</author>
+		<idno type="DOI">10.1162/tacl_a_00325</idno>
+		<ptr target="https://doi.org/10.1162/tacl_a_00325" />
+	</analytic>
+	<monogr>
+		<title level="j">Transactions of the Association for Computational Linguistics</title>
+		<imprint>
+			<biblScope unit="volume">8</biblScope>
+			<biblScope unit="page" from="439" to="453" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Embeddings in natural language processing: Theory and advances in vector representations of meaning</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">T</forename><surname>Pilehvar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Camacho-Collados</surname></persName>
+		</author>
+		<idno type="DOI">10.1007/978-3-031-02177-0</idno>
+		<ptr target="https://doi.org/10.1007/978-3-031-02177-0" />
+	</analytic>
+	<monogr>
+		<title level="j">Synthesis Lectures on Human Language Technologies</title>
+		<imprint>
+			<biblScope unit="volume">13</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="1" to="175" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Gaussian lda for topic models with word embeddings</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Das</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zaheer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Dyer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 53rd Annual Meeting of the Association for Computational Linguistics and the 7th International Joint Conference on Natural Language Processing</title>
+		<meeting>the 53rd Annual Meeting of the Association for Computational Linguistics and the 7th International Joint Conference on Natural Language Processing</meeting>
+		<imprint>
+			<publisher>Long Papers</publisher>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="795" to="804" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Generative topic embedding: a continuous representation of documents</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">S</forename><surname>Chua</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Miao</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 54th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 54th Annual Meeting of the Association for Computational Linguistics</meeting>
+		<imprint>
+			<publisher>Long Papers</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="666" to="675" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Topic modeling for short texts with auxiliary word embeddings</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Ma</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 39th International ACM SIGIR conference on Research and Development in Information Retrieval</title>
+		<meeting>the 39th International ACM SIGIR conference on Research and Development in Information Retrieval</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="165" to="174" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Jointly learning word embeddings and latent topics</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Lam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Jameel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Schockaert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">P</forename><surname>Lai</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 40th international ACM SIGIR conference on research and development in information retrieval</title>
+		<meeting>the 40th international ACM SIGIR conference on research and development in information retrieval</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="375" to="384" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">A word embeddings informed focused topic model</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Du</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Buntine</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Asian conference on machine learning</title>
+		<imprint>
+			<biblScope unit="page" from="423" to="438" />
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">A Generative Word Embedding Model and its Low Rank Positive Semidefinite Solution</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Miao</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2015 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2015 Conference on Empirical Methods in Natural Language Processing</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="1599" to="1609" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<monogr>
+		<title level="m" type="main">Advances in neural information processing systems</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Mcauliffe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Blei</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2007">2007</date>
+			<biblScope unit="volume">20</biblScope>
+		</imprint>
+	</monogr>
+	<note>Supervised topic models</note>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Labeled LDA: A supervised topic model for credit attribution in multi-labeled corpora</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Ramage</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Hall</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Nallapati</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">D</forename><surname>Manning</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2009 conference on empirical methods in natural language processing</title>
+		<meeting>the 2009 conference on empirical methods in natural language processing</meeting>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+			<biblScope unit="page" from="248" to="256" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">MedLDA: maximum margin supervised topic models for regression and classification</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Ahmed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">P</forename><surname>Xing</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 26th annual international conference on machine learning</title>
+		<meeting>the 26th annual international conference on machine learning</meeting>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+			<biblScope unit="page" from="1257" to="1264" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Neural topic model with attention for supervised learning</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Yang</surname></persName>
+		</author>
+		<idno>PMLR; 2020</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Artificial Intelligence and Statistics</title>
+		<imprint>
+			<biblScope unit="page" from="1147" to="1156" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Topic Embedding Regression Model and its Application to Financial Texts</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Eguchi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Third Workshop on Financial Technology and Natural Language Processing</title>
+		<meeting>the Third Workshop on Financial Technology and Natural Language Processing</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="15" to="21" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">On Smoothing and Inference for Topic Models</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Asuncion</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Smyth</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><forename type="middle">W</forename><surname>Teh</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Twenty-Fifth Conference on Uncertainty in Artificial Intelligence. UAI &apos;09</title>
+		<meeting>the Twenty-Fifth Conference on Uncertainty in Artificial Intelligence. UAI &apos;09<address><addrLine>Arlington, Virginia, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>AUAI Press</publisher>
+			<date type="published" when="2009">2009</date>
+			<biblScope unit="page" from="27" to="34" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<monogr>
+		<title level="m" type="main">Neologism dictionary based on the language resources on the Web for Mecab</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Toshinori</surname></persName>
+		</author>
+		<ptr target="https://github.com/neologd/mecab-ipadic-neologd" />
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Operation of a word segmentation dictionary generation system called NEologd</title>
+		<author>
+			<persName><forename type="first">Toshinori</forename><surname>Sato</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">H</forename><surname>Okumura</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Special Interest Group on Natural Language Processing (IPSJ-SIGNL)</title>
+		<imprint>
+			<publisher>Information Processing Society of Japan</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="229" to="244" />
+		</imprint>
+	</monogr>
+	<note>in Japanese</note>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Implementation of a word segmentation dictionary called mecab-ipadic-NEologd and study on how to use it effectively for information retrieval</title>
+		<author>
+			<persName><forename type="first">Toshinori</forename><surname>Sato</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">H</forename><surname>Okumura</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Twenty-three Annual Meeting of the Association for Natural Language Processing</title>
+		<meeting>the Twenty-three Annual Meeting of the Association for Natural Language Processing</meeting>
+		<imprint>
+			<publisher>The Association for Natural Language Processing</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="P2017" to="B2023" />
+		</imprint>
+	</monogr>
+	<note>in Japanese</note>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Exploiting Class Relationships for Sentiment Categorization with Respect to Rating Scales</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Pang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lee</forename><forename type="middle">L Seeing</forename><surname>Stars</surname></persName>
+		</author>
+		<ptr target="https://aclanthology.org/P05-1015" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 43rd Annual Meeting of the Association for Computational Linguistics (ACL&apos;05)</title>
+		<meeting>the 43rd Annual Meeting of the Association for Computational Linguistics (ACL&apos;05)<address><addrLine>Ann Arbor, Michigan</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2005">2005</date>
+			<biblScope unit="page" from="115" to="124" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Attention is all you need</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Vaswani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Shazeer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Parmar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Uszkoreit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Jones</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">N</forename><surname>Gomez</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in neural information processing systems</title>
+		<imprint>
+			<biblScope unit="volume">30</biblScope>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

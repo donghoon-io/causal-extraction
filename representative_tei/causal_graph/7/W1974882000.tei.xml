@@ -1,0 +1,804 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">The Probabilistic Convolution Tree: Efficient Exact Bayesian Inference for Faster LC-MS/MS Protein Inference</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability  status="unknown">
+					<licence/>
+				</availability>
+				<date type="published" when="2014-03-13">March 13, 2014</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author role="corresp">
+							<persName><forename type="first">Oliver</forename><surname>Serang</surname></persName>
+							<email>orserang@uw.edu</email>
+							<affiliation key="aff0">
+								<orgName type="institution">Thermo Fisher Scientific</orgName>
+								<address>
+									<settlement>Bremen</settlement>
+									<country key="DE">Germany</country>
+								</address>
+							</affiliation>
+							<affiliation key="aff1">
+								<orgName type="institution">Indiana University</orgName>
+								<address>
+									<country key="US">United States of America</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">The Probabilistic Convolution Tree: Efficient Exact Bayesian Inference for Faster LC-MS/MS Protein Inference</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2014-03-13">March 13, 2014</date>
+						</imprint>
+					</monogr>
+					<idno type="DOI">10.1371/journal.pone.0091507</idno>
+					<note type="submission">Received November 29, 2013; Accepted February 12, 2014;</note>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-14T18:16+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Exact Bayesian inference can sometimes be performed efficiently for special cases where a function has commutative and associative symmetry of its inputs (called ''causal independence''). For this reason, it is desirable to exploit such symmetry on big data sets. Here we present a method to exploit a general form of this symmetry on probabilistic adder nodes by transforming those probabilistic adder nodes into a probabilistic convolution tree with which dynamic programming computes exact probabilities. A substantial speedup is demonstrated using an illustration example that can arise when identifying splice forms with bottom-up mass spectrometry-based proteomics. On this example, even state-of-the-art exact inference algorithms require a runtime more than exponential in the number of splice forms considered. By using the probabilistic convolution tree, we reduce the runtime to O(k log(k) )</p><p>2 and the space to</p><p>where k is the number of variables joined by an additive or cardinal operator. This approach, which can also be used with junction tree inference, is applicable to graphs with arbitrary dependency on counting variables or cardinalities and can be used on diverse problems and fields like forward error correcting codes, elemental decomposition, and spectral demixing. The approach also trivially generalizes to multiple dimensions.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Introduction</head><p>In bottom-up mass spectrometry pieces of digested proteins, which are called peptides, are first matched to observed spectral evidence, and the quality of the match between the peptide and the spectrum is scored <ref type="bibr" target="#b0">[1]</ref><ref type="bibr" target="#b1">[2]</ref><ref type="bibr" target="#b2">[3]</ref><ref type="bibr" target="#b3">[4]</ref><ref type="bibr" target="#b4">[5]</ref>. These scored peptides are then used to perform inference on the proteins, whose present-absent states are usually the variables of interest. The computational cost of inference is non-trivial: some graphs can be processed efficiently, while performing inference on other graphs can be proven to solve the NP-hard minimum set cover problem <ref type="bibr" target="#b1">[2]</ref>. Performing efficient but accurate inference on these graphs is important for producing reliable protein inferences.</p><p>Figure <ref type="figure" target="#fig_0">1</ref> depicts a simple graphical view of protein identification from tandem mass spectrometry experiment. In figure <ref type="figure" target="#fig_0">1a</ref>, the causal flow of information is described graphically: proteins are digested and then fragmented to produce observed spectral evidence. Directed edges between proteins X 1 ,X 2 , . . . and spectral data D A ,D B , . . . represent causal statistical dependencies: proteins are connected to the MS/MS spectra matching peptides that can be produced according to the model of the digest (e.g. peptide strings resulting from an in silico digest of protein sequences using trypsin cleavage rules with up to one missed cleavage). Note that because peptides are usually paired with spectrum in a one-to-one manner (pairing each peptide to its best-matching spectrum and pairing each spectrum with its best matching peptide to form a ''PSM'' or peptide-spectrum match), we simply draw the proteins producing that spectral evidence, thereby producing a bipartite graph of proteins (X ) to spectral data <ref type="bibr">(D)</ref>. Note that this one-toone mapping between peptides and spectra means that this bipartite graph can be viewed as a protein-peptide bipartite graph; however, rather than constrain ourselves to inference with MS/ MS intensities, the data used for inference could just as easily constitute precursor MS intensities or even spectra resulting from a top-down experiment.</p><p>Proteins with shared spectral data (such as X 1 , X 2 , and X 3 , which share evidence D A , which could describe an identified ''degenerate'' peptide) introduce new non-causal dependencies: if the score of the PSM corresponding to spectrum D A is very high, it is tempting to award a high probability to protein X 1 ; however, proteins X 2 and X 3 compete for this shared evidence, and thereby have a chance to reduce the probability of X 1 . This process (called ''explaining away'' to describe the fact that the contribution of evidence to a single hypothesis is reduced by competing hypotheses) introduces new dependencies between all pairs of proteins sharing that evidence.</p><p>In figure <ref type="figure" target="#fig_0">1b</ref>, we illustrate those shared protein-to-protein dependencies with the moral graph <ref type="bibr" target="#b5">[6]</ref> (so called because ''parent'' nodes, which share a common child are ''married by an edge''). The moral graph displays these latent dependencies between proteins, as well as the original causal dependencies from (a). Hence, when multiple proteins share spectral evidence, these undirected edges create a clique in the moral graph K(X 1 ,X 2 ,X 3 ,D A ). These cliques can be joined in a tree, which is known as the tree decomposition <ref type="bibr" target="#b6">[7]</ref> (also known as the ''junction tree'' or ''clique tree'').</p><p>In figure <ref type="figure" target="#fig_0">1c</ref>, we show a tree decomposition formed from the moral graph in figure <ref type="figure" target="#fig_0">1b</ref>. This tree decomposition is performed by merges nodes in the moral graph so that the resulting graph can be viewed as a tree without losing any edges (lost edges would correspond to ignored dependencies). Posterior probabilities on graphs without cycles (i.e. trees) can be computed by visiting each clique only twice using Pearl's belief propagation algorithm; however, each clique represents an inseparable multidimensional distribution over several variables, and thus the cost of processing a single clique is more than exponential in the number of variables (its state space is the Cartesian product of the contained variables' outcomes). Therefore, the runtime of junction tree inference is more than exponential in the size of the largest clique (the ''tree width'' of the graph is the size of the largest clique minus one).</p><p>For this reason, when many proteins share common evidence (i.e. in tandem mass spectrometry, at least one shared peptide matching spectra), a joint dependency between all of those proteins is created, and the large resulting clique formed in the moral graph can make inference intractable in the general case. Without modifying it after tree decomposition, exact inference on the graph is more than exponential (that is, it is not in O(2 n )) in the number of proteins joined by such evidence <ref type="bibr" target="#b7">[8]</ref>. And because these large cliques represent a full joint distribution of dimension n, even sampling procedures like Monte Carlo and Markov chain Monte Carlo (MCMC), which have been successfully applied to protein inference <ref type="bibr" target="#b7">[8]</ref><ref type="bibr" target="#b8">[9]</ref><ref type="bibr" target="#b9">[10]</ref>, cannot saturate the space with samples, and are thus insufficient.</p><p>In particular, Bayesian networks similar to the one shown in figure <ref type="figure" target="#fig_1">2</ref> can occur in mass spectrometry-based proteomics when attempting to identify homologous (or, more generally, proteins with sequence similarity). Specifically, these challenges occur in practice when attempting to distinguish between antibodies and other closely related splice variants <ref type="bibr" target="#b10">[11]</ref>, searching large databases containing non-canonical variants to find aberrant gene products (e.g. from samples of cancerous tissue), and in proteomic studies of organisms for which little or low-quality genomic information is available <ref type="bibr" target="#b11">[12]</ref>. The entirety of spectral data for this graph, D, is partitioned into two categories: First, all proteins X 1 ,X 2 , . . . X k in the weakly connected subgraph are adjacent to a collection of shared evidence (e.g. degenerate peptides matching observed For simplicity, peptide-spectrummatches (PSMs) are denoted simply using their spectral evidence, thereby producing a bipartite graph of proteins (X ) to spectral data (D). Proteins X 1 , X 2 , and X 3 share spectral data D A , because they share peptides that were matched to spectrum D A . : if the score of the PSM corresponding to spectrum D A is very high, it is tempting to award a high probability to protein X 1 ; however, proteins X 2 and X 3 compete for this shared evidence, and thereby have a chance to reduce the probability of X 1 . This process (called ''explaining away'' to describe the fact that the contribution of evidence to a single hypothesis is reduced by competing hypotheses) introduces new dependencies between all pairs of proteins sharing that evidence. (b) These shared spectral data introduce new non-causal dependencies between proteins with shared successors in (a). These dependencies are visualized in the undirected moral graph. When multiple proteins share spectral evidence, these undirected edges connect all pairs of predecessors, creating a clique in the moral graph K(X 1 ,X 2 ,X 3 ,D A ). (c) The tree decomposition (sometimes called the ''junction tree'' or ''clique tree'') merges the moral graph from (b) without loss of dependencies, so that inference can be performed using Pearl's belief propagation algorithm. Belief propagation starts at the top clique, which only shares variable X 4 with its neighbor. Therefore, the top clique can perform inference while leaving X 3 as a symbolic, unknown quantity, so that it can be used to send information from the cliques below (X 3 is an information bottleneck, through which the cliques below can influence the top clique). Likewise, the variables X 1 and X 2 can be marginalized out before sending any relevant information to considering the middle clique. This procedure can significantly reduce the runtime by allowing inference to be performed on the cliques rather than on all nodes in the tree; however, each clique represents an inseparable multidimensional distribution over several variables, and thus the cost of processing a single clique is more than exponential in the number of variables. When many proteins share common evidence (i.e. share at least one peptide identified by spectral evidence), a large clique is formed in the moral graph and inference becomes intractable in the general case. doi:10.1371/journal.pone.0091507.g001  ) ). Graphs of this form are typical when searching mass spectra against protein databases containing substantial redundancy (e.g. databases with many splice variants or close homologs), because these types of proteins share core similarities but also have unique regions that distinguish them from one another. Inference on this type of graph cannot be performed efficiently through protein clustering, protein pruning, or junction tree decomposition; to date, exact Bayesian protein inference on such splice variant graphs has only been performed in super-exponential time. doi:10.1371/journal.pone.0091507.g002 spectra). These shared data, denoted D (S) , produce a large clique in the moralized graph, which indicates that computing and passing the messages will be computationally infeasible on large problems without considering the form of the conditional probability function for the shared data. Second, each protein also has any number of unique evidence, which are found only in a single protein. The evidence (e.g. peptides) unique to protein X i are denoted D i .</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A Previous Model for Bayesian Protein Inference</head><p>Previous work on exact Bayesian inference for protein identification <ref type="bibr" target="#b1">[2,</ref><ref type="bibr" target="#b12">13]</ref> models every protein with an independent identically distributed prior probability c that the protein is truly in the sample, a conditional probability a that a present protein would generate a constituent peptide, and a noise model where incorrect peptide identifications were modeled with probability b. Lastly, the event that one present protein is successfully digested into one of its shared constituent peptides does not influence the event that another protein is successfully digested into the same peptide.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Optimizations for more Efficient Protein Inference</head><p>Using this model, exact inference can sometimes be performed more efficiently using two optimizations: clustering and pruning. These two optimizations are used in conjunction with factorization, which separates and performs inference individually on weakly connected subgraphs, to perform exact inference more quickly.</p><p>The first optimization, clustering, merges together any collection of k protein nodes X i1 ,X i2 , . . . X i k that contain identical peptide sets. Because the probability that a peptide is absent is the probability that it came from neither the noise model nor from any proteins:</p><formula xml:id="formula_0">(1{b) P j:X i j ~1(1{a) ~(1{b)(1{a) jfj:X i j ~1gj ~(1{b)(1{a) P j X i j :</formula><p>These proteins were clustered because they share identical peptide sets, such that all spectral evidence depending on these proteins actually depends on the number of protein present N~jfj : X ij ~1gj rather than on the actual set of present proteins. This is because addition is a commutative and associative operation, and so rather than enumerate the power-set of proteins, marginalization can instead be performed on the number of proteins present:</p><formula xml:id="formula_1">Pr (D,X 1 ~x1 ) ~X x 2 X x 3 Á Á Á X x k Pr (D,X 1 ~x1 ,X 2 ~x2 , Á Á Á X k ~xk )</formula><p>~X n Pr (DjN~n) Pr (N~n) Pr (X 1 ~x1 jN~n), Figure <ref type="figure">3</ref>. Illustration of the enumeration approach. Super-exponential enumeration is illustrated using a simple digraph. The protein prior for protein X i is denoted using the vector P i (written using Python dictionary notation), where P i ½0~Pr (X i ~0) and P i ½1~Pr (X i ~1). Likelihoods due to unique evidence for protein X i are denoted L i , and the likelihood due to shared evidence is shown using L (S) , both using the same notation. The scores populating the L i and L (S) vectors comes from the peptide-level likelihoods indicating the quality of the match between the peptide and any matching spectra (i.e. these scores come from the conditionally independent product of PSM scores for that peptide). For example, the prior probability on protein X 1 is 0.8, and a unique peptide corresponding to protein X 1 has the score 0.35 (indicating the relative likelihoods are 0.35 versus 0.65 for the respective hypotheses that the peptide matching spectrum D 1 is created by protein X 1 versus the hypothesis that the peptide is not created by protein X 1 ). The inset shows the table produced by enumerating all distinct protein configurations, and the resulting joint probability with all data (both unique and shared). This computational cost of this enumeration is in O(k2 k ) for k proteins. doi:10.1371/journal.pone.0091507.g003</p><p>where Pr (N~n)~k n c n (1{c) k{n and the conditional probability for an arbitrary protein i in the cluster Pr (X i ~xi jN~n)~n k . Thus enumeration, which has a computational cost that exceeds 2 k , is reduced to kz1 steps. However, clustering cannot be performed unless the proteins clustered are adjacent to identical sets; the graph in figure <ref type="figure" target="#fig_1">2</ref> does not have this property, because proteins are potentially distinguishable by their unique evidence D 1 ,D 2 , Á Á Á D k .</p><p>The second optimization, pruning, exploits the fact that this type of protein-peptide emission model (sometimes referred to as a Figure <ref type="figure">4</ref>. A quadratic dynamic programming approach and its generalization. (a) A dynamic programming approach to solving the problem from figure <ref type="figure" target="#fig_1">2</ref>. In this approach all values of N, the information on which D (S) depends, are computed after successively including every next variable X i . This allows paths in the exponential tree generated by the power-set to be merged when they result in the same value N~n, and thus allows a forward-backward algorithm to compute inference in quadratic time and space. (b) A general path graph can be constructed whenever the operation performed by the node N, on which the shared data D (S) depends, can be decomposed as a series of consecutive operations that aggregate X i one at a time. This corresponds to operators with commutative and associative properties. The resulting transformation resembles Heckerman's temporal transformation, which also uses quadratic time and space. doi:10.1371/journal.pone.0091507.g004</p><p>Figure <ref type="figure">5</ref>. Illustration of the quadratic dynamic programming approach. The quadratic dynamic programming approach is illustrated using the digraph from figure <ref type="figure">3</ref>: One by one, each protein is added to the initially empty total number of present proteins, represented by the random variable N (0) . Thus, the probability distribution for each partial sum N i ~X1 zX 2 z Á Á Á X i is computed and stored in the vector P Ni . Finally, the shared evidence D (S) is included, as it depends exclusively on the number of present proteins N~X 1 zX 2 z . . .. Inference for a particular protein (e.g. protein X 1 ) could be performed easily by performing another forward pass with the constraint that X 1 ~1, and all protein posteriors would thus be computed in cubic time with the number of proteins (k proteins | O(k 2 ) steps per protein); however, a subsequent right-to-left pass could be used to compute all protein posteriors in O(k 2 ) time via the forward-backward algorithm. doi:10.1371/journal.pone.0091507.g005 ''noisy-or'' model with symmetric parameters) produces independent nodes when a peptide is not observed (i.e. when a peptide has a zero probability of matching any observed spectra). Thus, these zero-score shared peptides found in D (S) can be copied so that each protein has its own unique copy. If all shared peptides from D (S) have zero scores, the resulting graph can thus be solved in linear time because all proteins are now independent. Unfortunately, as was the case with clustering, this optimization fails on Figure <ref type="figure">6</ref>. Faster dynamic programming using the convolution tree. (a) An alternate transformation for efficiently computing posteriors for all proteins. Instead of unrolling the commutative and associative operator one protein at a time as performed by the quadratic dynamic programming algorithm, variables are paired successively, resulting in a tree with depth log 2 (k) (when k is a power of 2). (b) Inference on this tree can be performed by solving a minimal ternary node structure and then proceeding inductively: all nodes (except for the proteins themselves) have two parent subtrees, (L,D (L) ) and (R,D (R) ), and one child. The parent subtrees connect the node of interest to all data reachable through the parents above (partitioned into D (L) and D (R) , respectively), and the child subtree connects to all data reachable below, (denoted D (N) ). The joint probability with all data above can be passed as messages from parents to children, and the likelihoods given data below (that is, all data reachable through a downward edge out of a given node) can be passed upward from child to parents. Each of these three messages turns out to be a convolutions (shown in inset). For example, all ways that N~5 can be computed by a shifted and reflected dot product, which finds all L and R with a sum of 5. Thus the prior probability for N can be seen as a vector equal to the convolution of the prior probabilities of prior probabilities for L and R. These convolutions can be performed with fast Fourier transform (FFT) in i log(i) time (where i is the size of the possible state space of N). If the vectors are very sparse, then a standard discrete Fourier transform-based (DFT) convolution may be faster. doi:10.1371/journal.pone.0091507.g006</p><p>Figure <ref type="figure">7</ref>. Illustration of the probabilistic convolution tree. The convolution tree is illustrated using the digraph from figure <ref type="figure">3</ref> and figure <ref type="figure">5</ref>: Messages are passed down the tree (via step 1). A subsequent pass would send messages up the tree (step 2), computing the protein posteriors in sub-quadratic time. Note that the normalized vector P N is equivalent to the distribution Vn, Pr (D,N~n), and is identical to the normalized vector of the same name computed by the quadratic algorithm illustrated in figure <ref type="figure">5</ref>. doi:10.1371/journal.pone.0091507.g007 figure 2 except in the rare case when all peptides in D (S) have zero scores (in practice, it is rare that all such peptides will have zero scores on a large problem). Approximations of the posterior probabilities can be computed by pruning or removing some select peptides that have nonzero scores; however, this can result in lower accuracy when searching spectra against complex protein databases, which have many more such shared peptides <ref type="bibr" target="#b2">[3]</ref>.</p><p>As noted above, the junction tree algorithm, clustering optimization, and pruning optimization do not solve the problem from figure 2 in sub-exponential time; on the contrary, the most efficient exact Bayesian algorithm that has been demonstrated for this type of splicoform graph enumerates the power-set <ref type="bibr" target="#b7">[8]</ref>. Furthermore, clustering relies heavily on the assumptions in the original model, and requires that the protein prior c must be the same for all proteins, and the peptide emission probability a must be the same for all peptides (and the method used to duplicate pruned peptides in the supplement of <ref type="bibr" target="#b12">[13]</ref> assumes the noise model b is identical for all peptides). In a similar manner, pruning is tied to the use of noisy-or peptide nodes. Likewise, other optimizations are rigidly tied to specific graph topologies. For example, inference can be performed in linear time on polytrees that exclusively use noisy-or nodes by decomposing the noisy-or nodes in an iterative fashion and performing belief propagation <ref type="bibr" target="#b5">[6,</ref><ref type="bibr" target="#b13">14]</ref>; however, the graph from figure <ref type="figure" target="#fig_1">2</ref> is a polytree only when there is exactly one node of shared evidence in D (S) (for completeness, when there are zero nodes of shared evidence, the graph can also be solved efficiently by partitioning it into a collection of disjoint polytrees).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>The Need for Further Optimization of Inference</head><p>Because the optimization strategies mentioned above are limited to certain graphs or require all peptides to use identical parameters a and b, it can be difficult to use these optimization techniques to realize efficient inference using a modified or extended protein inference model: for example, the next generation of models could include arbitrary categorical priors on how many proteins are present or peptide-specific emission and noise models, which may even depend on the number of present predecessor proteins (rather than constraining that predecessors contribute in a simple multiplicative manner as modeled by noisy-or nodes). These more general priors and emission models can be used to more objectively model the process by which splice variants data are produced by mass spectrometric analysis, and thus permit inference techniques that more accurately model the manner Figure <ref type="figure">8</ref>. Runtime comparison between the algorithms. (a) A comparison of power-set enumeration and the quadratic dynamic programming approach on small problems of the form from figure 2. Note that axes are log-scaled, and so a widening gap between the curves indicates a superlinear speedup for the algorithm producing the lower curve. (b) A comparison of quadratic dynamic programming and the convolution tree approach on larger problems of this form. The convolution tree achieves a super-linear speedup and a super-linear reduction in memory consumption, making it applicable to much larger problems than either the quadratic dynamic programming approach or power-set enumeration. On very small problems (requiring substantially less than one second of runtime), the more sophisticated dynamic programming approaches have higher overhead, and are therefore slightly slower. doi:10.1371/journal.pone.0091507.g008 The resulting cascaded graph of probabilistic adder nodes transforms the graph into an equivalent Bayesian network that can be solved efficiently as a convolution tree. Graphs that do not cascade into polytrees (i.e. graphs that have loops even after cascading nodes as shown here) can be solved with a slightly modified junction tree inference algorithm: junction tree clique nodes that consist of a single probabilistic adder node and its inputs can pass messages through convolution tree nodes (without realizing the full conditional probability distribution). doi:10.1371/journal.pone.0091507.g009</p><p>with which proteins compete for shared peptide data. For instance, perhaps a sixth present predecessor protein does not substantially increase the peptide's chances compared to five present proteins, or perhaps genetic or biochemical analysis has demonstrated that it is improbable for the gene in question to express more than 7 splice forms in a short period of time. Such extensions can be implemented with probabilistic adder nodes, which add two probabilistic quantities. As we demonstrate in this paper, these probabilistic adder nodes can be more flexible and general than symmetric noisy-or nodes (symmetric noisy-or nodes can be trivially emulated using probabilistic adder nodes, but the converse is not true). Generalizing to probabilistic adder models offers a substantial increase in model flexibility. Because they are more general than noisy-or nodes, more problems can be decomposed into a polytree of probabilistic adder nodes (e.g. the graph in figure <ref type="figure" target="#fig_1">2</ref>, even when using peptide-specific emission and noise parameters).</p><p>In this paper we present a dynamic programming method for computing exact posteriors for efficiently solving the problem in figure <ref type="figure" target="#fig_1">2</ref> using a more flexible probabilistic adder model. The first algorithm presented performs inference in quadratic time and quadratic space, which is compatible with a peptide-specific emission model, with a peptide-specific noise model, and with nonidentical protein priors. We then generalize the algorithm we use to reveal it is an instance of the transform proposed by Heckerman <ref type="bibr" target="#b14">[15]</ref><ref type="bibr" target="#b15">[16]</ref><ref type="bibr" target="#b16">[17]</ref>.</p><p>Lastly, we propose the probabilistic convolution tree, a data structure which uses dynamic programming to perform exact inference on polytrees of probabilistic adder nodes in O(k log(k) ) 2 time and O(k log(k)) space, and compare performance of the three algorithms, power-set enumeration, quadratic dynamic programming, and the probabilistic convolution tree, on problems of the form shown in figure <ref type="figure" target="#fig_1">2</ref>. The probabilistic convolution tree is applicable to more general graphs, can be combined with junction tree inference, and can even used to efficiently compute posteriors when using an arbitrary categorical prior on the number of present variables.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Materials and Methods</head><p>Using graphs of the type shown in figure <ref type="figure" target="#fig_1">2</ref>, we compare the three exact inference methods described in this paper that can be applied with peptide-specific probabilities: power-set enumeration, quadratic dynamic programming, and the proposed probabilistic convolution tree approach.</p><p>For each problem of a given size k, each protein is adjacent to a unique peptide and all proteins are adjacent to between 1 and 9 shared peptides (chosen using uniform integers in f1,2, . . . 9g). Each unique peptide j has its own a j and b j chosen uniformly [½0:1,0:9 and a random probability score (i.e. the probability it matched an observed spectrum) chosen uniformly [½0:1,0:9. Each protein i has a protein-specific prior c i chosen uniformly [½0:01,0:99 (this is useful to test the numeric stability of the algorithm, because the only division operation is based on this collection of protein priors). Lastly, the shared data D (S) has an arbitrary categorical distribution in the number of present proteins N~P i X i (each entry chosen randomly in ½0,1 and normalized to sum to 1).</p><p>Runtimes were compared using python implementations of each of the three algorithms on a Core i3 laptop. For all problems timed, the three methods achieve identical results (to the 8 decimal points that by default are printed out by python's numpy package).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Results</head><p>The Brute-force Algorithm: Power-set Enumeration Power-set enumeration is quite simple: the likelihood is computed for every possible joint state for all proteins X ~x. A HUGIN-based junction tree implementation is compared to a probabilistic convolution tree-based junction tree implementation. The cost of inference will be dominated by a few outlier graphs, which do not decompose effectively using the junction tree. As a result, some connected subgraphs would require an impractical number of steps when using the HUGIN algorithm. This runtime can be improved by using probabilistic convolution trees, while still achieving the exact result. (b) One difficult connected subgraph from panel (a). Proteins are shown as red squares, probabilistic adders are shown as blue inverted triangles (these are the nodes can make use of probabilistic convolution trees), spectral evidence is shown as green circles. This subgraph would require 2 103:629 steps using the HUGIN junction tree. In contrast, the probabilistic convolution can solve this same subgraph in 2 12:045 steps (and achieve an exact result). doi:10.1371/journal.pone.0091507.g010</p><formula xml:id="formula_2">Pr (X 1 ~x1 jD)! Pr (D,X 1 ~x1 ) Pr (D,X 1 ~x1 ) ~X x 2 X x 3 Á Á Á X x k Pr (D,X 1 ~x1 ,X 2 ~x2 , Á Á Á X k ~xk ) Pr (D,X 1 ~x1 ,X 2 ~x2 , Á Á Á X k ~xk ) ~Pr (D (S) jN~X x)P i Pr (D i jX i ~xi )</formula><p>Illustrative example of the exponential enumeration algorithm. Figure <ref type="figure">3</ref> illustrates this super-exponential inference algorithm on the small graph of the type shown in figure <ref type="figure" target="#fig_1">2</ref>. Four proteins with different prior probabilities and unique spectral evidence are marginalized via brute force: for each of the 2 4 protein configurations, Pr (X ~x,D) (the joint probability of the protein configuration x and all observed data) can be enumerated in super-exponential time (i.e. it takes exponential time for each protein multiplied by the number of proteins involved). The values in the column containing Vx, Pr (X ~x,D) can then be used to compute marginals for a particular protein (i.e. protein X 1 ). This is accomplished by separately computing the denominator and then the numerator from equation 1. The denominator can be computed by summing over all values in the column (i.e. Pr (D)~P x Pr (X ~x,D)), and then the numerator for the protein X 1 can be found by computing the sum of values in the same column, but only where X 1 ~1 (i.e. Pr (D,X 1 ~1)~P x:x1~1 Pr (X ~x,D)). A small savings is achieved by passing over the table one time to compute the total sum, (Pr (D) used in the denominator of equation 1), as well as the constrained sum (i.e. the numerator) for each protein, thereby computing each value in the column Vx, Pr (X ~x,D) only once. Thus the cost of computing posterior probabilities for k proteins is in O(k2 k ) time (k proteins | 2 k steps per protein). Time and space requirements. Power-set enumeration can be performed in O(2 k k) time: there are 2 k protein configurations, each of which is applied to a running total of joint probabilities for k variables. Despite its inefficient runtime, power-set enumeration requires only O(k) space (enumeration of the power-set can be performed by incriminating a large base-2 number, and therefore does not require storing the entire power-set). A Quadratic Dynamic Programming Algorithm for Exact Inference Figure <ref type="figure">4a</ref> demonstrates the idea behind the quadratic dynamic programming algorithm: Each protein is added (with its state still a random distribution) one at a time, resulting in layers of partial sums. These partial sums work toward building the sum of the present proteins N~P i X i . At each layer i in the table, we compute the distribution on the random variable N i (the random variable for the partial sum defined by N i ~Pjƒi X j ). Because the variable X i is still unknown, every possible values of X i is associated with edges connecting cells in layer i{1 to the appropriate cell in layer i. For example, the an edge labeled X 1 ~1 connects the 0 row of N 0 (i.e. the event that the random variable N 0 ~0) to the 1 row of N 1 (i.e. the event that the random variable N 1 ~1), because N i ~Ni{1 zX i . Each edge for X i ~xi is weighted by the product between the prior that the protein has that assignment and the unique likelihood contribution that arises from that protein taking that assignment:</p><formula xml:id="formula_3">e i,x iz1 ~Pr (X iz1 ~xiz1 ) Pr (D iz1 jX iz1 ~xiz1 ):</formula><p>These layers are built so that the final layer is the cumulative sum of all proteins: N k ~Nk{1 zX k ~Nk{2 zX k{1 zX k ~Á Á Á ~Pi X i ~N. In this manner, all possible paths to arrive at every possible cumulative sum N~n,0ƒkƒn are available in the graph shown in figure <ref type="figure">4a</ref>.</p><p>After the graph is initialized, two passes are performed: one from the left and one from the right (these passes are sometimes denoted a ''forward-backward'' algorithm, a special class of junction tree message passing on a path graph commonly used by hidden Markov models (HMMs). Denote row j of layer i as N i ½j, which indicates that P mƒi X m ~j. The pass from the left computes the marginal probability of arriving at this given cell through all possible weighted left-to-right paths, denoted N i ½j:fromLeft for row j of layer i. The algorithm starts with N 0 ½0:fromLeft/1, because N 0 has a 100% probability that it is 0 (the outcome for the layer is indicated by the row number). These values are used to fill the entire table by propagating left-to-right in the following manner:</p><formula xml:id="formula_4">N i ½j:fromLeft/ X m,x i :mzx i ~j e i{1,x i N i{1 ½m:fromLeft:</formula><p>The second pass, from right to left, is performed in an almost identical manner. For each value in the table, we compute the marginal probability of arriving at this cell through all possible weighted right-to-left paths. Before starting the right-to-left pass, every node in layer k is initialized with the appropriate likelihood due to the shared data: N k ½j/ Pr (D (S) jN~j). Then the same propagation is performed, but from right to left:</p><formula xml:id="formula_5">N i ½j:fromRight/ X m,x iz1 :m{x iz1 ~j e i,x iz1 N iz1 ½m:fromRight:</formula><p>The result is that every cell in the table computes the marginal probability of all paths passing through it from left to right and from right to left (this is a standard ''forward-backward'' algorithm). The likelihood of being in a given node can be computed by N i ½j:likelihood~N i ½j:fromLeft|N i ½j:fromRight.</p><p>Thus, the posterior that any variable is in a certain state X i ~xi is computed by the total weight of all paths that pass through edges assigning X i ~xi :</p><p>Pr (X i ~xi jD)! X j N i{1 ½j: fromLe ft e i{1,x i N i ½jzx i :</p><p>For the three preceding equations, out-of-bound indices (e.g. querying N 1 ½{1:fromLeft and N 1 ½{1:fromRight) should return zero.</p><p>Note that figure <ref type="figure">4a</ref> is drawn in a way that underscores its applicability to inference problems where each variable has more than two possible states (as indicated by more than two edges radiating out of each node, and with labels not limited to binary states).</p><p>Figure <ref type="figure">4b</ref> generalizes this approach and merges each layer N i ½0,N i ½1 . . . into a single variable N i . The result is a graph with a tree decomposition that is visibly simple; in fact, it closely resembles a hidden Markov model (HMM), for which the tree decomposition is trivial using a similar forward-backward algorithm <ref type="bibr" target="#b17">[18]</ref>. This graph generalizes the dynamic programming performed in figure 4a so that it can be applied to similar problems by transforming the graph and then performing junction tree inference. The generalized algorithm is an instance of Heckerman's transform <ref type="bibr" target="#b14">[15,</ref><ref type="bibr" target="#b14">15,</ref><ref type="bibr" target="#b16">17]</ref>, which is sometimes referred to as a ''temporal transform''.</p><p>From the generalized figure <ref type="figure">4b</ref>, it is easy to understand the algorithm described above: in figure <ref type="figure">4a</ref>, passing through the node N (j) i indicates that the partial sum N i ~Pmvi X m ~j. For this reason, we can see that propagation from the left accumulates the priors and unique likelihood contributions that would lead to N i ~j.</p><formula xml:id="formula_6">Pr (D 1 ,D 2 , . . . D i ,N i ~ni )X n i{1 X x i Pr (N i ~ni jN i{1 ~ni{1 ,X i ~xi ) Pr (D 1 ,D 2 , . . . D i{1 ,N i{1 ~ni{1 ) Pr (D i jX i ~xi ) Pr (X i ~xi )</formula><p>Likewise, propagation from the right computes the remaining likelihood terms, along with the shared likelihood:</p><formula xml:id="formula_7">Pr (D iz1 ,D iz2 , . . . ,D k ,D (S) ,N i ~ni )X n iz1 X x iz1 Pr (N i ~ni jN i{1 ~ni{1 ,X i ~xi ) Pr (D iz2 , . . . ,D k ,D (S) ,N iz1 ~niz1 ) Pr (D iz1 jX iz1 ~xiz1 ) Pr (X iz1 ~xiz1 ):</formula><p>For both equations above, we exploit the fact that Pr (N i ~ni jN i{1 ~ni{1 ,X i ~xi ) is 1 if and only if n i ~ni{1 zx i (and is otherwise 0). For each of the two equations above, this allows us to collapse the nested sum into a single sum over the variable with a smaller domain (if all variables X i are binary, as in the case of distinguishing splice variants, then x i will be have a smaller domain than n i ).</p><p>Lastly, we see that the posterior for a protein, which is always proportional to its joint probability with the data, is computed by the forward-backward probability passing through edges labeled X i ~xi :</p><formula xml:id="formula_8">Pr (X i ~xi ,D)X n i{1 ,n i Pr (N i ~ni jN i{1 ~ni{1 ,X i ~xi ) Pr (D 1 ,D 2 , . . . D i{1 ,N i{1 ~ni{1 ) Pr (D iz1 ,D iz2 , . . . ,D k ,D (S) ,N i ~ni ) Pr (D i jX i ~xi ) Pr (X i ~xi ),</formula><p>which is given by the algorithm. Illustrative example of the quadratic algorithm. Figure <ref type="figure">5</ref> illustrates the forward pass of the quadratic inference algorithm on the small graph shown in figure <ref type="figure">3</ref>. The posterior probability for an arbitrary protein (e.g.n X 1 ) can be easily found by passing the messages left-to-right once (to compute the denominator of equation 1), and then by passing passing messages left-to-right once more with the constraint that X 1 ~1 (to compute the numerator of equation 1); however, by using right-to-left pass (i.e. the ''forward-backward'' algorithm), the marginal probabilities of all proteins can be computed in roughly the same amount of time required to compute one protein posterior in this manner (i.e. quadratic time).</p><p>Time and space requirements. This approach (and, in general, Heckerman's transform) reduces the runtime to O(k 2 ), but the table used for dynamic programming uses O(k 2 ) space. This time-space trade-off can be considered almost universally favorable compared to power-set enumeration: for problems when k 2 would become too large to store in the RAM of a modern computer, k would be so large that 2 k k would result in an astronomically large runtime for power-set enumeration; however, space will likely be the limiting factor in applying Heckerman's transform, and so like other O(k 2 ) algorithms, it cannot be applied as-is to very large problems as mentioned in <ref type="bibr" target="#b18">[19]</ref>; for completeness it should also be noted that the VE1 algorithm <ref type="bibr" target="#b18">[19]</ref> is not wellsuited to the problem in figure <ref type="figure" target="#fig_1">2</ref> because it is query based, meaning that it performs best when only a small subset of the variables need to be solved.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>The Probabilistic Convolution Tree: a more Efficient Dynamic Programming Algorithm</head><p>The probabilistic convolution tree, shown in figure <ref type="figure">6</ref> is similarly motivated to the dynamic programming shown in figure <ref type="figure">4</ref>; however, where the quadratic dynamic programming algorithm constructs a chain N 0 ~0,N 1 ~X1 zN 0 , N 2 ~N1 zX 2 , . . . ,N k ~Nk{1 zX k , the probabilistic convolution tree proposes a divide-and-conquer approach. First we present an algorithm applicable when k is a power of 2, and then generalize it. For this reason, all logarithms are base 2: log~log 2 .</p><p>Probabilistic adder nodes are partitioned into multiple layers:</p><formula xml:id="formula_9">N (i) ~(N (i) 1 ,N (i) 2 , . . . ), where N (i) j ~N(i{1) 2j{1 zN (i{1) 2j</formula><p>. In this manner, every node in the tree from layer 1 . . . log(k) has exactly one child and two parents. Layer 0 is composed of the parent-free variables X 1 ,X 2 , . . . X k ; each nodes X i in this layer has two children: their unique data D i and the probabilistic adder node in layer one, N (1)  i=2 , which depends on them. Because of this consistent structure after layer 0, the entire tree can always be viewed from a single probabilistic adder node N as having two parents L and R as parents. These parents, along with the data reachable through them, constitute subtrees (L,D (L) ) and (R,D (R) ). Each node has a single child subtree containing all data below D (N) (Figure <ref type="figure">6</ref>). D (N) includes the shared data D (S) as well as any other data nodes reachable through the edge down from the node. For instance, the tree as seen from the perspective of node N (1)   1 has L~X 1 , R~X 2 ,D (L) ~D1 , D (R) ~D2 , and D (N) ~(D 3 ,D 4 , . . . D k ,D (S) ). Because this ternary structure is ubiquitous in the tree, a message passing algorithm can be constructed by using only the subtree from figure <ref type="figure">6b</ref>.</p><p>Example: computing prior probabilities. As an example of the motivating idea behind the probabilistic convolution tree, first observe that the prior probability of a node can be constructed easily using the prior probabilities of its parents:</p><formula xml:id="formula_10">Pr (N~n) ~X ' X r</formula><p>Pr (L~') Pr (R~r) Pr (N~njL~',R~r):</p><p>And because N~LzR, this can be condensed to a single summation:</p><formula xml:id="formula_11">Pr (N~n)~X ' Pr (L~') Pr (R~n{')</formula><p>Priors are known for all nodes in layer 0, and so it is clear by induction that a prior can be computed for every node (layer 0 is the base case and every prior in the next layer can be computed given the priors from the previous layer).</p><p>However, as written above, computing the prior for every node in the tree would be at best a constant speedup over the quadratic dynamic programming approach, because the two nodes in second to last layer will have state space k=2 and k=2, and all pairs must be combined to form the prior on the final node, N (log2k) 1 (enumerating these combinations requires quadratic time). However, we can now employ convolution at each node (see figure <ref type="figure">6b</ref> inset), and so it can be computed in m log(m) time, where m is the state space of the node N being updated. Note that when the vectors are very sparse, the convolution can be performed more efficiently using a standard discrete Fourier transform (DFT) rather than a fast Fourier transform (FFT). Also note that a vector that can easily be decomposed into a sum of dense vectors whose nonzero indices do not overlap, then Fourier transformation can be performed using a hybrid approach on the results of the decomposition. If a probabilistic statement with a single unassigned variable (e.g. Pr (N), Pr (L), or Pr (R)) is considered as a vector (with all outcomes of that variable enumerated in order), then the summation described in the equation above is equivalent to</p><formula xml:id="formula_12">Pr (N)~Pr (L) Ã Pr (R),</formula><p>where Ã is the vector convolution operator.</p><p>We now proceed to outline the convolution tree algorithm, which operates in a similar manner as this example.</p><p>Step 1: passing messages down. First, the convolution tree algorithm computes the joint probability of each node with the data above it. This can be performed almost identically to computation of prior probabilities in the example above. Also, like above, the base case is known for all nodes in the layer 0 (it is simply the element-wise product between the node's prior and its likelihood from unique data). Thus in the same manner presented in the example above, the joint probability of the node's state with all data above, Pr (D (L) ,D (R) ,N), can be computed using a convolution:</p><p>Pr (D (L) ,D (R) ,N)~X Like the example above where prior probabilities are computed, each node in layer 0 has a known joint probability with the data above. And so, proceeding layer-by-layer, for each node we compute the joint probability of that node with data above it.</p><p>Step 2: passing messages up. The second part of the convolution tree algorithm is to pass messages upward through the tree after all messages have been propagated downward (i.e. after completion of step 1). Where step 1 passes down the joint probability of each node with the data above it, step 2 computes the likelihood given all data that can be reached below: for the left parent, we compute Pr (D (R) ,D (N) jL) and for the right parent we compute Pr (D (L) ,D (N) jR). Note that we only need values proportional to these probabilities, and so they can be normalized before proceeding to the next layer in the tree for better numeric stability. These messages can be defined thus:</p><formula xml:id="formula_13">Pr (D (R) ,D (N) jL~') ~X n</formula><p>Pr (D (N) jN~n) Pr (D (R) jR~n{') Pr (R~n{')</p><p>Pr (D (L) ,D (N) jR~r)</p><p>~X n Pr (D (N) jN~n) Pr (D (L) jL~n{r) Pr (L~n{r):</p><p>Where the forward pass (in step 1) represents addition, this backward pass represents subtraction, which presents also convolution, but because one operand is negated, its indices are reversed. Also, the result of the convolution will not start at zero, but will instead start at the minimum value achieved by the subtraction. In this case, we do not want the negative values because they are impossible in the source variable. Thus the above equations can be written as convolutions where one vector is reversed and where a slice is taken from the result (to undo the shift and remove impossible outcomes). So the final results can be computed</p><formula xml:id="formula_14">Pr (D (R) ,D (N) jL)~Pr (D (R) ,R)½:: {1 Ã Pr (D (N) jN) À Á ½len(R){1 : len(R){1zlen(L)</formula><p>Pr (D (L) ,D (N) jR)~Pr (D (L) ,L)½::</p><formula xml:id="formula_15">{1 Ã Pr (D (N) jN) À Á ½len(L){1 : len(L){1zlen(R),</formula><p>where len(R) and len(L) depict the number of states for R and L, vector½:: {1 reverses the vector (i.e. it reflects it), and v½a : b~(v a ,v az1 , . . . v b{1 ) slices the vector to remove the unwanted shift mentioned in the paragraph above. As messages were propagated downward before, these messages can be passed back up the tree to form the likelihood given data below for the left and right parent nodes. For example, for the left parent L, its likelihood given all data below will be initialized by the message passed back, Pr (D (R) ,D (N) jL). Now that the node L has its likelihood given the data below, it can pass messages up the tree. This process continues until all messages have been passed up to layer 0, which contains the proteins themselves.</p><p>The posterior for node N~n can be computed by multiplying the joint probability with data above by the likelihood given data below that node:</p><p>Pr (D,N~n)~Pr (D above(N) ,N~n) Pr (D below(N) jN~n):</p><p>Similarly, the posterior for protein X i ~xi can be computed by multiplying the joint probability with data above (for each protein X i , the data above consists only of its unique spectral evidence D i ) by the likelihood given data below:</p><formula xml:id="formula_16">Pr (D,X i ~xi )~Pr (D i ,X i ~xi ) Pr (D below(X i ) jX i ),</formula><p>which is proportional to Pr (X i ~xi jD). Note that when a value is proportional to the posterior probability, then the posterior proportionality can be computed by dividing by the sum:</p><formula xml:id="formula_17">Pr (X i ~xi jD)~P r (D,X i ~xi ) P x i 0 Pr (D,X i ~x0 i ) :<label>ð1Þ</label></formula><p>Like the quadratic dynamic programming algorithm, the convolution tree algorithm described here is applicable to variables with more than two states. It also does not require that the left and right parents of a probabilistic adder node have identical state space, although of course an FFT-based convolution will be faster when this is the case, because it will not need to pad the shorter vector with zeros.</p><p>Illustrative example of the probabilistic convolution tree algorithm. Figure <ref type="figure">7</ref> illustrates the convolution-based inference algorithm on the a small graph of the type shown in figure <ref type="figure" target="#fig_1">2</ref>.</p><p>Messages are passed down (via step 1). The posterior probability for an arbitrary protein (e.g.n X 1 ) can be easily found by passing the messages down once (to compute the denominator of equation 1), and then by passing messages downward once more with the constraint that X 1 ~1 (to compute the numerator of equation 1). however, step 2, which subsequently passes messages back up the tree, reuses the shared computations for these proteins, and computes the posterior for every protein in roughly the time necessary to compute the posterior for any single protein (subquadratic time). Time and space requirements. As implemented, the runtime of the convolution tree can be shown to be O(k log(k) ) 2 , and the space requirement can be shown to be O(log(k)). Sparse vectors can be convolved more quickly by using the discrete Fourier transform (DFT).</p><p>A fixed number of convolutions are performed at all nodes.</p><p>Layer i will have k 2 i nodes, and the length of the state space for that convolution is ƒ2 i . Thus the cost of FFT convolution for a node at layer i is 2 i log(2 i ). The entire runtime can then be computed easily using the expansion</p><formula xml:id="formula_18">P n i i~n (1zn) 2 : X log(k) i~1 k 2 i 2 i log(2 i ) ~k X log(k) i~1 i ~k log(k)(1zlog(k)) 2 ,</formula><p>which is on the order of k log(k) 2 . The memory consumption is computed with a similar strategy. The simple implementation of the convolution tree method described here requires O(k log(k)) space to store the two vectors Pr (D above ,N (i) j ) and Pr (D below jN (i) j ) for each node N (i) j in the tree, because at layer i, the length of the vector storing each of these is ƒ2 i , and there are k 2 i such nodes in that layer. Thus the total space requirement is</p><formula xml:id="formula_19">X log(k) i~1 k 2 i 2 i ~k X log(k) i~1 1 ~k log(k):</formula><p>The method can be easily extended when k is not a power of two by simply adding dummy variables X kz1 ,X kz2 , . . . with 100% prior probability of being absent (thus they do not influence the sum) and with no unique evidence). These variables are added until the total number of variables is a power of 2. Using a 0 prior is important for this approach, because it prevents P i X i , and subsequently Pr (D (S) jX ), from being altered by including these dummy variables. Even though this approach is inelegant, it can be easily seen to produce the same order runtime when k is not a power of 2, because in the worst case, k must be roughly doubled to perform inference, which would simply change the constant, but not the order of the runtime.</p><p>Extension to linear functions on the integers. The special case of computing posteriors where D (S) depends on N with N~X 1 zX 2 z Á Á Á zX k (as described in this paper), can be easily generalized to compute posteriors when N~s 1 X 1 z s 2 X 2 z Á Á Á zs k X k for fixed integer scaling factors s 1 ,s 2 , . . . s k . First observe (without loss of generality) that for any positive integer s 1 , s 1 X 1 simply creates a new vector X 1 with s 1 {1 zeros padded between every entry of X k :</p><formula xml:id="formula_20">X 1 0 ½i=s 1 ~X 1 ½i, i s 1 is an integer 0,<label>else 8 &lt; :</label></formula><p>Second, observe that for any two nodes L and R, the subtraction L{R can be accomplished by reversing R before convolution with L (and recording the fact that the zero index of the resulting array no longer refers to N~0, but instead refers to the minimum value achievable by the subtraction). For this reason, scaling X 1 by a negative integer s 1 can be performed by reversing the vector X 1 and then padding with zeros as mentioned above, and then adding normally with the convolution tree (again, in this case, each node in the convolution tree would would also keep track of the minimum integer summation value corresponding to the zero index). For completeness, when s 1 ~0 (and is thus neither positive nor negative), then the scaled vector X 1 0 ~½1:0, indicating a 100% probability that X k is zero; however, if the fixed value s 1 is known to be zero ahead of time, then there is effectively no edge connecting X 1 to the scaled summation N, and that input can be ignored with no consequence. Thus scaling X 1 by s 1 can be accomplished by simply permuting the indices of X 1 (into a potentially larger result vector): the vector X 1 is first reversed if s 1 v0 and is then padded with zeros as described above.</p><p>For simple implementation, single-input single-output scaling nodes (with input X 1 and output X 1 0 and a fixed parameter s 1 ) can be used to first transform any X 1 into X 1 , and then fed into a convolution tree node with N~X 1 zX 2 z Á Á Á zX k . Thus we can model an integer-scaled sum without any modification to the convolution tree data structure. Messages passed backward through these scaling nodes simply undo the deterministic permutation of indices mapping X 1 to X 1 .</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Discussion</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Performance on Randomly Generated Problems</head><p>Figure <ref type="figure">8</ref> shows a runtime comparison between the three algorithms using a more general model, which is not restricted to noisy-or nodes and instead uses probabilistic adder nodes. Figure <ref type="figure">8a</ref> compares power-set enumeration with the quadratic dynamic programming method on smaller problems (k[f2,4,6,8, . . . ,20g). Figure <ref type="figure">8b</ref> compares quadratic dynamic programming with the convolution tree method on larger problems (k[f32,64,128,256, . . . ,2048g). Note that both axes are log-scaled and so a growing gap between the two series represents a super-linear speedup in the runtime. On larger problems (e.g. 4096 proteins), the quadratic dynamic programming runs out of memory on a 4 GB computer.</p><p>Both the quadratic dynamic programming and the convolution tree have runtimes far superior to power-set enumeration. But moreover, the convolution tree offers scalability to substantially larger problems than the quadratic dynamic programming approach. For example, computing exact posteriors for 32768 proteins takes only 28.03 seconds, while the quadratic dynamic programming cannot even be run.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Cascading Trees for more General Application</head><p>It should be noted that the convolution tree method can easily be applied when including node-specific data D (i) j , which depends only on the node N (i) j in the tree (as long as the resulting graph is still a tree): The modified method would simply multiply (elementwise) the likelihood given data below Pr (D below jN (i) j ) by the unique likelihood Pr(D (i) j jN (i) j ) when passing messages up and multiply (element-wise) the joint probability with data above Pr (D above ,N (i) j ) by the unique likelihood Pr(D (i) j jN (i) j ) when passing messages down. This allows nearly identical runtime (point-wise multiplication is cheaper than convolution, which is already performed by the algorithm). On graphs where data is shared in a manner such that it is cascaded (i.e. D f1,2g depends on the sum of X 1 zX 2 , and D f1,2,3g depends on the sum of X 1 zX 2 zX 3 , and so forth), the sums can be arranged by a simple greedy algorithm so that a probabilistic adder node N 1,2 has predecessors X 1 ,X 2 and then a second probabilistic adder node N 1,2,3 has predecessors N 1,2 ,X 3 (Figure <ref type="figure" target="#fig_2">9</ref>). Thus, cascading makes it possible to use the convolution tree even when the shared data D (S) do not have identical predecessors as shown in figure <ref type="figure" target="#fig_1">2</ref>. Furthermore, more general cascading can factor out shared computation so that data D f1,2,3g , which depends on X 1 zX 2 zX 3 and D f2,3,4g , which depends on X 2 zX 3 zX 4 can be factored into N f2,3g ~X2 zX 3 and where D f2,3,4g depends on N f2,3g zX 4 and 0 0 0 0 0 0 0 D f1,2,3g depends on X 1 zN f2,3g . Cascading probabilistic adder nodes allows inference in the same runtime and memory usage derived in this manuscript when the cascaded nodes form a tree.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Compatibility with Belief Propagation and Junction Tree Inference</head><p>When the graph contains loops (i.e. when the cascaded graph does not form a tree), variables can be merged into larger joint variables, and then the sum of these variables can then be fed into a convolution tree. Essentially, this demonstrates the potential to use convolution trees as specialized cliques within classic junction tree inference <ref type="bibr" target="#b7">[8]</ref>: When inference is performed, the full joint conditional probability table would not be generated for any clique node in the junction tree with two properties: 1) The clique node contains only a probabilistic adder node and all of the probabilistic adder node's predecessors. 2) The edges connecting the specialized clique node to other clique nodes in the junction tree would also need to carry messages of a single variable only, because the convolution tree does not allow arbitrary joint distributions of its inputs as messages passed in. 3) Messages sent along edges into the specialized clique node have disjoint variable sets (i.e. each variable occurs along only one message). This last criterion can always be satisfied by inserting a temporary clique node containing only the variable X as an intermediary between the specialized clique node and any other clique nodes that send messages containing the variable X .</p><p>Posterior probabilities and messages passed out of a specialized convolution tree clique node would be computed using the convolution tree, and would simply pass the likelihood of all data preceding the edge along which the message is passed (i.e. all data found by moving backward against the direction of message passing). For the ''head'' node (i.e. the adder), the message out would be the joint probability above. For any ''input'' node, the message out would be the likelihood below.</p><p>Such ''intelligent'' junction trees can likewise feature approximation clique nodes for use when large cliques do not meet the requirements to be specialized convolution tree clique nodes, e.g. clique nodes that perform mathematical approximations similar to pruning or clique nodes that use sampling methods like Monte Carlo or Markov chain Monte Carlo (MCMC). In this manner, protein inference could be performed using the benefits of three approaches: junction tree inference (which can break apart large connected graphs), convolution tree clique nodes (which can allow the junction tree to perform efficient exact inference when large probabilistic adder cliques are encountered), and approximations (available as a last resort to prevent a single remaining large clique from prohibiting inference on the entire junction tree). Approximations (which can be inaccurate and slow) would thus be avoided when exact answers can be computed efficiently. Such junction trees are examples of the recommended extensions to the collapsed Gibbs sampler mentioned in <ref type="bibr" target="#b7">[8]</ref>. In a similar manner, pruning may be performed by first finding expensive cliques in the junction tree (i.e. large cliques that cannot be solved using the convolution tree) and pruning only the peptides that depend on them. This is an enhancement of the score-driven pruning algorithm defined in <ref type="bibr" target="#b12">[13]</ref>, which needed to prune all peptides at or below the score of the peptides responsible for computational expense.</p><p>In addition to easy compatibility with collapsed Gibbs sampling, the probabilistic convolution tree can be also be easily used with iterative approximation methods that pass messages in the original graph rather than in the junction tree: these methods include loopy belief propagation <ref type="bibr" target="#b19">[20]</ref>, variational methods <ref type="bibr" target="#b20">[21]</ref>, and expectation propagation <ref type="bibr" target="#b21">[22]</ref>. Networks that employ a large number of probabilistic adder nodes can pass these messages very rapidly and thus arrive at an approximation very quickly, even on graphs whose tree decompositions contain large cliques, which thus do not offer significant speedup compared to brute force. Importantly, the probabilistic convolution tree can efficiently pass messages forward and backward through nodes with many predecessors, enabling these iterative approximation procedures to not longer be limited by the maximum number of predecessors from any node.</p><p>Performance Improvement for Junction Tree Inference on a High-coverage HeLa Sample</p><p>As stated above, junction tree inference allows the belief propagation algorithm to be applied to generalized from trees to graphs by first performing a tree decomposition of a graph and then passing messages through the tree decomposition. Here we show the runtime speedup introduced by using probabilistic convolution trees within the message passing step of junction tree inference.</p><p>Figure <ref type="figure" target="#fig_3">10</ref> demonstrates the practical benefit of using a junction tree that utilizes probabilistic convolution trees to perform belief propagation. This is demonstrated using a high-coverage (24 fractions) HeLa SILAC data set <ref type="bibr" target="#b22">[23]</ref>. Proteins were digested with trypsin and searched against the highly redundant International Protein Index (IPI) database (using a precursor mass tolerance of 10 ppm and a fragment mass tolerance of 0.6 Da). Identified spectra were then processed with Percolator using a maximum delta Cn of 0.05.</p><p>Protein identification was performed using FidoCT (Fido with convolution trees) in the alpha release of Proteome Discoverer 2.0. Low-scoring PSMs (those with score ,1%) were pruned to reduce graph connectivity as described in <ref type="bibr" target="#b12">[13]</ref>. The resulting graph was factorized into separate connected subgraphs, and each connected subgraph was processed using two variants of exact junction tree inference: first, the state-of-the-art HUGIN <ref type="bibr" target="#b23">[24]</ref> junction tree algorithm and second a novel junction tree approach that passes messages by using probabilistic convolution trees. The HUGIN junction tree algorithm, as described for mass spectrometry-based proteomics in <ref type="bibr" target="#b7">[8]</ref>, performs tree decomposition by merging variables into cliques (illustrated in figure <ref type="figure" target="#fig_0">1</ref>), and then performs message passing between these clique nodes. Note that the HUGIN junction tree inference cliques require time and space that grows super-exponentially with the size of (i.e. the number of variables contained in) the clique. Thus the size of the largest clique dominates the computational cost; however, when probabilistic convolution trees are used, cliques formed by probabilistic adders have sub-quadratic rather than super-exponential time.</p><p>Figure <ref type="figure" target="#fig_3">10a</ref> shows the distribution of (log-scaled) runtimes for each connected subgraph when using a standard HUGIN algorithm versus using the probabilistic convolution tree-based approach. One particular connected subgraph requires 2 103:629 steps using the HUGIN junction tree, but requires only 2 12:045 steps when using probabilistic convolution trees within the junction tree inference algorithm. This connected subgraph is depicted in figure <ref type="figure" target="#fig_3">10b</ref>; even though its treewidth is high, exact inference can be easily performed using probabilistic convolution trees.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Potential Impact of Convolution Trees on Protein Inference</head><p>In proteomics, the convolution tree could make it feasible to query protein databases with much greater sequence similarity than is currently possible, due to the large number of shared dependencies introduced (as shown in figure <ref type="figure" target="#fig_3">10</ref>). Moreover, the convolution tree could be used to iteratively perform protein inference and model peptide detectability, because it can offer substantially better runtimes on large or highly complex data sets; on such data sets, iterative numeric methods (e.g. ProteinProphet <ref type="bibr" target="#b24">[25]</ref>) have been demonstrated to be unstable <ref type="bibr" target="#b1">[2,</ref><ref type="bibr" target="#b12">13,</ref><ref type="bibr" target="#b25">26]</ref>, heuristics and human intuition can break down <ref type="bibr" target="#b26">[27]</ref>, approximations (such as pruning peptides with nonzero scores) may be forced to yield inaccurate results <ref type="bibr" target="#b2">[3]</ref>, and sampling on its own (without exploitation of d{separation and mathematical properties like those introduced in this paper) cannot yield accurate probabilities in a feasible amount of time <ref type="bibr" target="#b1">[2,</ref><ref type="bibr" target="#b2">3,</ref><ref type="bibr" target="#b7">8]</ref>.</p><p>The convolution tree can also be used to efficiently place arbitrary categorical priors on the number of present variables or on the sum of variables. Without this advance, such priors would not be considered because they are too inefficient for large data sets: by creating a dependency between all proteins, such a prior would render factorization impossible. Without factorization, even a runtime quadratic in the number of variables (e.g. using the quadratic dynamic programming approach) could potentially become the factor limiting efficiency (not to mention the limitations of the quadratic space requirement). A sub-quadratic method with low space complexity could be used to bring the applicability of such priors to many graphical inference problems.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Application to Probabilistic Generating Functions for Partition Combinatorics and Linear Diophantine Equations</head><p>The convolution tree can also be trivially applied to classic partition problems from combinatorics <ref type="bibr" target="#b27">[28]</ref>. Given some target value t and elements v 1 ,v 2 , . . ., compute the total number of distinct integer tuples (N 1 ,N 2 , . . . ) that satisfy N 1 v 1 zN 2 v 2 z . . . ~t. Traditionally, generating functions have been used to great success for such problems; however, converting the generating function solution to the desired result involves computing a particular polynomial coefficient from generating function, and can be time-consuming. Furthermore, the probabilistic convolution tree framework relaxes the strict equality required by generating function variants: the probabilistic convolution tree would not require the sum be exactly the target value. Instead, it would be compatible with an arbitrary likelihood function that weights values by the quality of the approximation between the target t and the sum N 1 v 1 zN 2 v 2 z . . .. In practice, this problem can be used to compute the total number of unique ways to make change for a given amount of money, and can also be applied to deciding if an observed target mass t can be made from specified set of elements (or, more generally, components) with respective masses v 1 ,v 2 , . . . (and to compute the marginal distribution on the quantity of each element). A generalized two-dimensional variant could also constrain the total valence of the elements employed used.</p><p>Likewise, the probabilistic convolution tree can be applied to the highly related problem of linear Diophantine equations, which seek integers N 1 ,N 2 , . . . such that N 1 v 1 zN 2 zv 2 z . . . ~t for some target value t. The probabilistic convolution tree can decide if the equation is feasible (using integers N 1 ,N 2 , . . .), as well as to compute marginal probabilities for each integer coefficient N 1 ,N 2 , . . .. Although the problem of finding whether such an integer solution exists is known to be polynomial, the full problem of computing a joint solution in the integers (N 1 ,N 2 , . . . ) is NPcomplete <ref type="bibr" target="#b28">[29]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Generalization to Multiple Dimensions and Applicability to Knapsack Problems</head><p>The convolution tree trivially generalizes to multidimensional problems where there is an additive behavior in all dimensions. For instance, as mentioned above when mentioning the applicability to elemental decomposition, we can consider all variables (X 1 ,X 2 , . . . X k ,N (1)  1 ,N (1) 2 , . . . N (2) 1 , . . . N (3) 1 . . . ) to have two dimensions. In the case of elemental decomposition, each variable can store a two-dimensional random distribution as a matrix where the row index maps to the discretized mass, the column maps to the discretized valence, and the value in the matrix cell at row r and column c is the joint probability that the variable simultaneously has the mass corresponding to r and the valence corresponding to c. Note that the algorithm is identical with two exceptions: First, when adding two parent variables L and R during a forward pass (step 1), the result will now be computed via a two-dimensional convolution. Second, after two-dimensional convlution is performed during the backward pass (in step 2), a contiguous submatrix is retrieved via a two-dimensional slice (rather than a one-dimensional slice).</p><p>As is the case for the univariate algorithm, the resulting convolutions can be performed using two alternative approaches: First, in the case when matrices are sparse, convolution can be performed efficiently using direct convolution when the joint distribution of L and the joint distribution of R. Alternatively, when the matrices representing these two-dimensional distributions are dense this two-dimensional convolution can be performed by using more sophisticated approaches <ref type="bibr" target="#b29">[30]</ref>. The algorithm is the same in any number of dimensions as long as multidimensional convolution is used throughout, and as long multidimensional slices are taken in step 2. In this manner, it can be thought of as a polynomial time approximation scheme (PTAS) for a probabilistic generalization of the NP-hard knapsack problems. Likewise, it can efficiently solve other combinatorics problems (where counting is used probabilistically or nonprobabilistically). The multidimensional variant can also be used to merge variables and remove loops from cascaded graphs that are not trees.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Application to using Truncated Sums in Forward Error Correction</head><p>Because the convolution tree method can be used with any cascaded graph of probabilistic adder nodes, then it can be applied to myriad other problems. One simple example is the extension of probabilistic forward error correcting codes to efficiently utilize a greater variety of error correcting information. Using the notation from <ref type="bibr" target="#b30">[31]</ref> the unique data D i would correspond to y i , and a subset of those probabilistic adder nodes in the tree could influence nodespecific D (i) j , which would allow inclusion of data that depends on the sum of nodes above, or optionally, a truncated sum, from which a probabilistic adder node can compute multi-bit summary statistics about the bit string (parity is an example of such a singlebit summary statistic). For certain coding schemes that use moderate block sizes, this method could be used to infer an optimal (i.e. maximum a posteriori) estimate for the input binary bitstring, as well as probabilistic confidence estimates for each bit in the bitstring. Turbo decoding and low-density parity-check codes (LDPC), which are both popular inference methods for forward error correction, have been shown to be instances of Pearl's loopy belief propagation <ref type="bibr" target="#b30">[31,</ref><ref type="bibr" target="#b31">32]</ref> (loopy belief propagation is described above). Because convolution trees can be used within belief propagation (see ''Compatibility with belief propagation and junction tree inference'' above), they can also be used with loopy belief propagation to perform more efficient message passing of probabilistic information related to cardinality, parity, sums, and other probabilistic adder structures that cannot be efficiently accomplished with noisy-or nodes. And because the operations performed in the probabilistic convolution tree are basic digital signal processing operations (FFT, element-wise product, etc.), and thus could potentially be implemented efficiently as an integrated circuit.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Application to Probabilistic Demixing of Chimeric Mass Spectra</head><p>The convolution tree can also be applied to demixing problems. Figure <ref type="figure" target="#fig_4">11</ref> depicts a classic example from mass spectrometry: four compounds of unknown relative abundance contribute to a chimeric spectrum. By discretizing the possible relative abundances (in the future it also may be possible to extend some of the ideas presented in this manuscript to continuous problems), probabilistic adder nodes can be cascaded to compute posterior probability distributions on the relative abundances of each compound without jointly enumerating the four-dimensional space of all possible relative abundances. This graph could even be augmented with an arbitrary prior on the number of compounds present. A simplification would threshold peaks in the chimeric spectrum into two categories (''intense'' and ''not intense'') and then perform inference using a convolution tree whose base variables are binary, similar to the formulation for protein inference. Regardless of whether binary variables or binned continuous variables are used, an arbitrary likelihood model could then be used to evaluate the match between the observed peak (observed from the actual data) and the latent abundance variable for that peak (note that these likelihood functions can be peak-specific).</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 .</head><label>1</label><figDesc>Figure 1. Mass spectrometry: a graphical view. (a) Directed edges between proteins X 1 ,X 2 , . . . X 6 and spectral data D A ,D B ,D C represent causal statistical dependencies with spectra that can result from peptides in the adjacent protein.For simplicity, peptide-spectrummatches (PSMs) are denoted simply using their spectral evidence, thereby producing a bipartite graph of proteins (X ) to spectral data (D). Proteins X 1 , X 2 , and X 3 share spectral data D A , because they share peptides that were matched to spectrum D A . : if the score of the PSM corresponding to spectrum D A is very high, it is tempting to award a high probability to protein X 1 ; however, proteins X 2 and X 3 compete for this shared evidence, and thereby have a chance to reduce the probability of X 1 . This process (called ''explaining away'' to describe the fact that the contribution of evidence to a single hypothesis is reduced by competing hypotheses) introduces new dependencies between all pairs of proteins sharing that evidence. (b) These shared spectral data introduce new non-causal dependencies between proteins with shared successors in (a). These dependencies are visualized in the undirected moral graph. When multiple proteins share spectral evidence, these undirected edges connect all pairs of predecessors, creating a clique in the moral graph K(X 1 ,X 2 ,X 3 ,D A ). (c) The tree decomposition (sometimes called the ''junction tree'' or ''clique tree'') merges the moral graph from (b) without loss of dependencies, so that inference can be performed using Pearl's belief propagation algorithm. Belief propagation starts at the top clique, which only shares variable X 4 with its neighbor. Therefore, the top clique can perform inference while leaving X 3 as a symbolic, unknown quantity, so that it can be used to send information from the cliques below (X 3 is an information bottleneck, through which the cliques below can influence the top clique). Likewise, the variables X 1 and X 2 can be marginalized out before sending any relevant information to considering the middle clique. This procedure can significantly reduce the runtime by allowing inference to be performed on the cliques rather than on all nodes in the tree; however, each clique represents an inseparable multidimensional distribution over several variables, and thus the cost of processing a single clique is more than exponential in the number of variables. When many proteins share common evidence (i.e. share at least one peptide identified by spectral evidence), a large clique is formed in the moral graph and inference becomes intractable in the general case. doi:10.1371/journal.pone.0091507.g001</figDesc><graphic coords="2,58.05,60.78,238.27,150.07" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 .</head><label>2</label><figDesc>Figure 2. Difficult inference: mass spectrometry-based identification of splice variants. Several proteins X 1 ,X 2 , . . . X k matching unique and shared peptide-level evidence. The peptide-level evidence, D is partitioned into unique peptide-level evidence (D 1 ,D 2 , . . . D k ) as well as a collection of shared peptide level evidence shared by all proteins (D (S) ). Graphs of this form are typical when searching mass spectra against protein databases containing substantial redundancy (e.g. databases with many splice variants or close homologs), because these types of proteins share core similarities but also have unique regions that distinguish them from one another. Inference on this type of graph cannot be performed efficiently through protein clustering, protein pruning, or junction tree decomposition; to date, exact Bayesian protein inference on such splice variant graphs has only been performed in super-exponential time. doi:10.1371/journal.pone.0091507.g002</figDesc><graphic coords="2,315.10,60.78,149.55,157.61" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 9 .</head><label>9</label><figDesc>Figure 9. A graph and its cascaded equivalent. (a) A Bayesian network with probabilistic adder nodes N 1,2 and N 1,2,3 . (b)The resulting cascaded graph of probabilistic adder nodes transforms the graph into an equivalent Bayesian network that can be solved efficiently as a convolution tree. Graphs that do not cascade into polytrees (i.e. graphs that have loops even after cascading nodes as shown here) can be solved with a slightly modified junction tree inference algorithm: junction tree clique nodes that consist of a single probabilistic adder node and its inputs can pass messages through convolution tree nodes (without realizing the full conditional probability distribution). doi:10.1371/journal.pone.0091507.g009</figDesc><graphic coords="6,58.05,561.88,329.47,105.96" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 10 .</head><label>10</label><figDesc>Figure 10. Runtime benefit of convolution tree-based junction tree over HUGIN-based junction tree on HeLa data. (a) Distribution of log runtimes for different connected subgraphs (24 fractions). A HUGIN-based junction tree implementation is compared to a probabilistic convolution tree-based junction tree implementation. The cost of inference will be dominated by a few outlier graphs, which do not decompose effectively using the junction tree. As a result, some connected subgraphs would require an impractical number of steps when using the HUGIN algorithm. This runtime can be improved by using probabilistic convolution trees, while still achieving the exact result. (b) One difficult connected subgraph from panel (a). Proteins are shown as red squares, probabilistic adders are shown as blue inverted triangles (these are the nodes can make use of probabilistic convolution trees), spectral evidence is shown as green circles. This subgraph would require 2 103:629 steps using the HUGIN junction tree. In contrast, the probabilistic convolution can solve this same subgraph in 2 12:045 steps (and achieve an exact result). doi:10.1371/journal.pone.0091507.g010</figDesc><graphic coords="7,58.05,60.78,494.19,194.40" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 11 .</head><label>11</label><figDesc>Figure 11. Decomposition of a spectrum into its constituent compounds. (a) A probabilistic demixing (a problem highly related to deconvolution) problem from mass spectrometry. An observed chimeric spectrum with data D is composed of a linear combination of four different compounds and with unknown relative abundances W ,X ,Y ,Z, which we want to infer. Three m=z values that can receive contributions from multiple compounds are labeled with the background colors red, green, and blue. (b) The resulting cascaded graph of probabilistic adder nodes. The variables W ,X ,Y ,Z are discretized into relative abundances of interest. Conditional probabilities individually treat each intensity as proportional to the abundance of the compound that produces it. Data unique to each compound are labeled D W ,D X ,D Y ,D Z , and are conditionally independent given W ,X ,Y ,Z. Shared evidence nodes are colored to correspond to the background colors from (a). Probabilistic adder nodes are cascaded to build a tree for probabilistic inference, enabling the computation of a posterior distribution for the relative abundance of each compound. doi:10.1371/journal.pone.0091507.g011</figDesc><graphic coords="8,58.05,60.78,348.69,327.80" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>'</head><label></label><figDesc>Pr (D(L) jL~') Pr (D (R) jR~n{') Pr (L~',R~n{',N~n) ~X ' Pr (D (L) jL~') Pr (D (R) jR~n{') Pr (L~') Pr (R~n{') ~X ' Pr (D (L) ,L~') Pr (D (R) ,R~n{') ~Pr (D (L) ,L) Ã Pr (D (R) ,R):</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0"><head></head><label></label><figDesc></figDesc><graphic coords="3,58.05,60.77,469.09,257.22" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0"><head></head><label></label><figDesc></figDesc><graphic coords="4,58.05,60.77,348.83,283.07" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0"><head></head><label></label><figDesc></figDesc><graphic coords="4,58.05,522.03,494.96,125.58" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0"><head></head><label></label><figDesc></figDesc><graphic coords="5,58.05,60.78,398.55,177.90" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0"><head></head><label></label><figDesc></figDesc><graphic coords="5,58.05,446.34,349.63,230.91" type="bitmap" /></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" xml:id="foot_0"><p>PLOS ONE | www.plosone.org</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" xml:id="foot_1"><p>March 2014 | Volume 9 | Issue 3 | e91507</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>Acknowledgments</head><p>This research was a product of discussions with <rs type="person">Frank Ciesinski</rs>, <rs type="person">Kai Fritzemeier</rs>, <rs type="person">Christoph Henrich</rs>, <rs type="person">Alexander Makarov</rs>, <rs type="person">Robert Malek</rs>, and <rs type="person">Torsten Ueckert</rs> regarding efficient protein inference via mass spectrometry. Thanks to <rs type="person">Ute Comberg</rs> for searching the spectra and pre-processing the HeLa data, and to the reviewers, whose suggestions helped to improve this manuscript.</p></div>
+			</div>
+			<div type="funding">
+<div><p>This work was created as an employee of <rs type="institution">Thermo Fisher Scientific</rs> (<ref type="url" target="http://www.thermofisher.com/">http://www.thermofisher.com/</ref>) with no external funding. The funder provided support in the form of salaries for author OS, but did not have any additional role in the study design, data collection and analysis, decision to publish, or preparation of the manuscript. The specific roles of this author are articulated in the author contributions section.</p></div>
+			</div>
+			<div type="availability">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Availability</head><p>The python script demonstrating the power-set enumeration, quadratic dynamic programming, and convolution tree approaches is available at <ref type="url" target="https://bitbucket.org/orserang/convolutiontree">https://bitbucket.org/orserang/convolutiontree</ref>.</p></div>
+			</div>
+
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Author Contributions</head><p>Conceived and designed the experiments: OS. Performed the experiments: OS. Analyzed the data: OS. Contributed reagents/materials/analysis tools: OS. Wrote the paper: OS.</p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">A survey of computational methods and error rate estimation procedures for peptide and protein identification in shotgun proteomics</title>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">I</forename><surname>Nesvizhskii</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Proteomics</title>
+		<imprint>
+			<biblScope unit="volume">73</biblScope>
+			<biblScope unit="page" from="2092" to="2123" />
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">A review of statistical methods for protein identification using tandem mass spectrometry</title>
+		<author>
+			<persName><forename type="first">O</forename><surname>Serang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">S</forename><surname>Noble</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Statistics and Its Interface</title>
+		<imprint>
+			<biblScope unit="volume">5</biblScope>
+			<biblScope unit="page" from="3" to="20" />
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Computational approaches to protein inference in shotgun proteomics</title>
+		<author>
+			<persName><forename type="first">Y</forename><forename type="middle">F</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Radivojac</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">BMC bioinformatics</title>
+		<imprint>
+			<biblScope unit="volume">13</biblScope>
+			<biblScope unit="issue">S4</biblScope>
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Protein inference: a review</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>He</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Briefings in bioinformatics</title>
+		<imprint>
+			<biblScope unit="volume">13</biblScope>
+			<biblScope unit="page" from="586" to="614" />
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Machine learning applications in proteomics research: How the past can boost the future</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Kelchtermans</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Bittremieux</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">De</forename><surname>Grave</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Degroeve</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ramon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Proteomics</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<monogr>
+		<title level="m" type="main">Probabilistic graphical models: principles and techniques</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Koller</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Friedman</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+			<publisher>MIT Press</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Graph minors. III. Planar tree-width</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Robertson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">D</forename><surname>Seymour</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Combinatorial Theory, Series B</title>
+		<imprint>
+			<biblScope unit="volume">36</biblScope>
+			<biblScope unit="page" from="49" to="64" />
+			<date type="published" when="1984">1984</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Faster mass spectrometry-based protein inference: Junction trees are more efficient than sampling and marginalization by enumeration</title>
+		<author>
+			<persName><forename type="first">O</forename><surname>Serang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">S</forename><surname>Noble</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Computational Biology and Bioinformatics</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="page" from="809" to="817" />
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+	<note>IEEE/ACM Transactions on</note>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">A Bayesian approach to protein inference problem in shotgun proteomics</title>
+		<author>
+			<persName><forename type="first">Y</forename><forename type="middle">F</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">J</forename><surname>Arnold</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Radivojac</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Sheng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Twelfth Annual International Conference on Computational Molecular Biology</title>
+		<title level="s">Lecture Notes in Bioinformatics</title>
+		<editor>
+			<persName><forename type="first">M</forename><surname>Vingron</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">L</forename><surname>Wong</surname></persName>
+		</editor>
+		<meeting>the Twelfth Annual International Conference on Computational Molecular Biology<address><addrLine>Berlin, Germany</addrLine></address></meeting>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2008">2008</date>
+			<biblScope unit="volume">12</biblScope>
+			<biblScope unit="page" from="167" to="180" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Protein identification problem from a Bayesian point of view</title>
+		<author>
+			<persName><forename type="first">Y</forename><forename type="middle">F</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">J</forename><surname>Arnold</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Radivojac</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Tang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Statistics and Its Interface</title>
+		<imprint>
+			<biblScope unit="volume">5</biblScope>
+			<biblScope unit="page" from="21" to="37" />
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">What does it mean to identify a protein in proteomics</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Rappsilber</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Mann</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Trends in biochemical sciences</title>
+		<imprint>
+			<biblScope unit="volume">27</biblScope>
+			<biblScope unit="page" from="74" to="78" />
+			<date type="published" when="2002">2002</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">iFASP: Combining isobaric mass tagging with filter-aided sample preparation</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Mcdowell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Gaun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Steen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Proteome Research</title>
+		<imprint>
+			<biblScope unit="volume">12</biblScope>
+			<biblScope unit="page" from="3809" to="3812" />
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Efficient marginalization to compute protein posterior probabilities from shotgun mass spectrometry data</title>
+		<author>
+			<persName><forename type="first">O</forename><surname>Serang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">J</forename><surname>Maccoss</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">S</forename><surname>Noble</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Proteome Research</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="page" from="5346" to="5357" />
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Reverend Bayes on inference engines: A distributed hierarchical approach</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Pearl</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Second National Conference on Artificial Intelligence</title>
+		<meeting>the Second National Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="1982">1982</date>
+			<biblScope unit="page" from="133" to="136" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Causal independence for knowledge acquisition and inference</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Heckerman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Ninth international conference on Uncertainty in artificial intelligence</title>
+		<meeting>the Ninth international conference on Uncertainty in artificial intelligence</meeting>
+		<imprint>
+			<date type="published" when="1993">1993</date>
+			<biblScope unit="page" from="122" to="127" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Causal independence for probability assessment and inference using Bayesian networks. Systems, Man and Cybernetics, Part A: Systems and Humans</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Heckerman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Breese</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on</title>
+		<imprint>
+			<biblScope unit="volume">26</biblScope>
+			<biblScope unit="page" from="826" to="831" />
+			<date type="published" when="1996">1996</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">A new look at causal independence</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Heckerman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Breese</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Tenth international conference on Uncertainty in artificial intelligence</title>
+		<meeting>the Tenth international conference on Uncertainty in artificial intelligence</meeting>
+		<imprint>
+			<date type="published" when="1994">1994</date>
+			<biblScope unit="page" from="286" to="292" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<monogr>
+		<title level="m" type="main">Statistical inference for probabilistic functions of finite state Markov chains. The annals of mathematical statistics</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Baum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Petrie</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1966">1966</date>
+			<biblScope unit="volume">37</biblScope>
+			<biblScope unit="page" from="1554" to="1563" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Exploiting Causal Independence in Bayesian Network Inference</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Poole</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Artificial Intelligence Research</title>
+		<imprint>
+			<biblScope unit="volume">5</biblScope>
+			<biblScope unit="page" from="301" to="328" />
+			<date type="published" when="1996">1996</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Loopy belief propagation for approximate inference: An empirical study</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Murphy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Weiss</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Jordan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Fifteenth conference on Uncertainty in artificial intelligence</title>
+		<meeting>the Fifteenth conference on Uncertainty in artificial intelligence</meeting>
+		<imprint>
+			<date type="published" when="1999">1999</date>
+			<biblScope unit="page" from="4067" to="4475" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Introduction to variational methods for graphical models</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">I</forename><surname>Jordan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Ghahramani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">S</forename><surname>Jaakkola</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">K</forename><surname>Saul</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Machine Learning</title>
+		<imprint>
+			<biblScope unit="volume">37</biblScope>
+			<biblScope unit="page" from="183" to="233" />
+			<date type="published" when="1999">1999</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Expectation propagation for approximate Bayesian inference</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Minka</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Seventeenth conference on Uncertainty in artificial intelligence</title>
+		<meeting>the Seventeenth conference on Uncertainty in artificial intelligence</meeting>
+		<imprint>
+			<date type="published" when="2001">2001</date>
+			<biblScope unit="page" from="362" to="369" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">MaxQuant enables high peptide identification rates, individualized ppbrange mass accuracies and proteome-wide protein quantification</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Cox</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Mann</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Nature Biotechnology</title>
+		<imprint>
+			<biblScope unit="volume">26</biblScope>
+			<biblScope unit="page" from="1367" to="1372" />
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<monogr>
+		<title level="m" type="main">HUGIN, a shell for building Bayesian belief universes for expert systems</title>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">K</forename><surname>Andersen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">G</forename><surname>Olesen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><forename type="middle">V</forename><surname>Jensen</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1990">1990</date>
+			<publisher>Morgan Kaufmann Publishers Inc</publisher>
+			<biblScope unit="page" from="332" to="337" />
+			<pubPlace>San Francisco, CA, USA</pubPlace>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">A statistical model for identifying proteins by tandem mass spectrometry</title>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">I</forename><surname>Nesvizhskii</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Keller</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Kolker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Aebersold</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Analytical Chemistry</title>
+		<imprint>
+			<biblScope unit="volume">75</biblScope>
+			<biblScope unit="page" from="4646" to="4658" />
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Protein identification false discovery rates for very large proteomics data sets generated by tandem mass spectrometry</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Reiter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Claassen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">P</forename><surname>Schrimpf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Jovanovic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Schmidt</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Molecular and Cellular Proteomics</title>
+		<imprint>
+			<biblScope unit="volume">8</biblScope>
+			<biblScope unit="page" from="2405" to="2417" />
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Recognizing uncertainty increases robustness and reproducibility of mass spectrometry-based protein inferences</title>
+		<author>
+			<persName><forename type="first">O</forename><surname>Serang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Moruz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">R</forename><surname>Hoopmann</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Proteome Research</title>
+		<imprint>
+			<biblScope unit="volume">11</biblScope>
+			<biblScope unit="page" from="5586" to="5591" />
+			<date type="published" when="2012">2012</date>
+			<publisher>Ka ¨ll L</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<monogr>
+		<title level="m" type="main">The theory of partitions</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Andrews</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1998">1998</date>
+			<publisher>Cambridge University Press</publisher>
+			<biblScope unit="volume">2</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Minimal solutions of linear diophantine systems: bounds and algorithms</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Pottier</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Rewriting Techniques and Applications</title>
+		<imprint>
+			<date type="published" when="1991">1991</date>
+			<biblScope unit="page" from="162" to="173" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Computation of convolutions and discrete Fourier transforms by polynomial transforms</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Nussbaumer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Quandalle</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IBM Journal of Research and Development</title>
+		<imprint>
+			<biblScope unit="volume">22</biblScope>
+			<biblScope unit="page" from="134" to="144" />
+			<date type="published" when="1978">1978</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Turbo decoding as an instance of Pearl&apos;s belief propagation algorithm. Selected Areas in Communications</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Mceliece</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Mackay</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Cheng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Journal on</title>
+		<imprint>
+			<biblScope unit="volume">16</biblScope>
+			<biblScope unit="page" from="140" to="152" />
+			<date type="published" when="1998">1998</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">LDPC codes: An introduction</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Shokrollahi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Coding, cryptography and combinatorics</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2004">2004</date>
+			<biblScope unit="page" from="85" to="110" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

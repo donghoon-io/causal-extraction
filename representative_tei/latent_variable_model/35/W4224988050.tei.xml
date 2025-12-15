@@ -1,0 +1,1851 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Flow-Adapter Architecture for Unsupervised Machine Translation</title>
+				<funder ref="#_CAWcsYA">
+					<orgName type="full">European Research Council</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Yihong</forename><surname>Liu</surname></persName>
+							<email>yihong.liu@tum.de</email>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Informatics</orgName>
+								<orgName type="institution">Technical University of Munich</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Haris</forename><surname>Jabbar</surname></persName>
+							<email>jabbar@cis.lmu.de</email>
+							<affiliation key="aff1">
+								<orgName type="department">Center for Information and Language Processing</orgName>
+								<orgName type="institution">LMU Munich</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Hinrich</forename><surname>Schütze</surname></persName>
+							<affiliation key="aff1">
+								<orgName type="department">Center for Information and Language Processing</orgName>
+								<orgName type="institution">LMU Munich</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Flow-Adapter Architecture for Unsupervised Machine Translation</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-28T23:04+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>In this work, we propose a flow-adapter architecture for unsupervised NMT. It leverages normalizing flows to explicitly model the distributions of sentence-level latent representations, which are subsequently used in conjunction with the attention mechanism for the translation task. The primary novelties of our model are: (a) capturing language-specific sentence representations separately for each language using normalizing flows and (b) using a simple transformation of these latent representations for translating from one language to another. This architecture allows for unsupervised training of each language independently. While there is prior work on latent variables for supervised MT, to the best of our knowledge, this is the first work that uses latent variables and normalizing flows for unsupervised MT. We obtain competitive results on several unsupervised MT benchmarks.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Recent advances in deep learning have boosted the development of neural machine translation (NMT). Typical NMT models leverage an encoder-decoder framework <ref type="bibr" target="#b8">(Cho et al., 2014;</ref><ref type="bibr" target="#b43">Sutskever et al., 2014)</ref>. However, NMT models have been shown to be datahungry, as the number of parallel sentences significantly influences the performance <ref type="bibr" target="#b56">(Zoph et al., 2016)</ref>. Unfortunately, large-scale bilingual corpora are limited to a relatively small subset of languages <ref type="bibr" target="#b0">(Al-Onaizan et al., 2002)</ref>. In contrast to bilingual corpora, monolingual corpora are much easier to obtain.</p><p>Unsupervised NMT, compared with supervised NMT, aims to train a model without parallel data. Some early works <ref type="bibr" target="#b23">(Irvine and Callison-Burch, 2016;</ref><ref type="bibr">Sennrich et al., 2016b;</ref><ref type="bibr" target="#b7">Cheng et al., 2016)</ref> used monolingual corpora to boost performance when parallel data is not abundant. <ref type="bibr">Lample et al. (2018a)</ref> and <ref type="bibr" target="#b2">Artetxe et al. (2018)</ref> explored the possibility of training a model relying only on mono- lingual corpora. They both leveraged a sharedencoder architecture in order to generate universal representations, trained with techniques such as initial word-by-word translation through bilingual dictionaries <ref type="bibr">(Lample et al., 2018b;</ref><ref type="bibr" target="#b1">Artetxe et al., 2017)</ref>, denoising auto-encoding (DAE) <ref type="bibr" target="#b49">(Vincent et al., 2008)</ref> and iterative back-translation (BT) <ref type="bibr" target="#b22">(Hoang et al., 2018)</ref>. However, <ref type="bibr" target="#b51">Yang et al. (2018)</ref> argued that it is a bottleneck in such shared-encoder models to use a shared encoder that maps pairs of sentences of different languages to the same shared latent space. They proposed to use two independent encoders sharing part of their weights and achieved better results. But all of those aforementioned approaches trained the translation models almost from scratch (with only some prior knowledge in the pre-trained embeddings) and therefore it is hard to further advance their performance.</p><p>More recently, with the advance in pre-trained models <ref type="bibr" target="#b35">(Peters et al., 2018;</ref><ref type="bibr" target="#b10">Devlin et al., 2019)</ref>, researchers have begun to explore the possibility of using pre-trained models for unsupervised NMT. <ref type="bibr" target="#b9">Conneau and Lample (2019)</ref> extended the pre-training from a single language to multiple languages, referred to as cross-lingual pre-training. By using pre-trained cross-language models (XLMs) to initialize encoder and decoder, they achieved good unsupervised MT performance on multiple language pairs. In related work, <ref type="bibr" target="#b41">Song et al. (2019)</ref> proposed masked sequence to sequence pre-training (MASS), which directly pre-trains a whole encoder-decoder model. <ref type="bibr">Üstün et al. (2021)</ref> proposed a language-specific denoising-adapter architecture to increase the multilingual modeling capacity of the pre-trained model mBART <ref type="bibr" target="#b32">(Liu et al., 2020)</ref> and used these adapters for multilingual unsupervised NMT. Although these adapters are trained with monolingual data only, the finetuning step relies on parallel data.</p><p>Current NMT frameworks rely heavily on the attention mechanism <ref type="bibr" target="#b4">(Bahdanau et al., 2015;</ref><ref type="bibr" target="#b48">Vaswani et al., 2017)</ref> to capture alignments. However, attention-based context vectors can fail to extract sufficiently accurate sentence-level semantics and thus result in incorrect translations or translation ambiguity <ref type="bibr" target="#b46">(Tu et al., 2016;</ref><ref type="bibr" target="#b54">Zhang et al., 2016)</ref>. To tackle this issue, several variational frameworks for modeling the translation process have been proposed <ref type="bibr" target="#b54">(Zhang et al., 2016;</ref><ref type="bibr" target="#b13">Eikema and Aziz, 2019;</ref><ref type="bibr" target="#b39">Setiawan et al., 2020)</ref>. These approaches incorporate sentence-level latent representations into NMT. A latent representation, in the context of this paper, is a fixed-size continuous vector from an unknown distribution that captures the semantics of a source sentence. The target sentence is then generated from this latent representation using a simple transformation along with the attention mechanism commonly found in transformer architectures. In this way, when the attention mechanism learns incorrect alignments, the latent representation plays a complementary role in guiding the translation.</p><p>Prior work in this vein has only been conducted in supervised NMT. In this paper, we propose a flow-adapter architecture for unsupervised NMT. Similar to variational methods, we model the distribution of sentence-level representations. However, unlike variational methods, which model the distribution in an implicit way, we use a pair of normalizing flows to explicitly model the distributions of source and target languages. Secondly, different from some previous unsupervised NMT models that assume that the representations of source and target sentences share a common semantic space, we assume the representations are different because of language-specific characteristics. Hence they are modeled separately for each language. Subsequently a simple transformation converts source representations into target representations. This makes it possible to better capture sentence semantics in a language-specific manner. Lastly, instead of minimizing KL loss, the flows are directly trained by maximum likelihood estimation (MLE) of sentence-level latent representations. This gives the latent representations more flexibility.</p><p>Our main contributions: (1) We propose a novel flow-adapter architecture. It uses normalizing flows to explicitly model the distributions of sentence-level representations and performs a latent representation transformation from source to target. To the best of our knowledge, this is the first work that uses latent variables and normalizing flows for unsupervised NMT.</p><p>(2) Experiments show the validity and effectiveness of our flow-adapter architecture. It performs very well in unsupervised NMT on several language pairs on the Multi30K dataset. When additionally using pre-trained models, we achieve results competitive with the state of the art on WMT datasets, especially for en-fr (WMT'14) and en-ro (WMT'16).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Background</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.1">Normalizing Flows</head><p>Normalizing flows (NFs) are a special type of deep generative model. Different from generative adversarial networks (GAN) <ref type="bibr" target="#b17">(Goodfellow et al., 2014)</ref> and variational auto-encoding (VAE) (Kingma and Welling, 2014), NFs allow for not only sampling but also exact density estimation. Due to such desirable properties, in recent years, they have been successfully applied to fields such as image <ref type="bibr" target="#b21">(Ho et al., 2019;</ref><ref type="bibr" target="#b25">Kingma and Dhariwal, 2018)</ref>, audio <ref type="bibr" target="#b16">(Esling et al., 2019;</ref><ref type="bibr">van den Oord et al., 2018)</ref> and video generation <ref type="bibr" target="#b28">(Kumar et al., 2019)</ref>. In addition to significant achievements in modeling continuous data, NFs have also been used for modeling discrete data, either by directly modeling the data in discrete space <ref type="bibr" target="#b45">(Tran et al., 2019;</ref><ref type="bibr" target="#b20">Hesselink and Aziz, 2020)</ref> or by transforming the discrete data into continuous space <ref type="bibr" target="#b55">(Ziegler and Rush, 2019;</ref><ref type="bibr" target="#b44">Tang et al., 2021)</ref>.</p><p>NFs transform between two distributions based on the following change-of-variables formula (we follow the introduction of <ref type="bibr" target="#b11">(Dinh et al., 2015</ref><ref type="bibr" target="#b12">(Dinh et al., , 2017</ref>)):</p><formula xml:id="formula_0">log p x (x) = log p z (z) + log det ∂f θ (z) ∂z -1<label>(1)</label></formula><p>where z ∼ p z (z) and x ∼ p x (x) denote two vectors from a simple latent distribution p z (z) and a complex distribution of the observed data p x (x), f θ is an invertible and differentiable function (neural network with parameters θ), f θ (z) = x and det ∂f θ (z) ∂z denotes the determinant of the Jacobian matrix of f θ . The idea of NFs is to learn an f θ such that f θ and f -1 θ transform between the latent space p z (z) and the observed space p x (x).</p><p>Constructing a single arbitrarily complex invertible and differentiable function is usually cumbersome. Therefore, a generally adopted approach is to stack multiple transformations</p><formula xml:id="formula_1">f i together, i.e., x = f θ (z) = f K • • • • • f 1 (z). Similarly, for the reverse direction we have z = f -1 θ (x) = f -1 1 • • • • • f -1 K (x)</formula><p>, whose Jacobian matrix is efficient to compute. Here K denotes the number of sequential flows (e.g., K = 3 in Table <ref type="table">1</ref>).</p><p>Normalizing flows are usually optimized by MLE of the parameters θ, i.e., log p(D|θ) = N n=1 log p x (x (n) |θ), where N is the data size. By applying a variant of the change-of-variable formula in Equation (1), i.e., log p x (x) = log p z (f -1 θ (x)) + log det</p><formula xml:id="formula_2">∂f -1 θ (x) ∂x</formula><p>, the MLE objective can be reformulated as follows:</p><formula xml:id="formula_3">log p(D|θ) = N n=1 log p z (f -1 θ (x (n) )|θ) + log det ∂f -1 θ (x (n) ) ∂x (n) |θ</formula><p>(2)</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.2">Latent-variable (variational) NMT</head><p>Compared with standard encoder-decoder based NMT models, latent-variable (variational) approaches <ref type="bibr" target="#b54">(Zhang et al., 2016;</ref><ref type="bibr" target="#b13">Eikema and Aziz, 2019;</ref><ref type="bibr" target="#b33">Ma et al., 2019;</ref><ref type="bibr" target="#b6">Calixto et al., 2019;</ref><ref type="bibr" target="#b39">Setiawan et al., 2020;</ref><ref type="bibr" target="#b40">Shu et al., 2020)</ref> additionally leverage latent random variables. Let x be a sentence from the source language and y be its translation in the target language. Then, the variational NMT framework introduces a continuous random latent variable z for the translation modeling, i.e., p(y|z, x). With the introduction of z, the conditional probability p(y|x) can then be reformulated as follows:</p><formula xml:id="formula_4">p(y|x) = z p(y|z, x)p(z|x)dz<label>(3)</label></formula><p>In this way, z serves as a global semantic signal that is helpful to counteract incorrect alignments the model has learned and uses through attention. However, the integration of z poses challenges for inference. To address this problem, variational NMT adopts techniques from VAE <ref type="bibr" target="#b26">(Kingma and Welling, 2014;</ref><ref type="bibr" target="#b36">Rezende et al., 2014)</ref>, namely, neural approximation and the reparameterization trick.</p><p>Neural approximation leverages a neural network to approximate the posterior distribution p(z|x, y) with q ϕ (z|x, y), where ϕ denotes the parameters of the neural network. In most works, q ϕ (z|x, y) is designed as a diagonal Gaussian N (µ, diag(σ 2 )), where the mean µ and the variance σ 2 are parameterized with neural networks.</p><p>Reparameterization means that the latent random variable z is parameterized as a function of the mean µ and the variance σ 2 . In this way, the gradient with respect to the parameters µ and σ 2 can be computed. The reparameterization of z is often carried out in a location-scale manner: z = µ + σ ⊙ ϵ where ϵ ∼ N (0, 1)</p><p>With these two techniques, the learning objective of variational NMT is the evidence lower-bound or ELBO of the conditional probability p(y|x):</p><formula xml:id="formula_5">L(θ, ϕ; x, y) = -KL(q ϕ (z|x, y)||p θ (z|x)) + E q ϕ (z|x,y) [log p θ (y|z, x)]<label>(4)</label></formula><p>where p θ (z|x) is the prior distribution modeled by a neural network and p θ (y|z, x) is modeled by the decoder given the input source sentence x and the latent variable z. The KL term minimizes the discrepancy between the prior p θ (z|x) and the posterior q θ (z|x, y). In the inference step, z can therefore be sampled from the prior, which only requires x instead of the posterior that requires both x and y. Although this variational framework leverages latent variables, which are helpful for translation, it still has some flaws: 1) training a variational NMT framework requires parallel corpora to construct the posterior q ϕ (z|x, y) and such parallel corpora are not available for unsupervised MT; 2) the distribution family of the latent variables, e.g., p θ (z|x), is pre-defined, e.g., a Gaussian, which might restricts the advantage of using a complex posterior; 3) as variational NMT leverages z sampled from p θ (z|x) for inference, an underlying assumption is that z should be the same whether only x is considered or both x and y are considered. In other words, this framework assumes z is language-agnostic, which might not be true since language-specific characteristics can influence the generation of z.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Flow-Adapter Based Framework</head><p>In this work, we want to reap the benefits of introducing latent variables into unsupervised MT while at the same time avoiding the flaws of variational NMT we just discussed. Therefore, we propose a flow-adapter based framework that uses two NFs to explicitly model the distribution of the sentence-level latent representations of the source and target sentences. In this way, we can take account of multilinguality in unsupervised MT and make use of language-specific sentence-level representations. During the translation process, a latent code transformation is performed to transform the source-language representation into the targetlanguage representation so that the decoder can leverage them to generate a better target-language sentence. We will first introduce the sentence-level representation as well as the latent code transformation in Section 3.1, followed by the description of the flow-adapter based framework for unsupervised MT in Section 3.2.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Modeling Representation by NFs &amp; Latent Code Transformation</head><p>As previously mentioned, variational methods such as <ref type="bibr" target="#b54">(Zhang et al., 2016;</ref><ref type="bibr" target="#b39">Setiawan et al., 2020)</ref> assume that the semantics of the source sentence x and target sentence y are the same and thus the generated latent variable z is the same regardless of whether we only consider x or consider both x and y. Unsupervised NMT methods such as <ref type="bibr">(Lample et al., 2018a;</ref><ref type="bibr" target="#b9">Conneau and Lample, 2019)</ref> similarly assume that a shared encoder maps source and target sentences into a shared latent space.</p><p>In this work, however, we diverge from this assumption and follow <ref type="bibr" target="#b51">Yang et al. (2018)</ref> in adopting the desideratum that the unique and internal characteristics of each language be respected. One could think that the semantics of a pair of sentences should theoretically be the same; but in reality, because of language-specific characteristics, the latent representations z obtained by an encoder can be different for source and target sentences. Differ-ences in vocabulary, pragmatics and other linguistic properties all influence the generation of the latent representations. Therefore, we consider the latent representations from a different perspective as follows. We can view z x and z y as expressions of the sentence-level representations in two distinct languages based on the same semantics ϵ where ϵ is truly language-agnostic. z x and z y are obtained by applying parameter-free techniques such as pooling to the output of the encoder fed with source and target languages (see Section 3.2 for details).</p><p>Modeling by NFs. For our unsupervised scenario, we propose to explicitly model the distributions of the sentence-level representations of both source and target sentences -i.e., p zx (z x ) and p zy (z y ) -using NFs with K sequential flows:</p><formula xml:id="formula_6">p zx (z x ) = p ϵ (ϵ) K i=1 det ∂f (i) x (z (i) ) ∂z (i)</formula><p>-1</p><p>(5)</p><formula xml:id="formula_7">p zy (z y ) = p ϵ (ϵ) K i=1 det ∂f (i) y (z (i) ) ∂z (i) -1<label>(6)</label></formula><p>where p ϵ (ϵ) is a base distribution, e.g., the standard normal distribution; f</p><formula xml:id="formula_8">(i)</formula><p>x and f</p><formula xml:id="formula_9">(i)</formula><p>y are the i th transformations for the source and target languages, respectively; and z (i) is the intermediate variable where we define z (1) = ϵ and z (K) = z x or z y for notational convenience. The base distribution can be viewed as the "true" underlying semantic space, abstracting away from language specifics.</p><p>Our transformation to the sentence-level representations is similar to <ref type="bibr" target="#b31">(Li et al., 2020)</ref>. They argued that BERT induces a non-smooth anisotropic semantic space of sentences, which can harm its accurate representation of semantic similarity. Therefore, they also used NFs to transform the anisotropic BERT sentence-level distribution to a standard Gaussian distribution that is smooth and isotropic and reported better performance on some sentence-level similarity tasks. By using this type of sentence-level representation, the semantics of sentences from different languages can therefore be aligned in a simple common space in an unsupervised way, which we show is effective for unsupervised MT.</p><p>For simplicity, we denote the NFs for transforming the distributions of source and target sentencelevel representations to the base distribution as mappings G (zx→ϵ) and G (zy→ϵ) . Because of the Figure <ref type="figure">2</ref>: Top two diagrams: denoising auto-encoding for source and target sentences. Bottom two diagrams: iterative back-translation for source and target sentences. M (x, l 2 ) (resp. M (y, l 1 )) denotes the target-language (resp. source-language) sentence generated by applying the current translation model M to the source-language sentence x (resp. the target-language sentence y). l 1 (the source language) and l 2 (the target language) are the parameters specifying the aim of the translation direction of M . xsrc (resp. ỹtgt ) is the reconstruction of x src (resp. y tgt ). (f) indicates the flow transforms forward from z to ϵ while (b) for backward transformation, i.e., from ϵ to z.</p><p>invertibility property of NFs, these mappings are also invertible, and we have</p><formula xml:id="formula_10">G (ϵ→zx) = G -1 (zx→ϵ)</formula><p>and G (ϵ→zy) = G -1 (zy→ϵ) . Latent Code Transformation. Inspired by AlignFlow <ref type="bibr" target="#b18">(Grover et al., 2020)</ref>, we consider the cross-domain transformation between z x and z y . In this way, we can formulate a language-specific latent code for the decoder. We formalize the cross-language latent code transformation from the source to the target language as follows:</p><formula xml:id="formula_11">G (zx→zy) = G (ϵ→zy) • G (zx→ϵ)<label>(7)</label></formula><p>The target-to-source latent code transformation is then the composition of G (ϵ→zx) and G (zy→ϵ) . As G (ϵ→zy) and G (ϵ→zx) are the inverse mappings of G (zy→ϵ) and G (zy→ϵ) , we can easily obtain them with normalizing flows, such as realNVP <ref type="bibr" target="#b12">(Dinh et al., 2017)</ref> and <ref type="bibr">Glow (Kingma and Dhariwal, 2018)</ref>. We also note that G (zx→zy) and G (zy→zx) are both invertible since they are compositions of two invertible mappings. Moreover, G (zx→zy) is the inverse of G (zy→zx) and vice versa (see Appendix A.1 for details).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Flow-Adapter Based Unsupervised Machine Translation</head><p>The general architecture is shown in Figure <ref type="figure" target="#fig_0">1</ref>. The transformer architecture <ref type="bibr" target="#b48">(Vaswani et al., 2017)</ref> is used for both encoder and decoder. We use source encoder/decoder to denote the encoder/decoder for encoding/generating the source-language sentence. Similarly, target encoder/decoder refer to the encoder/decoder encoding/generating the targetlanguage sentence. The decoders work in an autoregressive way. Source flow and target flow are NFs for modeling the sentence-level latent representations of the source and target language, respectively, as introduced in Section 3.1.</p><p>Encoding. The source encoder and the target encoder work in the same way; for brevity, we only describe the procedure of encoding the source sentence and how z x is generated. The source encoder takes the source sentence x = {x 0 , • • • , x S } as input and generates the hidden representations {h 0 , • • • , h S }. These hidden representations will be used as encoder-decoder attentional inputs. In addition, we use the hidden representations to generate a sentence-level representation for the source sentence by applying max-pooling and mean-pooling to the token-level representations. After that, we sum up the results with the CLS representation h 0 , which usually encodes some global information. Finally, we use a projection matrix W to project the resulting vector to a latent space. The output is referred to as z x , i.e., the sentence-level representation of the source sentence (see Appendix A.2 for equation and illustration).</p><p>Cross-lingual Translation. We hypothesize that the decoder can better leverage language-specific latent representations (i.e., z x for the source decoder and z y for the target decoder) than indiscriminately using the same representational space for source and target, e.g., z x for the target decoder. Therefore, we propose to perform a latent code transformation for cross-language translation as shown in Figure <ref type="figure" target="#fig_0">1</ref>. If the model is performing the translation in the source-to-target direction, the source flow first transforms the source latent representation z x into ϵ, which is a vector in the semantic base space. Then the target flow transforms ϵ back into z y , which is in the target latent representation space. Then z y is used in the target decoder for generating the target sentence.</p><p>Denoising Auto-Encoding (DAE) and Back Translation (BT) Processes. The DAE reconstructs a sentence from its noised version. For inducing noise, we use the same strategy which is used by <ref type="bibr">(Lample et al., 2018a</ref>) (For more details, please refer to Appendix A.3). Since we train the DAEs separately for source and target languages, hence we don't need a latent code transformation there. For BT, however, such a latent code transformation is performed twice; taking BT for the source language as an example: first in the source-to-target direction, then in the target-to-source direction as shown in Figure <ref type="figure">2</ref>.</p><p>Decoding. To enable the decoder to capture the global semantics and mitigate improper alignments, we use the procedure outlined in <ref type="bibr" target="#b39">(Setiawan et al., 2020)</ref>, and incorporate the latent representation z into the output of the last layer of the decoder {s 0 , • • • , s T }:</p><formula xml:id="formula_12">o i = (1 -g i ) ⊙ s i + g i ⊙ z<label>(8)</label></formula><p>where</p><formula xml:id="formula_13">g i = σ([s i ; z]), σ(•)</formula><p>is the sigmoid function, ⊙ denotes Hadamard product between two vectors, and o i is the logit vector used to generate a prediction at the i th position. The values in g i control the contribution of z to o i . In case the dimension of the latent representation does not match the dimension of the decoder output, a linear projection maps z to the desired dimension.</p><p>Training. Our flow-adapter framework has three learning objectives: DAE, BT and MLE of the sentence-level representations. The description of DAE and BT is omitted here as they are well known from related work <ref type="bibr">(Lample et al., 2018a;</ref><ref type="bibr" target="#b2">Artetxe et al., 2018)</ref>. A single training iteration consists of a DAE step followed by a BT step as shown in Figure <ref type="figure">2</ref>. MLE computation is integrated into the DAE step to calculate the likelihood of the sentence-level representations. Our MLE learning objective for the source monolingual dataset can be formulated as follows (similar for the target dataset, omitted):</p><formula xml:id="formula_14">L M LE (G (zx→ϵ) ) = E z∼pz x [log p zx (z)] (9)</formula><p>where</p><formula xml:id="formula_15">p zx (z) = p ϵ (G (zx→ϵ) (z)) det ∂G (zx→ϵ) ∂z x zx=z (<label>10</label></formula><formula xml:id="formula_16">)</formula><p>by definition of the source NFs in Equation <ref type="formula">5</ref>. E z∼pz x is approximated via mini-batches of sentence-level latent representations generated by the encoder in the training process. By training the source flow and the target flow with this MLE loss, the flows can therefore transform between the language-specific latent space of the representations and the base semantic space. In this way, the latent code transformations, i.e., G (zx→zy) and G (zy→zx) can be constructed.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Experiments</head><p>4.1 Datasets Multi30K task1 dataset <ref type="bibr" target="#b15">(Elliott et al., 2016</ref><ref type="bibr" target="#b14">(Elliott et al., , 2017</ref>).<ref type="foot" target="#foot_0">foot_0</ref> This is a multi-modal dataset that has 30,000 images annotated with captions in English, German and French. Similar to <ref type="bibr">(Lample et al., 2018a)</ref>, we only use the caption of each image. The officially provided train, validation and test sets are used. We use this dataset as a small-scale test for validating the effectiveness of our methods. WMT datasets.<ref type="foot" target="#foot_1">foot_1</ref> Our experiments are run with the settings that were used for XLM <ref type="bibr" target="#b9">(Conneau and Lample, 2019)</ref>. XLM uses the monolingual data from the WMT News Crawl datasets<ref type="foot" target="#foot_2">foot_2</ref> . We report results on newstest2014 en-fr, newstest2016 en-de and newstest2016 en-ro.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Setups</head><p>Preprocessing. We tokenize the sentences with the Moses script <ref type="bibr" target="#b27">(Koehn et al., 2007)</ref>. For the Multi30K dataset, we process it similar to <ref type="bibr">Lample et al. (2018a)</ref>. Specifically, the sentences are randomly divided into two parts. The sourcelanguage monolingual dataset is built from the source-language sentences in the first part and the target-language dataset from the second part. In this way, there will be no exact translations of any sentences in the datasets. For the WMT datasets, we use the preprocessing methods from <ref type="bibr" target="#b9">(Conneau and Lample, 2019)</ref>. For the English-Romanian dataset, we remove the diacritics as done by <ref type="bibr">Sennrich et al. (2016a)</ref> to avoid their inconsistent usage in the Romanian part of the dataset.</p><p>Metric &amp; Performance. We use BLEU as metric <ref type="bibr" target="#b34">(Papineni et al., 2002)</ref> for all our experiments. Although <ref type="bibr" target="#b3">Artetxe et al. (2020)</ref>   <ref type="table">1</ref>: BLEU of our flow-adapter model for multilingual translation on Multi30K. Baseline: model without our proposed flow-adapter architecture. 3-scf or 3-glow models: baseline models with the flow-adapter architecture constructed by two realNVP NF models or Glow NF models, each of which consists of 3 sequential flows, for performing the latent code transformation in that translation direction.</p><p>unsupervised validation criteria for systematic tuning, we follow the setting of <ref type="bibr" target="#b9">(Conneau and Lample, 2019;</ref><ref type="bibr" target="#b41">Song et al., 2019)</ref> and use the provided parallel validation sets for tuning hyperparameters. We report the results on the test sets of the models that achieve best performance on the validation sets.</p><p>Pre-trained Embeddings &amp; Models. We use the pre-trained MUSE<ref type="foot" target="#foot_3">foot_3</ref>  <ref type="bibr">(Lample et al., 2018b)</ref> embeddings for the multilingual unsupervised MT experiment (Table <ref type="table">1</ref>). We also leverage pre-trained cross-lingual models in the experiment of shared &amp; separate decoder(s) (Table <ref type="table">2</ref>). Specifically, XLM models from HuggingFace<ref type="foot" target="#foot_4">foot_4</ref>  <ref type="bibr" target="#b50">(Wolf et al., 2020)</ref> are used to initialize the encoder. Moreover, we also incorporate our flow-adapter architecture directly into the codebase of the original implementation of XLM<ref type="foot" target="#foot_5">foot_5</ref> for the WMT dataset experiment (Table <ref type="table">3</ref>). In this case, the encoder and decoder are both initialized with pre-trained models. Details of these models can be found in Appendix A.3.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">Results of Multilingual Unsupervised Machine Translation on Multi30K</head><p>As Multi30K provides parallel test data for English, French and German, we first conduct experiments to show the multilingual translation ability of our flow-adapter models. The results are shown in Table 1. The baseline model (without flow-adapter architecture) is trained with only DAE loss, while the flow-adapter based models (3-scf and 3-glow) are additionally trained with MLE loss for the NFs. 3-scf (resp. 3-glow) is the baseline model with two realNVP NF models <ref type="bibr">(Dinh et al., 2017) (resp. Glow NF models (Kingma and</ref><ref type="bibr" target="#b25">Dhariwal, 2018)</ref>) , each of which consists of 3 sequential flows. Each NF model is used to model the sentence-level represen-tations of one specific language, and two NF models then construct a flow-adapter for that translation direction (as shown in Figure <ref type="figure" target="#fig_0">1</ref>). The flow-adapter based models additionally perform the latent code transformation to generate a language-specific representation while the baseline model does not perform such a transformation.</p><p>For this experiment, we use the pre-trained crosslingual word embeddings (MUSE embeddings) and randomly initialize a shared encoder and a shared decoder for all three languages. It is worth noting that the training objective does not contain the iterative back-translation. For further research where there are far more languages accommodated, random online back-translation (ROBT) proposed by <ref type="bibr" target="#b53">Zhang et al. (2020)</ref> could be considered.</p><p>Table <ref type="table">1</ref> shows improvements over all six translation directions by using the flow-adapter architecture. Notably, our 3-scf and 3-glow models achieve 19.83 and 20.14 BLEU scores, respectively, on deen, which is 0.52 and 0.83 higher than the baseline model. Similar improvements can also be seen on other translation directions. Our 3-scf model has BLEU scores that are 0.46 to 0.88 higher than the baselines while our 3-glow model has BLEU scores that are 0.04 to 0.83 higher than the baselines. The overall improvements show that the flow-adapter can generate more suitable sentence-level representations by performing the latent code transformation, which is helpful for the decoder to capture the semantics and generate more suitable translations.</p><p>We also find that the translation performance is closely related to the language pair and the translation direction for both the baseline models and flow-adapter models. Our models obtain very good performance on en-fr, with performances in both the en-fr or fr-en directions better by 16 BLEU points. For other language pairs (including enfr), there is always one direction showing better performance than the other. Specifically, de-en achieves more than 19 BLEU points compared with 12 points for en-de, and de-fr achieves more than 11 BLEU points compared with 8.5 for fr-de.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.4">Results of Shared-Decoder &amp; Separate-Decoder Models on Multi30K</head><p>We present the performance of our flow-adapter models under the shared-decoder and separatedecoder settings on Multi30K. For this experiment, the encoder is initialized with the pre-trained XLM model and fixed; the decoder parameters are ran-  <ref type="bibr">(Lample et al., 2018a) 22.74 26.26 32.76 32.07</ref> Table <ref type="table">2</ref>: BLEU of the flow-adapter models and unsupervised SOTA model, i.e., UNMT <ref type="bibr">(Lample et al., 2018a)</ref>, on Multi30K. Baseline models use pre-trained XLMs from HuggingFace as the encoder and randomly initialized decoder(s) without the flow-adapter. (separate decoders): two independent and randomly initialized decoders are used, each for decoding a specific language. (shared decoder): a single shared decoder for decoding both languages is used. 3-scf and 3-glow (as defined in Table <ref type="table">1</ref> and<ref type="table">Section 4.</ref>3) denote the baseline models with the flow-adapter architecture. We report the results of UNMT from their original paper.</p><p>domly initialized and then trained. We also report the performance of a previous SOTA model, i.e., UNMT <ref type="bibr">(Lample et al., 2018a)</ref>. 7 The results are shown in Table <ref type="table">2</ref>. First, we notice that the shareddecoder baseline model obtains very low BLEU scores. By checking the translation generated, we find the model only copies the input as translation. This phenomenon shows that this baseline, which does not perform the latent code transformation, cannot model two languages simultaneously well, and thus cannot generate translations in the desired language domains. However, by incorporating the flow-adapter, the models will no longer have this limitation. Both shared-decoder models, i.e., 3-scf and 3-glow, achieve very good performance on all translation pairs. For example, the 3-scf model obtains BLEU scores of 25.80, 28.92, 39.26 and 36.84 on en-de, de-en, en-fr and fr-en, which are much higher than the baseline.</p><p>Compared with the shared-decoder scenario, the models under the separate-decoder setting do not suffer from the copying problem, because different decoders are used to specifically model and generate sentences in distinct language domains. The downside, however, is that using multiple decoders at the same time can substantially increase the number of trainable parameters. Within the separatedecoder models, the flow-adapter models generally perform better than the baseline model, with about 1 BLEU increase on en-de and de-en directions and relatively smaller improvements on en-fr and fr-en. Those improvements demonstrate that the model can benefit from the flow-adapter architectures as language-specific latent representations are used, thus advancing the translation quality.</p><p>We also observe that the separate-decoder mod-7 UNMT did not use pre-trained models. The results are therefore not strictly comparable to ours. els generally perform better than the shareddecoder models. The separate-decoder baseline is much better than its counterpart as it avoids the copying problem. For the 3-scf flow-adapter models, we find that the separate-decoder model outperforms the shared-decoder model by 2.44, 1.71, 0.38 on en-de, de-en and en-fr. However, on fr-en, the shared-decoder model achieves a BLEU socre that is by 0.39 BLEU points better. A similar phenomenon can also be seen for the 3-glow model. We conjecture this is due to the similarity between languages. As English and French share common vocabulary, some common features can therefore be captured by a shared decoder, thus improving its generalization.</p><p>Lastly, when compared with UNMT, our models show superiority, improving performance by more than 4 BLEU points in each direction. We attribute the improvements to the usage of the pre-trained model and incorporation of languagespecific sentence-level representations obtained by our latent code transformation.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.5">Results on WMT datasets</head><p>We further integrate our flow-adapter architecture into the original implementation of XLM <ref type="bibr" target="#b9">(Conneau and Lample, 2019)</ref> and conduct experiments on the WMT datasets. To fully leverage the pretrained models, we initialize both the encoder and decoder with XLM models and set them trainable. In contrast to the experiment in Section 4.4, a single shared decoder is used for this experiment, since the decoder is also initialized with the pre-trained model and has far more parameters compared with the randomly initialized transformer decoder we use in Section 4.4. We report the performance of the flow-adapter based models (5-scf and 5-Models en-de de-en en-ro ro-en en-fr fr-en XLM (EMD + EMD) <ref type="bibr" target="#b9">(Conneau and Lample, 2019)</ref> 21.30 27.30 27.50 26.60 29.40 29.40 XLM (MLM + MLM) <ref type="bibr" target="#b9">(Conneau and Lample, 2019</ref><ref type="bibr">) 26.40 34.30 33.30 31.80 33.40 33.30 5-scf 26.50 32.63 34.11 31.69 35.77 33.72 5-glow 26.43 32.04 33.87 31.32 35.25 33.12 MASS (Song et al., 2019</ref><ref type="bibr">) 28.30 35.20 35.20 33.10 37.50 34.90 CSP and fine-tuning (Yang et al., 2020)</ref> 28.70 35.70 --37.90 34.50</p><p>Table <ref type="table">3</ref>: BLEU of the flow-adapter models (5-scf and 5-glow) and SOTA models on WMT datasets. XLM (MLM + MLM) is the baseline in this table, as 5-scf and 5-glow use it as the base model for the flow-adapter architecture.</p><p>We report the results of XLM, MASS and CSP from the original paper.</p><p>glow 8 ) as well as the performance of the SOTA models, namely XLM, MASS and CSP. 9 The results are shown in Table <ref type="table">3</ref>. Noticeably, both of our flow-adapter models achieve remarkable performance on all language pairs. Compared with the results of XLM (EMD + EMD), which uses the pre-trained cross-lingual embeddings instead of pre-trained models, both 5-scf and 5-glow achieve overall better performance. For example, 3-scf achieves BLEU scores higher by 5. <ref type="bibr">20, 5.33, 6.61, 5.09, 6.37 and 4</ref>.32 on en-de, de-en, en-ro, ro-en, en-fr and fr-en, respectively. While not being as good as 5-scf, 5-glow still shows superiority over XLM (EMD + EMD). These improvements can be contributed to (1) the usage of pre-trained models and (2) the introduction of the flow-adapter. We further compare our flow-adapter based models with XLM (MLM + MLM), which is also initialized with pre-trained models. We find the performance of x-en directions is consistently lower than en-x directions for our models except for ende. This pattern is not limited to our architecture but is consistently present in prior work. We, again, speculate this is relating to the complexity of languages as well as similarity between languages. We leave this finding for future investigation. Our flow-adapter based models, though achieving similar or relatively worse BLEU scores on de-en and ro-en compared with XLM (MLM + MLM), obtain higher scores on other directions, i.e., en-de and en-ro, suggesting that our models might be more helpful on specific translation directions, as the flow-adapter generates language-specific rep-8 Preliminary experiments showed that using 5 flows provides slightly better results than 3 flows for WMT as WMT has many more sentences than Multi30K and therefore more powerful generative models (by adding more intermediate flows) are needed to model the sentence-level representations. 9 We follow prior convention and compare directly with MASS and CSP even though dataset processing for MASS and CSP (e.g., filtering, sampling) are not strictly the same as for XLM. But the difference is small and results would not be much different as <ref type="bibr">Yang et al. (2020) mentions.</ref> resentations. Lastly, 5-scf achieves scores by 2.37 and 0.42 better than XLM (MLM + MLM) on en-fr and fr-en. As in the other experiments, the improvement due to flow adapters seems to be related to the languages involved in that language pair and the translation directions. We would like to investigate this phenomenon in future research.</p><p>Finally, out models are competitve with MASS and CSP, with only small differences in BLEU. In general, the experiments shows the validity and effectiveness of our flow-adapter architecture integrated into pre-trained models.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Conclusion</head><p>In this work, we propose a novel flow-adapter architecture for unsupervised NMT. The flow-adapter employs a pair of NFs to explicitly model the distributions of the sentence-level representations. A latent code transformation is performed in translation, which enables the decoder to better capture the semantics of sentences in certain language domains. Through extensive experiments, we show the flow-adapter can improve multilingual translation ability. Moreover, it can alleviate the copying problem. By integrating the flow-adapter into pretrained XLM models, we achieve results competitive to state-of-the-art models on WMT datasets.</p><p>In the future, we would like to explore the possibility of pre-training the flow-adapter simultaneously when pre-training the language models so that the flows can learn more information. Moreover, we would like to extend normalizing flows to language generation. By using different flows for different languages, multilingual language generation of the same semantics can be performed.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A Appendix</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.1 Proof of the Invertibility</head><p>The following proof is based on the proof by <ref type="bibr" target="#b18">Grover et al. (2020)</ref> and shows the source-to-target latent code transformation is the inverse of the target-tosource latent code transformation, and vice versa:</p><formula xml:id="formula_17">G -1 (zx→zy) = (G (ϵ→zy) • G (zx→ϵ) ) -1 = G -1 (zx→ϵ) • G -1 (ϵ→zy) = G (ϵ→zx) • G (zy→ϵ) = G (zy→zx)<label>(11)</label></formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.2 Generation of Sentence-level Representation</head><p>The following formula shows the process of how the sentence-level representation is generated:</p><formula xml:id="formula_18">z = Linear(max-pool([h 0 , • • • , h S ]) + mean-pool([h 0 , • • • , h S ]) + h 0 )<label>(12)</label></formula><p>where the pooling operation generates a vector that has the same dimension as h 0 , so the three vectors have the same shape and therefore are additive. An illustration can be seen in Figure <ref type="figure">3</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.3 Details of the Experiments: Models &amp; Hyperparameters</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.3.1 Multi30K Experiment</head><p>For the multilingual machine translation tasks, we use the cross-lingual MUSE <ref type="bibr">(Lample et al., 2018b)</ref>. The embeddings were learned using fastText<ref type="foot" target="#foot_6">foot_6</ref> (Bojanowski et al., 2017) on Wikipedia data and then aligned in a common space by the method proposed by <ref type="bibr">Lample et al. (2018b)</ref>. The results shown in Table <ref type="table">1</ref> is the average over 10 runs on the test sets. Denosing auto-encoding is used to train the baseline model. The flow-adapter based (3-scf and 3-glow) models are additionally trained with MLE loss. We follow the denoising auto-encoding hyperparameter settings used by <ref type="bibr">Lample et al. (2018a)</ref>. Specifically, word drop and word shuffling are used.</p><p>For word drop, every word in a sentence (except &lt;bos&gt; and &lt;eos&gt;) can be dropped with a probability p wd , which we set 0.1 in our experiments.</p><p>For word shuffling, a random permutation σ is applied to the input sentence, which satisfy the condition: ∀i ∈ {1, n}, |σ(i) -i| ≤ k, where i is the index of a word in the sequence, n is the length of the sequence and k is a hyperparameter that controls the degree of the permutation which we set 3 in our experiments. The dimension of the pre-trained embedding is 300. The randomly initialized shared encoder and decoder use transformer architecture with 512 hidden units, 4 heads and 3 layers by default. We use separate embedding layers for each language and tie their weights with the output layers for each language. The size of the sentence-level latent representation is set to 100. And the weight of the MLE loss for the flows is set to 0.01. We use dropout <ref type="bibr" target="#b42">(Srivastava et al., 2014)</ref> probability of 0.2 for the transformers and 0 for the flows. The batch size is set to 32. The whole model is trained in an end-to-end manner with Adam optimizer <ref type="bibr" target="#b24">(Kingma and Ba, 2015)</ref> with an initial learning rate of 0.0001. For the shared-decoder &amp; separate-decoder experiments, we use the pre-trained language models xlm-mlm-enfr-1024, xlm-mlm-ende-1024, xlm-mlmenro-1024 from HuggingFace<ref type="foot" target="#foot_7">foot_7</ref>  <ref type="bibr" target="#b50">(Wolf et al., 2020)</ref> Figure <ref type="figure">3</ref>: The illustration of generation of the sentence-level representations. CLS embedding refers to the first vector output by the transformer encoder, i.e., h 0 .</p><p>to initialize a shared encoder and randomly initialize the decoder(s).using pre-trained models. Denosing auto-encoding and iterative back-translation are used to train the baseline model. The flowadapter based (3-scf and 3-glow) models are additionally trained with MLE loss. The same denoising auto-encoding hyperparameters as above are used. For iterative back-translation, greedy decoding is used to generate synthetic parallel sentences as well as the reconstructions. A single embedding layer (from the pre-trained model) is used for both the source and target languages and its weight is tied with the output layer. The parameters of the encoder are fixed except for its embedding layer which is also used by the decoder(s). The size of the sentence-level latent representation is set to 256. The pre-trained encoder uses 1024 as the embedding size and GELU activations <ref type="bibr" target="#b19">(Hendrycks and Gimpel, 2016)</ref>, and has 4096 hidden units, 8 heads and 6 layers. The randomly initialized decoder has 512 hidden units, 8 heads and 3 layers. The models are firstly trained with DAE loss (and MLE loss for flow-adapter models) for the first 3 epochs, then trained with all losses (including the iterative back-translation) for the rest epochs. The rest hyperparameters are the same as above.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.3.2 WMT Experiment</head><p>We insert our implementation of flow-adapter architecture into the codebase of XLM<ref type="foot" target="#foot_8">foot_8</ref> and use the pretrained model of en-fr, en-de and en-ro from them. We also follow their recommended unsupervised training settings. For the flow-related hyperparameters, we use 256 as the size of the sentence-level latent representation. The weight of the MLE loss is set to 0.01.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: Inference pipeline of proposed flow-adapter based model for source-to-target translation. The decoder also uses the attentional input (shown as the gray arrow between the encoder and the decoder).</figDesc><graphic coords="1,324.57,212.58,181.42,216.93" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0"><head></head><label></label><figDesc></figDesc><graphic coords="5,70.86,70.84,453.56,120.14" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head></head><label></label><figDesc>recommended to use Models en-de de-en en-fr fr-en de-fr fr-de baseline 11.8719.31 16.52 19.24 11.03 8.36  3-scf  12.25 19.83 16.98 20.12 11.67 8.98  3-glow 11.91 20.14 16.86 19.55 11.49 8.61    </figDesc><table><row><cell>Table</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>https://github.com/multi30k/dataset</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_1"><p>http://www.statmt.org/</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="3" xml:id="foot_2"><p>https://github.com/facebookresearch/XLM/blob/main/getdata-nmt.sh</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="4" xml:id="foot_3"><p>https://github.com/facebookresearch/MUSE</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="5" xml:id="foot_4"><p>https://github.com/huggingface</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="6" xml:id="foot_5"><p>https://github.com/facebookresearch/XLM</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="10" xml:id="foot_6"><p>https://github.com/facebookresearch/fastText</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="11" xml:id="foot_7"><p>https://github.com/huggingface</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="12" xml:id="foot_8"><p>https://github.com/facebookresearch/XLM#iiiapplications-supervised-unsupervised-mt</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>Acknowledgements</head><p>We are grateful to <rs type="person">Alex Fraser</rs> and <rs type="person">Alexandra Chronopoulou</rs> for their insightful input. This work was funded by the <rs type="funder">European Research Council</rs> (ERC #<rs type="grantNumber">740516</rs>).</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funding" xml:id="_CAWcsYA">
+					<idno type="grant-number">740516</idno>
+				</org>
+			</listOrg>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<author>
+			<persName><forename type="first">Yaser</forename><surname>Al-Onaizan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ulrich</forename><surname>Germann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ulf</forename><surname>Hermjakob</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kevin</forename><surname>Knight</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Philipp</forename><surname>Koehn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Marcu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kenji</forename><surname>Yamada</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Translation with scarce bilingual resources</title>
+		<imprint>
+			<date type="published" when="2002">2002</date>
+			<biblScope unit="volume">17</biblScope>
+			<biblScope unit="page" from="1" to="17" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Learning bilingual word embeddings with (almost) no bilingual data</title>
+		<author>
+			<persName><forename type="first">Mikel</forename><surname>Artetxe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gorka</forename><surname>Labaka</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eneko</forename><surname>Agirre</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/P17-1042</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 55th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 55th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Vancouver, Canada</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="451" to="462" />
+		</imprint>
+	</monogr>
+	<note>Long Papers)</note>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Unsupervised neural machine translation</title>
+		<author>
+			<persName><forename type="first">Mikel</forename><surname>Artetxe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gorka</forename><surname>Labaka</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eneko</forename><surname>Agirre</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kyunghyun</forename><surname>Cho</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">6th International Conference on Learning Representations, ICLR 2018</title>
+		<title level="s">Conference Track Proceedings. OpenReview.net</title>
+		<meeting><address><addrLine>Vancouver, BC, Canada</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2018-04-30">2018. April 30 -May 3, 2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">A call for more rigor in unsupervised cross-lingual learning</title>
+		<author>
+			<persName><forename type="first">Mikel</forename><surname>Artetxe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Ruder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dani</forename><surname>Yogatama</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gorka</forename><surname>Labaka</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eneko</forename><surname>Agirre</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.acl-main.658</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 58th Annual Meeting of the Association for Computational Linguistics</meeting>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="7375" to="7388" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Neural machine translation by jointly learning to align and translate</title>
+		<author>
+			<persName><forename type="first">Dzmitry</forename><surname>Bahdanau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kyunghyun</forename><surname>Cho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">3rd International Conference on Learning Representations, ICLR 2015</title>
+		<meeting><address><addrLine>San Diego, CA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2015-05-07">2015. May 7-9, 2015</date>
+		</imprint>
+	</monogr>
+	<note>Conference Track Proceedings</note>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Enriching word vectors with subword information</title>
+		<author>
+			<persName><forename type="first">Piotr</forename><surname>Bojanowski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Edouard</forename><surname>Grave</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Armand</forename><surname>Joulin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tomas</forename><surname>Mikolov</surname></persName>
+		</author>
+		<idno type="DOI">10.1162/tacl_a_00051</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Transactions of the Association for Computational Linguistics</title>
+		<imprint>
+			<biblScope unit="volume">5</biblScope>
+			<biblScope unit="page" from="135" to="146" />
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Latent variable model for multi-modal translation</title>
+		<author>
+			<persName><forename type="first">Iacer</forename><surname>Calixto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Miguel</forename><surname>Rios</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wilker</forename><surname>Aziz</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/P19-1642</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 57th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 57th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Florence, Italy</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="6392" to="6405" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Semi-supervised learning for neural machine translation</title>
+		<author>
+			<persName><forename type="first">Yong</forename><surname>Cheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhongjun</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hua</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maosong</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yang</forename><surname>Liu</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/P16-1185</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 54th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 54th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Berlin, Germany</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="1965" to="1974" />
+		</imprint>
+	</monogr>
+	<note>Long Papers)</note>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Learning phrase representations using RNN encoder-decoder for statistical machine translation</title>
+		<author>
+			<persName><forename type="first">Kyunghyun</forename><surname>Cho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bart</forename><surname>Van Merriënboer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Caglar</forename><surname>Gulcehre</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dzmitry</forename><surname>Bahdanau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fethi</forename><surname>Bougares</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Holger</forename><surname>Schwenk</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+		<idno type="DOI">10.3115/v1/D14-1179</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2014 Conference on Empirical Methods in Natural Language Processing (EMNLP)</title>
+		<meeting>the 2014 Conference on Empirical Methods in Natural Language Processing (EMNLP)<address><addrLine>Doha, Qatar</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="1724" to="1734" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Crosslingual language model pretraining</title>
+		<author>
+			<persName><forename type="first">Alexis</forename><surname>Conneau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillaume</forename><surname>Lample</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">32</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">BERT: Pre-training of deep bidirectional transformers for language understanding</title>
+		<author>
+			<persName><forename type="first">Jacob</forename><surname>Devlin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming-Wei</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kenton</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kristina</forename><surname>Toutanova</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/N19-1423</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</title>
+		<title level="s">Long and Short Papers</title>
+		<meeting>the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies<address><addrLine>Minneapolis, Minnesota</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="4171" to="4186" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">NICE: non-linear independent components estimation</title>
+		<author>
+			<persName><forename type="first">Laurent</forename><surname>Dinh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Krueger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">3rd International Conference on Learning Representations, ICLR 2015</title>
+		<meeting><address><addrLine>San Diego, CA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2015-05-07">2015. May 7-9, 2015</date>
+		</imprint>
+	</monogr>
+	<note>Workshop Track Proceedings</note>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Density estimation using real NVP</title>
+		<author>
+			<persName><forename type="first">Laurent</forename><surname>Dinh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jascha</forename><surname>Sohl-Dickstein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Samy</forename><surname>Bengio</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">5th International Conference on Learning Representations</title>
+		<meeting><address><addrLine>Toulon, France</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2017-04-24">2017. 2017. April 24-26, 2017</date>
+		</imprint>
+	</monogr>
+	<note>Track Proceedings</note>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Auto-encoding variational neural machine translation</title>
+		<author>
+			<persName><forename type="first">Bryan</forename><surname>Eikema</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wilker</forename><surname>Aziz</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/W19-4315</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 4th Workshop on Representation Learning for NLP</title>
+		<meeting>the 4th Workshop on Representation Learning for NLP<address><addrLine>Florence, Italy</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="124" to="141" />
+		</imprint>
+	</monogr>
+	<note>RepL4NLP-2019. Association for Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Findings of the second shared task on multimodal machine translation and multilingual image description</title>
+		<author>
+			<persName><forename type="first">Desmond</forename><surname>Elliott</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stella</forename><surname>Frank</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Loïc</forename><surname>Barrault</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fethi</forename><surname>Bougares</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lucia</forename><surname>Specia</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/W17-4718</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Second Conference on Machine Translation</title>
+		<meeting>the Second Conference on Machine Translation<address><addrLine>Copenhagen, Denmark</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="215" to="233" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Multi30K: Multilingual English-German image descriptions</title>
+		<author>
+			<persName><forename type="first">Desmond</forename><surname>Elliott</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stella</forename><surname>Frank</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Khalil</forename><surname>Sima'an</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lucia</forename><surname>Specia</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/W16-3210</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 5th Workshop on Vision and Language</title>
+		<meeting>the 5th Workshop on Vision and Language<address><addrLine>Berlin, Germany</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="70" to="74" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<monogr>
+		<title level="m" type="main">Universal audio synthesizer control with normalizing flows</title>
+		<author>
+			<persName><forename type="first">Philippe</forename><surname>Esling</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Naotake</forename><surname>Masuda</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adrien</forename><surname>Bardet</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Romeo</forename><surname>Despres</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1907.00971</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Generative adversarial nets</title>
+		<author>
+			<persName><forename type="first">Ian</forename><surname>Goodfellow</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jean</forename><surname>Pouget-Abadie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mehdi</forename><surname>Mirza</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bing</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Warde-Farley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sherjil</forename><surname>Ozair</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aaron</forename><surname>Courville</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Alignflow: Cycle consistent learning from multiple domains via normalizing flows</title>
+		<author>
+			<persName><forename type="first">Aditya</forename><surname>Grover</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Chute</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rui</forename><surname>Shu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhangjie</forename><surname>Cao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stefano</forename><surname>Ermon</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">The Thirty-Fourth AAAI Conference on Artificial Intelligence, AAAI 2020, The Thirty-Second Innovative Applications of Artificial Intelligence Conference, IAAI 2020, The Tenth AAAI Symposium on Educational Advances in Artificial Intelligence</title>
+		<meeting><address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>AAAI Press</publisher>
+			<date type="published" when="2020-02-07">2020. February 7-12, 2020</date>
+			<biblScope unit="volume">2020</biblScope>
+			<biblScope unit="page" from="4028" to="4035" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<monogr>
+		<title level="m" type="main">Bridging nonlinearities and stochastic regularizers with gaussian error linear units</title>
+		<author>
+			<persName><forename type="first">Dan</forename><surname>Hendrycks</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kevin</forename><surname>Gimpel</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1606.08415</idno>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<monogr>
+		<author>
+			<persName><forename type="first">Rob</forename><surname>Hesselink</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wilker</forename><surname>Aziz</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2006.06346</idno>
+		<title level="m">Latent transformations for discrete-data normalising flows</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Flow++: Improving flow-based generative models with variational dequantization and architecture design</title>
+		<author>
+			<persName><forename type="first">Jonathan</forename><surname>Ho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xi</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aravind</forename><surname>Srinivas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yan</forename><surname>Duan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pieter</forename><surname>Abbeel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 36th International Conference on Machine Learning</title>
+		<meeting>the 36th International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">97</biblScope>
+			<biblScope unit="page" from="2722" to="2730" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Iterative backtranslation for neural machine translation</title>
+		<author>
+			<persName><forename type="first">Duy</forename><surname>Vu Cong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Philipp</forename><surname>Hoang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gholamreza</forename><surname>Koehn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Trevor</forename><surname>Haffari</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Cohn</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/W18-2703</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2nd Workshop on Neural Machine Translation and Generation</title>
+		<meeting>the 2nd Workshop on Neural Machine Translation and Generation<address><addrLine>Melbourne</addrLine></address></meeting>
+		<imprint>
+			<publisher>Australia. Association for Computational Linguistics</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="18" to="24" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Endto-end statistical machine translation with zero or small parallel texts</title>
+		<author>
+			<persName><forename type="first">Ann</forename><surname>Irvine</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Callison-Burch</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Natural Language Engineering</title>
+		<imprint>
+			<biblScope unit="volume">22</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="517" to="548" />
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Adam: A method for stochastic optimization</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Diederik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jimmy</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Ba</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">3rd International Conference on Learning Representations, ICLR 2015</title>
+		<meeting><address><addrLine>San Diego, CA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2015-05-07">2015. May 7-9, 2015</date>
+		</imprint>
+	</monogr>
+	<note>Conference Track Proceedings</note>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Glow: Generative flow with invertible 1x1 convolutions</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Diederik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Prafulla</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Dhariwal</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems 31: Annual Conference on Neural Information Processing Systems</title>
+		<meeting><address><addrLine>NeurIPS; Montréal, Canada</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2018-12-03">2018. 2018. 2018. December 3-8, 2018</date>
+			<biblScope unit="page" from="10236" to="10245" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Autoencoding variational bayes</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Diederik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2nd International Conference on Learning Representations, ICLR 2014</title>
+		<title level="s">Conference Track Proceedings</title>
+		<meeting><address><addrLine>Banff, AB, Canada</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2014-04-14">2014. April 14-16, 2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Moses: Open source toolkit for statistical machine translation</title>
+		<author>
+			<persName><forename type="first">Philipp</forename><surname>Koehn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hieu</forename><surname>Hoang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexandra</forename><surname>Birch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Callison-Burch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marcello</forename><surname>Federico</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicola</forename><surname>Bertoldi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Brooke</forename><surname>Cowan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wade</forename><surname>Shen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christine</forename><surname>Moran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Richard</forename><surname>Zens</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Dyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ondřej</forename><surname>Bojar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexandra</forename><surname>Constantin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Evan</forename><surname>Herbst</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 45th Annual Meeting of the Association for Computational Linguistics Companion Volume Proceedings of the Demo and Poster Sessions</title>
+		<meeting>the 45th Annual Meeting of the Association for Computational Linguistics Companion Volume the Demo and Poster Sessions<address><addrLine>Prague, Czech Republic</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2007">2007</date>
+			<biblScope unit="page" from="177" to="180" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<monogr>
+		<author>
+			<persName><forename type="first">Manoj</forename><surname>Kumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mohammad</forename><surname>Babaeizadeh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dumitru</forename><surname>Erhan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chelsea</forename><surname>Finn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sergey</forename><surname>Levine</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Laurent</forename><surname>Dinh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Durk</forename><surname>Kingma</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1903.01434</idno>
+		<title level="m">Videoflow: A flowbased generative model for video</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">2</biblScope>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Aurelio Ranzato. 2018a. Unsupervised machine translation using monolingual corpora only</title>
+		<author>
+			<persName><forename type="first">Guillaume</forename><surname>Lample</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexis</forename><surname>Conneau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ludovic</forename><surname>Denoyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marc</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">6th International Conference on Learning Representations</title>
+		<title level="s">Conference Track Proceedings. OpenReview.net</title>
+		<meeting><address><addrLine>Vancouver, BC, Canada</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2018-04-30">2018. April 30 -May 3, 2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Word translation without parallel data</title>
+		<author>
+			<persName><forename type="first">Guillaume</forename><surname>Lample</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexis</forename><surname>Conneau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marc'aurelio</forename><surname>Ranzato</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ludovic</forename><surname>Denoyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hervé</forename><surname>Jégou</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">6th International Conference on Learning Representations, ICLR 2018</title>
+		<title level="s">Conference Track Proceedings. OpenReview</title>
+		<meeting><address><addrLine>Vancouver, BC, Canada</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2018-04-30">2018. April 30 -May 3, 2018</date>
+		</imprint>
+	</monogr>
+	<note>net</note>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<monogr>
+		<title level="m" type="main">On the sentence embeddings from pre-trained language models</title>
+		<author>
+			<persName><forename type="first">Bohan</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hao</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junxian</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mingxuan</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yiming</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lei</forename><surname>Li</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2011.05864</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<monogr>
+		<title level="m" type="main">Multilingual denoising pretraining for neural machine translation</title>
+		<author>
+			<persName><forename type="first">Yinhan</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiatao</forename><surname>Gu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Naman</forename><surname>Goyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xian</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sergey</forename><surname>Edunov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marjan</forename><surname>Ghazvininejad</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mike</forename><surname>Lewis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luke</forename><surname>Zettlemoyer</surname></persName>
+		</author>
+		<idno type="DOI">10.1162/tacl_a_00343</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">8</biblScope>
+			<biblScope unit="page" from="726" to="742" />
+		</imprint>
+	</monogr>
+	<note>Transactions of the Association for Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">FlowSeq: Nonautoregressive conditional sequence generation with generative flow</title>
+		<author>
+			<persName><forename type="first">Xuezhe</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chunting</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xian</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Graham</forename><surname>Neubig</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eduard</forename><surname>Hovy</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/D19-1437</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)</title>
+		<meeting>the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)<address><addrLine>Hong Kong, China</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="4282" to="4292" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Bleu: a method for automatic evaluation of machine translation</title>
+		<author>
+			<persName><forename type="first">Kishore</forename><surname>Papineni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Salim</forename><surname>Roukos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Todd</forename><surname>Ward</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei-Jing</forename><surname>Zhu</surname></persName>
+		</author>
+		<idno type="DOI">10.3115/1073083.1073135</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 40th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 40th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Philadelphia, Pennsylvania, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2002">2002</date>
+			<biblScope unit="page" from="311" to="318" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Deep contextualized word representations</title>
+		<author>
+			<persName><forename type="first">Matthew</forename><forename type="middle">E</forename><surname>Peters</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mark</forename><surname>Neumann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mohit</forename><surname>Iyyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matt</forename><surname>Gardner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Clark</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kenton</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luke</forename><surname>Zettlemoyer</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/N18-1202</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2018 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</title>
+		<title level="s">Long Papers</title>
+		<meeting>the 2018 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies<address><addrLine>New Orleans, Louisiana</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="2227" to="2237" />
+		</imprint>
+	</monogr>
+	<note>Association for Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Stochastic backpropagation and approximate inference in deep generative models</title>
+		<author>
+			<persName><forename type="first">Danilo</forename><surname>Jimenez Rezende</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shakir</forename><surname>Mohamed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daan</forename><surname>Wierstra</surname></persName>
+		</author>
+		<idno>II-1278-II-1286. JMLR.org</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 31st International Conference on International Conference on Machine Learning</title>
+		<meeting>the 31st International Conference on International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="volume">32</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Edinburgh neural machine translation systems for WMT 16</title>
+		<author>
+			<persName><forename type="first">Rico</forename><surname>Sennrich</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Barry</forename><surname>Haddow</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexandra</forename><surname>Birch</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/W16-2323</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the First Conference on Machine Translation</title>
+		<meeting>the First Conference on Machine Translation<address><addrLine>Berlin, Germany</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page" from="371" to="376" />
+		</imprint>
+	</monogr>
+	<note>Shared Task Papers</note>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Improving neural machine translation models with monolingual data</title>
+		<author>
+			<persName><forename type="first">Rico</forename><surname>Sennrich</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Barry</forename><surname>Haddow</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexandra</forename><surname>Birch</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/P16-1009</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 54th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 54th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Berlin, Germany</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="86" to="96" />
+		</imprint>
+	</monogr>
+	<note>Long Papers). Association for Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Variational neural machine translation with normalizing flows</title>
+		<author>
+			<persName><forename type="first">Hendra</forename><surname>Setiawan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Sperber</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.acl-main.694</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 58th Annual Meeting of the Association for Computational Linguistics</meeting>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="7771" to="7777" />
+		</imprint>
+	</monogr>
+	<note>Udhyakumar Nallasamy, and Matthias Paulik</note>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Latent-variable nonautoregressive neural machine translation with deterministic inference using a delta posterior</title>
+		<author>
+			<persName><forename type="first">Raphael</forename><surname>Shu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hideki</forename><surname>Nakayama</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kyunghyun</forename><surname>Cho</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">The Thirty-Fourth AAAI Conference on Artificial Intelligence, AAAI 2020, The Thirty-Second Innovative Applications of Artificial Intelligence Conference, IAAI 2020, The Tenth AAAI Symposium on Educational Advances in Artificial Intelligence</title>
+		<meeting><address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>AAAI Press</publisher>
+			<date type="published" when="2020-02-07">2020. February 7-12, 2020</date>
+			<biblScope unit="volume">2020</biblScope>
+			<biblScope unit="page" from="8846" to="8853" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">MASS: masked sequence to sequence pretraining for language generation</title>
+		<author>
+			<persName><forename type="first">Kaitao</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xu</forename><surname>Tan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tao</forename><surname>Qin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianfeng</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tie-Yan</forename><surname>Liu</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 36th International Conference on Machine Learning, ICML</title>
+		<meeting>the 36th International Conference on Machine Learning, ICML<address><addrLine>Long Beach, California, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2019-06">2019. 2019, 9-15 June 2019</date>
+			<biblScope unit="volume">97</biblScope>
+			<biblScope unit="page" from="5926" to="5936" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">Dropout: A simple way to prevent neural networks from overfitting</title>
+		<author>
+			<persName><forename type="first">Nitish</forename><surname>Srivastava</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Geoffrey</forename><surname>Hinton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alex</forename><surname>Krizhevsky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ilya</forename><surname>Sutskever</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ruslan</forename><surname>Salakhutdinov</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Machine Learning Research</title>
+		<imprint>
+			<biblScope unit="volume">15</biblScope>
+			<biblScope unit="issue">56</biblScope>
+			<biblScope unit="page" from="1929" to="1958" />
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">Sequence to sequence learning with neural networks</title>
+		<author>
+			<persName><forename type="first">Ilya</forename><surname>Sutskever</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oriol</forename><surname>Vinyals</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Quoc</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Le</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 27th International Conference on Neural Information Processing Systems</title>
+		<meeting>the 27th International Conference on Neural Information Processing Systems</meeting>
+		<imprint>
+			<publisher>MIT Press</publisher>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page" from="3104" to="3112" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">Continuous language generative flow</title>
+		<author>
+			<persName><forename type="first">Zineng</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shiyue</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hyounghun</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mohit</forename><surname>Bansal</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2021.acl-long.355</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing</title>
+		<meeting>the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing</meeting>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="4609" to="4622" />
+		</imprint>
+	</monogr>
+	<note>Long Papers)</note>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<title level="a" type="main">Discrete flows: Invertible generative models of discrete data</title>
+		<author>
+			<persName><forename type="first">Dustin</forename><surname>Tran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Keyon</forename><surname>Vafa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kumar</forename><surname>Agrawal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Laurent</forename><surname>Dinh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ben</forename><surname>Poole</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page">32</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<analytic>
+		<title level="a" type="main">Modeling coverage for neural machine translation</title>
+		<author>
+			<persName><forename type="first">Zhaopeng</forename><surname>Tu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhengdong</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yang</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaohua</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hang</forename><surname>Li</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/P16-1008</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 54th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 54th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Berlin, Germany</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="76" to="85" />
+		</imprint>
+	</monogr>
+	<note>Long Papers). Association for Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<analytic>
+		<title level="a" type="main">Multilingual unsupervised neural machine translation with denoising adapters</title>
+		<author>
+			<persName><forename type="first">Ahmet</forename><surname>Üstün</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexandre</forename><surname>Berard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Laurent</forename><surname>Besacier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Gallé</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">; Yazhe</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Igor</forename><surname>Babuschkin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Karen</forename><surname>Simonyan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oriol</forename><surname>Vinyals</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Koray</forename><surname>Kavukcuoglu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">George</forename><surname>Van Den Driessche</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Edward</forename><surname>Lockhart</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luis</forename><surname>Cobo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Florian</forename><surname>Stimberg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Norman</forename><surname>Casagrande</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dominik</forename><surname>Grewe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Seb</forename><surname>Noury</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sander</forename><surname>Dieleman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Erich</forename><surname>Elsen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nal</forename><surname>Kalchbrenner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Heiga</forename><surname>Zen</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2021.emnlp-main.533</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2021 Conference on Empirical Methods in Natural Language Processing<address><addrLine>Alex Graves, Helen King, Tom Walters</addrLine></address></meeting>
+		<imprint>
+			<publisher>Dan Belov, and Demis Hassabis</publisher>
+			<date type="published" when="2018">2021. 2018</date>
+			<biblScope unit="volume">80</biblScope>
+			<biblScope unit="page" from="3918" to="3926" />
+		</imprint>
+	</monogr>
+	<note>Proceedings of the 35th International Conference on Machine Learning</note>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<analytic>
+		<title level="a" type="main">Attention is all you need</title>
+		<author>
+			<persName><forename type="first">Ashish</forename><surname>Vaswani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noam</forename><surname>Shazeer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Niki</forename><surname>Parmar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jakob</forename><surname>Uszkoreit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Llion</forename><surname>Jones</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aidan</forename><forename type="middle">N</forename><surname>Gomez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Illia</forename><surname>Kaiser</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Polosukhin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 31st International Conference on Neural Information Processing Systems</title>
+		<meeting>the 31st International Conference on Neural Information Processing Systems</meeting>
+		<imprint>
+			<publisher>Curran Associates Inc</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="6000" to="6010" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<analytic>
+		<title level="a" type="main">Extracting and composing robust features with denoising autoencoders</title>
+		<author>
+			<persName><forename type="first">Pascal</forename><surname>Vincent</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hugo</forename><surname>Larochelle</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pierre-Antoine</forename><surname>Manzagol</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 25th international conference on Machine learning</title>
+		<meeting>the 25th international conference on Machine learning</meeting>
+		<imprint>
+			<date type="published" when="2008">2008</date>
+			<biblScope unit="page" from="1096" to="1103" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<analytic>
+		<title level="a" type="main">Transformers: State-of-the-art natural language processing</title>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Wolf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lysandre</forename><surname>Debut</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Victor</forename><surname>Sanh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Julien</forename><surname>Chaumond</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Clement</forename><surname>Delangue</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anthony</forename><surname>Moi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pierric</forename><surname>Cistac</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Rault</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Remi</forename><surname>Louf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Morgan</forename><surname>Funtowicz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joe</forename><surname>Davison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sam</forename><surname>Shleifer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Clara</forename><surname>Patrick Von Platen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yacine</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Julien</forename><surname>Jernite</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Canwen</forename><surname>Plu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Teven</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sylvain</forename><surname>Le Scao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mariama</forename><surname>Gugger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Quentin</forename><surname>Drame</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexander</forename><surname>Lhoest</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Rush</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.emnlp-demos.6</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing: System Demonstrations</title>
+		<meeting>the 2020 Conference on Empirical Methods in Natural Language Processing: System Demonstrations</meeting>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="38" to="45" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b51">
+	<analytic>
+		<title level="a" type="main">Unsupervised neural machine translation with weight sharing</title>
+		<author>
+			<persName><forename type="first">Zhen</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Feng</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bo</forename><surname>Xu</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/P18-1005</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 56th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 56th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Melbourne, Australia</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="46" to="55" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b52">
+	<analytic>
+		<title level="a" type="main">CSP:code-switching pre-training for neural machine translation</title>
+		<author>
+			<persName><forename type="first">Zhen</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bojie</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ambyera</forename><surname>Han</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shen</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qi</forename><surname>Ju</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.emnlp-main.208</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)</title>
+		<meeting>the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)</meeting>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="2624" to="2636" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b53">
+	<analytic>
+		<title level="a" type="main">Improving massively multilingual neural machine translation and zero-shot translation</title>
+		<author>
+			<persName><forename type="first">Biao</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Philip</forename><surname>Williams</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ivan</forename><surname>Titov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rico</forename><surname>Sennrich</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.acl-main.148</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 58th Annual Meeting of the Association for Computational Linguistics</meeting>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="1628" to="1639" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b54">
+	<analytic>
+		<title level="a" type="main">Variational neural machine translation</title>
+		<author>
+			<persName><forename type="first">Biao</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Deyi</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jinsong</forename><surname>Su</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hong</forename><surname>Duan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Min</forename><surname>Zhang</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/D16-1050</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2016 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2016 Conference on Empirical Methods in Natural Language Processing<address><addrLine>Austin, Texas</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="521" to="530" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b55">
+	<analytic>
+		<title level="a" type="main">Latent normalizing flows for discrete sequences</title>
+		<author>
+			<persName><forename type="first">Zachary</forename><forename type="middle">M</forename><surname>Ziegler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexander</forename><forename type="middle">M</forename><surname>Rush</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 36th International Conference on Machine Learning, ICML</title>
+		<meeting>the 36th International Conference on Machine Learning, ICML<address><addrLine>Long Beach, California, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2019-06">2019. 2019, 9-15 June 2019</date>
+			<biblScope unit="volume">97</biblScope>
+			<biblScope unit="page" from="7673" to="7682" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b56">
+	<analytic>
+		<title level="a" type="main">Transfer learning for low-resource neural machine translation</title>
+		<author>
+			<persName><forename type="first">Barret</forename><surname>Zoph</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Deniz</forename><surname>Yuret</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jonathan</forename><surname>May</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kevin</forename><surname>Knight</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/D16-1163</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2016 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2016 Conference on Empirical Methods in Natural Language Processing<address><addrLine>Austin, Texas</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="1568" to="1575" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

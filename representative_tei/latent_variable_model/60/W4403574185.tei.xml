@@ -1,0 +1,2900 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Can sparse autoencoders make sense of gene expression latent variable models?</title>
+				<funder>
+					<orgName type="full">Eric and Wendy Schmidt Center at the Broad Institute</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author role="corresp">
+							<persName><forename type="first">Viktoria</forename><surname>Schuster</surname></persName>
+							<email>vschuster@broadinstitute.org</email>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Computer Science</orgName>
+								<orgName type="institution" key="instit1">Broad Institute of MIT</orgName>
+								<orgName type="institution" key="instit2">University of Copenhagen</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Wendy</forename><surname>Schmidt Center</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Computer Science</orgName>
+								<orgName type="institution" key="instit1">Broad Institute of MIT</orgName>
+								<orgName type="institution" key="instit2">University of Copenhagen</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Can sparse autoencoders make sense of gene expression latent variable models?</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-28T23:12+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Sparse autoencoders (SAEs) have lately been used to uncover interpretable latent features in large language models. By projecting dense embeddings into a much higher-dimensional and sparse space, learned features become disentangled and easier to interpret. This work explores the potential of SAEs for decomposing embeddings in complex and high-dimensional biological data. Using simulated data, it outlines the efficacy, hyperparameter landscape, and limitations of SAEs when it comes to extracting ground truth generative variables from latent space. The application to embeddings from pretrained single-cell models shows that SAEs can find and steer key biological processes and even uncover subtle biological signals that might otherwise be missed. This work further introduces scFeatureLens, an automated interpretability approach for linking SAE features and biological concepts from gene sets to enable large-scale analysis and hypothesis generation in single-cell gene expression models.</p><p>Preprint. Under review.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Neural networks have proven to be powerful tools for analyzing complex data, yet they often lack inherent interpretability from a human perspective <ref type="bibr" target="#b0">[1]</ref>. While various approaches like disentanglement <ref type="bibr" target="#b1">[2]</ref>, adversarial training <ref type="bibr" target="#b1">[2]</ref>, and over-determined networks <ref type="bibr" target="#b2">[3]</ref> have shown some success in improving model interpretability <ref type="bibr" target="#b1">[2,</ref><ref type="bibr" target="#b3">4]</ref>, they fall short of providing a comprehensive understanding of all learned features within a model <ref type="bibr" target="#b4">[5]</ref>. Recent research has revealed that features in neural networks are often learned in a state of superposition <ref type="bibr" target="#b5">[6]</ref>, where individual neurons encode multiple features (termed polysemanticity), and single features are distributed across multiple neurons. Simply speaking, each feature superposition is a linear combination of all dimensions in the latent space. In light of this complexity, sparse autoencoders (SAEs) <ref type="bibr" target="#b6">[7]</ref> have emerged as a promising tool for interpreting entire neural network layers <ref type="bibr" target="#b7">[8]</ref><ref type="bibr" target="#b8">[9]</ref><ref type="bibr" target="#b9">[10]</ref><ref type="bibr" target="#b10">[11]</ref>. The application of SAEs to large language model layers has demonstrated remarkable success in reducing polysemanticity, effectively translating language model activations into singular, monosemantic features <ref type="bibr" target="#b7">[8]</ref><ref type="bibr" target="#b8">[9]</ref><ref type="bibr" target="#b9">[10]</ref><ref type="bibr" target="#b10">[11]</ref>. However, this research has primarily been limited to language models and transformer architectures. Given that superpositions are strongly influenced by data structure <ref type="bibr" target="#b5">[6]</ref>, there is a pressing need to extend this approach to different types of hidden streams and data domains. Biology and health present a wealth of complex data and machine learning applications <ref type="bibr" target="#b11">[12]</ref><ref type="bibr" target="#b12">[13]</ref><ref type="bibr" target="#b13">[14]</ref><ref type="bibr" target="#b14">[15]</ref><ref type="bibr" target="#b15">[16]</ref><ref type="bibr" target="#b16">[17]</ref>. Singlecell gene expression (scRNAseq) data, for example, provide valuable insight into cellular functions and malfunctions within the human body. However, the high dimensionality and noise inherent in this data present significant analytical challenges <ref type="bibr" target="#b17">[18]</ref><ref type="bibr" target="#b18">[19]</ref><ref type="bibr" target="#b19">[20]</ref>. Several generative models have been suggested to model scRNAseq and multi-omics data and produce lower-dimensional representations for analysis <ref type="bibr" target="#b19">[20]</ref><ref type="bibr" target="#b20">[21]</ref><ref type="bibr" target="#b21">[22]</ref><ref type="bibr" target="#b22">[23]</ref><ref type="bibr" target="#b23">[24]</ref><ref type="bibr" target="#b24">[25]</ref><ref type="bibr" target="#b25">[26]</ref><ref type="bibr" target="#b26">[27]</ref><ref type="bibr" target="#b27">[28]</ref><ref type="bibr" target="#b28">[29]</ref><ref type="bibr" target="#b29">[30]</ref>. Representation learning is of high interest in this field, as it is generally assumed that these high-dimensional biological processes are guided by lower-dimensional concepts such as regulatory programs. This work investigates the limitations and potential applications of SAEs for high-dimensional and sparse single-cell gene expression data. It examines superpositions and SAE features derived from models trained on simulated data and applies SAEs to pre-trained models <ref type="bibr" target="#b30">[31,</ref><ref type="bibr" target="#b31">32]</ref>. Code for reproducibility is available here. The core insights and contributions are:</p><p>• Distribution type and distance of hidden generative variables affect variable recovery.</p><p>• SAEs extract meaningful features from single-cell expression models that successfully steer cells into desired programs. Features can act either locally or globally. • scFeatureLens: An analysis pipeline for interpreting single-cell expression models by automatically annotating SAE features with biological concepts derived from ontologies, available on GitHub.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Related work</head><p>The application of SAEs and dictionary learning in general has attracted a lot of attention in the field of natural language processing <ref type="bibr" target="#b7">[8]</ref><ref type="bibr" target="#b8">[9]</ref><ref type="bibr" target="#b9">[10]</ref><ref type="bibr" target="#b10">[11]</ref>. Recent research has demonstrated the efficacy of these methods in uncovering fine-grained features within language models, such as identifying hierarchical semantic structures <ref type="bibr" target="#b32">[33]</ref>, specific scriptures <ref type="bibr" target="#b8">[9]</ref>, and causal features of object identification <ref type="bibr" target="#b9">[10]</ref>. Others have presented improvements in the tradeoff between sparsity and reconstruction, reduced the occurrence of dead neurons, and developed metrics for evaluating quality based on hypothesized features <ref type="bibr" target="#b10">[11]</ref>. While much of the focus has been on language models, efforts to enhance interpretability have extended to other architectural domains. Bau et al. <ref type="bibr" target="#b33">[34]</ref> developed a method for scoring convolutional activations based on pre-defined visual concepts, thereby enhancing our understanding of learned visual features. In contrast to these advancements, the application of SAEs to the field of biology has been limited. Except for recent applications to protein language models <ref type="bibr" target="#b34">[35,</ref><ref type="bibr" target="#b35">36]</ref>, dictionary learning has primarily been employed as a direct method for learning sparser representations <ref type="bibr" target="#b36">[37]</ref><ref type="bibr" target="#b37">[38]</ref><ref type="bibr" target="#b38">[39]</ref> or aligning representations more closely with specific biological concepts such as pathways <ref type="bibr" target="#b39">[40]</ref>. More commonly, efforts to enhance the interpretability of biological representations have focused on disentanglement. Disentanglement is often applied to separate technical bias from biological signal through approaches such as adversarial training <ref type="bibr" target="#b40">[41]</ref>, sparsity-inducing priors <ref type="bibr" target="#b37">[38]</ref>, overcomplete autoencoders <ref type="bibr" target="#b13">[14]</ref>, or architectural modularity <ref type="bibr" target="#b30">[31,</ref><ref type="bibr" target="#b41">42]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Sparse autoencoders</head><p>In representation learning, data is generally assumed to exist on a lower-dimensional manifold due to dependencies between features <ref type="bibr" target="#b42">[43]</ref>. Reducing the dimensionality into a latent representation through unsupervised learning can help reveal underlying structure. With a different constraint than dimensionality, data structure can also be revealed in a higher-dimensional setting by employing sparsity constraints on the latent representation <ref type="bibr" target="#b6">[7]</ref>. This has lately been exploited to disentangle the polysemanticity of hidden layers in large language models <ref type="bibr" target="#b7">[8]</ref><ref type="bibr" target="#b8">[9]</ref><ref type="bibr" target="#b9">[10]</ref><ref type="bibr" target="#b10">[11]</ref>. Figure <ref type="figure">1A</ref> shows a schematic of SAEs and superpositions.</p><p>Vanilla SAE: The simplest SAE maps an input x ∈ R d to a higher-dimensional hidden activation vector z ∈ R l ≥0 and back, with an additional objective to promote sparsity in the activation space. The encoder is defined as</p><formula xml:id="formula_0">z = ReLU(W ϕ (x) + b ϕ )<label>(1</label></formula><p>) and the decoder as</p><formula xml:id="formula_1">x = W θ (z) + b θ<label>(2</label></formula><p>) with ϕ and θ indicating encoder and decoder parameter sets, respectively. The loss is given by</p><formula xml:id="formula_2">L = ∥x -x∥ 2 2 + λ∥z∥ 1<label>(3)</label></formula><p>where the first term is the mean squared error (MSE) loss for reconstruction. The second term is the sparsity penalty in the form of an L1 loss weighed by hyperparameter λ, which will be referred to as the L1 weight.</p><p>Other SAE setups: A widely used version of the SAE uses an additional pre-network bias b pre term applied to x before encoding <ref type="bibr" target="#b8">[9]</ref>, which has shown to improve performance <ref type="bibr" target="#b5">[6]</ref>. k-sparse autoencoders additionally use a different activation function (TopK) to directly control the number of active neurons (removing the need for the L1 loss) <ref type="bibr" target="#b43">[44]</ref>. The latest advance in SAE research has been to reduce the number of dead hidden neurons by initializing encoder W ϕ and decoder W θ as transposes of each other and including dead neurons in an auxiliary loss <ref type="bibr" target="#b10">[11]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Simulation experiments</head><p>As recent use cases of SAEs are mainly limited to the activations of large language models, this work presents an analysis of some common SAEs in a simulated setting with known underlying variables. The simulated data are inspired by sparse count data as we see in (single-cell) expression. Two datasets were created, a "small" one for hyperparameter sweeps with lower dimensionalities and a "large" one with realistic number of samples and dimensions in the observed variables Y (the "counts"). The simulation is based on a hierarchical generative process starting with hidden variables X representing core programs, cell-type specific factors A, and batch effects B with defined connectivity M of shape (|Y |, |X|). The underlying hypotheses data simulation process are explained in detail in Appendix A.2.1 and depicted in Figure <ref type="figure">1B</ref>. What follows is a discussion of what aspects of the data generation process can be recovered in superposition and SAE features, as well as performance differences of "Vanilla", "ReLU" <ref type="bibr" target="#b8">[9]</ref>, and "TopK" <ref type="bibr" target="#b10">[11]</ref> SAE architectures.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">What is learned in superposition?</head><p>Experimental set up: Autoencoders were trained with a variety of structures and training hyperparameters (Appendix A.2.2, Table <ref type="table">S3</ref>) on observables Y of the large simulation data. Learned representations were extracted and used to compute superposition vectors and fits through linear regression (Appendix A.2.3).</p><p>Results: Observables are perfectly learned when validation loss is sufficiently low, and hidden variables can be partially recovered from latent representations (Figure <ref type="figure">1C</ref>). Recovery of variables follows a distinct pattern: variables X ′′ directly upstream of Y are most accurately reconstructed, followed by A, B, X ′ , and X. Regression fits R 2 did not scale linearly with the distance from Y , suggesting that the type of variables and their role in the data generation process influence recovery. Additionally, recovery of more distant variables seemed to decrease with larger (deep and wide) models despite lower validation loss (Figure <ref type="figure" target="#fig_1">S2</ref>).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">How do different SAEs perform?</head><p>Experimental set up: A sweep of different SAE architectures and a wide range of hyperparameters (Table <ref type="table">S4</ref>) was performed on embeddings from an autoencoder trained to perfectly recover observables and hidden variables X of the small simulation data (Appendix A.2.2). All SAEs were trained on the extracted representations and evaluation metrics were computed as described in Appendix A.2.4.</p><p>Results: Reconstruction and sparsity. Briefly summarized, reconstruction losses of Vanilla and ReLU SAEs were more robust compared to TopK (Figures <ref type="figure">S4A-B, S5</ref>). Sparsity (fraction of dead/active neurons) strongly increased for L1 weights above 10 -3 and a k below 50 % (Figure <ref type="figure" target="#fig_6">S12</ref>), and strongly depended on the learning rate (Figure <ref type="figure">S6</ref>). As a result, the analysis was continued with the overall best-performing learning rate of 10 -4 . Recovery of X ′ . Figure <ref type="figure">S4</ref> shows that a small hidden size can be detrimental to the performance and interpretability of TopK models. In terms of good recovery (high correlation between features and observables) with little redundancy for variables X and Y , the Vanilla SAEs showed the best tradeoff and TopK the worst (Figures S9,10 dimensionalities of 5 -50× the size of the latent space (for best recovery and 1-5 neurons per variable). The number of features per variable scaled roughly exponentially for the k-sparse autoencoder (TopK) over the hidden dimension irrespective of k (Figure <ref type="figure" target="#fig_6">S12</ref>). For Vanilla and ReLU SAEs, there was no such scaling tendency and the L1 weight strongly determined the rate at which the number of neurons per variable grow, which is a disadvantage of these SAEs. Results: Variables. Recovery of a given variable from SAE features was measured as the correlation between that variable and SAE neuron activations. Observed variables Y and directly upstream hidden variables X ′′ could be nearly perfectly recovered, especially for larger hidden dimensionalities. The original generative random variables X, however, are not directly represented by individual SAE features. Comparing these results to baselines from PCA, ICA, and SVD (Table <ref type="table">S5</ref>), there was no significant increase in superposition identifiability between SAE and baseline methods. The SAE's advantages, however, lie in the discovery of unknown features and providing a convenient way of extracting learned features that can be used for model steering.</p><p>Structure. In real-world applications, it may be difficult to identify generative variables due to the prevalence of features corresponding to observables. We may, however, be able to identify concepts and structures in the data generation process in a different way. Figure <ref type="figure" target="#fig_2">S13</ref> demonstrates an alternative approach comparing the structure of SAE features and observables with the data generation matrix M. For each feature, the best matching X ′′ variable is determined. Their entries of pseudo connectivity matrix and M are used to calculate how many entries of Y match for each feature-X ′′ pair. On average, 75 % to 95 % of the entries in M could be recovered (with 20th to 70th percentiles of cosine similarity as thresholds, respectively).</p><p>5 Case Study: Extracting and annotating meaningful features from single-cell models</p><p>Next, SAEs were applied to representations from models pre-trained on single-cell RNAseq and multi-omics data. SAE hyperparameters were evaluated on a model trained on three different datasets from Schuster et al. <ref type="bibr" target="#b30">[31]</ref>. Meaningfulness of extracted features and how they can be used for steering samples towards biological programs is demonstrated in a manual evaluation. A major contribution of this work is an automated analysis pipeline for practical large-scale interpretability analysis demonstrated on multiDGD <ref type="bibr" target="#b30">[31]</ref> and the latest version of Geneformer <ref type="bibr" target="#b31">[32]</ref>. In this case study, Gene Ontology (GO) terms <ref type="bibr" target="#b44">[45,</ref><ref type="bibr" target="#b45">46]</ref>, which provide functional information about sets of genes, represent examples of biological concepts.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1">SAE training</head><p>Experimental set up: SAE hyperparameters were evaluated on a small sweep for extracted representations from multiDGD instances trained on human bone marrow <ref type="bibr" target="#b46">[47]</ref>, mouse gastrulation <ref type="bibr" target="#b47">[48]</ref>, and human brain data <ref type="bibr" target="#b48">[49]</ref> (Appendix A. Results: In the SAE trained on multiDGD embeddings from the human bone marrow data, 5318 remained as "live" SAE neurons with 185.7 firing on average per cell. Since the representations are highly structured with respect to cell type, average activations of cell types naturally create unique patterns (Figure <ref type="figure">S15</ref>). Significant differences in activations with respect to cell types revealed two major SAE feature categories: "local" and "global" (categorization and significance measure in Appendix A. <ref type="bibr">3.6)</ref>. Local features are characterized by higher activations for a single cell type compared to all other cell types. Among the 5318 live neurons, there were 4410 global and 908 local features. Training the SAE on different random seeds revealed robust results in the number of live neurons and feature types (Table <ref type="table">S6</ref>). Monocytes and cells along the red blood cell differentiation trajectory accounted for most of the local features (not related to numbers of cells in the data, Figure <ref type="figure" target="#fig_5">S17</ref>).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2">Manual feature analysis</head><p>Experimental set up: Evaluating what biological potential functions a feature has is difficult. In this work, concepts of biological function of a given feature was approximated by GO terms. In order to create gene sets associated with a given SAE feature, Differential Gene Expression (DGE) analysis was performed on either "perturbed-vs-normal" or "high-vs-low" sample subsets. Perturbed subsets were created by selecting a cell type along the global feature trajectory, computing sample activations, maximizing the feature of interest (also called "steering"), and predicting the perturbed representations. "High-vs-low" subsets were created by selecting the 95th and 5th percentile activations of sample representations per feature (excluding 0 if done in a specific cell type). DGE analysis was then performed based on the single-cell model's predicted expression values according to Appendix A.3.4.</p><p>Results: Global features. Red blood cell differentiation is a prominent biological process in this dataset. Based on the rule set described in Appendix A.3.2, neuron 2306 was identified as the best aligning feature (Figure <ref type="figure" target="#fig_1">S20</ref>). Activations are shown in Figure <ref type="figure" target="#fig_1">2A</ref>. Although feature 2306 was most prevalent along the axis of red blood cell differentiation, moderate activations were also found in NK and some CD8+ T cells.</p><p>Steering was performed by maximizing feature 2306 in HSCs, Proerythroblasts, NK, and CD8+ T cells (Figure <ref type="figure" target="#fig_1">2B</ref>). While each analysis resulted in different gene sets and GO terms, the identified processes are highly specific and show a strong functional overlap (Table <ref type="table">S8</ref>). Results highlight ion homeostasis and gas transport, which are crucial processes in erythropoiesis and cytotoxicity. This global feature presents an important higher-level and more general concept in cellular processes of the bone marrow.</p><p>Local features. Among local features, B cells presented multiple of the top 20 features regarding mean activation. This analysis investigates one of the most significant local features for each of the three different types of B cells present in the data: Transitional, Naive CD20+, and B1 B cells. Activations are shown in Figure <ref type="figure" target="#fig_1">2C</ref>. DGE analysis ("high-vs-low") and GO term enrichment analysis within each cell type revealed distinctive molecular signatures of each feature. Feature 1500 (Transitional B cells) was characterized by GO terms related to the response to interferon beta. Interferon beta is a critical regulator during early transitional B cell development, playing a role in differentiation towards a regulatory phenotype vs. an inflammatory phenotype <ref type="bibr" target="#b49">[50]</ref>. Feature 1238 (Naive CD20+ B cells) showed enrichment in histone H3R26 citrullination, an indicator of cellular aging <ref type="bibr" target="#b50">[51]</ref>. Another sign of cell aging is increased closed chromatin. Cells with high activations of feature 1238 had significantly more closed chromatin. The 95th percentile had an average chromatin openness of 0.03322 ± 0.00124 SEM compared to the 5th percentile with a mean of 0.04393 ± 0.00002 (based on "high": 35 samples, "low": 3483 samples, 129921 columns). Feature 5205 (B1 B cells) presented enriched GO terms predominantly centered around molecular functions associated with pattern recognition receptor activities. Specifically, the terms highlighted activation of the innate immune system, referencing key receptors such as toll-like receptor 4, haptoglobin, and RAGE receptor. The activation profile of these cells suggests a trajectory towards increased immune cell activity and potential cytotoxicity, paralleling observations from previous results on T cells.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.3">scFeatureLens: Automated SAE analysis demonstrated on multiDGD and Geneformer</head><p>Manual analyses, while useful for validation, are limited in their scalability. Deriving biological semantic concepts in an automated fashion is highly desirable and a key contribution of this work. The pipeline presented here can be adapted to any database using gene sets to characterize semantic concepts. The automated analysis in this work is performed both on the previously introduced SAE features trained on multiDGD representations of human bonemarrow data and an equivalent SAE trained on Geneformer <ref type="bibr" target="#b31">[32]</ref> representations from the same data. Experimental set up: The basis of the automated analysis is a concept-by-gene matrix summarizing the gene sets associated with each concept. "high-vs-low" sample sets were created for each active feature with the 99th percentile of the feature activations as the "high" set and a sample of maximum 1000 cells from those with zero values as "low". This was followed by DGE analysis on the predicted expression counts and a simple GO term analysis inspired by Mi et al. <ref type="bibr" target="#b51">[52]</ref> (details in Appendix A.3.7). The analysis is parallelized over GO terms for efficiency with a compute time of ∼ 30 seconds per feature on the used Hardware. GO terms with p-values below 0.01 were recorded for each feature. Feature spaces are visualized as UMAPs <ref type="bibr" target="#b52">[53]</ref> of the binary matrix of the matches between unique GO terms and features (distance 1.0, 10 neighbors, seed 0, spread 10).</p><p>Results: The analysis on multiDGD's SAE returned GO terms for 4374 (82.25 %) of the active features, with overall 1875 unique biological process and 624 molecular function GO terms. Individual GO terms appeared between once and over 2500 times. Terms that appeared very often are broader, high-level GO terms associated with immune response and signaling pathways (Table <ref type="table">S7</ref>). Many of the features active in a small fraction of cells did not cluster with cell types and would go completely unnoticed in traditional analysis of the dense latent space, making this pipeline very valuable. Figures <ref type="figure" target="#fig_2">3A</ref> and<ref type="figure" target="#fig_1">S22</ref> show the SAE features' concept space. This space organizes features with respect to GO terms, largely separating into cellular processes and biological regulation at the highest level of the Gene Ontology. It can be probed for specific biological components and concepts, which is demonstrated in Figures <ref type="figure" target="#fig_2">3B</ref> and<ref type="figure" target="#fig_1">S25</ref>. Examples of meaningful overlaps include a large overlap of features associated with protein localization and checkpoint signaling. Within this area there are processes that collectively contribute to stem cell homeostasis, fate determination and maintenance, such as stem cell proliferation, cell polarity, maturation, and autophagy. The JAK-STAT signaling pathway takes a central role in this feature space. It appears at the intersection of features annotated with concepts from growth factor signaling, NK cell activation, antiviral response, and death -to name a few key functions.</p><p>The SAE trained on Geneformer representations resulted in 7073 active features (33 % more than the SAE trained on multiDGD) out of which 5290 were annotated with GO terms. Interestingly, there are only 409 local features. This potential lack of local separability may be due to the curse of dimensionality (Geneformer has a latent dimensionality of 896 vs multiDGD's 20) and the complex latent distribution of multiDGD. See visualizations of embedding and more feature space plots in Figures <ref type="figure" target="#fig_2">S26-30</ref>. Feature spaces are difficult to compare. Visually, many observations made previously in terms of overlapping concepts seem to be consistent, although more specific GO terms do not cluster well (Figure <ref type="figure" target="#fig_2">S31</ref>). Additionally, all 2499 unique GO terms identified in the multiDGD SAE were also recovered from the Geneformer embeddings, with 97 additional GO terms found in this larger, pre-trained model. The most common GO terms center less around immunity, which is not very suprising given that Geneformer was trained on a large and more varied dataset (Table <ref type="table">S7</ref>). Concept count distributions between the two models' SAEs varied with Spearman and Pearson correlations of 0.46 and 0.43, respectively (Figures <ref type="figure" target="#fig_1">S29,</ref><ref type="figure" target="#fig_2">32</ref>). multiDGD's SAE shows an average of 95.5 ± 1.7 SEM GO terms per active feature with a range from 1 -482. The SAE trained on Geneformer embeddings has a lower range of GO terms per feature from 1 -254 with an average of 48.7 ± 1.0 SEM. A more fine-grained analysis of the feature spaces through optimal bipartite matching based on the shared GO terms reveals a low similarity of 0.16 (Appendix A.3.8 for methodology and interpretation). These results suggest that there may be a shared broad semantic structure that is learned by different models on the same kind of data, but individual features seem to potentially serve very different purposes and the functional focus of the embeddings are largely influenced by the scope of data the model was trained on.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Conclusion</head><p>This work explored the potential of sparse autoencoders (SAEs) to interpret latent representations in biological tabular data. Through data simulation with ground-truth generative variables, it provided valuable insights into the behavior and capabilities of SAE architectures. SAEs were found to effectively recover hidden variables if they have been learned in superposition, with performance improving as hidden dimensionality and model width increase. The presence of hidden variables in superposition depends, however, on their position in the data generation process, the impact they have on the observables, and likely also their type of distribution. Variables with an indirect effect on the observed data and little structure in the generative process could practically not be recovered. SAEs further do not pose an advantage in the recovery of known or hypothesized features compared to simple baselines. However, the connectivity of SAE features and observables can unearth valuable insight into the data generation structure. Despite their limitations, the application of SAEs to single-cell expression data demonstrated that they present practical value in a real-world biological context. Identifying and steering features manually uncovered specific biological processes, validating the relevance of the SAE-derived features. Local features helped identify small cell type subpopulations previously not distinguishable in the latent representations. The automated annotation pipeline employs well-established methods such as DGE and enrichment analysis. Its novelty and utility stem from direct integration with the disentangled SAE features extracted from scRNAseq embeddings. This provides a novel, powerful, and scalable framework for improved interpretability. It is available as a tool on GitHub. While this case study was limited to Gene Ontology (GO) terms which are incomplete and biased towards well-studied genes, the improvement in interpretability is immense and can have a significant impact on single-cell analysis. Additionally, the pipeline can be applied to any gene expression embedding and can be used with different databases providing semantic context from gene sets. Altogether, this work presents an important step towards more interpretable models in biology, but much more research is needed in this field. Future work could explore metrics for evaluating the biological meaningfulness in and differences between embeddings, and methods to help overcome the limitations in recovering variables that are difficult to decompose. The small simulation data set with |Y | = 5 and |X| = 3 was generated in two steps. First, the threedimensional multivariate random variable X were sampled from Binomial distributions with probabilities [0.5, 0.1, 0.9] multiplied with samples from Poisson variable A (λ = 2), resulting in latent variables X ′ . Secondly, X ′ was multiplied with M (p = 0.1) to produce observables Y . 10000 train and 2000 validation data points were sampled.</p><p>x ′ = x a with x ∼ X</p><formula xml:id="formula_3">y i = 3 j=1 m i,j x ′ j (6)</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.2.2 AE architectures and training</head><p>An autoencoder was trained that perfectly recovered latent variables X ′ (Supplementary Figure <ref type="figure" target="#fig_2">3</ref>) of the small simulation data with latent dimension 4 equal to the number of generative variables, ReLU activation, Adam optimizer Kingma and Ba <ref type="bibr" target="#b54">[55]</ref> (learning rate 10 -4 ), and MSE loss for 20000 epochs. Autoencoder architectures for the large simulation were set up as either "narrow" or "wide" with mirrored encoder and decoder. d here is referred to as the latent dimensionality. A "narrow" encoder would be of structure [max(1000, 2d), max(150, 2d), ..., max(150, 2d)] unless the number of layers was only 2, in which case the hidden dimensionality would be max(150, 2d). A "wide" encoder would receive hidden dimensionalities sampled from equidistant points between the input dimension and d. Hyperparameters were determined through Optuna optimization Akiba et al. <ref type="bibr" target="#b55">[56]</ref> based on the reconstruction loss with 50 trials and 100 epochs. The trials tested learning rates between 10 -6 and 10 -3 , weight decays [0, 0.1, ..., 10 -7 ], dropout [0, 0.1] and batch sizes between 32 and 512. Selected hyperparameters for each depth and width can be found in Table <ref type="table">S2</ref>. Remaining parameters are shown in Table <ref type="table">S3</ref>. All models were trained with Adam optimizer and early stopping for up to 10000 epochs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.2.3 Superpositions</head><p>Superpositions in latent representations were identified through linear regression. For the small simulations, superposition vectors and coefficients of determination (R 2 ) were computed through sklearn's LinearRegression. For the sake of effiency on the large number of variables in the large simulation, linear regression was implemented using a single linear neural network layer trained for 100 epochs by optimizing the mean squared error with standard gradient descent optimization and a learning rate of 10 -4 .</p><p>Given observed values y i with mean ȳ and predicted values ŷi , the coefficient of determination</p><formula xml:id="formula_4">R 2 = 1 -i (y i -ŷi ) 2 i (y i -ȳi ) 2<label>(7)</label></formula><p>represents the fraction of variance explained by the model, with values ranging from 0 (no explanatory power) to 1 (perfect prediction).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.2.4 SAE hyperparameter evaluation</head><p>Different SAE architectures were trained on varying hidden dimensionalities (latent size multiplied with a hidden factor), learning rates, and L1 weights for 500 epochs. All tested hyperparameters can be found in Table <ref type="table">S4</ref>. In the case of TopK SAEs, the sparsity is controlled by k, which was tested as percentages of the hidden dimension. For each instance, the following metrics were computed:</p><p>-number of active hidden neurons (activity determined by activations of &gt; 10 -10 ) -number of redundant hidden neurons (neurons that fire with other neurons with a Pearson correlation ≥ 0.95) -average number of neurons firing per sample -average number of neurons corresponding to a given data variable (determined by Pearson correlation ≥ 0.95) -highest Pearson correlation between a neuron and a given data variable</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.2.5 Structure identification</head><p>This analysis was done on one of the well-performing SAEs trained on representations from one of the best performing AEs in terms of validation loss and variable recovery. The AE featured 2 layers in the "wide" format with 5075 hidden neurons and a latent dimension of 150. The SAE featured a scaling factor of 100, an L1 weight of 0.001, and a learning rate of 10 -5 . Cosine similarities between all 11849 active SAE features and all 20000 observables in Y were computed. Based on different percentiles of the cosine similarity matrix (as thresholds), connectivity matrices were computed between SAE features and Y and Binomial tests between all features and all variables in X ′′ w.r.t. Y were performed. The ground truth connectivity matrix was given by the data generation matrix M. The best matching X ′′ for each feature was computed based on the maximum number of hits. The reported result is the maximum fraction of "genes" Y connected to X ′′ covered by the set of "genes" Y connected to the SAE features.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.3 Single-cell case study</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.3.1 Single-cell representations</head><p>Representations were extracted from three pre-trained multiDGD models <ref type="bibr" target="#b30">[31]</ref> trained on single-cell multiomics data from human bone marrow <ref type="bibr" target="#b46">[47]</ref>, mouse gastrulation <ref type="bibr" target="#b47">[48]</ref>, and human brain <ref type="bibr" target="#b48">[49]</ref>. The following table of dataset sizes was taken from Schuster et al. <ref type="bibr" target="#b30">[31]</ref>. The same train-validation-test splits were used as in Schuster et al. <ref type="bibr" target="#b30">[31]</ref>. The latent space of the model is small with only 20 dimensions. The paper highlighted the structure of the latent space, especially with regard to the clear trajectory of differentiation from stem cells to red blood cells (erythrocytes) <ref type="bibr" target="#b30">[31]</ref>. The pre-trained model and data were downloaded as instructed by Schuster et al. <ref type="bibr" target="#b30">[31]</ref>. Furthermore, embeddings for the human bone marrow data were extracted from Geneformer <ref type="bibr" target="#b31">[32]</ref> following their instructions to extract embeddings by passing the scRNAseq data through the most recent version of Geneformer "gf-20L-95M-i4096". The extracted embeddings had a dimensionality of 896.</p><formula xml:id="formula_5">Supplementary</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.3.2 Identifying a feature for red blood cell differentiation</head><p>Red blood cell differentiation: This rule set was created to identify potential features of red blood cell differentiation:</p><p>1. The average activation must be higher in the red blood cell line than in other cell types.</p><p>2. Average activations must consistently increase from the stem cells to the final differentiation stage of red blood cells.</p><p>Applying this rule set provided 44 neurons as potential features. These neurons were inspected visually in terms of cell-wise activations and tested to see which ones would result in the largest shift in latent space towards differentiated cells when maximizing the neuron's activations in stem cells (Supplementary Figure <ref type="figure" target="#fig_1">20</ref>). See the next section for details on perturbations. This returned neuron 2306 as the most promising candidate feature.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.3.3 SAE training</head><p>A small hyperparameter search was performed on the multiDGD embeddings to see if the simulation results translated well to real world settings. Both Vanilla and Bricken SAEs were tested, but not TopK since this method was not robust in previous experiments and has the disadvantage of having to estimate the number of active neurons beforehand. Hyperparameters tested were hidden scaling factors <ref type="bibr" target="#b19">[20,</ref><ref type="bibr">100,</ref><ref type="bibr">200</ref>, 500], L1 weights [1, 0.1, 0.01, 10 -3 , 10 -4 ], and learning rates [10 -4 , 10 -5 ] with a batch size of 128 for 1000 epochs with early stopping (patience 50).</p><p>A learning rate of 10 -4 gave best results and was most robust, which aligns with simulation results. When training long enough, reconstruction loss generally decreased with the scaling factor. Learning rate 10 -4 presented the lowest reconstruction losses and a much less drastic difference between scaling factors than smaller learning rates. Lower L1 weights lead to steeper increases in the number of active neurons against the scaling factor (again aligning with simulation results). Lower number of active neurons (25th percentile) and good reconstruction loss (5th percentile) can be achieved with learning rates of 10 -4 and a L1 weights of 0.001 or 0.0001 (slight differences for datasets, shift by one log step). There were no trends or large differences between Vanilla and Bricken SAEs.</p><p>For analysis, Vanilla SAEs were trained for 500 epochs with Adam optimizer Kingma and Ba <ref type="bibr" target="#b54">[55]</ref>, a learning rate of 10 -4 , batch size 128, hidden activation dimension 10000 (500-fold increase for multiDGD) and an L1 weight of 10 -3 (see loss curves in Supplementary Figure <ref type="figure">14</ref> for multiDGD human bone marrow) for multiDGD's and Geneformer's embeddings from the human bone marrow with random seeds [0, <ref type="bibr" target="#b41">42,</ref><ref type="bibr">9307]</ref>.</p><p>Compute requirements are low, with training taking 20 minutes for the 56k training samples.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.3.4 DGE analysis</head><p>Sample groups were investigated in terms of relevant changes to gene expression through differential gene expression analysis (DGE). In the case of the "perturbed-vs-normal" paired samples, this was done with negative binomial generalized linear models as is common in biological data analysis <ref type="bibr" target="#b56">[57,</ref><ref type="bibr" target="#b57">58]</ref>. The resulting p-values and fold changes from the models are reported. For the unpaired "high-vs-low" comparison, t-tests were performed between the groups for each gene and calculated the fold change based on mean expression.</p><p>Corrected p-values were computed based on multi-test correction with Benjamini/Hochberg correction for non-negative values <ref type="bibr" target="#b58">[59]</ref> for all experiments.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.3.5 Manual GO term enrichment analysis</head><p>In order to identify biological processes related to the differentially expressed genes, genes were filtered by adjusted p-values (threshold 10 -10 ) and in the case of CD8+ T cells also fold change (10-fold and inverse) to get as highly specific processes as possible. Biological processes related to the resulting gene sets were identified through GO term analysis with default parameters at <ref type="url" target="https://geneontology.org/docs/go-enrichmentanalysis/">https://geneontology.org/docs/go-enrichmentanalysis/</ref>  <ref type="bibr" target="#b44">[45,</ref><ref type="bibr" target="#b45">46]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.3.6 Feature characterization</head><p>SAE features were distinguished into local and global features based on whether they were only active in a single cell type or similarly active in multiple cell types. This was assessed by calculating the significance measures of activations per feature over cells from a specific cell type vs all other cells. Features with significantly higher activations in only one cell type were labeled as local. Significance was determined based on a two-tailed test with confidence interval 95 % (z = 1.96) as</p><formula xml:id="formula_6">α = |µ j -µ i | -1.96( σ j N j + σ i √ N i )<label>(8)</label></formula><p>with means µ, standard deviations σ, and number of observations N for two cell type distributions i and j. The null hypothesis is rejected if α ≥ 0.05. This significance measure is used to determine relevant differences between samples for SAE feature activations and in one analysis also chromatin accessibility (openness).</p><p>A.3.7 Automated GO term analysis DGE analysis was performed on the predicted expression counts for feature-specific "high-vs-low" sample sets as described in A.3.4. Next, a GO term analysis was performed according to Mi et al. <ref type="bibr" target="#b51">[52]</ref> with a binomial test and a Mann-Whitney U (MWU) test for all GO terms with 20 to 500 reference genes available in our 13431 genes. The MWU test were performed with the ranked fold changes (smallest rank 1). The metric was calculated as</p><formula xml:id="formula_7">U = min U 1 = n 1 n 2 n 1 (n 1 + 1) 2 -R 1 , U 2 = n 1 n 2 n 2 (n 2 + 1) 2 -R 2<label>(9)</label></formula><p>with n 1 and n 2 presenting the number of genes in the GO term gene set and the remaining genes, respectively. R 1 and R 2 correspondingly present the average ranks of these groups. Z-scores, p-values, and effect sized of the test are reported. The binomial test was conducted on the most relevant genes from the DGE analysis based on two thresholds. Firstly, the number of genes identified for an adjusted p-value threshold of 10 -5 and a fold change of at least 2 (or below 0.5) were computed. If this returned zero genes, the p-value threshold was increased to 0.05 and the fold change excluded. Afterward, the p-value, number of expected genes, fold enrichment and false discovery rate for k hits (relevant genes that are also found in the GO term gene set), n s samples in the study (the relevant genes returned by DGE analysis), and p c as the probability of randomly finding one of the GO term genes (p c = n c /n with n as the total number of genes and n c as the number of genes associated with the GO term) were computed.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.3.8 Optimal bipartite matching</head><p>Optimal bipartite matching computes the Jaccard distance between all features from DGD and Geneformer SAEs and then finds the optimal matching via the Hungarian algorithm. Overall matrix similarity is computed as the average Jaccard distance of the matched pairs. Values can be between 0 (no similarity) and 1 (perfect similarity).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Figures</head><p>Supplementary Figure <ref type="figure">1</ref> </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>R=1.00</head><p>Supplementary Figure <ref type="figure" target="#fig_2">3</ref>: Superpositions in compressed, "ideal", and overcomplete autoencoders trained on simulated data. A) The top row depicts learning curves of train and validation MSE loss over epochs (left, legend in C) and superpositions of the three variables X (right) of a single-layer autoencoder with a compressed bottleneck (2 dimensions). The superpositions are plotted as the product of the latent representations and coefficients from linear regression against the true values of X. Linear regression was performed between the latent representations and true X values. Points along the black line indicate a perfect fit of the superpositions (quantified by the R value rounded to two decimals in the bottom right corner (maximum 1). B) Same as A for the "ideal" case, in which the number of latent units is equal to the number of generative random variables. C) Same as A and B for the overcomplete case with 10 hidden units.  Supplementary Figure <ref type="figure">8</ref>  </p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head></head><label></label><figDesc>3.1). Results scaled well compared to the preceding simulation experiments. Hyperparameters and training are described in Appendix A.3.3. The final SAE hidden dimension was chosen to be 10000 neurons in favor of redundant features over a lack of sensitivity. Another SAE was trained on representations of the human bone marrow data extracted from Geneformer for the automated pipeline. See Appendices A.3.1 and A.3.3 for embedding extraction, training details and compute estimates.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: SAE features in multiDGD' bone marrow representation space. Visualized as PCA plots of the extracted 20-dimensional representations. A Representations colored by activations of neuron 2306. Lightest color represents zero values, darker colors present higher activations. B Representations from SAE feature steering/perturbation experiments on Proerythroblast representations (black, "normal"). Representations predicted by the SAE after maximizing feature 2306 are shown in blue ("perturbed"). C Local features. From left to right: Representations colored and size-scaled by activations of neurons 1238, 5205, and 1500.</figDesc><graphic coords="6,72.00,72.00,467.99,130.89" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: SAE feature space. Feature spaces are visualized as UMAPs of the GO-feature matrices described in Appendix A.3.7. Locations of the manually analyzed features are shown in Figure S24. A Feature maps of SAEs from multiDGD (left) and Geneformer (right) representations are colored by the most common 1st level of GO terms associated with the feature (legend on the right). B Probing multiDGD SAE features by broad semantic concepts (plot titles) included in GO terms. Dark points indicate features with at least one GO term containing the concept.</figDesc><graphic coords="7,72.00,72.00,468.00,219.58" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head></head><label></label><figDesc>of the Second Conference on Causal Learning and Reasoning, pages 662-691. PMLR, August 2023. ISSN: 2640-3498. verify superpositions. It features |Y | = 5, |X| = 3, L = 1, and no noise. Details can be found in Appendix A.2.1.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>:</head><label></label><figDesc>Simulated and single-cell data. A PCAs of simulated observables Y and logtransformed single-cell (sc) counts colored by A/celltype and B/technical covariate, respectively. B PCAs of simulated latents X ′′ and inferred (not generative) latents from the sc model. PCAs are again colored by A/celltype and B/technical covariate, respectively. C Histograms of simulated Y values and real sc counts.Simulated data does not directly match the specific single-cell dataset presented here. However, clusters of A and B appear similar to our real-world comparison (cell type and technical covariate). The values in C are generally higher for the simulation and less sparse, but still match zero-inflated Negative Binomial distributions which are typically used to describe these count data.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Supplementary Figure 7 :</head><label>7</label><figDesc>Performance comparison of SAEs for learning rate 10 -4 . The first column presents accumulated line plots of specific metrics for the three different model types over the hidden dimensionality (N = 5 and N = 6 samples per point for Vanilla/ReLU and TopK, respectively) with the area as the 95th confidence interval. The other three columns show the individual data points as line plots colored by the sparsity penalty. Legends to the right. The rows depict different metrics on the y axes: MSE loss, fraction of dead neurons, average number of firing neurons per sample, highest Pearson correlation of SAE neurons with variables X.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>Supplementary Figure 12 :</head><label>12</label><figDesc>Redundancy of SAE features. The two line plots show the number of active neurons per variable X colored by sparsity parameter for Vanilla/ReLU (sparsity parameter: L1 weight) and TopK (sparsity parameter: k) SAEs, respectively. The number of features are plotted against the total number of hidden neurons in the SAE. Line plots are set up as in Figure4with N = 2 and N = 1 samples per point, respectively.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0"><head></head><label></label><figDesc></figDesc><graphic coords="26,72.00,268.75,468.00,115.64" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0"><head></head><label></label><figDesc></figDesc><graphic coords="33,72.00,467.02,467.99,175.39" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0"><head></head><label></label><figDesc></figDesc><graphic coords="34,72.00,94.11,467.99,302.54" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0"><head></head><label></label><figDesc></figDesc><graphic coords="34,95.40,497.05,421.20,152.64" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0"><head></head><label></label><figDesc></figDesc><graphic coords="35,95.40,108.49,421.20,206.63" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0"><head></head><label></label><figDesc></figDesc><graphic coords="36,72.00,244.01,467.99,255.78" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0"><head></head><label></label><figDesc></figDesc><graphic coords="37,72.00,166.87,468.00,410.05" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0"><head></head><label></label><figDesc></figDesc><graphic coords="38,189.00,177.13,233.99,376.59" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0"><head></head><label></label><figDesc></figDesc><graphic coords="39,95.40,120.82,421.21,207.94" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0"><head></head><label></label><figDesc></figDesc><graphic coords="39,95.40,482.58,421.19,140.40" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0"><head></head><label></label><figDesc></figDesc><graphic coords="40,189.00,260.72,234.01,222.35" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0"><head></head><label></label><figDesc></figDesc><graphic coords="42,72.00,400.19,468.00,229.60" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0"><head></head><label></label><figDesc></figDesc><graphic coords="43,165.60,133.20,280.81,192.07" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0"><head></head><label></label><figDesc></figDesc><graphic coords="43,95.40,490.74,421.20,119.86" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0"><head></head><label></label><figDesc></figDesc><graphic coords="44,95.40,274.41,421.21,207.94" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0"><head></head><label></label><figDesc></figDesc><graphic coords="46,189.00,260.68,234.01,237.63" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head></head><label></label><figDesc>). The best performing Vanilla models used L1 weights of 10 -3 (10 -4 for ReLU) with hidden Schematic of the data generation process. Filled and non-filled circles represent observed and hidden variables, respectively. Arrows indicate the dependencies between variables from parent to child. There are 3 levels to this generative process, indicated by the distance from observed counts Y (details in Appendix A.2.1). X ′ and X ′′ represent the hidden states altered by B and A, respectively. C AE performance (validation loss) plotted against superposition fit (R 2 ). Coefficients of determination R 2 describe how well a given variable can be retrieved from the latent embedding (see Appendix A.2.3 for details). Colors and marker styles match the variables from B.</figDesc><table><row><cell>A</cell><cell cols="2">Sparse Autoencoders and Superpositions</cell><cell>B</cell><cell cols="3">Simulated Data</cell><cell>C</cell><cell>Model Performance vs. Superposition Fit</cell></row><row><cell></cell><cell>x 1</cell><cell></cell><cell></cell><cell cols="2">hidden variables</cell></row><row><cell></cell><cell>x 0</cell><cell>embedding x</cell><cell></cell><cell>degree 3</cell><cell>X</cell><cell>B</cell></row><row><cell></cell><cell>features in superposition</cell><cell></cell><cell></cell><cell>degree 2</cell><cell>X'</cell><cell>A</cell></row><row><cell></cell><cell>SAE activations z</cell><cell></cell><cell></cell><cell>degree 1</cell><cell>X''</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell>observed counts</cell><cell>Y</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>Linear regression goodness of fit</cell></row><row><cell cols="7">Figure 1: Sparse Autoencoders, data simulation, and hidden variable recovery. A Schematic of</cell></row><row><cell cols="7">superpositions and SAEs. Given a sample generated from 3 features and encoded into a 2D latent space,</cell></row><row><cell cols="7">there are more features than dimensions. The features have to be learned as linear combinations of the latent</cell></row><row><cell cols="7">dimensions (meaning they are in superposition). These features can be disentangled by projecting them into</cell></row><row><cell cols="3">a higher-dimensional space via SAEs. B</cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 1 :</head><label>1</label><figDesc>Summary of single-cell multi-omics data used.</figDesc><table><row><cell>Dataset</cell><cell cols="3">Species Number of cells RNA dimensionality ATAC dimensionality</cell></row><row><cell cols="2">Bone marrow Human 69249</cell><cell>13431</cell><cell>116490</cell></row><row><cell>Brain</cell><cell>Human 3534</cell><cell>15172</cell><cell>95677</cell></row><row><cell>Gastrulation</cell><cell>Mouse 56861</cell><cell>11792</cell><cell>69862</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>:</head><label></label><figDesc>Comparison of variable recovery in different SAEs for learning rate 10 -4 . Same as Supplementary Figure7with different metrics on the y axes. Metrics refer to the highest Pearson correlation of SAE neurons with the simulation variables, as well as the number of corresponding SAE neurons with a correlation threshold of &gt; 95 %. Sensitivity and specificity of SAE neurons for variables A (top) and B (bottom). Highest correlations of SAE neurons plotted against the dimensionality of the SAE hidden space for Vanilla, ReLU, and TopK SAEs (columns from left to right). Colors indicate the sparsity penalty, explained in the legend at the bottom. The top row shows all model setups.</figDesc><table><row><cell>Highest correlation with A</cell><cell>8 0.80 0.82 0.84 0.86 0.88 0.90</cell><cell>20</cell><cell>40 N hidden neurons 80 200 400 800 Vanilla</cell><cell>4000</cell><cell>Highest correlation with A</cell><cell>8 0.80 0.82 0.84 0.86 0.88 0.90</cell><cell>20</cell><cell>40 N hidden neurons 80 200 400 800 ReLU</cell><cell>4000</cell><cell></cell><cell>Highest correlation with A</cell><cell>8 0.80 0.82 0.84 0.86 0.88 0.90</cell><cell>20</cell><cell>40 N hidden neurons 80 200 400 800 TopK</cell><cell>4000</cell></row><row><cell cols="2">8 0.80 0.82 0.84 0.86 0.88 0.90 L1 weight Highest correlation with B 0.1</cell><cell cols="3">20 0.01 40 N hidden neurons 80 200 400 800 Vanilla 0.001 0.0001 4000</cell><cell cols="2">1e-05 0.80 8 0.82 0.84 0.86 0.88 0.90 Highest correlation with B</cell><cell>20</cell><cell>40 N hidden neurons 80 200 400 800 ReLU</cell><cell>4000</cell><cell>5</cell><cell cols="3">8 0.80 0.82 0.84 0.86 0.88 0.90 10 Highest correlation with B 20 20</cell><cell cols="2">40 N hidden neurons 80 200 400 800 TopK 50 75 100 4000 K</cell></row><row><cell cols="4">Supplementary Figure 11:</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>Acknowledgements</head><p>I would like to acknowledge great discussions with coworkers at the <rs type="institution">Center of Health Data Science (University of Copenhagen</rs>) and the <rs type="funder">Eric and Wendy Schmidt Center at the Broad Institute</rs>. I thank the reviewers for their time and effort to help improve the quality and communication of the work. I especially want to thank my mentor <rs type="person">Anders Krogh</rs> for his tremendous support. I also want to thank <rs type="person">Uthsav Chitra</rs> and <rs type="person">Kristoffer Stensbo-Smidt</rs> for their feedback and advice, and <rs type="person">Jonas Sindlinger</rs> for being a wonderful rubber duck.</p></div>
+<div><head>Impact Statement</head><p>This paper presents work whose goal it is to advance the development and application of mechanistic interpretability for the fields of biology and medicine. There are many potential positive impacts for society related to improving disease understanding and treatment. A potential negative impact with interpretability of biological models is the exploitation of knowledge about differences related to gender, ethnicity, socioeconomic background, and genetics. I believe, however, that the open source development of interpretability techniques will lead to both discovery and removal of such biases in biological models.</p></div>
+			</div>
+			<listOrg type="funding">
+			</listOrg>
+
+			<div type="availability">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Code availability</head><p>Code is made available for reproducibility in this GitHub repository. The presented tool scFeatureLens is available in this GitHub collection.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Data availability</head><p>All data and models used in this work are publicly available and cited.</p></div>
+			</div>
+
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Conflict of Interest</head><p>I declare no conflict of interest.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Appendix A: Methods</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.1 Compute infrastructure</head><p>All computations were performed using Python 3.9 on either CPU or one of the following GPUs: NVIDIA A30, NVIDIA RTX A5000.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.2 Simulated Data</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.2.1 Data Simulation</head><p>Simulated data sets were designed with inspiration from sparse count data as we see in single-cell sequencing in order to get an understanding of what SAEs learn about the data structure and hidden variables. First, a set of hypotheses is defined to guide our the generation process:</p><p>• Gene regulation is determined by molecular regulators and gene programs, and thus the observed data Y should lie on a lower-dimensional manifold X . • Different cell types L have different patterns of active regulators/programs and different levels of overall expression Y. • Technical noise or other covariates B can cause shifts in Y.</p><p>Simulated counts y ∈ Y = {Y i=1 , ..., Y i=N } T are generated through the following three steps:</p><p>with X = (X 1 , ..., X 100 ) T presenting the ground truth multivariate latent variables. Noise vectors b c = Bs c1 and cell type activity vectors a c = A T s c2 are products of one-hot selection column vectors s c with noise distribution B = (B 1 , ..., B 3 ) T and activity matrix A = (a lj ) ∈ N 40×100 0 , respectively. Matrix M = (m ij ) ∈ N N ×100 0 presents the connectivity matrix between regulators/programs and genes. Random variables were sampled according to</p><p>For a "large" simulation with realistic dimensions, a data dimensionality of N = 20000 was chosen which is at the upper limit of the number of protein-coding genes in the human genome <ref type="bibr" target="#b53">[54]</ref>. The latent dimensionality of X was set to 100. L = 40 dimensions for A represent different cell types and G = 3 variables in B simulate technical noise. Distribution parameters and the order of the generative process were chosen so that the simulated data Y would present similar structures and count distributions compared to real data (Supplementary Figure <ref type="figure">1</ref>). 90000 train and 10000 validation data points were sampled. For simplicity, all of the variables of interest will be referred to as  Supplementary Figure <ref type="figure">6</ref>: Influence of learning rate on the number of active neurons. Bar plots of the three SAE types trained on the same representations as above for a hidden dimension of 400 (100 × latent).</p><p>Columns depict performances for the SAE types Vanilla, ReLU, and TopK. The fraction of active neurons is plotted against the sparsity penalty colored by the learning rate (N = 1).  Supplementary Figure <ref type="figure">31</ref>: Probing Geneformer human bone marrow SAE feature space. Words or concept snippets used for probing GO terms in the feature space are depicted in the title of each plot. Grey small background dots present all features ("other"). Colored, larger dots present all features in which the probing term was found. They are colored by the actual GO terms (legends to the right).</p><p>Supplementary Figure <ref type="figure">32</ref>: Value counts in DGD and Geneformer SAE feature space per shared GO term.</p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Stop explaining black box machine learning models for high stakes decisions and use interpretable models instead</title>
+		<author>
+			<persName><forename type="first">Cynthia</forename><surname>Rudin</surname></persName>
+		</author>
+		<idno type="DOI">10.1038/s42256-019-0048-x.Number:5Publisher</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Nat Mach Intell</title>
+		<idno type="ISSN">2522-5839</idno>
+		<imprint>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="issue">5</biblScope>
+			<biblScope unit="page" from="206" to="215" />
+			<date type="published" when="2019-05">May 2019</date>
+			<publisher>Nature Publishing Group</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<title level="m" type="main">Toward Transparent AI: A Survey on Interpreting the Inner Structures of Deep Neural Networks</title>
+		<author>
+			<persName><forename type="first">Tilman</forename><surname>Räuker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anson</forename><surname>Ho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephen</forename><surname>Casper</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dylan</forename><surname>Hadfield-Menell</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2207.13243</idno>
+		<imprint>
+			<date type="published" when="2023-08">August 2023</date>
+		</imprint>
+	</monogr>
+	<note>cs</note>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Wide and deep neural networks achieve consistency for classification</title>
+		<author>
+			<persName><forename type="first">Adityanarayanan</forename><surname>Radhakrishnan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mikhail</forename><surname>Belkin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Caroline</forename><surname>Uhler</surname></persName>
+		</author>
+		<idno type="DOI">10.1073/pnas.2208779120</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Proceedings of the National Academy of Sciences</title>
+		<imprint>
+			<biblScope unit="volume">120</biblScope>
+			<biblScope unit="issue">14</biblScope>
+			<biblScope unit="page">2208779120</biblScope>
+			<date type="published" when="2023-04">April 2023</date>
+		</imprint>
+	</monogr>
+	<note>Publisher: Proceedings of the National Academy of Sciences</note>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<author>
+			<persName><forename type="first">Ričards</forename><surname>Marcinkevičs</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Julia</forename><forename type="middle">E</forename><surname>Vogt</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2012.01805</idno>
+		<title level="m">Interpretability and Explainability: A Machine Learning Zoo Mini-tour</title>
+		<imprint>
+			<date type="published" when="2023-03">March 2023</date>
+		</imprint>
+	</monogr>
+	<note>cs</note>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Interpretable machine learning: Fundamental principles and 10 grand challenges</title>
+		<author>
+			<persName><forename type="first">Cynthia</forename><surname>Rudin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chaofan</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhi</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Haiyang</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lesia</forename><surname>Semenova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chudi</forename><surname>Zhong</surname></persName>
+		</author>
+		<idno type="DOI">10.1214/21-SS133</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Publisher: Amer. Statist. Assoc., the Bernoulli Soc., the Inst. Math. Statist., and the Statist. Soc. Canada</title>
+		<idno type="ISSN">1935-7516</idno>
+		<imprint>
+			<biblScope unit="volume">16</biblScope>
+			<biblScope unit="issue">none</biblScope>
+			<biblScope unit="page" from="1" to="85" />
+			<date type="published" when="2022-01">January 2022</date>
+		</imprint>
+	</monogr>
+	<note>Statistics Surveys</note>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<monogr>
+		<author>
+			<persName><forename type="first">Nelson</forename><surname>Elhage</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tristan</forename><surname>Hume</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Catherine</forename><surname>Olsson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicholas</forename><surname>Schiefer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tom</forename><surname>Henighan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shauna</forename><surname>Kravec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zac</forename><surname>Hatfield-Dodds</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Robert</forename><surname>Lasenby</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dawn</forename><surname>Drain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Carol</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Roger</forename><surname>Grosse</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sam</forename><surname>Mccandlish</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jared</forename><surname>Kaplan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dario</forename><surname>Amodei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>Wattenberg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Olah</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2209.10652</idno>
+		<title level="m">Toy Models of Superposition</title>
+		<imprint>
+			<date type="published" when="2022-09">September 2022</date>
+		</imprint>
+	</monogr>
+	<note>cs</note>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Sparse coding with an overcomplete basis set: A strategy employed by V1?</title>
+		<author>
+			<persName><forename type="first">Bruno</forename><forename type="middle">A</forename><surname>Olshausen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><forename type="middle">J</forename><surname>Field</surname></persName>
+		</author>
+		<idno type="DOI">10.1016/S0042-6989(97)00169-7</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Vision Research</title>
+		<idno type="ISSN">0042-6989</idno>
+		<imprint>
+			<biblScope unit="volume">37</biblScope>
+			<biblScope unit="issue">23</biblScope>
+			<biblScope unit="page" from="3311" to="3325" />
+			<date type="published" when="1997-12">December 1997</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<title level="m" type="main">Taking features out of superposition with sparse autoencoders</title>
+		<author>
+			<persName><forename type="first">Lee</forename><surname>Sharkey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dan</forename><surname>Braun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Beren</forename></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2022-12">December 2022</date>
+		</imprint>
+	</monogr>
+	<note>Interim research report</note>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<monogr>
+		<title level="m" type="main">Towards Monosemanticity: Decomposing Language Models With Dictionary Learning</title>
+		<author>
+			<persName><forename type="first">Trenton</forename><surname>Bricken</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adly</forename><surname>Templeton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joshua</forename><surname>Batson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Brian</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Jermyn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tom</forename><surname>Conerly</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nick</forename><surname>Turner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Cem</forename><surname>Anil</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Carson</forename><surname>Denison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amanda</forename><surname>Askell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Robert</forename><surname>Lasenby</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yifan</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shauna</forename><surname>Kravec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicholas</forename><surname>Schiefer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Maxwell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicholas</forename><surname>Joseph</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zac</forename><surname>Hatfield-Dodds</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alex</forename><surname>Tamkin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Karina</forename><surname>Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Brayden</forename><surname>Mclean</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Josiah</forename><forename type="middle">E</forename><surname>Burke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tristan</forename><surname>Hume</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shan</forename><surname>Carter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tom</forename><surname>Henighan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Olah</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note>Transformer Circuits Thread</note>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<monogr>
+		<author>
+			<persName><forename type="first">Robert</forename><surname>Huben</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hoagy</forename><surname>Cunningham</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Logan</forename><forename type="middle">Riggs</forename><surname>Smith</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aidan</forename><surname>Ewart</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lee</forename><surname>Sharkey</surname></persName>
+		</author>
+		<title level="m">Sparse Autoencoders Find Highly Interpretable Features in Language Models</title>
+		<imprint>
+			<date type="published" when="2023-10">October 2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<title level="m" type="main">Scaling and evaluating sparse autoencoders</title>
+		<author>
+			<persName><forename type="first">Leo</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tom</forename><surname>Dupré La Tour</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Henk</forename><surname>Tillman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gabriel</forename><surname>Goh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rajan</forename><surname>Troll</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alec</forename><surname>Radford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ilya</forename><surname>Sutskever</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jan</forename><surname>Leike</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeffrey</forename><surname>Wu</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2024-06">June 2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Machine Learning and Neurosurgical Outcome Prediction: A Systematic Review</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Joeky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Patrick</forename><forename type="middle">C</forename><surname>Senders</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aditya</forename><forename type="middle">V</forename><surname>Staples</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mark</forename><forename type="middle">M</forename><surname>Karhade</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">William</forename><forename type="middle">B</forename><surname>Zaki</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Gormley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">D</forename><surname>Marike</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Timothy</forename><forename type="middle">R</forename><surname>Broekman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Omar</forename><surname>Smith</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Arnaout</surname></persName>
+		</author>
+		<idno type="DOI">10.1016/j.wneu.2017.09.149</idno>
+	</analytic>
+	<monogr>
+		<title level="j">World Neurosurgery</title>
+		<idno type="ISSN">1878- 8750</idno>
+		<imprint>
+			<biblScope unit="volume">109</biblScope>
+			<biblScope unit="page" from="476" to="486" />
+			<date type="published" when="2018-01">January 2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Deep neural network-estimated electrocardiographic age as a mortality predictor</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Emilly</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Antônio</forename><forename type="middle">H</forename><surname>Lima</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Ribeiro</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">M</forename><surname>Gabriela</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Manoel</forename><surname>Paixão</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marcelo</forename><forename type="middle">M</forename><surname>Horta Ribeiro</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Paulo</forename><forename type="middle">R</forename><surname>Pinto-Filho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Derick</forename><forename type="middle">M</forename><surname>Gomes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ester</forename><forename type="middle">C</forename><surname>Oliveira</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bruce</forename><forename type="middle">B</forename><surname>Sabino</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luana</forename><surname>Duncan</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Giatti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Sandhi</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Barreto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Meira</forename><surname>Wagner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><forename type="middle">B</forename><surname>Jr</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Antonio</forename><surname>Schön</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Luiz</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Ribeiro</surname></persName>
+		</author>
+		<idno type="DOI">10.1038/s41467-021-25351-7.Number:1Publisher</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Nat Commun</title>
+		<idno type="ISSN">2041-1723</idno>
+		<imprint>
+			<biblScope unit="volume">12</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page">5117</biblScope>
+			<date type="published" when="2021-08">August 2021</date>
+			<publisher>Nature Publishing Group</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Graph-based autoencoder integrates spatial transcriptomics with chromatin images and identifies joint biomarkers for Alzheimer&apos;s disease</title>
+		<author>
+			<persName><forename type="first">Xinyi</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiao</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><forename type="middle">V</forename><surname>Shivashankar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Caroline</forename><surname>Uhler</surname></persName>
+		</author>
+		<idno type="DOI">10.1038/s41467-022-35233-1.Number:1Publisher</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Nat Commun</title>
+		<idno type="ISSN">2041-1723</idno>
+		<imprint>
+			<biblScope unit="volume">13</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page">7480</biblScope>
+			<date type="published" when="2022-12">December 2022</date>
+			<publisher>Nature Publishing Group</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Artificial intelligence in cancer research and precision medicine: Applications, limitations and priorities to drive transformation in the delivery of equitable and unbiased care</title>
+		<author>
+			<persName><forename type="first">Chiara</forename><surname>Corti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marisa</forename><surname>Cobanaj</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Edward</forename><forename type="middle">C</forename><surname>Dee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Carmen</forename><surname>Criscitiello</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sara</forename><forename type="middle">M</forename><surname>Tolaney</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Leo</forename><forename type="middle">A</forename><surname>Celi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Giuseppe</forename><surname>Curigliano</surname></persName>
+		</author>
+		<idno type="DOI">10.1016/j.ctrv.2022.102498</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Cancer Treatment Reviews</title>
+		<idno type="ISSN">0305-7372</idno>
+		<imprint>
+			<biblScope unit="volume">112</biblScope>
+			<biblScope unit="page">102498</biblScope>
+			<date type="published" when="2023-01">January 2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">AI-powered therapeutic target discovery</title>
+		<author>
+			<persName><forename type="first">Frank</forename><forename type="middle">W</forename><surname>Pun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ivan</forename><forename type="middle">V</forename><surname>Ozerov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alex</forename><surname>Zhavoronkov</surname></persName>
+		</author>
+		<idno type="DOI">10.1016/j.tips.2023.06.010.Publisher</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Trends in Pharmacological Sciences</title>
+		<idno type="ISSN">0165-6147</idno>
+		<imprint>
+			<biblScope unit="volume">44</biblScope>
+			<biblScope unit="issue">9</biblScope>
+			<biblScope unit="page" from="561" to="572" />
+			<date type="published" when="2023-09">September 2023</date>
+			<publisher>Elsevier</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">End-to-end risk prediction of atrial fibrillation from the 12-Lead ECG by deep neural networks</title>
+		<author>
+			<persName><forename type="first">Theogene</forename><surname>Habineza</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Antônio</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Ribeiro</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joachim</forename><forename type="middle">A</forename><surname>Daniel Gedon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Antonio</forename><surname>Behar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Luiz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><forename type="middle">B</forename><surname>Ribeiro</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Schön</surname></persName>
+		</author>
+		<idno type="DOI">10.1016/j.jelectrocard.2023.09.011</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Electrocardiology</title>
+		<idno type="ISSN">0022-0736</idno>
+		<imprint>
+			<biblScope unit="volume">81</biblScope>
+			<biblScope unit="page" from="193" to="200" />
+			<date type="published" when="2023-11">November 2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">The triumphs and limitations of computational methods for scRNA-seq</title>
+		<author>
+			<persName><forename type="first">V</forename><surname>Peter</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Kharchenko</surname></persName>
+		</author>
+		<idno type="DOI">10.1038/s41592-021-01171-x.Number:7Publisher</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Nat Methods</title>
+		<idno type="ISSN">1548-7105</idno>
+		<imprint>
+			<biblScope unit="volume">18</biblScope>
+			<biblScope unit="issue">7</biblScope>
+			<biblScope unit="page" from="723" to="732" />
+			<date type="published" when="2021-07">July 2021</date>
+			<publisher>Nature Publishing Group</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Eleven grand challenges in single-cell data science</title>
+		<author>
+			<persName><forename type="first">David</forename><surname>Lähnemann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Johannes</forename><surname>Köster</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ewa</forename><surname>Szczurek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Davis</forename><forename type="middle">J</forename><surname>Mccarthy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephanie</forename><forename type="middle">C</forename><surname>Hicks</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mark</forename><forename type="middle">D</forename><surname>Robinson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Catalina</forename><forename type="middle">A</forename><surname>Vallejos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Kieran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Niko</forename><surname>Campbell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ahmed</forename><surname>Beerenwinkel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luca</forename><surname>Mahfouz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pavel</forename><surname>Pinello</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexandros</forename><surname>Skums</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Camille</forename><surname>Stamatakis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephan-Otto</forename><surname>Attolini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Samuel</forename><surname>Aparicio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jasmijn</forename><surname>Baaijens</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marleen</forename><surname>Balvert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Antonio</forename><surname>Buys De Barbanson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Giacomo</forename><surname>Cappuccio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bas</forename><forename type="middle">E</forename><surname>Corleone</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maria</forename><surname>Dutilh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Victor</forename><surname>Florescu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rens</forename><surname>Guryev</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Katharina</forename><surname>Holmer</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Jahn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jessurun</forename><surname>Thamar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Emma</forename><forename type="middle">M</forename><surname>Lobo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Indu</forename><surname>Keizer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Szymon</forename><forename type="middle">M</forename><surname>Khatri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jan</forename><forename type="middle">O</forename><surname>Kielbasa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexey</forename><forename type="middle">M</forename><surname>Korbel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tzu-Hao</forename><surname>Kozlov</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Kuo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">F</forename><surname>Boudewijn</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Lelieveldt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Ion</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">John</forename><forename type="middle">C</forename><surname>Mandoiu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tobias</forename><surname>Marioni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Felix</forename><surname>Marschall</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amir</forename><surname>Mölder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lukasz</forename><surname>Niknejad</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marcel</forename><surname>Raczkowski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeroen</forename><surname>Reinders</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Antoine-Emmanuel</forename><surname>De Ridder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Antonios</forename><surname>Saliba</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oliver</forename><surname>Somarakis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fabian</forename><forename type="middle">J</forename><surname>Stegle</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Huan</forename><surname>Theis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alex</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alice</forename><forename type="middle">C</forename><surname>Zelikovsky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Benjamin</forename><forename type="middle">J</forename><surname>Mchardy</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Raphael</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Sohrab</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexander</forename><surname>Shah</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Schönhuth</surname></persName>
+		</author>
+		<idno type="DOI">10.1186/s13059-020-1926-6</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Genome Biology</title>
+		<imprint>
+			<biblScope unit="volume">21</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page">31</biblScope>
+			<date type="published" when="2020-02">February 2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Best practices for single-cell analysis across modalities</title>
+		<author>
+			<persName><forename type="first">Lukas</forename><surname>Heumos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anna</forename><forename type="middle">C</forename><surname>Schaar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Lance</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anastasia</forename><surname>Litinetskaya</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Felix</forename><surname>Drost</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luke</forename><surname>Zappia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Malte</forename><forename type="middle">D</forename><surname>Lücken</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><forename type="middle">C</forename><surname>Strobl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Juan</forename><surname>Henao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fabiola</forename><surname>Curion</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Herbert</forename><forename type="middle">B</forename><surname>Schiller</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fabian</forename><forename type="middle">J</forename><surname>Theis</surname></persName>
+		</author>
+		<idno type="DOI">10.1038/s41576-023-00586-w.Number:8Publisher</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Nat Rev Genet</title>
+		<idno type="ISSN">1471-0064</idno>
+		<imprint>
+			<biblScope unit="volume">24</biblScope>
+			<biblScope unit="issue">8</biblScope>
+			<biblScope unit="page" from="550" to="572" />
+			<date type="published" when="2023-08">August 2023</date>
+			<publisher>Nature Publishing Group</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Computational principles and challenges in single-cell data integration</title>
+		<author>
+			<persName><forename type="first">Ricard</forename><surname>Argelaguet</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anna</forename><forename type="middle">S E</forename><surname>Cuomo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oliver</forename><surname>Stegle</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">John</forename><forename type="middle">C</forename><surname>Marioni</surname></persName>
+		</author>
+		<idno type="DOI">10.1038/s41587-021-00895-7.Number:10Publisher</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Nat Biotechnol</title>
+		<idno type="ISSN">1546-1696</idno>
+		<imprint>
+			<biblScope unit="volume">39</biblScope>
+			<biblScope unit="issue">10</biblScope>
+			<biblScope unit="page" from="1202" to="1215" />
+			<date type="published" when="2021-10">October 2021</date>
+			<publisher>Nature Publishing Group</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Probabilistic harmonization and annotation of single-cell transcriptomics data with deep generative models</title>
+		<author>
+			<persName><forename type="first">Chenling</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Romain</forename><surname>Lopez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Edouard</forename><surname>Mehlman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeffrey</forename><surname>Regier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><forename type="middle">I</forename><surname>Jordan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nir</forename><surname>Yosef</surname></persName>
+		</author>
+		<idno type="DOI">10.15252/msb.20209620.Publisher</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Molecular Systems Biology</title>
+		<idno type="ISSN">1744-4292</idno>
+		<imprint>
+			<biblScope unit="volume">17</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page">9620</biblScope>
+			<date type="published" when="2021-01">January 2021</date>
+			<publisher>Ltd</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Deep generative modeling for single-cell transcriptomics</title>
+		<author>
+			<persName><forename type="first">Romain</forename><surname>Lopez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeffrey</forename><surname>Regier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><forename type="middle">B</forename><surname>Cole</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><forename type="middle">I</forename><surname>Jordan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nir</forename><surname>Yosef</surname></persName>
+		</author>
+		<idno type="DOI">10.1038/s41592-018-0229-2.Number:12Publisher</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Nat Methods</title>
+		<idno type="ISSN">1548-7105</idno>
+		<imprint>
+			<biblScope unit="volume">15</biblScope>
+			<biblScope unit="issue">12</biblScope>
+			<biblScope unit="page" from="1053" to="1058" />
+			<date type="published" when="2018-12">December 2018</date>
+			<publisher>Nature Publishing Group</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">MultiVI: deep generative model for the integration of multimodal data</title>
+		<author>
+			<persName><forename type="first">Tal</forename><surname>Ashuach</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mariano</forename><forename type="middle">I</forename><surname>Gabitto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Rohan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Giuseppe-Antonio</forename><surname>Koodli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><forename type="middle">I</forename><surname>Saldi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nir</forename><surname>Jordan</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Yosef</surname></persName>
+		</author>
+		<idno type="DOI">10.1038/s41592-023-01909-9</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Nat Methods</title>
+		<idno type="ISSN">1548-7105</idno>
+		<imprint>
+			<biblScope unit="page" from="1" to="10" />
+			<date type="published" when="2023-06">June 2023</date>
+			<publisher>Nature Publishing Group</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">scJoint integrates atlas-scale single-cell RNA-seq and ATAC-seq data with transfer learning</title>
+		<author>
+			<persName><forename type="first">Yingxin</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tung-Yu</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sheng</forename><surname>Wan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><forename type="middle">H</forename><surname>Jean</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Wing</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><forename type="middle">X</forename><surname>Wong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wang</forename><surname>Rachel</surname></persName>
+		</author>
+		<idno type="DOI">10.1038/s41587-021-01161-6.Number:5Publisher</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Nat Biotechnol</title>
+		<idno type="ISSN">1546-1696</idno>
+		<imprint>
+			<biblScope unit="volume">40</biblScope>
+			<biblScope unit="issue">5</biblScope>
+			<biblScope unit="page" from="703" to="710" />
+			<date type="published" when="2022-05">May 2022</date>
+			<publisher>Nature Publishing Group</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">SCIM: universal singlecell matching with unpaired feature sets</title>
+		<author>
+			<persName><forename type="first">Stefan</forename><forename type="middle">G</forename><surname>Stark</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joanna</forename><surname>Ficek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Francesco</forename><surname>Locatello</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ximena</forename><surname>Bonilla</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stéphane</forename><surname>Chevrier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Franziska</forename><surname>Singer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tumor</forename><surname>Profiler Consortium</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gunnar</forename><surname>Rätsch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kjong-Van</forename><surname>Lehmann</surname></persName>
+		</author>
+		<idno type="DOI">10.1093/bioinformatics/btaa843</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Bioinformatics</title>
+		<idno type="ISSN">1367-4803</idno>
+		<imprint>
+			<biblScope unit="volume">36</biblScope>
+			<biblScope unit="issue">Supplement_2</biblScope>
+			<biblScope unit="page" from="919" to="927" />
+			<date type="published" when="2020-12">December 2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Multi-domain translation between single-cell imaging and sequencing data using autoencoders</title>
+		<author>
+			<persName><forename type="first">Karren</forename><surname>Dai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yang</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anastasiya</forename><surname>Belyaeva</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Saradha</forename><surname>Venkatachalapathy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Karthik</forename><surname>Damodaran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abigail</forename><surname>Katcoff</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><forename type="middle">V</forename><surname>Adityanarayanan Radhakrishnan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Caroline</forename><surname>Shivashankar</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Uhler</surname></persName>
+		</author>
+		<idno type="DOI">10.1038/s41467-020-20249-2.Number:1Publisher</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Nat Commun</title>
+		<idno type="ISSN">2041-1723</idno>
+		<imprint>
+			<biblScope unit="volume">12</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page">31</biblScope>
+			<date type="published" when="2021-01">January 2021</date>
+			<publisher>Nature Publishing Group</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Deep-joint-learning analysis model of single cell transcriptome and open chromatin accessibility data</title>
+		<author>
+			<persName><forename type="first">Chunman</forename><surname>Zuo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luonan</forename><surname>Chen</surname></persName>
+		</author>
+		<idno type="DOI">10.1093/bib/bbaa287</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Briefings in Bioinformatics</title>
+		<idno type="ISSN">1477-4054</idno>
+		<imprint>
+			<biblScope unit="volume">22</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page">287</biblScope>
+			<date type="published" when="2021-07">July 2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Deep cross-omics cycle attention model for joint analysis of single-cell multi-omics data</title>
+		<author>
+			<persName><forename type="first">Chunman</forename><surname>Zuo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hao</forename><surname>Dai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luonan</forename><surname>Chen</surname></persName>
+		</author>
+		<idno type="DOI">10.1093/bioinformatics/btab403</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Bioinformatics</title>
+		<idno type="ISSN">1367-4803</idno>
+		<imprint>
+			<biblScope unit="volume">37</biblScope>
+			<biblScope unit="issue">22</biblScope>
+			<biblScope unit="page" from="4091" to="4099" />
+			<date type="published" when="2021-11">November 2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">A mixtureof-experts deep generative model for integrated analysis of single-cell multiomics data</title>
+		<author>
+			<persName><forename type="first">Kodai</forename><surname>Minoura</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ko</forename><surname>Abe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hyunha</forename><surname>Nam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hiroyoshi</forename><surname>Nishikawa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Teppei</forename><surname>Shimamura</surname></persName>
+		</author>
+		<idno type="DOI">10.1016/j.crmeth.2021.100071</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Cell Reports Methods</title>
+		<idno type="ISSN">2667-2375</idno>
+		<imprint>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="issue">5</biblScope>
+			<biblScope unit="page">100071</biblScope>
+			<date type="published" when="2021-09">September 2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<monogr>
+		<title level="m" type="main">multiDGD: A versatile deep generative model for multi-omics data</title>
+		<author>
+			<persName><forename type="first">Viktoria</forename><surname>Schuster</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Emma</forename><surname>Dann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anders</forename><surname>Krogh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sarah</forename><forename type="middle">A</forename><surname>Teichmann</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2023-08">August 2023</date>
+		</imprint>
+	</monogr>
+	<note>Pages: 2023.08.23.554420 Section: New Results</note>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Transfer learning enables predictions in network biology</title>
+		<author>
+			<persName><forename type="first">Christina</forename><forename type="middle">V</forename><surname>Theodoris</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ling</forename><surname>Xiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anant</forename><surname>Chopra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mark</forename><forename type="middle">D</forename><surname>Chaffin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zeina</forename><forename type="middle">R Al</forename><surname>Sayed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthew</forename><forename type="middle">C</forename><surname>Hill</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Helene</forename><surname>Mantineo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Elizabeth</forename><forename type="middle">M</forename><surname>Brydon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zexian</forename><surname>Zeng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><forename type="middle">Shirley</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Patrick</forename><forename type="middle">T</forename><surname>Ellinor</surname></persName>
+		</author>
+		<idno type="DOI">10.1038/s41586-023-06139-9</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Nature</title>
+		<idno type="ISSN">1476-4687</idno>
+		<imprint>
+			<biblScope unit="volume">618</biblScope>
+			<biblScope unit="issue">7965</biblScope>
+			<biblScope unit="page" from="616" to="624" />
+			<date type="published" when="2023-06">June 2023</date>
+			<publisher>Nature Publishing Group</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<monogr>
+		<title level="m" type="main">Transformer visualization via dictionary learning: contextualized embedding as a linear superposition of transformer factors</title>
+		<author>
+			<persName><forename type="first">Zeyu</forename><surname>Yun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yubei</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bruno</forename><forename type="middle">A</forename><surname>Olshausen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yann</forename><surname>Lecun</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2021-03">March 2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<monogr>
+		<author>
+			<persName><forename type="first">David</forename><surname>Bau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bolei</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aditya</forename><surname>Khosla</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aude</forename><surname>Oliva</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Antonio</forename><surname>Torralba</surname></persName>
+		</author>
+		<title level="m">Network Dissection: Quantifying Interpretability of Deep Visual Representations</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="6541" to="6549" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<monogr>
+		<author>
+			<persName><forename type="first">Elana</forename><surname>Simon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><surname>Zou</surname></persName>
+		</author>
+		<idno>Pages: 2024.11.14.623630</idno>
+		<title level="m">InterPLM: Discovering Interpretable Features in Protein Language Models via Sparse Autoencoders</title>
+		<meeting><address><addrLine>Section</addrLine></address></meeting>
+		<imprint>
+			<publisher>New Results</publisher>
+			<date type="published" when="2024-11">November 2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<monogr>
+		<author>
+			<persName><forename type="first">Etowah</forename><surname>Adams</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Liam</forename><surname>Bai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Minji</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yiyang</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mohammed</forename><surname>Alquraishi</surname></persName>
+		</author>
+		<idno type="DOI">10.1101/2025.02.06.636901v1</idno>
+		<ptr target="https://www.biorxiv.org/content/10.1101/2025.02.06" />
+		<title level="m">From Mechanistic Interpretability to Mechanistic Biology: Training, Evaluating, and Interpreting Sparse Autoencoders on Protein Language Models</title>
+		<imprint>
+			<date type="published" when="2025-02">February 2025</date>
+			<biblScope unit="volume">636901</biblScope>
+		</imprint>
+	</monogr>
+	<note>Pages: 2025.02.06.636901 Section: New Results</note>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Dictionary learning allows model-free pseudotime estimation of transcriptomic data</title>
+		<author>
+			<persName><forename type="first">Mona</forename><surname>Rams</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tim</forename><forename type="middle">O F</forename><surname>Conrad</surname></persName>
+		</author>
+		<idno type="DOI">10.1186/s12864-021-08276-9</idno>
+	</analytic>
+	<monogr>
+		<title level="j">BMC Genomics</title>
+		<idno type="ISSN">1471-2164</idno>
+		<imprint>
+			<biblScope unit="volume">23</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page">56</biblScope>
+			<date type="published" when="2022-01">January 2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Learning Causal Representations of Single Cells via Sparse Mechanism Shift Modeling</title>
+		<author>
+			<persName><forename type="first">Romain</forename><surname>Lopez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Natasa</forename><surname>Tagasovska</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephen</forename><surname>Ra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kyunghyun</forename><surname>Cho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jonathan</forename><surname>Pritchard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aviv</forename><surname>Regev</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings</title>
+		<meeting>null</meeting>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Dictionary learning for integrative, multimodal and scalable single-cell analysis</title>
+		<author>
+			<persName><forename type="first">Yuhan</forename><surname>Hao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Stuart</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Madeline</forename><forename type="middle">H</forename><surname>Kowalski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Saket</forename><surname>Choudhary</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Paul</forename><surname>Hoffman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Austin</forename><surname>Hartman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Avi</forename><surname>Srivastava</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gesmira</forename><surname>Molla</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shaista</forename><surname>Madad</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Carlos</forename><surname>Fernandez-Granda</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rahul</forename><surname>Satija</surname></persName>
+		</author>
+		<idno type="DOI">10.1038/s41587-023-01767-y.Publisher</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Nat Biotechnol</title>
+		<idno type="ISSN">1546-1696</idno>
+		<imprint>
+			<biblScope unit="volume">42</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="293" to="304" />
+			<date type="published" when="2024-02">February 2024</date>
+			<publisher>Nature Publishing Group</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Learning biologically-interpretable latent representations for gene expression data</title>
+		<author>
+			<persName><forename type="first">Ioulia</forename><surname>Karagiannaki</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Krystallia</forename><surname>Gourlia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vincenzo</forename><surname>Lagani</surname></persName>
+		</author>
+		<idno type="DOI">10.1007/s10994-022-06158-z</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Mach Learn</title>
+		<idno type="ISSN">1573-0565</idno>
+		<imprint>
+			<biblScope unit="volume">112</biblScope>
+			<biblScope unit="issue">11</biblScope>
+			<biblScope unit="page" from="4257" to="4287" />
+			<date type="published" when="2023-11">November 2023</date>
+		</imprint>
+	</monogr>
+	<note>Yannis Pantazis, and Ioannis Tsamardinos</note>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Integration of single cell data by disentangled representation learning</title>
+		<author>
+			<persName><forename type="first">Tiantian</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yang</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Minglei</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiangyu</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><forename type="middle">Q</forename><surname>Zhang</surname></persName>
+		</author>
+		<idno type="DOI">10.1093/nar/gkab978</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Nucleic Acids Research</title>
+		<idno type="ISSN">0305-1048</idno>
+		<imprint>
+			<biblScope unit="volume">50</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<date type="published" when="2022-01">January 2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Disentanglement of single-cell data with biolord</title>
+		<author>
+			<persName><forename type="first">Zoe</forename><surname>Piran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Niv</forename><surname>Cohen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yedid</forename><surname>Hoshen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mor</forename><surname>Nitzan</surname></persName>
+		</author>
+		<idno type="DOI">10.1038/s41587-023-02079-x.Publisher</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Nat Biotechnol</title>
+		<idno type="ISSN">1546-1696</idno>
+		<imprint>
+			<biblScope unit="page" from="1" to="6" />
+			<date type="published" when="2024-01">January 2024</date>
+			<publisher>Nature Publishing Group</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">Representation Learning: A Review and New Perspectives</title>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aaron</forename><surname>Courville</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pascal</forename><surname>Vincent</surname></persName>
+		</author>
+		<idno type="DOI">10.1109/TPAMI.2013.50</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Conference Name: IEEE Transactions on Pattern Analysis and Machine Intelligence</title>
+		<imprint>
+			<date type="published" when="2013-08">August 2013</date>
+			<biblScope unit="volume">35</biblScope>
+			<biblScope unit="page" from="1798" to="1828" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">Alireza</forename><surname>Makhzani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Brendan</forename><surname>Frey. K-Sparse</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Autoencoders</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1312.5663</idno>
+		<imprint>
+			<date type="published" when="2014-03">March 2014</date>
+		</imprint>
+	</monogr>
+	<note>cs</note>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">Gene Ontology: tool for the unification of biology</title>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Ashburner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Catherine</forename><forename type="middle">A</forename><surname>Ball</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Judith</forename><forename type="middle">A</forename><surname>Blake</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Botstein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Heather</forename><surname>Butler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Michael</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Allan</forename><forename type="middle">P</forename><surname>Cherry</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kara</forename><surname>Davis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Selina</forename><forename type="middle">S</forename><surname>Dolinski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Janan</forename><forename type="middle">T</forename><surname>Dwight</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Midori</forename><forename type="middle">A</forename><surname>Eppig</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><forename type="middle">P</forename><surname>Harris</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Laurie</forename><surname>Hill</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Issel-Tarver</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Suzanna</forename><surname>Kasarskis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">John</forename><forename type="middle">C</forename><surname>Lewis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joel</forename><forename type="middle">E</forename><surname>Matese</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>Richardson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gerald</forename><forename type="middle">M</forename><surname>Ringwald</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gavin</forename><surname>Rubin</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Sherlock</surname></persName>
+		</author>
+		<idno type="DOI">10.1038/75556.Publisher</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Nat Genet</title>
+		<idno type="ISSN">1546-1718</idno>
+		<imprint>
+			<biblScope unit="volume">25</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="25" to="29" />
+			<date type="published" when="2000-05">May 2000</date>
+			<publisher>Nature Publishing Group</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<title/>
+		<author>
+			<persName><forename type="first">The</forename><surname>Gene</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ontology</forename><surname>Consortium</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Suzi</forename><forename type="middle">A</forename><surname>Aleksander</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><surname>Balhoff</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Seth</forename><surname>Carbon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Cherry</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Harold</forename><forename type="middle">J</forename><surname>Drabkin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dustin</forename><surname>Ebert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marc</forename><surname>Feuermann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pascale</forename><surname>Gaudet</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nomi</forename><forename type="middle">L</forename><surname>Harris</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><forename type="middle">P</forename><surname>Hill</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Raymond</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Huaiyu</forename><surname>Mi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sierra</forename><surname>Moxon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><forename type="middle">J</forename><surname>Mungall</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anushya</forename><surname>Muruganugan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tremayne</forename><surname>Mushayahama</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Paul</forename><forename type="middle">W</forename><surname>Sternberg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Paul</forename><forename type="middle">D</forename><surname>Thomas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kimberly</forename><surname>Van Auken</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jolene</forename><surname>Ramsey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Deborah</forename><forename type="middle">A</forename><surname>Siegele</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rex</forename><forename type="middle">L</forename><surname>Chisholm</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Petra</forename><surname>Fey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maria</forename><surname>Cristina Aspromonte</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maria</forename><surname>Victoria Nugnes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Federica</forename><surname>Quaglia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Silvio</forename><surname>Tosatto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michelle</forename><surname>Giglio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Suvarna</forename><surname>Nadendla</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Giulia</forename><surname>Antonazzo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Helen</forename><surname>Attrill</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Steven</forename><surname>Gil Dos Santos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Victor</forename><surname>Marygold</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><forename type="middle">J</forename><surname>Strelets</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jim</forename><surname>Tabone</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pinglei</forename><surname>Thurmond</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Saadullah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Praoparn</forename><surname>Ahmed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Diana</forename><forename type="middle">Luna</forename><surname>Asanitthong</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Buitrago</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Meltem</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthew</forename><forename type="middle">C</forename><surname>Erdol</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mohamed</forename><forename type="middle">Ali</forename><surname>Gage</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kan</forename><surname>Kadhum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chloe</forename><surname>Yan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Miao</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aleksandra</forename><surname>Long</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Angeline</forename><surname>Michalak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Armalya</forename><surname>Pesala</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Pritazahra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C C</forename><surname>Shirin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Renzhi</forename><surname>Saverimuttu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kate</forename><forename type="middle">E</forename><surname>Su</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ruth</forename><forename type="middle">C</forename><surname>Thurlow</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Colin</forename><surname>Lovering</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Snezhana</forename><surname>Logie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Judith</forename><surname>Oliferenko</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Karen</forename><surname>Blake</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lori</forename><surname>Christie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mary</forename><forename type="middle">E</forename><surname>Corbani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Harold</forename><forename type="middle">J</forename><surname>Dolan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><forename type="middle">P</forename><surname>Drabkin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Li</forename><surname>Hill</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dmitry</forename><surname>Ni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Cynthia</forename><surname>Sitnikov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alayne</forename><surname>Smith</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><surname>Cuzick</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Laurel</forename><surname>Seager</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Justin</forename><surname>Cooper</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pankaj</forename><surname>Elser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Parul</forename><surname>Jaiswal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pankaj</forename><surname>Gupta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sushma</forename><surname>Jaiswal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Manuel</forename><surname>Naithani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kim</forename><surname>Lera-Ramirez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Valerie</forename><surname>Rutherford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeffrey L De</forename><surname>Wood</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Melinda</forename><forename type="middle">R</forename><surname>Pons</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Dwinell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mary</forename><forename type="middle">L</forename><surname>Thomas Hayman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anne</forename><forename type="middle">E</forename><surname>Kaldunski</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Kwitek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J F</forename><surname>Stanley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marek</forename><forename type="middle">A</forename><surname>Laulederkind</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mahima</forename><surname>Tutaj</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shur-Jen</forename><surname>Vedi</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D'</forename><surname>Peter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lucila</forename><surname>Eustachio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kristian</forename><surname>Aimo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alan</forename><surname>Axelsen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nevila</forename><surname>Bridge</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anne</forename><surname>Hyka-Nouspikel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Suzi</forename><forename type="middle">A</forename><surname>Morgat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Aleksander</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stacia</forename><forename type="middle">R</forename><surname>Michael Cherry</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kalpana</forename><surname>Engel</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Karra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Robert</forename><forename type="middle">S</forename><surname>Stuart R Miyasato</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marek</forename><forename type="middle">S</forename><surname>Nash</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shuai</forename><surname>Skrzypek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Edith</forename><forename type="middle">D</forename><surname>Weng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Erika</forename><surname>Wong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tanya</forename><forename type="middle">Z</forename><surname>Bakker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Leonore</forename><surname>Berardini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrea</forename><surname>Reiser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kristian</forename><surname>Auchincloss</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ghislaine</forename><surname>Axelsen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marie-Claude</forename><surname>Argoud-Puy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">;</forename><surname>Blatter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nidhi</forename><surname>Speretta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kate</forename><surname>Tyagi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rossana</forename><surname>Warner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexander</forename><forename type="middle">D</forename><surname>Zaru</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Raymond</forename><surname>Diehl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Juancarlos</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stavros</forename><surname>Chan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniela</forename><surname>Diamantakis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Magdalena</forename><surname>Raciti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Malcolm</forename><surname>Zarowiecki</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christina</forename><surname>Fisher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Virgilio</forename><surname>James-Zorn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aaron</forename><surname>Ponferrada</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sridhar</forename><surname>Zorn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Leyla</forename><surname>Ramachandran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Monte</forename><surname>Ruzicka</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Westerfield</surname></persName>
+		</author>
+		<idno type="DOI">10.1093/genetics/iyad031</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Genetics</title>
+		<editor>
+			<persName><forename type="first">Emmanuel</forename><surname>Boutet</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Lionel</forename><surname>Breuza</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Alan</forename><surname>Bridge</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Cristina</forename><surname>Casals-Casas</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Elisabeth</forename><surname>Coudert</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Anne</forename><surname>Estreicher</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Maria</forename><forename type="middle">Livia</forename><surname>Famiglietti</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Marc</forename><surname>Feuermann</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Arnaud</forename><surname>Gos</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Nadine</forename><surname>Gruaz-Gumowski</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Chantal</forename><surname>Hulo</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Nevila</forename><surname>Hyka-Nouspikel</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Florence</forename><surname>Jungo</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Philippe</forename><forename type="middle">Le</forename><surname>Mercier</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Damien</forename><surname>Lieberherr</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Patrick</forename><surname>Masson</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Anne</forename><surname>Morgat</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Ivo</forename><surname>Pedruzzi</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Lucille</forename><surname>Pourcel</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Sylvain</forename><surname>Poux</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Catherine</forename><surname>Rivoire</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Shyamala</forename><surname>Sundaram</surname></persName>
+		</editor>
+		<idno type="ISSN">1943-2631</idno>
+		<imprint>
+			<biblScope unit="volume">224</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page">31</biblScope>
+			<date type="published" when="2023-05">May 2023</date>
+			<pubPlace>Alex Bateman, Emily Bowler-Barnett, Hema Bye-A-Jee, Paul Denny, Alexandr Ignatchenko, Rizwan Ishtiaq, Antonia Lock, Yvonne Lussi, Michele Magrane, Maria J Martin; Sandra Orchard, Pedro Raposo; Elena</pubPlace>
+		</imprint>
+	</monogr>
+	<note>The Gene Ontology knowledgebase in 2023</note>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<analytic>
+		<title level="a" type="main">A sandbox for prediction and integration of dna, rna, and proteins in single cells</title>
+		<author>
+			<persName><forename type="first">Malte</forename><surname>Luecken</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Burkhardt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Robrecht</forename><surname>Cannoodt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Lance</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aditi</forename><surname>Agrawal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hananeh</forename><surname>Aliee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ann</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Louise</forename><surname>Deconinck</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Angela</forename><surname>Detweiler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alejandro</forename><surname>Granados</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shelly</forename><surname>Huynh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Laura</forename><surname>Isacco</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yang</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dominik</forename><surname>Klein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bony</forename><surname>De Kumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sunil</forename><surname>Kuppasani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Heiko</forename><surname>Lickert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aaron</forename><surname>Mcgeever</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joaquin</forename><surname>Melgarejo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Honey</forename><surname>Mekonen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maurizio</forename><surname>Morri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michaela</forename><surname>Müller</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Norma</forename><surname>Neff</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sheryl</forename><surname>Paul</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bastian</forename><surname>Rieck</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kaylie</forename><surname>Schneider</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Scott</forename><surname>Steelman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Sterr</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Treacy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexander</forename><surname>Tong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexandra-Chloe</forename><surname>Villani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guilin</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jia</forename><surname>Yan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ce</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Angela</forename><surname>Pisco</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Smita</forename><surname>Krishnaswamy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fabian</forename><surname>Theis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jonathan</forename><forename type="middle">M</forename><surname>Bloom</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Neural Information Processing Systems Track on Datasets and Benchmarks</title>
+		<editor>
+			<persName><forename type="first">J</forename><surname>Vanschoren</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">S</forename><surname>Yeung</surname></persName>
+		</editor>
+		<meeting>the Neural Information Processing Systems Track on Datasets and Benchmarks</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="volume">1</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<monogr>
+		<title level="m" type="main">Decoding gene regulation in the mouse embryo using singlecell multi-omics</title>
+		<author>
+			<persName><forename type="first">Ricard</forename><surname>Argelaguet</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Lohoff</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gavin</forename><surname>Jingyu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Asif</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Deborah</forename><surname>Nakhuda</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Felix</forename><surname>Drage</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lars</forename><surname>Krueger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephen</forename><forename type="middle">J</forename><surname>Velten</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wolf</forename><surname>Clark</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Reik</surname></persName>
+		</author>
+		<idno type="DOI">10.1101/2022.06.15.496239v2</idno>
+		<ptr target="https://www.biorxiv.org/content/10.1101/2022.06.15" />
+		<imprint>
+			<date type="published" when="2022-11">November 2022</date>
+			<biblScope unit="volume">496239</biblScope>
+		</imprint>
+	</monogr>
+	<note>Pages: 2022.06.15.496239 Section: New Results</note>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<analytic>
+		<title level="a" type="main">Chromatin and gene-regulatory dynamics of the developing human cerebral cortex at single-cell resolution</title>
+		<author>
+			<persName><forename type="first">Alexandro</forename><forename type="middle">E</forename><surname>Trevino</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fabian</forename><surname>Müller</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jimena</forename><surname>Andersen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Laksshman</forename><surname>Sundaram</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arwa</forename><surname>Kathiria</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anna</forename><surname>Shcherbina</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kyle</forename><surname>Farh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Howard</forename><forename type="middle">Y</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anca</forename><forename type="middle">M</forename><surname>Pas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anshul</forename><surname>Kundaje</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Sergiu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">William</forename><forename type="middle">J</forename><surname>Pas</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Greenleaf</surname></persName>
+		</author>
+		<idno type="DOI">10.1016/j.cell.2021.07.039</idno>
+		<ptr target="https://www.cell.com/cell/abstract/S0092-8674" />
+	</analytic>
+	<monogr>
+		<title level="j">Cell</title>
+		<idno type="ISSN">0092-8674</idno>
+		<imprint>
+			<biblScope unit="volume">184</biblScope>
+			<biblScope unit="issue">19</biblScope>
+			<biblScope unit="page" from="942" to="949" />
+			<date type="published" when="2021-09">September 2021</date>
+			<publisher>Elsevier</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<analytic>
+		<title level="a" type="main">Interferon-beta treatment requires B cells for efficacy in neuro-autoimmunity</title>
+		<author>
+			<persName><forename type="first">Ryan</forename><forename type="middle">D</forename><surname>Schubert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yang</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gaurav</forename><surname>Kumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Spencer</forename><surname>Szeto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Abraham</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Johannes</forename><surname>Winderl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joel</forename><forename type="middle">M</forename><surname>Guthridge</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gabriel</forename><surname>Pardo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeffrey</forename><surname>Dunn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lawrence</forename><surname>Steinman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Robert</forename><forename type="middle">C</forename><surname>Axtell</surname></persName>
+		</author>
+		<idno type="DOI">10.4049/jimmunol.1402029</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of immunology</title>
+		<idno type="ISSN">0022-1767</idno>
+		<imprint>
+			<biblScope unit="volume">194</biblScope>
+			<biblScope unit="issue">5</biblScope>
+			<biblScope unit="page" from="2110" to="2116" />
+			<date type="published" when="1950-03">1950. March 2015</date>
+			<pubPlace>Baltimore, Md</pubPlace>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<analytic>
+		<title level="a" type="main">Histone citrullination: a new target for tumors</title>
+		<author>
+			<persName><forename type="first">Dongwei</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yue</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shengjun</forename><surname>Wang</surname></persName>
+		</author>
+		<idno type="DOI">10.1186/s12943-021-01373-z</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Molecular Cancer</title>
+		<idno type="ISSN">1476-4598</idno>
+		<imprint>
+			<biblScope unit="volume">20</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page">90</biblScope>
+			<date type="published" when="2021-06">June 2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b51">
+	<analytic>
+		<title level="a" type="main">Large-scale gene function analysis with PANTHER Classification System</title>
+		<author>
+			<persName><forename type="first">Huaiyu</forename><surname>Mi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anushya</forename><surname>Muruganujan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">John</forename><forename type="middle">T</forename><surname>Casagrande</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Paul</forename><forename type="middle">D</forename><surname>Thomas</surname></persName>
+		</author>
+		<idno type="DOI">10.1038/nprot.2013.092</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Nature protocols</title>
+		<idno type="ISSN">1754-2189</idno>
+		<imprint>
+			<biblScope unit="volume">8</biblScope>
+			<biblScope unit="issue">8</biblScope>
+			<biblScope unit="page" from="1551" to="1566" />
+			<date type="published" when="2013-08">August 2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b52">
+	<monogr>
+		<title level="m" type="main">UMAP: Uniform Manifold Approximation and Projection for Dimension Reduction</title>
+		<author>
+			<persName><forename type="first">Leland</forename><surname>Mcinnes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">John</forename><surname>Healy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><surname>Melville</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1802.03426</idno>
+		<imprint>
+			<date type="published" when="2020-09">September 2020</date>
+		</imprint>
+	</monogr>
+	<note>stat</note>
+</biblStruct>
+
+<biblStruct xml:id="b53">
+	<analytic>
+		<title level="a" type="main">The status of the human gene catalogue</title>
+		<author>
+			<persName><forename type="first">Paulo</forename><surname>Amaral</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Silvia</forename><surname>Carbonell-Sala</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Francisco</forename><forename type="middle">M</forename><surname>De</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">La</forename><surname>Vega</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tiago</forename><surname>Faial</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Frankish</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Gingeras</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Roderic</forename><surname>Guigo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jennifer</forename><forename type="middle">L</forename><surname>Harrow</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Artemis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rory</forename><surname>Hatzigeorgiou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Terence</forename><forename type="middle">D</forename><surname>Johnson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mihaela</forename><surname>Murphy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kim</forename><forename type="middle">D</forename><surname>Pertea</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shashikant</forename><surname>Pruitt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hazuki</forename><surname>Pujar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Igor</forename><surname>Takahashi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ales</forename><surname>Ulitsky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christine</forename><forename type="middle">A</forename><surname>Varabyou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mark</forename><surname>Wells</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Piero</forename><surname>Yandell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Steven</forename><forename type="middle">L</forename><surname>Carninci</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Salzberg</surname></persName>
+		</author>
+		<idno type="DOI">10.1038/s41586-023-06490-x.Publisher</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Nature</title>
+		<idno type="ISSN">1476-4687</idno>
+		<imprint>
+			<biblScope unit="volume">622</biblScope>
+			<biblScope unit="issue">7981</biblScope>
+			<biblScope unit="page" from="41" to="47" />
+			<date type="published" when="2023-10">October 2023</date>
+			<publisher>Nature Publishing Group</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b54">
+	<analytic>
+		<title level="a" type="main">Adam: A method for stochastic optimization</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Diederik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jimmy</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Ba</surname></persName>
+		</author>
+		<idno>arxiv:1412.6980</idno>
+	</analytic>
+	<monogr>
+		<title level="m">3rd International Conference for Learning Representations</title>
+		<meeting><address><addrLine>San Diego</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2014">2014. 2015</date>
+		</imprint>
+	</monogr>
+	<note>Published as a conference paper at the</note>
+</biblStruct>
+
+<biblStruct xml:id="b55">
+	<analytic>
+		<title level="a" type="main">Optuna: A next-generation hyperparameter optimization framework</title>
+		<author>
+			<persName><forename type="first">Takuya</forename><surname>Akiba</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shotaro</forename><surname>Sano</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Toshihiko</forename><surname>Yanase</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Takeru</forename><surname>Ohta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Masanori</forename><surname>Koyama</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 25th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining</title>
+		<meeting>the 25th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b56">
+	<analytic>
+		<title level="a" type="main">Differential expression analysis for sequence count data</title>
+		<author>
+			<persName><forename type="first">Simon</forename><surname>Anders</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wolfgang</forename><surname>Huber</surname></persName>
+		</author>
+		<idno type="DOI">10.1186/gb-2010-11-10-r106</idno>
+	</analytic>
+	<monogr>
+		<title level="m">R106</title>
+		<imprint>
+			<date type="published" when="2010-10">October 2010</date>
+			<biblScope unit="volume">11</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b57">
+	<analytic>
+		<title level="a" type="main">Moderated estimation of fold change and dispersion for RNA-seq data with DESeq2</title>
+		<author>
+			<persName><forename type="first">I</forename><surname>Michael</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wolfgang</forename><surname>Love</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Simon</forename><surname>Huber</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Anders</surname></persName>
+		</author>
+		<idno type="DOI">10.1186/s13059-014-0550-8</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Genome Biol</title>
+		<imprint>
+			<biblScope unit="volume">15</biblScope>
+			<biblScope unit="issue">12</biblScope>
+			<biblScope unit="page">550</biblScope>
+			<date type="published" when="2014-12">December 2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b58">
+	<analytic>
+		<title level="a" type="main">Controlling the false discovery rate: a practical and powerful approach to multiple testing</title>
+		<author>
+			<persName><forename type="first">Yoav</forename><surname>Benjamini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yosef</forename><surname>Hochberg</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">J. Roy. Statist. Soc. Ser. B</title>
+		<idno type="ISSN">0035-9246</idno>
+		<imprint>
+			<biblScope unit="volume">57</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="289" to="300" />
+			<date type="published" when="1995">1995</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

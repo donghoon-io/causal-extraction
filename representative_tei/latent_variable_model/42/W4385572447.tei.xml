@@ -1,0 +1,989 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">NORMMARK: A Weakly Supervised Markov Model for Socio-cultural Norm Discovery</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Farhad</forename><surname>Moghimifar</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Data Science and AI</orgName>
+								<orgName type="institution">Monash University</orgName>
+								<address>
+									<country key="AU">Australia</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Shilin</forename><surname>Qu</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Data Science and AI</orgName>
+								<orgName type="institution">Monash University</orgName>
+								<address>
+									<country key="AU">Australia</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Tongtong</forename><surname>Wu</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Data Science and AI</orgName>
+								<orgName type="institution">Monash University</orgName>
+								<address>
+									<country key="AU">Australia</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Yuan-Fang</forename><surname>Li</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Data Science and AI</orgName>
+								<orgName type="institution">Monash University</orgName>
+								<address>
+									<country key="AU">Australia</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Gholamreza</forename><surname>Haffari</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Data Science and AI</orgName>
+								<orgName type="institution">Monash University</orgName>
+								<address>
+									<country key="AU">Australia</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">NORMMARK: A Weakly Supervised Markov Model for Socio-cultural Norm Discovery</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-28T23:16+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Norms, which are culturally accepted guidelines for behaviours, can be integrated into conversational models to generate utterances that are appropriate for the socio-cultural context. Existing methods for norm recognition tend to focus only on surface-level features of dialogues and do not take into account the interactions within a conversation. To address this issue, we propose NORMMARK, a probabilistic generative Markov model to carry the latent features throughout a dialogue. These features are captured by discrete and continuous latent variables conditioned on the conversation history, and improve the model's ability in norm recognition. The model is trainable on weakly annotated data using the variational technique. On a dataset with limited norm annotations, we show that our approach achieves higher F1 score, outperforming current stateof-the-art methods, including GPT3.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Norms can be thought of as pre-defined socioculturally acceptable boundaries for human behaviour <ref type="bibr" target="#b6">(Fehr and Fischbacher, 2004)</ref>, and incorporating them into conversational models helps to produce contextually, socially and culturally appropriate utterances. For instance, identifying the sociocultural norm of Greeting in a negotiation helps to generate responses suitable for the power dynamics and social setting. Whereas, failing to detect and adhere to such norms can negatively impact social interactions <ref type="bibr" target="#b11">(Hovy and Yang, 2021)</ref>. Recent advances in developing chatbots have also highlighted the necessity of incorporating such implicit socio-cultural information into machine-generated responses, in order to approximate human-like interactions <ref type="bibr" target="#b12">(Huang et al., 2020;</ref><ref type="bibr" target="#b18">Liu et al., 2021)</ref>.</p><p>Norm discovery is a nascent research problem, and current approaches <ref type="bibr" target="#b13">(Hwang et al., 2021)</ref> heavily rely on manually constructed sets of rules from available resources such as Reddit <ref type="bibr">(Forbes et al.,</ref> Figure <ref type="figure">1</ref>: The heatmap of norm distribution based on norm label of the previous segment, constructed from LDC2022E20. Unit in column j of row i shows the probability of norm i following norm j. 2020; <ref type="bibr" target="#b29">Ziems et al., 2022)</ref>. In addition to the time and cost inefficiency of such approaches, the construction and use of these banks of norms treat each sentence or segment in isolation, and they fail to take the dependencies between norms in the flow of a dialogue into account <ref type="bibr" target="#b8">(Fung et al., 2022;</ref><ref type="bibr" target="#b3">Chen and Yang, 2021)</ref>. For instance, it is most likely that a dialogue segment containing the norm of Request follows a segment that includes Request and Criticism (Figure <ref type="figure">1</ref>). Furthermore, such approaches require a large amount of annotated data, limiting their performance on sparsely labelled resources.</p><p>To address these limitations, in this paper, we propose a deep generative Markov model that captures the inter-dependencies between turns (segments) of partially-labelled dialogues. The model includes two types of latent variables (LVs): (i) the discrete LVs capture the socio-cultural norms of the dialogue turns, and (ii) the continuous LVs capture other aspects, e.g. related to fluency, topic, and meaning. These latent variables facilitate capturing label-and content-related properties of the previous turns of the conversation, and are conditioned on the previous turns in a Markovian manner. We train the model on weakly annotated data using</p><formula xml:id="formula_0">S i-1 C i-1 Z i-1 S i C i Z i</formula><p>Figure <ref type="figure">2</ref>: A graphical representation of our probabilistic generative model NORMMARK.</p><p>the variational technique, building on variational autoencoders (Kingma and Welling, 2014).</p><p>To evaluate the performance of our model in the task of socio-cultural norm discovery, we conducted experiments on an existing dataset. Experimental results show superiority of our model, by 4 points in F1 score, over the state-of-the-art approaches, in which each segment of a dialogue is modelled independently of the others. Furthermore, by evaluating our model on low amounts of training data, we show the capability of our proposed approach in capturing socio-cultural norms on partially-labeled data.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Related Works</head><p>Recent approaches have tried to develop models with the human psychological and behavioural capabilities <ref type="bibr" target="#b15">(Jiang et al., 2021;</ref><ref type="bibr" target="#b1">Botzer et al., 2022;</ref><ref type="bibr" target="#b20">Lourie et al., 2021)</ref>. Other approaches targeted identifying implicit social paradigms by developing sequence generation models <ref type="bibr" target="#b21">(Moghimifar et al., 2020;</ref><ref type="bibr" target="#b0">Bosselut et al., 2019)</ref>. However, the task of socio-cultural norm discovery has been overlooked, mostly due to the lack of proper annotated data <ref type="bibr" target="#b8">(Fung et al., 2022)</ref>. <ref type="bibr" target="#b7">Forbes et al. (2020)</ref> present a dataset of social norms, collected from Reddit and propose a generative model to expand this collection. <ref type="bibr" target="#b27">Zhan et al. (2022)</ref> also showed how social norms can be useful in conducting better negotiation dialogues. In a similar approach, <ref type="bibr" target="#b29">Ziems et al. (2022)</ref> present a corpus of moral norms. <ref type="bibr" target="#b26">Zhan et al. (2023) and</ref><ref type="bibr" target="#b8">Fung et al. (2022)</ref> use a prompt-based large-scale language model to generate rules from dialogues. More similar to our approach, existing models identify labels associated with utterances of dialogues <ref type="bibr" target="#b3">(Chen and Yang, 2021;</ref><ref type="bibr" target="#b24">Yang et al., 2019;</ref><ref type="bibr" target="#b25">Yu et al., 2020)</ref>. However, these approaches fail to take into account the flow of contextual information throughout a dialogue. In contrast to these studies, our approach addresses this task by considering the inter-dependencies between turns of dialogues.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">A Generative Markov Model for</head><p>Socio-Cultural Norm Discovery</p><p>We are given a set of dialogues D = {d i } n i=1 , where each dialogue consists of a set of turns (or segments)</p><formula xml:id="formula_1">d i = {s i j } m j=1 .</formula><p>Each turn consists of a sequence of tokens from a vocabulary set V. The dialogue set D consists of two subsets of labeled (D L ) and unlabeled (D U ) dialogues, where each turn s i m ∈ D L is annotated with a socio-cultural norm label c i ∈ C with a total of K norm classes. The turns in the unlabeled dataset lack socio-cultural norm labels. Our goal is to develop a model that, by using contextual information carried from previous turns of the dialogue, discovers the socio-cultural norm associated with the turns of a dialogue.</p><p>Probabilistic Generative Model. Our model (shown in Fig. <ref type="figure">2</ref>) assumes a directed generative model, in which a turn is generated by a factor capturing the socio-cultural norms and another factor capturing other aspects, e.g. topic and syntax. For each turn, the socio-cultural norm factor is captured by a discrete latent variable c i , and the other aspects are captured by a continuous latent variable z i . As our aim is to leverage the contextual information, the latent variables of each turn of the dialogue are conditioned on those from the previous turn in Markovian manner. As such, our proposed generative model for each turn is as follows:</p><formula xml:id="formula_2">p θ (s i , z i , c i |z i-1 , c i-1 ) = p θ (s i |c i , z i )p θ (z i |z i-1 )p θ (c i |c i-1 )</formula><p>where p θ (c i |c i-1 ) and p θ (z i |z i-1 ) capture the dependency of the causal factors on the previous turn, and p θ (s i |c i , z i ) is a sequence generation model conditioned on the causal factors.</p><p>Training. To train the model, the likelihood function for a dialogue in D U is:</p><formula xml:id="formula_3">p θ (s 1 ..s n ) = c 1 ..cn d(z 1 )..d(z n )× n i=1 p θ (s i |c i , z i )p θ (z i |z i-1 )p θ (c i |c i-1 ).</formula><p>Intuitively, the training objective for each dialogue turn corresponds an extension of the variational autoencoder (VAE) which involves: (i) both discrete and continuous latent variables, and (ii) conditioning on the latent variables of the previous turn. As such, we resort to the following variational evidence lowerbound (ELBO) for the unlabeled turns:</p><formula xml:id="formula_4">log p(s i |c i-1 , z i-1 ) ≥ E q ϕ (c i |s i ,c i-1 ) E q ϕ (z i |s i ,z i-1 ) log p θ (s i |z i , c i ) -KL[q ϕ (z i |s i , z i-1 )||p θ (z i |z i-1 )] -KL[q ϕ (c i |s i , c i-1 )||p θ (c i |c i-1 )]</formula><p>where q ϕ 's are variational distributions. We have nested ELBOs, each of which corresponds to a turn in the dialogue. We refer to the collection of these ELBOs for all dialogues in D U by L(D U ). For the labeled turns, the ELBO for a dialogue turn is,</p><formula xml:id="formula_5">log p(s i , c i |c i-1 , z i-1 ) ≥ log p θ (c i |c i-1 ) + E q ϕ (z i |s i ,z i-1 ) log p θ (s i |z i , c i ) -KL[q ϕ (z i |s i , z i-1 )||p θ (z i |z i-1 )]</formula><p>where we also add the term log q ϕ (c i |s i , c i-1 ) to the training objective. We refer to the collection of ELBOs for all dialogues in the labeled data as L(D L ). Finally, the training objective based on the labeled and unlabeled dialogues is L = D U + λD L , where λ trades off the effect of the labeled and unlabeled data. We resort to the reparametrisation trick for continuous and discrete (Gumble-softmax <ref type="bibr" target="#b14">(Jang et al., 2017)</ref>) latent variables when optimising the training objective.</p><p>Architectures. We use a transformer-based encoder to encode the turns s i with a hidden representation h s i . The classifier q ϕ (c i |s i , c i-1 ) is a 2-layer MLP with tanh non-linearity whose inputs are h s i and the embedding of c i-1 . For q ϕ (z i |s i , z i-1 ), we use a a multivariate Gaussian distribution, whose parameters are produced by MLPs from h s i and z i-1 . For p θ (s i |z i , c i ), we use an LSTM decoder, where this is performed by replacing pre-defined special tokens in the embedding space with z i and c i . For p θ (c t |c t-1 ), we use MLP with a softmax on top.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Experiments</head><p>In this section we report the performance of our model on the task of socio-cultural norm discovery in comparison to the current state-of-the-art models.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Dataset</head><p>In our experiments, we use LDC2022E20. This dataset consists of 13,074 segments of dialogues in Mandarin Chinese. The dialogues are from text, audio, and video documents, where we transcribed the audio and video files using Whisper <ref type="bibr" target="#b22">(Radford et al., 2022)</ref>. The segments have been labelled from the set of socio-cultural norm labels of none, Apology, Criticism, Greeting, Request, Persuasion, Thanks, and Taking leave. We split the data into train/test/development sets with the ratio of 60:20:20. Each dialogue is divided into sequences of segments of length 5, where on average each segment consists of 8 sentences. We report the performance of our model, in comparison to the baselines, when using the maximum number of labeled data in the training set (Max). In addition, to evaluate the effect of the amount of training data on the performance of our model, we randomly select 50 and 100 of these sequences of dialogues for training, and report the results on the test set.</p><p>Baselines. We compare our model with LSTM <ref type="bibr" target="#b9">(Hochreiter and Schmidhuber, 1997)</ref> and BERT <ref type="bibr">(Devlin et al., 2019)</ref>, where each turn of a dialogue is encoded separately. We use WS-VAE-BERT (Chen and Yang, 2021) as another baseline, which encodes the contextual representation of a segment via a latent variable. However, WS-VAE-BERT does not capture the connections between segments. To experiment with the performance of our model on limited labeled data, we compare it to SetFit <ref type="bibr" target="#b23">(Tunstall et al., 2022)</ref>, which has proven to be a strong few-shot learning model. Similar to our model, we use 'bert-base-chinese' as the backbone of BERT and WS-VAE-BERT, and 'sbert-base-chinese-nli' has been used in SetFit. Additionally, we compare our model with a prompt-base large-scale language model GPT-3 text-davinci-003 <ref type="bibr" target="#b2">(Brown et al., 2020)</ref> and ChatGLM <ref type="bibr" target="#b5">(Du et al., 2022)</ref>, where the norm labels are given to the model with segments of dialogue, and the model is asked to generate a socio-cultural norm label from the list.</p><p>Evaluation Metrics. Following previous works in classification tasks, we report the macro averaged precision, recall, and F1 score of the models in predicting the socio-cultural norm label of each segment of a dialogue. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Results</head><p>Table <ref type="table">1</ref> summarises the main results of the conducted experiment on LDC2022E20 data. On Max setting, where the model uses the maximum number of datapoints in the training set, our model outperforms all of the baselines with a margin of 4 and 6 points on F1 and precision, respectively, and achieves a comparable result in recall. This gap between our model and WS-VAE-BERT indicates the effect of carrying contextual information from previous turns of conversation. In addition, lower results of GPT-3 suggest that discovering sociocultural norms is a challenging task, which needs higher-level reasoning.</p><p>Amount of Labeled Data. To evaluate the performance of our model with less amount of training data, we report the results on using only 50 and 100 datapoints during training, in Table <ref type="table" target="#tab_2">3</ref>. When using 100 sequences of turns, our model achieves the highest score in F1, and improves the precision and recall by more than 3 points over non-prompt based models. However, GPT-3 outperforms our proposed model in these two metrics. Similarly, on a more limited number of training data (setting 50), GPT-3 shows its dominance. Nevertheless, our model performs the best amongst the other baselines, by improving the F1 score by 3 points.  Conditioning on the Context. To analyse the effect of carrying contextual information from previous turns of dialogue, we report the performance of the simplified version of our model (NORMMARK zero ), where the connections from previous turn are omitted. As can be seen in Table <ref type="table">1</ref>, in all of the settings NORM-MARK outperforms the simplified version, indicating the importance of inter-dependencies between turns. Furthermore, we developed two variations of NORMMARK and NORMMARK zero where the contextual information from previous turns is carried directly through the previous segment (Figure <ref type="figure">4</ref>). In Table <ref type="table" target="#tab_1">2</ref>, the lower performance of these models suggests that the contextual information from the previous turn overshadows the representation of the latent variable as well as the norm label, and consequently the norm classifier is profoundly biased towards the previous turn of dialogue.</p><p>Markov Order. We further analysed the effect of carrying contextual meaning from previous turns of dialogues, by varying the size of the Markov conditioning context l from 1 to 9, i.e. each of our 1 2 3 4 5 6 7 8 9 25 proposed latent variables is conditioned on previous l turns of dialogue.</p><p>Figure <ref type="figure">3</ref> summarises the results. It shows that shorter context results in lower performance, due to passing less contextual information to the next turns. On the other hand, too long context results in lower performance as well, due to extra complexity of modelling longer dependencies in latent variables and norm labels. As shown in the figure, our model performs best with a context size of 5 on this dataset.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Conclusion</head><p>In this work, we address the task of socio-cultural norm discovery from open-domain conversations. We present a probabilistic generative model that captures the contextual information from previous turns of dialogues. Through empirical results, we show that our model outperforms state-of-the-art models in addressing this task.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Limitations</head><p>We have studied the task of socio-cultural norm discovery based LDC2022E20 dataset, which consists of everyday situational interactions in Mandarin Chinese. Although we believe that our approach can used in other cultural settings, the current state of the model might not be generalisable to other cultures, unless further tuning is possible. Our model's ability in discovering such norms can help to improve conversational agents, however, real-world scenarios involving duplicitous or ambiguous terms might confuse our proposed approach. In addition, our model is limited to the textual modality, and we believe incorporating audio and visual features into the model can improve identifying socio-cultural norms. Nonetheless, the reliance of our model on large-scale pre-trained language models might result in some deployment challenges in situations with limited resources. Besides, all the reported results are by fixing a random seed running all experiments once.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7">Ethics Statement</head><p>Our work leverages pre-trained language models (BERT), therefore similar potential risks of this model is inherited by our work.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="8">Acknowledgements</head><p>This material is based on research sponsored by DARPA under agreement number HR001122C0029. The U.S. Government is authorised to reproduce and distribute reprints for Governmental purposes notwithstanding any copyright notation thereon. The authors are grateful to the anonymous reviewers for their helpful comments.</p><formula xml:id="formula_6">S i-1 C i-1 Z i-1 S i C i Z i S i-1 C i-1 Z i-1 S i C i Z i S i-1 C i-1 Z i-1 S i C i Z i S i-1 C i-1 Z i-1 S i C i Z i</formula><p>Figure <ref type="figure">4</ref>: A graphical representation of our probabilistic generative model NORMMARK. The second model from left is a simplified version of our proposed approach where the contextual information from previous turns of dialogue is not carried through the current step (NORMMARK zero ). The next two models are extended versions of NORMMARK zero and NORMMARK, respectively, where direct contextual information from previous segment is carried to the current turn.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head></head><label></label><figDesc>Figure 3: The performance of NORMMARK with different length of sequence of segments.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 2 :</head><label>2</label><figDesc>Segment-level socio-cultural norm prediction of two variation of our approach, in comparison to our model. The results are macro-averaged F1 score.</figDesc><table><row><cell>Model</cell><cell>50</cell><cell>100</cell><cell>Max</cell></row><row><cell cols="4">NORMMARK zero-extended 13.41 14.33 20.33</cell></row><row><cell>NORMMARK extended</cell><cell cols="3">13.48 14.76 20.25</cell></row><row><cell>NORMMARK</cell><cell cols="3">32.46 34.43 44.2</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 3</head><label>3</label><figDesc></figDesc><table><row><cell>: Segment-level socio-cultural norm prediction performance (precision, recall and F1 score). The results are reported by training the models on 50, 100 number of labelled sequences of dialogues.</cell></row></table></figure>
+		</body>
+		<back>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A Experimental Details</head><p>To train our model, we have used the pre-trained 'bert-base-chinese', which is licensed free to use for research purposes, as the encoder (Kenton and Toutanova, 2019), and we have used LSTM <ref type="bibr" target="#b9">(Hochreiter and Schmidhuber, 1997)</ref> with hidden dimension of 128 and one hidden layer as the decoder. We used a dropout of 0.6 over the input. We implemented the norm classifier with a 2-layers MLP with tanh non-linearity on top. We used CrossEntropyLoss <ref type="bibr" target="#b28">(Zhang and Sabuncu, 2018)</ref> as loss function over the predictions of our model. We used AdamW <ref type="bibr" target="#b19">(Loshchilov and Hutter, 2018)</ref> as the optimiser with the learning rate of 1e-5 for the encoder and 1e-3 for the rest of the network. We trained our model for 50 epochs, on a single machine with NVIDIA one A100 gpu, with an early stop if the validation accuracy is not improved for more than 20 iterations.</p><p>For the baselines, we have developed a network with a two-stacked LSTM layers followed by two linear layers. We compared out model with BERT, where uses the 'bert-base-chinese' pre-trained model. Each of these two models where trained for 100 epochs, using AdmaW optimiser with the learning rates of 1e-3 and 5e-5, respectively. For WS-VAE-BERT <ref type="bibr" target="#b3">(Chen and Yang, 2021)</ref>, we followed the source code provided in the paper. For replicating the document level labels, when a segment within the sequence of segments contained a socio-cultural norm, we labeled them 1, otherwise 0. We trained SetFit <ref type="bibr" target="#b10">(Hong et al., 2022)</ref> by following the online instructions on their GitHub repository 1 . Figure <ref type="figure">4</ref> shows the variations of our model, which we used in for the ablation study. <ref type="bibr">GPT-3 (Brown et al., 2020)</ref> was used by incor- B3. Did you discuss if your use of existing artifact(s) was consistent with their intended use, provided that it was specified? For the artifacts you create, do you specify intended use and whether that is compatible with the original access conditions (in particular, derivatives of data accessed for research purposes should not be used outside of research contexts)? Appendix A B4. Did you discuss the steps taken to check whether the data that was collected / used contains any information that names or uniquely identifies individual people or offensive content, and the steps taken to protect / anonymize it? We reached out to the provider of the dataset to get information about data collection, but we haven't got any responses back yet.</p><p>B5. Did you provide documentation of the artifacts, e.g., coverage of domains, languages, and linguistic phenomena, demographic groups represented, etc.? Section 4 and Appendix A B6. Did you report relevant statistics like the number of examples, details of train / test / dev splits, etc. for the data that you used / created? Even for commonly-used benchmark datasets, include the number of examples in train / validation / test splits, as these provide necessary context for a reader to understand experimental results. For example, small differences in accuracy on large test sets may be significant, while on small test sets they may not be. Section 4 C Did you run computational experiments? Section 4 C1. Did you report the number of parameters in the models used, the total computational budget (e.g., GPU hours), and computing infrastructure used? Section 4</p><p>The Responsible NLP Checklist used at ACL 2023 is adopted from NAACL 2022, with the addition of a question on AI writing assistance. D2. Did you report information about how you recruited (e.g., crowdsourcing platform, students) and paid participants, and discuss if such payment is adequate given the participants' demographic (e.g., country of residence)? No response.</p><p>D3. Did you discuss whether and how consent was obtained from people whose data you're using/curating? For example, if you collected data via crowdsourcing, did your instructions to crowdworkers explain how the data would be used? No response.</p><p>D4. Was the data collection protocol approved (or determined exempt) by an ethics review board? No response.</p><p>D5. Did you report the basic demographic and geographic characteristics of the annotator population that is the source of the data? No response.</p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">COMET: Commonsense transformers for automatic knowledge graph construction</title>
+		<author>
+			<persName><forename type="first">Antoine</forename><surname>Bosselut</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hannah</forename><surname>Rashkin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maarten</forename><surname>Sap</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chaitanya</forename><surname>Malaviya</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Asli</forename><surname>Celikyilmaz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yejin</forename><surname>Choi</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/P19-1470</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 57th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 57th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Florence, Italy</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="4762" to="4779" />
+		</imprint>
+	</monogr>
+	<note>Association for Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<title level="m" type="main">Analysis of moral judgment on reddit</title>
+		<author>
+			<persName><forename type="first">Nicholas</forename><surname>Botzer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shawn</forename><surname>Gu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Weninger</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<publisher>IEEE Transactions on Computational Social Systems</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Language models are few-shot learners</title>
+		<author>
+			<persName><forename type="first">Tom</forename><surname>Brown</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Benjamin</forename><surname>Mann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nick</forename><surname>Ryder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Melanie</forename><surname>Subbiah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jared</forename><forename type="middle">D</forename><surname>Kaplan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Prafulla</forename><surname>Dhariwal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arvind</forename><surname>Neelakantan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pranav</forename><surname>Shyam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Girish</forename><surname>Sastry</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amanda</forename><surname>Askell</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Weakly-supervised hierarchical models for predicting persuasive strategies in good-faith textual requests</title>
+		<author>
+			<persName><forename type="first">Jiaao</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Diyi</forename><surname>Yang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">BERT: Pre-training of deep bidirectional transformers for language understanding</title>
+		<author>
+			<persName><forename type="first">Jacob</forename><surname>Devlin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming-Wei</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kenton</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kristina</forename><surname>Toutanova</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/N19-1423</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</title>
+		<title level="s">Long and Short Papers</title>
+		<meeting>the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies<address><addrLine>Minneapolis, Minnesota</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="4171" to="4186" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Glm: General language model pretraining with autoregressive blank infilling</title>
+		<author>
+			<persName><forename type="first">Zhengxiao</forename><surname>Du</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yujie</forename><surname>Qian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiao</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming</forename><surname>Ding</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiezhong</forename><surname>Qiu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhilin</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jie</forename><surname>Tang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 60th Annual Meeting of the</title>
+		<meeting>the 60th Annual Meeting of the</meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Social norms and human cooperation</title>
+		<author>
+			<persName><forename type="first">Ernst</forename><surname>Fehr</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Urs</forename><surname>Fischbacher</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Trends in cognitive sciences</title>
+		<imprint>
+			<date type="published" when="2004">2004</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Social chemistry 101: Learning to reason about social and moral norms</title>
+		<author>
+			<persName><forename type="first">Maxwell</forename><surname>Forbes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jena</forename><forename type="middle">D</forename><surname>Hwang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vered</forename><surname>Shwartz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maarten</forename><surname>Sap</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yejin</forename><surname>Choi</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.emnlp-main.48</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)</title>
+		<meeting>the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)</meeting>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="653" to="670" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<monogr>
+		<title level="m" type="main">Normsage: Multi-lingual multi-cultural norm discovery from conversations on-the-fly</title>
+		<author>
+			<persName><forename type="first">Tuhin</forename><surname>Yi R Fung</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hao</forename><surname>Chakraborty</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Owen</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Smaranda</forename><surname>Rambow</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Heng</forename><surname>Muresan</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Ji</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2210.08604</idno>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Long short-term memory</title>
+		<author>
+			<persName><forename type="first">Sepp</forename><surname>Hochreiter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jürgen</forename><surname>Schmidhuber</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Neural computation</title>
+		<imprint>
+			<date type="published" when="1997">1997</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<title level="m" type="main">Tess: Zero-shot classification via textual similarity comparison with prompting using sentence encoder</title>
+		<author>
+			<persName><forename type="first">Jimin</forename><surname>Hong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jungsoo</forename><surname>Park</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daeyoung</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Seongjae</forename><surname>Choi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bokyung</forename><surname>Son</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jaewook</forename><surname>Kang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2212.10391</idno>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">The importance of modeling social factors of language: Theory and practice</title>
+		<author>
+			<persName><forename type="first">Dirk</forename><surname>Hovy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Diyi</forename><surname>Yang</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2021.naacl-main.49</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2021 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</title>
+		<meeting>the 2021 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</meeting>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="588" to="602" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Challenges in building intelligent open-domain dialog systems</title>
+		<author>
+			<persName><forename type="first">Minlie</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaoyan</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianfeng</forename><surname>Gao</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Transactions on Information Systems</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note>TOIS</note>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">(comet-) atomic 2020: On symbolic and neural commonsense knowledge graphs</title>
+		<author>
+			<persName><forename type="first">Jena</forename><forename type="middle">D</forename><surname>Hwang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chandra</forename><surname>Bhagavatula</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Le</forename><surname>Ronan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeff</forename><surname>Bras</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Keisuke</forename><surname>Da</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Antoine</forename><surname>Sakaguchi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yejin</forename><surname>Bosselut</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Choi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Categorical reparametrization with gumble-softmax</title>
+		<author>
+			<persName><forename type="first">Eric</forename><surname>Jang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shixiang</forename><surname>Gu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ben</forename><surname>Poole</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<monogr>
+		<author>
+			<persName><forename type="first">Liwei</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jena</forename><forename type="middle">D</forename><surname>Hwang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chandra</forename><surname>Bhagavatula</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Le</forename><surname>Ronan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maxwell</forename><surname>Bras</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jon</forename><surname>Forbes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jenny</forename><surname>Borchardt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oren</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maarten</forename><surname>Etzioni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yejin</forename><surname>Sap</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Choi</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2110.07574</idno>
+		<title level="m">Towards machine ethics and norms</title>
+		<meeting><address><addrLine>Delphi</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Bert: Pre-training of deep bidirectional transformers for language understanding</title>
+		<author>
+			<persName><forename type="first">Jacob</forename><surname>Devlin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming-Wei</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kenton</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lee</forename><surname>Kristina</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Toutanova</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of NAACL-HLT</title>
+		<meeting>NAACL-HLT</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Auto-Encoding Variational Bayes</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Diederik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2nd International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Towards emotional support dialog systems</title>
+		<author>
+			<persName><forename type="first">Siyang</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chujie</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Orianna</forename><surname>Demasi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sahand</forename><surname>Sabour</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yu</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhou</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yong</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Minlie</forename><surname>Huang</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2021.acl-long.269</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing</title>
+		<meeting>the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing</meeting>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="3469" to="3483" />
+		</imprint>
+	</monogr>
+	<note>Long Papers)</note>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Decoupled weight decay regularization</title>
+		<author>
+			<persName><forename type="first">Ilya</forename><surname>Loshchilov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Frank</forename><surname>Hutter</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Scruples: A corpus of community ethical judgments on 32,000 real-life anecdotes</title>
+		<author>
+			<persName><forename type="first">Nicholas</forename><surname>Lourie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ronan</forename><surname>Le Bras</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yejin</forename><surname>Choi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">CosMo: Conditional Seq2Seq-based mixture model for zeroshot commonsense question answering</title>
+		<author>
+			<persName><forename type="first">Farhad</forename><surname>Moghimifar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lizhen</forename><surname>Qu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yue</forename><surname>Zhuo</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.coling-main.467</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 28th International Conference on Computational Linguistics</title>
+		<meeting>the 28th International Conference on Computational Linguistics<address><addrLine>Barcelona, Spain</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="5347" to="5359" />
+		</imprint>
+	</monogr>
+	<note>Mahsa Baktashmotlagh, and Gholamreza Haffari. International Committee on Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<monogr>
+		<author>
+			<persName><forename type="first">Alec</forename><surname>Radford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jong</forename><forename type="middle">Wook</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tao</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Greg</forename><surname>Brockman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christine</forename><surname>Mcleavey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ilya</forename><surname>Sutskever</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2212.04356</idno>
+		<title level="m">Robust speech recognition via large-scale weak supervision</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<monogr>
+		<author>
+			<persName><forename type="first">Lewis</forename><surname>Tunstall</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nils</forename><surname>Reimers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Unso</forename><surname>Eun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Seo</forename><surname>Jo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luke</forename><surname>Bates</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Korat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Moshe</forename><surname>Wasserblat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oren</forename><surname>Pereg</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2209.11055</idno>
+		<title level="m">Efficient few-shot learning without prompts</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Let&apos;s make your request more persuasive: Modeling persuasive strategies via semisupervised neural nets on crowdfunding platforms</title>
+		<author>
+			<persName><forename type="first">Diyi</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiaao</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zichao</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dan</forename><surname>Jurafsky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eduard</forename><surname>Hovy</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/N19-1364</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</title>
+		<title level="s">Long and Short Papers</title>
+		<meeting>the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies<address><addrLine>Minneapolis, Minnesota</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="3620" to="3630" />
+		</imprint>
+	</monogr>
+	<note>Association for Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">CH-SIMS: A Chinese multimodal sentiment analysis dataset with fine-grained annotation of modality</title>
+		<author>
+			<persName><forename type="first">Wenmeng</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hua</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fanyang</forename><surname>Meng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yilin</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yixiao</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiele</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiyun</forename><surname>Zou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kaicheng</forename><surname>Yang</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.acl-main.343</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 58th Annual Meeting of the Association for Computational Linguistics</meeting>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="3718" to="3727" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<monogr>
+		<author>
+			<persName><forename type="first">Haolan</forename><surname>Zhan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhuang</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yufei</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Linhao</forename><surname>Luo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tao</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaoxi</forename><surname>Kang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuncheng</forename><surname>Hua</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lizhen</forename><surname>Qu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lay-Ki</forename><surname>Soon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Suraj</forename><surname>Sharma</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2304.12026</idno>
+		<title level="m">Socialdial: A benchmark for socially-aware dialogue systems</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<monogr>
+		<title level="m" type="main">Let&apos;s negotiate! a survey of negotiation dialogue systems</title>
+		<author>
+			<persName><forename type="first">Haolan</forename><surname>Zhan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yufei</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tao</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuncheng</forename><surname>Hua</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Suraj</forename><surname>Sharma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhuang</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lizhen</forename><surname>Qu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gholamreza</forename><surname>Haffari</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2212.09072</idno>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Generalized cross entropy loss for training deep neural networks with noisy labels</title>
+		<author>
+			<persName><forename type="first">Zhilu</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mert</forename><surname>Sabuncu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">The moral integrity corpus: A benchmark for ethical dialogue systems</title>
+		<author>
+			<persName><forename type="first">Caleb</forename><surname>Ziems</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jane</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yi-Chia</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alon</forename><surname>Halevy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Diyi</forename><surname>Yang</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2022.acl-long.261</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 60th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 60th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Dublin, Ireland</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="3755" to="3773" />
+		</imprint>
+	</monogr>
+	<note>Long Papers)</note>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

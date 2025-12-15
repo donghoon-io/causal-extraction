@@ -1,0 +1,904 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Improving Deep Dynamics Models for Autonomous Vehicles with Multimodal Latent Mapping of Surfaces</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Johan</forename><surname>Vertens</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Nicolai</forename><surname>Dorka</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Tim</forename><surname>Welschehold</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Michael</forename><surname>Thompson</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Wolfram</forename><surname>Burgard</surname></persName>
+						</author>
+						<author>
+							<affiliation key="aff0">
+								<orgName type="institution">University of Freiburg</orgName>
+								<address>
+									<settlement>Germany</settlement>
+									<region>Michael</region>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff1">
+								<orgName type="institution">Thompson is with Toyota Research Institute</orgName>
+								<address>
+									<settlement>Los Altos</settlement>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff2">
+								<orgName type="institution">University of Technology</orgName>
+								<address>
+									<settlement>Nuremberg</settlement>
+									<country key="DE">Germany</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Improving Deep Dynamics Models for Autonomous Vehicles with Multimodal Latent Mapping of Surfaces</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-28T22:31+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>The safe deployment of autonomous vehicles relies on their ability to effectively react to environmental changes. This can require maneuvering on varying surfaces which is still a difficult problem, especially for slippery terrains. To address this issue we propose a new approach that learns a surfaceaware dynamics model by conditioning it on a latent variable vector storing surface information about the current location. A latent mapper is trained to update these latent variables during inference from multiple modalities on every traversal of the corresponding locations and stores them in a map. By training everything end-to-end with the loss of the dynamics model, we enforce the latent mapper to learn an update rule for the latent map that is useful for the subsequent dynamics model. We implement and evaluate our approach on a real miniature electric car. The results show that the latent map is updated to allow more accurate predictions of the dynamics model compared to a model without this information. We further show that by using this model, the driving performance can be improved on varying and challenging surfaces.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>I. INTRODUCTION</head><p>In recent years autonomous cars have become reliable enough to be deployed in the real world <ref type="bibr" target="#b0">[1]</ref>, <ref type="bibr" target="#b1">[2]</ref>. Nonetheless, they can currently operate safely only under limited conditions such as a mapped environment, good weather, or specific types of roads. In the unstructuredness of the real world with unforeseeable situations, potentially caused by mistakes of other road users, the autonomous car might be required to drive at the edge of its ability under all environmental conditions in order to avoid accidents. One such scenario is driving on varying surfaces which becomes especially challenging if their corresponding friction values differ a lot. Maneuvers that are safe to execute on one surface can be dangerous or even impossible on a different surface. For autonomous vehicles, this poses a safety-critical problem as the driving has to be adjusted according to the current surface and a wrong estimate about possible future trajectories can result in disastrous outcomes. How to autonomously learn to predict features of a surface and the corresponding impact on the future trajectory without supervision by ground truth friction values for all surfaces is still an open research question.</p><p>Previous works allowing stable handling at the edge of controllability considered a single surface <ref type="bibr" target="#b2">[3]</ref>, <ref type="bibr" target="#b3">[4]</ref>, <ref type="bibr" target="#b4">[5]</ref> or achieved steady state drifting but no cornering <ref type="bibr" target="#b5">[6]</ref>. A typical approach in the case of varying surfaces is to use a separate Fig. <ref type="figure">1</ref>: Overview of our approach. During driving the latent mapper uses different modalities like sound and vision to update grid cell variables that represent information about the road and its properties at that location. The learned dynamics model receives the latent variable corresponding to its current location as additional input to allow for trajectory predictions that are aware of the road material.</p><p>terrain classifier <ref type="bibr" target="#b6">[7]</ref>, <ref type="bibr" target="#b7">[8]</ref>, <ref type="bibr" target="#b8">[9]</ref>, which, however, assumes a fixed number of prespecified terrain classes. This problem can be overcome by using conditional dynamics models <ref type="bibr" target="#b9">[10]</ref> but the inferred information is not stored in a map and can hence not be used for later traversals of the same location. Other works estimate the explicit coefficient of friction inside a physics model <ref type="bibr" target="#b10">[11]</ref>, <ref type="bibr" target="#b11">[12]</ref>. This, however, relies on the assumption that an accurate model can be identified, which is difficult for slippery surfaces.</p><p>We tackle this problem with a new approach that trains a dynamics model to include information from a learned and automatically updated latent map. During inference, a latent mapper updates the map, such that the latent variable at a specific location stores valuable information about the surface material at that position. The dynamics model uses the latent variable for its current location as additional input to make accurate surface-dependent predictions of the next state. Several traversals through a single location are given sequentially to the latent mapper to update the corresponding latent variable in an autoregressive fashion. Since all model parts are differentiable, we can train the dynamics model and the latent mapper simultaneously from the same loss in a way that the latter learns to give useful surface information to the former. Motivated by the fact that humans automatically use multiple cues to infer what driving style is appropriate for the surface they are driving on, the latent mapper receives multiple modalities like images and sound allowing it to learn a general representation of different surface patterns.</p><p>We implement and evaluate our method on a real miniature arXiv:2303.11756v1 [cs.RO] 21 Mar 2023 electric car. The results show our approach is able to generate complex driving maneuvers on unknown and varying surfaces, showing the benefit of implicit terrain maps. To summarize, our contributions are</p><p>• a latent mapper trained to update a map with surface information from multiple modalities • a surface-aware dynamics model using the latent map • the implementation on a real electric car • an extensive evaluation of the single components of our method and their combinations • demonstrating the benefit of our latent mapping relative to a baseline without surface awareness in the real world.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>II. RELATED WORK A. Surface-Awareness</head><p>Terrain classification can be done in an automated way <ref type="bibr" target="#b12">[13]</ref> or from different modalities <ref type="bibr" target="#b13">[14]</ref>. Several approaches use an explicit terrain classifier trained with humanspecified labels and deploy a terrain-specific policy accordingly <ref type="bibr" target="#b6">[7]</ref>, <ref type="bibr" target="#b7">[8]</ref>, <ref type="bibr" target="#b8">[9]</ref>. More similar to our approach is the work of Nagabandi et al. <ref type="bibr" target="#b9">[10]</ref> where additionally to state and action an image is given as input to the dynamics model such that it can infer the next state conditioned on the surface the robot is currently moving on. Furthermore, meta-learning has been used for learning to adapt the dynamics model parameters during inference to a given environment including different terrains <ref type="bibr" target="#b14">[15]</ref>. Our approach is different in that it updates the surface embedding during inference allowing it in principle to learn the adaption to any new surface and to further store the information in a map.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Explicit Estimation of the Coefficient of Friction</head><p>One can compute possible trajectories using the coefficient of friction between the tires and the road. However, the coefficient depends on all kinds of conditions and has to be estimated from real data. For example, Huang et al. <ref type="bibr" target="#b11">[12]</ref> estimate the coefficient with a limited-memory adaptive extended Kalman Filter to reduce the effect of outdated measurements on filtering. Multiple surveys <ref type="bibr" target="#b15">[16]</ref>, <ref type="bibr" target="#b16">[17]</ref> cover these topics. Deep neural networks can use ultrasound as input to classify the road surface from which the coefficient of friction is derived <ref type="bibr" target="#b17">[18]</ref>. For autonomous race cars driving several laps on a track with an inhomogeneous surface covering has been proposed to estimate the coefficient of friction and store it in a map <ref type="bibr" target="#b10">[11]</ref>. All of these approaches have in common that they use a physical dynamics model for which they estimate the corresponding parameters. Our approach is more flexible in that it can learn any dynamics model without the need to model the underlying physics. Thus, our work is most comparable to other methods that learn dynamics models solely from data. Our focus is to improve ML-based methods by introducing surface-awareness.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Dynamics Models with Latent Variables</head><p>Some works train a network for system identification from the most recent history to output a latent variable which is then given as additional input to a model-free RL policy <ref type="bibr" target="#b18">[19]</ref> or the dynamics model in model-based RL <ref type="bibr" target="#b19">[20]</ref>, <ref type="bibr" target="#b20">[21]</ref>. In the meta-RL setting Rakelly et al. <ref type="bibr" target="#b21">[22]</ref> train a network to produce a probabilistic context variable given as additional input to an off-policy RL algorithm to adapt to a given task.</p><p>Our approach differs in that it builds a map over the state space and learns to learn different context embeddings at different locations in the state space during inference.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>III. TECHNICAL APPROACH</head><p>In our work, we employ a dynamics model that predicts a potential future state given an input action. Subsequently, the dynamics model is used to control a vehicle along predefined trajectories following a model predictive scheme. Our approach does not model explicit parameters of a physical model nor does it take factors such as tire pressure or temperature into account. One could combine these aspects with out method but this is beyond the scope of this work.</p><p>In contrast to previous approaches, we propose a method that considers potential changes of the road material along the track, which may influence the dynamic behavior of the vehicle. Therefore, we first create a grid map that is defined in global coordinates and equally divides the space into quadratic cells. Once the vehicle traverses a cell of the grid map, a mapping neural network infers a latent vector that describes the local road surface. Thereby, the mapping network leverages various modalities that were recorded during the traversal of the cell, such as RGB images, acoustic spectrograms, history states, and history actions. Our dynamics model takes, aside from low-level state and action information, the latent vector corresponding to the current vehicle location as an input, such that it can leverage the additional mapped cues from multiple modalities to optimize the predictions of future states, making it surface-aware. As the training of the mapping model is guided by the loss of the dynamics model predictions, we do not require any labels that associate the input modalities with specific surface characteristics. Note, that in contrast to previous approaches, our work models the whole surface-aware dynamics as a neural network, which avoids assumptions or inductive biases for the created surface map. Next, we unroll multiple trajectories using the dynamics model and sampling from the action space. Our system then employs a reward function and the cross entropy <ref type="bibr" target="#b22">[23]</ref> method to score and select the trajectories that follow a reference path as fast and close as possible. Following a typical model predictive scheme, we execute the first action of the resulting plan and restart the process. In the following we describe each component of our system in more detail, followed by an explanation of the loss functions and training procedure.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Surface-Aware Probabilistic Dynamics Model Ensemble</head><p>Our dynamics model predicts the next output state s out t+1 , given the current input state s in t and the current action a t . To this end, we distinguish between input states, which are the representation of the input to the dynamics model, and output states, which are the prediction of the dynamics model. We define the input state as the concatenation of 3D linear velocities vel l , angular velocities vel a , linear accelerations acc l , angular accelerations acc a , and motor rpm : s in = [vel T l , vel T a , acc T l , acc T a , rpm] T . Additionally, we define the predicted output state of the dynamics model as estimated local changes in the x-position ∆p x , y-position ∆p y and yaw angle ∆γ, all velocities, and all accelerations as s out = [∆p x , ∆p y , ∆γ, vel T l , vel T a , acc T l , acc T a , rpm] T . The action is composed of the throttle a th and steering command a st , such that a = [a th , a st ]. We make our model surface-aware by using additional latent vectors as input to the dynamics model. These latent vectors describe the local learned properties of the road. Therefore, we propose to learn a latent map L that is represented as a grid map where each quadratic cell c holds a distribution over the latent vector. Here, we assume each entry of the map to be a k l -dimensional multivariate normal distribution that is parametrized by l c θ , corresponding to cell c. As the vector is learned implicitly, the number of dimensions k l represents a hyperparameter. To predict the next output state, we first sample a latent vector l c from the latent distribution N (l c θµ , l c θ σ 2 ) at the cell corresponding to the current vehicle position. Following, we employ an ensemble of probabilistic dynamics models <ref type="bibr" target="#b23">[24]</ref> with parameters ψ to predict the next state, while capturing model and data uncertainties. The input of this ensemble comprises the current input state, the current action, and the sampled latent vector, which we feed by simple concatenation. Thus, we model the Gaussian distribution of the next state as:</p><formula xml:id="formula_0">f ψ (s t+1 | s t , a t ) = Pr(s t+1 | s t , a t , l c ; ψ).<label>(1)</label></formula><p>For clarity, we omitted the differentiation between the input and the output state.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Mapping Network</head><p>To estimate the latent map, we propose a novel neural network architecture that takes a variety of modalities as input. In more detail, when the car traverses a cell c, we leverage an RGB image I c , an acoustic spectrogram S c , the history of states H c s , the history of actions H c a , and the previous estimate of the mean and variance of the latent vector l c θ that were recorded in the same cell c. The cues are then encoded into high-level features using respective encoders. These features are then concatenated and passed to another MLP with two output heads, which predicts the mean and variance of the latent vector respectively. As mentioned in Sec. III-A, the means and variances are then aggregated to a latent map L. More formally, let φ be the parameters of the mapping model and lc θ the updated parametrization of the Gaussian distribution of the latent vector in cell c. We define a latent update for the cell c as:</p><formula xml:id="formula_1">lc θ = M φ (I c , S c , H c s , H c a , l c θ ),<label>(2)</label></formula><p>Note, that since we input previous latent estimates l c θ , the latent representation of the road surface is updated iteratively.</p><p>While the RGB image may entail visual information of the road, the acoustic spectrograms capture direct tire-road interactions that are characteristic for specific materials. Additionally, from learning about the history of states and actions, our mapping model can infer ground patterns that lead to specific state sequences given the respective actions.</p><p>Particularly at inference time, estimating the road characteristics from only the low-level state and action history would most likely fail when the vehicle is at slow speeds or stands still. To argue about the road surface, the dynamic behavior needs to differ across different road materials due to distinct friction characteristics. This, however, is only given in cases where the maximum frictional force <ref type="bibr" target="#b24">[25]</ref> that is achieved is smaller than the force that is needed to sustain the vehicle track. Thus, to enable arguing about the road material, situations are required in which the car starts slipping. While, for training purposes of the dynamics model, this data can be collected by an expert driver, uncontrolled slipping should be avoided during inference. To this end, our multimodal approach allows learning a mapping that associates visual or acoustic cues to a latent representation of the road without the requirement of slipping. As an example, our network can learn to associate a slippery surface with the visually shiny appearance of the road. Further, acoustic spectrograms can contain information about the road even under low velocities.</p><p>Consequently, we require examples of aggressive driving only during training, while during inference the road representation can be estimated under all conditions. Furthermore, the employed modalities can complement each other if one modality lacks information due to visual occlusions, low lighting, or when external acoustic events drown out important acoustic tire-road interactions. We show in Sec. VI that leveraging multimodal data yields high gains in state prediction performance.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Training of the models</head><p>We first collect a training dataset with dynamic examples of random driving in environments with spatially changing road materials. These driving examples include situations where the car slips. To train our networks we propose a loss function that fulfills two requirements:</p><p>• Unrolling of future states may lead to querying cells that have not been observed yet. In these cases, it should be possible to inform the dynamics model of zero knowledge of the surface material. • The outputs of the mapping model should represent a spatial property of the road surface that is valid for any state prediction in the respective cell. To accomplish these requirements, we first group the individual recorded ground-truth state transitions according to the cell c in which the transition was captured. Here, we denote the n-th state-transition in our dataset that occurred in the cell c as s c n t → s c n t+1 . Now, having a list of all state transitions that occurred in the same cell, we select N random state transitions within a cell and define the loss for training the dynamics model as:</p><formula xml:id="formula_2">L d = n=[0,1,...N ] (L g (f ψ (s c n t+1 | s c n t , a c n t , l c n ), sc n t+1 )),<label>(3)</label></formula><p>where l c 0 = 0 and for n &gt; 0:</p><formula xml:id="formula_3">l c n+1 = M φ I c n , S c n , H c n s , H c n a , l c n θ ,<label>(4)</label></formula><p>and where</p><formula xml:id="formula_4">L g (θ, target) = 1 2 (log θ 2 σ + (θµ-target) 2 θ 2 σ</formula><p>) is the Gaussian negative log-likelihood loss, and sc n t+1 is the ground truth target state. The order of the traversals is irrelevant to our loss. Our loss represents the update scheme of the latent vectors, in which in the first iteration no knowledge of the surface is assumed. Thus, in the first iteration, a latent vector for the dynamics model is defined as a zero-vector, which forces the dynamics model to predict a future state distribution that is broad enough to cover all road materials properties that appear during training. This is particularly useful when unrolling state sequences over cells that have not been observed yet. In these cases, a conservative estimate of the state distribution is required as unobserved cells may entail any material or surface condition. In the following iterations of our loss function (n &gt; 0), the latent vector fed to the dynamics model is updated using our mapping model. In our loss function, the latent update is calculated based on the observed data of the previous traversal n -1, while the dynamics model predicts the state transition for the current traversal n in the same cell c. Thus, we ensure that the latent vectors are independent of the currently predicted state transition and represent a joint representation that improves prediction accuracy for all transitions in the respective cell. Note that if the dynamics model would receive a latent vector generated by the mapping network using data recorded at the same time as the inputs of the dynamics model, the mapping model could directly contribute to the prediction of the next state rather than representing a spatial property of the track.</p><p>For our experiments, we set the number of selected state transitions to N = 3.</p><p>1) Three Stage Training: We optimize our model using a three-stage approach. In the first stage, we optimize the dynamics model as well as the latent vectors but without training the mapping network. Instead, we optimize the latent vectors l c directly by backpropagating into them, treating the map as model parameters. We denote the directly optimized latent parameters as lc ∈ L. In contrast to the limited information of the input of the mapping network at inference time, this has the advantage that the latent vectors can be thoroughly optimized over all batches of the dataset. We denote the resulting loss as:</p><formula xml:id="formula_5">L ds1 = n=[0,1,...N ] (L g (f ψ (s c n t+1 | s c n t , a c n t , lc ), sc n t+1 ))<label>(5)</label></formula><p>In contrast to the later training stages, we do not inject zerovectors, while optimizing the latent vectors directly as we presented in Eq. 3. Experiments have shown that the training becomes instable otherwise.</p><p>To avoid agitated latent maps, we add a smoothness term minimizing the local gradient of the latent maps:</p><formula xml:id="formula_6">L s = || ∇ L || 2<label>(6)</label></formula><p>The overall loss being optimized in the first stage is simply a weighted sum of both loss functions:</p><formula xml:id="formula_7">L s1 = L ds1 + λL s ,<label>(7)</label></formula><p>where λ denotes a weighting hyper-parameter that defines the strength of the smoothness term. However, as the parameter map L is optimized offline, it can not be employed in practical applications as the vehicle should be capable of driving through previously unseen environments. By leveraging our multimodal mapper, new environments should be observed on-the-fly avoiding this limitation. Thus, in the second stage, we freeze the learned latent parameters L and the dynamics model while optimizing the mapping network. In this stage, we guide the latent predictions from our mapping model, by optimizing the negative log-likelihood of the predicted latent vector distribution l c θ given the learned parameter corresponding to the same cell lc . Overall, the loss for the second stage of our training scheme is defined as:</p><formula xml:id="formula_8">L s2 = n=[1,...N ] L g (l c n θ , l c n ).<label>(8)</label></formula><p>In the last stage, we then freeze the mapping model and refine the dynamics model by optimizing Eq. 3 and feed the estimate l c from the mapping network into the dynamics model instead of the previously used learned parameter lc .</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D. Planning and Control</head><p>In order to follow a reference trajectory T r , we follow a model predictive control approach. In detail, we use iCEM <ref type="bibr" target="#b25">[26]</ref>, which generates multiple future state sequences by sampling over the actions. The best sequences are selected using a pre-defined reward function and are refined for a specific amount of iterations. In contrast to the vanilla CEM <ref type="bibr" target="#b22">[23]</ref>, iCEM provides significantly better sample efficiency and generates smoother trajectories due to enforced temporal consistency along the state sequences. These properties make the sampling-based planning realtime capable, which is a crucial requirement for high-speed autonomous driving.</p><p>1) Trajectory Unrolling and Latent Sampling: To generate candidate trajectories for the planning module, we start from the initial current state of the vehicle and unroll future state sequences by successively applying our dynamics model given a sequence of actions. We then accumulate all predicted local changes of the x-position ∆p x , y-position ∆p y , and yaw angle ∆γ to convert the state sequences into trajectories that are defined in the coordinate system of the initial state. Finally, we add the initial position of the vehicle to convert them into the global coordinate system. To sample multiple trajectories from our ensemble of dynamics models, we employ the TS1-strategy <ref type="bibr" target="#b23">[24]</ref>. In each iteration of iCEM we generate trajectories for N a distinct action sequences. As our ensemble of dynamics models predicts a single state transition at a time, we apply our dynamics model h times for a trajectory with the length of h time steps and the same number of actions. Further, we sample k different state hypotheses for each individual action, effectively resulting in N a * k * h inferences passes of our dynamics model and k * N a trajectories. During trajectory generation, the latent vectors are sampled from the respective latent distribution for each individual state of the trajectories and leveraged for the next update using the dynamics model. Thus, intra-trajectory changes of the road materials are considered.</p><p>2) Map Update: We start with a map in which the parametrization of each cell is set to zero. As discussed in Sec. III-C this indicates zero knowledge about the map. As the latent distribution in each cell can be updated asynchronously with respect to the prediction of the dynamics model, we run the mapping model and the controller including the dynamics model in separate threads. This ensures that Fig. <ref type="figure">2:</ref> In our approach the vehicle estimates a distribution of a latent representation of the road surface using different modalities, such as history state/action information, RGB images, and acoustic spectrograms. Thereby, all local latent distributions are collected in a global grid map L. Once the vehicle traverses a cell c of the grid map, the underlying latent distribution l c θ gets updated. For planning purposes, an ensemble of probabilistic dynamics models estimates the distribution of the future state st+1 given the actions at, the current input state st and a sampled latent vector from the latent distribution of the grid-map-cell that corresponds to the input state st. As the dynamics model can be successively applied, a distribution of future trajectories can be obtained. As both mechanisms, latent mapping and state prediction can run independently from each other, the mapping is conducted asynchronously. the dynamics model does not need to wait for the mapping inference to finish and allows for parallelization as we run the dynamics model on CPU and the mapping model on GPU.</p><p>3) Reward Function: To score all trajectory candidates, we propose a reward function that evaluates these in terms of different metrics. The target trajectory is given by x -y coordinate waypoints. We measure the deviation of a given trajectory to the target with the cross-track error R cte . As we want the car to move as fast as possible we define a progress reward R p by adding up the length of all the line segments between waypoints the trajectory passes. Further, to punish risky maneuvers and prevent shortcuts we define a binary boundary violation reward R b which is equal to 1 if a specified boundary around the waypoints is exceeded and 0 otherwise. Lastly, to encourage smooth driving we define the reward R a as the absolute difference between the last executed throttle command and that of the first action of the trajectory. The final reward for a trajectory is defined as</p><formula xml:id="formula_9">R = w p • R p -w cte • R cte -w a • R a -w b • R b , (9)</formula><p>where we set the weighting parameters to w p = 40, w cte = 10, w a = 20, w b = 20000.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>IV. DATASET</head><p>To train and evaluate our approach we propose a novel dataset which we refer to as Dynamic FreiCar. As an experimental vehicle, we employ a rear-driven miniature 1:8 scale car that is equipped with a computer, various sensors, and a high-torque electric motor. To capture RGB images, we leverage a ZED camera, while we use a Rode compact microphone to record audio data. We further use Valve Lighthouses to track the position of the car and gather groundtruth velocity and acceleration data. Our dataset contains 70 minutes of expert driving along random trajectories that include drifting scenarios. All data is recorded at 100hz. We use two types of wood laminate and gym rubber mats for the different surface materials. To avoid bumps at the transition we level out the different materials. To ensure fair training and evaluation splits we create two maps for training and one map for evaluation by spatially rearranging the materials.</p><p>Thus, as we train on multiple maps, we avoid overfitting to a specific map, which we validate in our experiments section. Figure <ref type="figure" target="#fig_0">3</ref> shows our experimental vehicle and the driving environment. Note that our approach does not model explicit friction values and we do not have the ground truth friction values for the different surfaces.</p><p>V. IMPLEMENTATION DETAILS We implement our approach on top of MBRL <ref type="bibr" target="#b26">[27]</ref>, a pytorch-based <ref type="bibr" target="#b27">[28]</ref> general framework for model-based reinforcement learning. We employ a ResNet-18 architecture for the image and spectrogram encoders respectively. For the base architecture of the dynamics model, we leverage the implementation of the Gaussian ensemble from MBRL.</p><p>We use a learning rate of 0.001 for optimizing the parameters of the dynamics model and the map parameters, and a different learning rate of 0.0001 for the mapping model. We train all models with a batch size of 96 across four RTX 2080 ti GPUs for 500 epochs. For inference and running the model predictive controller, we use a Ryzen 5950X processor.</p><p>To extract the spectrograms from the acoustic data, we use an FFT with 257 bins and a hop length of 128. We extract the spectrogram over the last second of data and convert it to decibels afterward. The images and spectrograms are resized to 336x188 before passing them to their respective encoders.</p><p>We further define the time span of a single state transition as 0.1s and set the map resolution to 50cm. As for the iCEM optimizer, we set β = 4 and γ = 1.3. Furthermore, we use a planning horizon of h = 8 steps, 32 samples in each iteration, and set the number of iCEM iterations to 2.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>VI. EXPERIMENTAL RESULTS</head><p>To assess the efficacy of our method we train on the training set of Dynamic FreiCar.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Evaluation of the Dynamics Model</head><p>We evaluate the prediction accuracy of the dynamics model on the test set of our dataset. To generate a test set that represents practical use-cases, we leverage our method to drive 10 laps autonomously on track 3 (see Sec. VI-C). We record all state transitions during this run and employ them as the test set for the following evaluation. As unrolling long trajectories are practically important for planning and control, we introduce a metric that describes how well the predicted states align with the ground truth while considering uncertainty. Thus, for all time steps in our dataset, we unroll a sequence of N s states using the future actions that have been carried out following the current state. To capture multiple hypotheses we repeat the unrolling process 100 times for the same action sequence. Now, given 100 hypotheses of the future trajectory, we compute the euclidean distance between each point of every trajectory hypothesis and the observed ground-truth trajectory that was driven. Finally, we compute the mean euclidean error. More formally, let D s be the set of all observed states in the dataset, H(s) all unrolled hypotheses starting in state s, and T (s) n the n-th point of the observed ground-truth trajectory that starts in s. Then we define the metric as:</p><formula xml:id="formula_10">L2 Ns = 1 N D N H N s s∈Ds h∈H(s) Ns n=0 || h n -T (s) n || 2 .</formula><p>(10) where N D is the number of starting states in our dataset and N H = 100 is the number of rolled-out hypotheses. We compute our evaluation metrics in the chronological order of the test dataset by iteratively updating the latent cues of the grid map as more data about the surface can be observed over time. This evaluation scheme strictly represents the practical deployment of the model, since the full map can not be leveraged at the beginning but builds up progressively.</p><p>We compare our approach against a baseline that does not employ any latent mapping (Ours-w/o map) similar to PETS <ref type="bibr" target="#b23">[24]</ref> and additionally present the performance of our approach when only a subset of the modalities are leveraged for the mapping model. We denote a model that uses only images, spectrograms or history state/action information for latent mapping as Ours (I), Ours (A) or Ours (S) respectively. Furthermore, we show the results of a dynamics model that takes the ground-truth terrain types instead of the estimated latent vectors of the map as input. To encode the groundtruth surface we simply provide a scalar value to the model indicating on which terrain type it is operating. We denote this model as Ours (GT). We argue that this model should provide the highest accuracy as the terrain is known at all times. As described in Sec. II, the settings tackled in previous works deviate considerably from ours in terms of surface map representation and hence we refrain from comparing to them. In our work, we set the focus on evaluating the benefits of latent surface maps for dynamics models.</p><p>The results in Table <ref type="table" target="#tab_1">I</ref> show that our multimodal latent mapper (Ours (AIS)) significantly boosts prediction performance. By learning and mapping multimodal cues about the surface material, we reduce the error for N s = 30 from 0.462 to 0.374 corresponding to a reduction of 19% over a model without the mapping model. In comparison to the model with the ground-truth terrain types as input (Ours (GT)), our model is on par with respect to the L2 10 metric and only 1.9% and 4.2% worse for the L2 20 and L2 30 metrics respectively. As the performance of the model with ground-truth terrain types is expected to be an upper limit, one can argue that our model effectively predicts the surface information needed to improve prediction performance.</p><p>Further, one can observe that the dynamics model performs best when using a mapping model that takes all modalities as input. Leveraging only the history of state/action information yields an L2 30 error of 0.422, only acoustic yields 0.397, and only visual cues yields 0.383. An interesting observation is that the combination of the history of states/actions and acoustic cues reaches a very low L2 30 error of 0.393, even though images are not employed in this case. In contrast to RGB images, acoustic spectrograms do not contain information on the spatial location of the car. Thus, the image-free version of our mapping model is less prone to overfitting. Although we could not observe overfitting of the mapping model during our experiments, this could ease training in more large-scale scenarios. Further, some of the improvement of using all modalities over just using the image might come from the fact that the frontfacing camera only captures the surface farther in front of the current position, which might result in poor image-terrain associations at surface transitions.</p><p>While we used a ten-dimensional latent vector (k l = 10) for the previously explained models, we additionally evaluate models that leverage all modalities and employ 1 and 5 elements. These models are denoted as Ours (AIS,k l = 1) and Ours (AIS,k l = 5) respectively. Here, one can note that estimating ten-dimensional latent vectors additionally improves the L2 30 metric by 10% over a model that employs a single dimension. We explain this effect by the thesis that overparametrization of the surface information eases the training procedure and helps avoiding local minima. Estimating more than ten latent dimensions did not show further performance gains during our experiments.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Qualitative Latent Maps</head><p>To investigate the learned latent maps in more detail, we visualize the learned map using a color-coding and k l = 10. A principal component analysis (PCA) projects the multidimensional latent vector to a single scalar. We create the latent vectors using all available data of the test-split (10  We present comparisons to a model that is not using a latent map as input and to a model that leverages a map that is optimized offline as parameters. laps) of our dataset. The updates of the latent vectors are conducted in chronological order of the split. Fig. <ref type="figure" target="#fig_1">4</ref> shows the learned map, the predicted variance of the latent estimate, and the corresponding ground-truth layout. The experiment clearly reveals that our latent embedding correlates with the real-world layout of the test environment. Thus, we can validate that our mapping model predicts spatial cues of the track surface. Further, we observe that the predicted variance of the latent cues correlates with the locations of transitions between different materials. This follows our intuition as the observed data corresponding to a single cell of the grid map can contain information about multiple materials, since the cell can potentially stretch over material transitions. As the test split entails a distinct arrangement of the surface materials not seen during training, we can confirm that our mapping model generalizes over the map structure.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Real-World Planning and Control</head><p>To evaluate our surface-aware dynamics model for practical applications, we employ our model predictive controller for autonomous racing. The experiment is designed to investigate the effect of the dynamics model being surface-aware or not under otherwise same conditions. The dynamics model could be further improved by taking other features such as tire pressure and temperature into account. However, the car does not have sensors for this and these are orthogonal improvements that are beyond the scope of this work. We conduct the experiments on three diverse single-lane maps varying significantly in curvature. Track 1 and 3 have three different surfaces with highly varying friction values while Track 2 is completely on a slippery surface. The accompanying video shows all maps as well as the resulting driving of our approach. We quantify the driving performance in terms  of three metrics computed over 30 laps. In more detail, we present the average lap time, the average cross-track error (CTE), and the average lane-boundary violation score. The lap time is a useful performance indicator as wrong dynamics predictions either lead to overly careful driving or to overly aggressive maneuvers on slippery surfaces which results in deviations from the racing line or emergency braking. The other two performance indicators focus on measuring wrong predictions in the context of overly aggressive driving. The results in Tab. II suggest, that our surface-aware dynamics model significantly improves all stated metrics. Our surfaceaware model achieves significant lower lap times. Furthermore, it yields reduced cross-track error and significantly reduces the violation of lane boundaries. Thus, our approach increases driving safety in challenging environments. We observe that latent mapping helps in particular to improve the violation of lane boundaries as our model prevents unexpected drifting that leads off the racing track. We illustrate such a scenario in Fig. <ref type="figure" target="#fig_0">3</ref>. Further, actions obtained from optimizing erroneous trajectory estimates sometimes led to failure cases on slippery surfaces. In these cases, we had to manually intervene to prevent damage to the car. This happened three times for the model without map updates, while we never observed it for the model with map updates. This behavior indicates that on slippery surfaces the model with latent surface information predicts the dynamics more accurately while the model without overestimates the speed at which certain corners can be taken as it is trained to predict well averaged over all surfaces including those for which such maneuvers are possible.</p><note type="other">Model Lap Time ↓ CTE ↓ Bd. Violations ↓</note></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D. Progressive Map Building</head><p>We further investigate the quality of the latent map with respect to the number of driven laps. The mapping model can improve its estimate of the underlying latent vector and variance with every new lap. This experiment is conducted  on Track 3 while driving ten laps. Tab. III shows the lap times and the L2 error that is computed by considering the state transitions of all laps but only using the observations of the first ten laps to build the latent map respectively. The results show that with each additional lap our mapping model is consistently improving the latent estimates to improve the state predictions as well as the driving performance.</p><p>VII. CONCLUSION In this paper, we present a novel approach to estimate latent representations of the road surface. The latent representation is aggregated to a global grid map, which is then leveraged to improve future state predictions from a dynamics model. To this end, an ensemble of probabilistic dynamics models estimates the distribution of the next state given the current state, current action, and the latent representation of the road that corresponds to the current position of the vehicle. Thus, our dynamics model can effectively leverage the latent cues making it surface-aware. We show the efficacy of our method on a newly proposed dataset, presenting improved prediction accuracy of future states. Furthermore, we employ a model predictive controller and a novel reward function. In real-world driving experiments we demonstrate that including the latent mapping provides a significantly improved driving performance, reducing lap times and enhancing vehicle safety on surfaces with varying friction. While this work considers the use of surface information to improve the dynamics model, there are also other changing factors influencing the dynamics such as tire pressure and temperature. A promising avenue of future work is to integrate our approach in a more complete system with additional sensors to also take these factors into account.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Fig. 3 :</head><label>3</label><figDesc>Fig. 3: Left: Our experimental vehicle. The background shows the various surface materials over which the driving is conducted. Center and right: the driven path of the vehicle with and without map information.</figDesc><graphic coords="5,381.43,307.14,88.13,65.51" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Fig. 4 :</head><label>4</label><figDesc>Fig. 4: Qualitative results of aggregated predicted latent vectors. It can be observed that the predicted maps are representing different materials well.</figDesc><graphic coords="7,72.23,213.88,55.96,92.13" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>TABLE I :</head><label>I</label><figDesc>Quantitative evaluation of the prediction accuracy of our proposed dynamics network.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>TABLE II :</head><label>II</label><figDesc>Quantitative evaluation of the driving performance of our approach. The results show the efficiency of our approach, which significantly reduces the cross-track error while achieving faster lap times in comparison to a model without a mapping network.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head></head><label></label><figDesc>Lap time [s] ↓ 20.89 20.62 20.08 19.44 19.32 19.10 L2 10 ↓ 0.0857 0.0816 0.0807 0.0805 0.0804 0.0801</figDesc><table><row><cell>Lap number</cell><cell>1</cell><cell>2</cell><cell>3</cell><cell>4</cell><cell>5</cell><cell>10</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>TABLE III :</head><label>III</label><figDesc>Quantitative evaluation of the influence of completed laps with respect to the dynamics prediction accuracy and lap time. In this experiment, we only consider map updates during a specified number of consecutive laps. The respective L2 error is calculated over the state transitions of all laps.</figDesc><table /></figure>
+		</body>
+		<back>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<title level="m" type="main">Tesla autopilot</title>
+		<ptr target="https://www.tesla.com/autopilot" />
+		<imprint>
+			<biblScope unit="page" from="2022" to="2029" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<title level="m" type="main">Waymo one</title>
+		<ptr target="https://waymo.com/waymo-one" />
+		<imprint>
+			<biblScope unit="page" from="2022" to="2029" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Autonomous drifting using simulation-aided reinforcement learning</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Cutler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">P</forename><surname>How</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2016 IEEE International Conference on Robotics and Automation</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="5442" to="5448" />
+		</imprint>
+	</monogr>
+	<note>ICRA</note>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Minimum time vs maximum exit velocity path optimization during cornering</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>Velenis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Tsiotras</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE International Symposium on Industrial Electronics, 2005. ISIE 2005</title>
+		<meeting>the IEEE International Symposium on Industrial Electronics, 2005. ISIE 2005</meeting>
+		<imprint>
+			<date type="published" when="2005">2005</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="355" to="360" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Autonomous drifting control in 3d car racing simulator</title>
+		<author>
+			<persName><forename type="first">I</forename><surname>Zubov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Afanasyev</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Gabdullin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Mustafin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Shimchik</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Intelligent Systems (IS)</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="235" to="241" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Teaching a vehicle to autonomously drift: A data-based approach using neural networks</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Acosta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Kanarachos</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Knowl. Based Syst</title>
+		<imprint>
+			<biblScope unit="volume">153</biblScope>
+			<biblScope unit="page" from="12" to="28" />
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Fast, robust quadruped locomotion over challenging terrain</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Kalakrishnan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Buchli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Pastor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Mistry</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Schaal</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2010 IEEE International Conference on Robotics and Automation</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2010">2010</date>
+			<biblScope unit="page" from="2665" to="2670" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Hierarchical apprenticeship learning with application to quadruped locomotion</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kolter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Abbeel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Ng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">20</biblScope>
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Stanley: The robot that won the darpa grand challenge</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Thrun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Montemerlo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Dahlkamp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Stavens</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Aron</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Diebel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Fong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Gale</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Halpenny</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Hoffmann</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of field Robotics</title>
+		<imprint>
+			<biblScope unit="volume">23</biblScope>
+			<biblScope unit="issue">9</biblScope>
+			<biblScope unit="page" from="661" to="692" />
+			<date type="published" when="2006">2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Learning image-conditioned dynamics models for control of underactuated legged millirobots</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Nagabandi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Asmar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Pandya</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Kahn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Levine</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">S</forename><surname>Fearing</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2018 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="4606" to="4613" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">A concept for estimation and prediction of the tire-road friction potential for an autonomous racecar</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Hermansdorfer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Betz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Lienkamp</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2019 IEEE Intelligent Transportation Systems Conference (ITSC)</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="1490" to="1495" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Calculation algorithm of tireroad friction coefficient based on limited-memory adaptive extended kalman filter</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Fu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Huang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Mathematical Problems in Engineering</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Self-supervised visual terrain classification from unsupervised acoustic feature learning</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zürn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Burgard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Valada</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Robotics</title>
+		<imprint>
+			<biblScope unit="volume">37</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="466" to="481" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Deep feature learning for acoustics-based terrain classification</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Valada</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Spinello</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Burgard</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Robotics research</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="21" to="37" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Learning to adapt in dynamic, real-world environments through meta-reinforcement learning</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Nagabandi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Clavera</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">S</forename><surname>Fearing</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Abbeel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Levine</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Finn</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">A technical survey on tireroad friction estimation</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Khaleghian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Emami</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Taheri</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Friction</title>
+		<imprint>
+			<biblScope unit="volume">5</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="123" to="146" />
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Tire road friction coefficient estimation: review and research perspectives</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Yan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Ren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Yin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Chinese Journal of Mechanical Engineering</title>
+		<imprint>
+			<biblScope unit="volume">35</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="1" to="11" />
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Road type identification ahead of the tire using d-cnn and reflected ultrasonic signals</title>
+		<author>
+			<persName><forename type="first">M.-H</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Park</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Choi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">International journal of automotive technology</title>
+		<imprint>
+			<biblScope unit="volume">22</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="47" to="54" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Preparing for the unknown: Learning a universal policy with online system identification</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">K</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Turk</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of Robotics: Science and Systems</title>
+		<meeting>Robotics: Science and Systems</meeting>
+		<imprint>
+			<date type="published" when="2017-07">July 2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Context-aware dynamics model for generalization in model-based reinforcement learning</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Seo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Shin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="5757" to="5766" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Environment probing interaction policies</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Pinto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Gupta</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Efficient offpolicy meta-reinforcement learning via probabilistic context variables</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Rakelly</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Finn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Levine</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Quillen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International conference on machine learning</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">A tutorial on the cross-entropy method</title>
+		<author>
+			<persName><forename type="first">P.-T. De</forename><surname>Boer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">P</forename><surname>Kroese</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Mannor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">Y</forename><surname>Rubinstein</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Annals of operations research</title>
+		<imprint>
+			<biblScope unit="volume">134</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="19" to="67" />
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Deep reinforcement learning in a handful of trials using probabilistic dynamics models</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Chua</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Calandra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Mcallister</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Levine</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Estimation of the maximum tire-road friction coefficient</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Müller</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Uchanski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Hedrick</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">J. Dyn. Sys., Meas., Control</title>
+		<imprint>
+			<biblScope unit="volume">125</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="607" to="617" />
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Sample-efficient cross-entropy method for real-time planning</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Pinneri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Sawant</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Blaes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Achterhold</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Stueckler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Rolinek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Martius</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2020 Conference on Robot Learning</title>
+		<meeting>the 2020 Conference on Robot Learning</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="1049" to="1065" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Mbrl-lib: A modular library for model-based reinforcement learning</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Pineda</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Amos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">O</forename><surname>Lambert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Calandra</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Arxiv</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Pytorch: An imperative style, highperformance deep learning library</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Paszke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Gross</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Massa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Lerer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Bradbury</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Chanan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Killeen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Gimelshein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Antiga</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Desmaison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Kopf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Devito</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Raison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Tejani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Chilamkurthy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Steiner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Fang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Bai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Chintala</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">H</forename><surname>Wallach</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">A</forename><surname>Larochelle</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">F</forename><surname>Beygelzimer</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">E</forename><surname>Alché-Buc</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">R</forename><surname>Fox</surname></persName>
+		</editor>
+		<editor>
+			<persName><surname>Garnett</surname></persName>
+		</editor>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">32</biblScope>
+			<biblScope unit="page" from="8024" to="8035" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

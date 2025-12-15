@@ -1,0 +1,1187 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Sparsity regularization via tree-structured environments for disentangled representations</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Elliot</forename><surname>Layne</surname></persName>
+							<email>elliot.layne@mail.mcgill.ca</email>
+							<affiliation key="aff0">
+								<orgName type="institution">McGill University</orgName>
+								<address>
+									<settlement>Mila</settlement>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Jason</forename><surname>Hartford</surname></persName>
+							<affiliation key="aff1">
+								<orgName type="institution">Université de Montréal</orgName>
+								<address>
+									<region>Mila</region>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Sébastien</forename><surname>Lachapelle</surname></persName>
+							<affiliation key="aff2">
+								<orgName type="institution">Samsung -SAIT AI Lab</orgName>
+								<address>
+									<settlement>Montreal</settlement>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Mathieu</forename><surname>Blanchette</surname></persName>
+							<email>mathieu.blanchette@mcgill.ca</email>
+							<affiliation key="aff3">
+								<orgName type="institution">McGill University</orgName>
+								<address>
+									<settlement>Mila</settlement>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Dhanya</forename><surname>Sridhar</surname></persName>
+							<email>dhanya.sridhar@mila.quebec</email>
+							<affiliation key="aff4">
+								<orgName type="institution">Université de Montréal</orgName>
+								<address>
+									<region>Mila</region>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Sparsity regularization via tree-structured environments for disentangled representations</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-28T22:25+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Many causal systems such as biological processes in cells can only be observed indirectly via measurements, such as gene expression. Causal representation learning-the task of correctly mapping low-level observations to latent causal variables-could advance scientific understanding by enabling inference of latent variables such as pathway activation. In this paper, we develop methods for inferring latent variables from multiple related datasets (environments) and tasks. As a running example, we consider the task of predicting a phenotype from gene expression, where we often collect data from multiple cell types or organisms that are related in known ways. The key insight is that the mapping from latent variables driven by gene expression to the phenotype of interest changes sparsely across closely related environments. To model sparse changes, we introduce Tree-Based Regularization (TBR), an objective that minimizes both prediction error and regularizes closely related environments to learn similar predictors. We prove that under assumptions about the degree of sparse changes, TBR identifies the true latent variables up to some simple transformations. We evaluate the theory empirically with both simulations and ground-truth gene expression data. We find that TBR recovers the latent causal variables better than related methods across these settings, even under settings that violate some assumptions of the theory.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Discovering new knowledge using machine learning is made ever more possible with the growing amounts of unstructured data that we collect, from images, videos and text to experimental measurements from large-scale biological assays. However, scientific discovery from such low-level measurements requires representation learning, the task of mapping low-level observations to a high-level feature space.</p><p>As a running example, consider learning about drivers of disease from gene expression measurements, where genes drive protein abundance levels that mediate disease. If we want to discover meaningful features that could be causally linked to outcomes, we need methods to learn a disentangled rep- resentation via an encoder that maps observations to causally relevant latent variables and not to transformations of these variables that change their meaning.</p><p>Disentanglement is impossible from independent and identically distributed (IID) data without assumptions to constrain the solution space <ref type="bibr">[Hyvärinen and</ref><ref type="bibr">Pajunen, 1999, Locatello et al., 2019]</ref>, but by leveraging known structure such as non-stationarity <ref type="bibr">[Hyvarinen and</ref><ref type="bibr">Morioka, 2017, Hyvarinen et al., 2019]</ref> or sparsity <ref type="bibr" target="#b3">[Brehmer et al., 2022</ref><ref type="bibr">, Ahuja et al., 2022b</ref><ref type="bibr">, Lachapelle et al., 2022b]</ref>, it is possible to identify latent variables. The challenge is in finding assumptions that are strong enough to rule out spurious solutions, while remaining flexible enough to fit the domain of interest. To this end, this paper proposes Tree-Based Regularization (TBR), a new disentangled representation learning method that is particularly well-suited to biological settings. TBR leverages non-stationarity from multiple datasets -called environments -that are hierarchically related via a known tree.</p><p>In our running biology example, the environments are defined by cell types and their relations come from the tree describing the cell-type differentiation process <ref type="bibr" target="#b5">Enver et al. [2005]</ref>. We assume that the relationship between low-level observations and latent variables, represented by P (Z|X), is constant across these environments as it is driven by the underlying physics of the cell. However, the mechanism driving the outcome (e.g., disease), P e (Y |Z), changes across environments, reflecting processes like variation across cell types or evolution.</p><p>The key assumption that we make is that across closely related environments, the effects of only a sparse set of true latents will vary. That is, changes to the conditional distributions P e (Y |Z) are sparse, such that environments that are siblings in the known tree share the same functional form up to a few parameters, while more distant environments will have accumulated more changes. TBR enforces this structure via a sparsity-inducing penalty. These constraints reflect biological settings, where it is common to observe data across multiple cell types or model organisms with known relationships, and allow us to learn representations that identify the true latent variables up to irrelevant transformations.</p><p>We show both theoretically and empirically that by enforcing this sparsity assumption on changes of the conditional distributions, it is possible to identify the ground truth latent variables up to a permutation and scaling factor. We further analyze the sensitivity of TBR to assumption violations and find that it remains robust up to a point. Then, we apply TBR to a quasi-real dataset of gene expression measurements across different cell types, where we hold out some genes as latent variables and simulate outcomes. We find that TBR recovers the true latent variables with higher fidelity than standard representation learning approaches, which then leads to higher transfer learning performance, demonstrating a concrete benefit of the TBR approach.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Problem formulation</head><p>We consider an input vector X (e.g., gene expression) and a target variable of interest Y (e.g., disease phenotype). We observe n iid samples (x e i , y e i ) n i=1 from E different environments where each e denotes the environment that produced the sample. Figure <ref type="figure" target="#fig_0">1</ref> illustrates the causal model of the data generating process. The inputs X drive latent features Z that mediate the effect on Y . P (Y |Z) varies across environments while P (Z|X) remains invariant. Specifically, we consider the following generative process:</p><formula xml:id="formula_0">Z = Ψ(X) + η; Y e = w ⊤ e Z e + ϵ<label>(1)</label></formula><p>There exists an environment-invariant function relating X to Z, with noise term η, and an environmentspecific function Φ e that relates latent factors Z e to Y e . In particular, we consider the case where Φ e is a linear mapping with weights w e ∈ R k where k = |Z|, and ϵ is an environment-independent noise term. Linearity of the output map is clearly restrictive, but given that Φ(•) can be a basis function expansion of Z, this process could still capture a variety of nonlinear maps between latents and targets.</p><p>Critically, we posit that the environments have diverged according to some evolution-like process. We denote directed tree T = (E, A), where environments E are the nodes of the tree, and A ⊂ E 2 denotes the set of arcs<ref type="foot" target="#foot_1">foot_1</ref> between environments. The environment 0 ∈ E is assumed to be the root environment. In practice, we will often observe samples only from leaf environments, and not from internal nodes in the tree (which represent historical environments, such as ancestral species or transient progenitor cells), but our framework is agnostic to this.</p><p>We assume that the environment-specific parameters w e are subject to mutations between parent-child environment pairs. In addition, we assume that these mutations are sparse, such that across each arc a = (e m , e n ), there exists a subset of indices S ⊂ {1, ...k} such that ∀i ∈ S,</p><formula xml:id="formula_1">w em [i] ̸ = w en [i],</formula><p>and the components of w em and w en are equal otherwise. We denote the vector of differences in parameters across arc a as δ a = w en -w em . Note that the weights for any environment w e can be expressed as the sum of the root weights w 0 and the relevant mutation vectors:</p><formula xml:id="formula_2">w e := w 0 + a∈path(0,e) δ a<label>(2)</label></formula><p>where path(0, e) denotes the set of arcs forming the path from the root environment 0 to environment e. We denote ∆ ∈ R |A|×k as the matrix whose rows are the set of vectors δ a for each arc a ∈ A.</p><p>The proposed evolution-like process relating environments via sparse local changes causes the distributions P e (Y | Z) to gradually change. This model of evolution aligns with many observed processes in nature where sparse genetic or epigenetic changes alter the process leading to a given phenotype, such as cell type differentiation and species evolution.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.1">Tree-based regularization</head><p>We approximate Ψ with an arbitrary deep neural network Ψθ with parameters θ:</p><formula xml:id="formula_3">Ẑ = Ψθ (X)<label>(3)</label></formula><p>We estimate a set of weights ŵ0 ∈ R k , along with a matrix ∆ ∈ R |A|×k , whose rows contains the estimates δa for each a ∈ A, permitting estimation of each ŵe in the form of Eq. 2.</p><p>We jointly optimize Ψθ , ŵ0 and ∆ to produce optimal predictions Ŷe across all environments. Additionally, we regularize our estimate ∆ with a sparsity-inducing norm || ∆|| 0 .</p><p>Assuming that we only observe data samples in a subset of environments L ⊂ E, typically the leaves in T , this yields the following loss function:</p><formula xml:id="formula_4">Loss = e∈L (w ⊤ e Ψθ (X e ) -Y e ) 2 + λ|| ∆|| 0 (4)</formula><p>where λ &gt; 0 is a scaling parameter. The first term in Eq. 4 is a standard prediction error term, minimizing the mean-squared error (MSE) for predictions of Ŷ . The second term regularizes the L 0 norm of the matrix ∆. Since parameters in ∆ are the differences across each arc in A, by maximizing the sparsity of ∆, we encourage parent-child environment pairs to learn similar predictors. This captures the essence of our motivation, that the mechanisms controlling P (Y | Z) should only change rarely. We will denote our method, optimizing Eq. 4, as tree-based regularization (TBR). Figure <ref type="figure" target="#fig_1">2</ref> illustrates an example data-generating process involving a tree with 5 environments and 3 leaves.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Identifiability via sparse tree-based regularization</head><p>This section presents our main theoretical contribution on disentanglement. More formally, we will show that the learned Ẑ identifies the true latent variables Z up to permutation and element-wise rescaling, i.e., Ẑ = DPZ where D is an invertible diagonal matrix and P is a permutation. A set of weights W 0 is associated to the root. A trainable update W e is associated to each edge e. The prediction function f u at node u will make predictions on data samples originating from environment u. Adapted from <ref type="bibr" target="#b21">Layne et al. [2020]</ref>.</p><formula xml:id="formula_5">E D C B A w 0 δ E,A δ E,D δ D,B δ D,C E[y A | X] = (w 0 + δ E,A ) ⊤ Ψ(X) E[y B | X] = (w 0 + δ E,D + δ D,B ) ⊤ Ψ(X) E[y C | X] = (w 0 + δ E,D + δ D,C ) ⊤ Ψ(X)</formula><p>The problem of non-identifiability arises because the first term in the loss function in Eq. 4, which penalizes prediction errors, admits many solutions for Ẑ. Consider the generative process specific to environment A in Figure <ref type="figure" target="#fig_1">2</ref>:</p><formula xml:id="formula_6">Y = (w 0 + δ A ) ⊤ Z + ϵ (5)</formula><p>We can see that the distribution of Y remains unchanged if Z is subject to some linear transformation L, so long as an inverse transformation is applied to w 0 and ∆:</p><formula xml:id="formula_7">Y = (w ⊤ 0 L -1 + δ ⊤ A L -1 )LZ + ϵ<label>(6)</label></formula><p>However, the solution Ẑ = LZ potentially linearly entangles the components of the true features Z. For tasks that require the learned features to be semantically faithful to the true features, e.g., inferring causal effects of the features, this entanglement will lead to biased conclusions.</p><p>The second term in the loss in Eq. 4 plays a key role in selecting disentangled solutions among all solutions that achieve optimal prediction error. This is because the regularization term λ|| ∆|| 0 is generally not invariant to linearly entangled solutions such as LZ, as because for most choices of L, ||∆|| 0 ̸ = ||∆L -1 || 0 , unless L = PD (when the representation is disentangled).</p><p>The core of the theory in this section lies in establishing assumptions under which the only linear transformations that can be applied to ∆ while maintaining the same level of sparsity, and thus the regularization penalty in (4), are permutation and scaling operations. Combined with a result demonstrating the identifiability of Z up to linear transformation, this regularization constraint permits disentanglement of both ∆ and the latent features Z.</p><p>Our intuition focused on linearly entangled solutions Ẑ = LZ but in general, the hidden layer of a neural network could produce arbitrarily entangled solutions. As such, we prove the identifiability of features learned using tree-based regularization in two parts. First, we establish conditions under which the features learned with a nonlinear function, e.g., a neural network, are identified up to linear transformations, bringing us back to the linearly entangled case. This result builds on proof techniques found in the literature <ref type="bibr">Khemakhem et al. [2020a,b]</ref>, <ref type="bibr" target="#b27">Roeder et al. [2021]</ref>, <ref type="bibr">Ahuja et al. [2022c]</ref>, <ref type="bibr">Lachapelle et al. [2022a]</ref>.</p><p>Second, we show that with some assumptions, the sparsity constraint on || ∆|| 0 permits further identification of Z up to permutation and scaling. Specifically, we show that any ∆ with at most one non-zero value per row cannot be entangled without a resulting increase in regularization cost.</p><p>3.1 Linear Identification of Z Assumption 3.1 (Data-generating process (DGP)). For each environment e, we assume the pairs (x, y) are drawn i.i.d from a distribution satisfying</p><formula xml:id="formula_8">E[Y | X, e] = w ⊤ e Ψ(X) .<label>(7)</label></formula><p>Additionally, we assume the support of p(x | e), denoted by X ∈ R d , is fixed across environments. Assumption 3.2 (Sufficient task variability). We assume that there exist environments e 1 , . . . , e k ∈ E such that the matrix [w e1 , ...w e k ] is invertible.</p><p>Assumption 3.3 (Sufficient representation variability). We assume there exist x 1 , ..., x k ∈ X such that the matrix [Ψ(x 1 ), ..., Ψ(x k )] is invertible.</p><p>Taken together, these assumptions establish our first requirement, by implying that the latents are identified up to a linear transformation L, Proposition 3.4. Suppose Assumptions 3.1, 3.2 &amp; 3.3 hold. Moreover, consider the learned parameters ŵ0 and { δa } a∈A and the learned encoder function Ψ(x). Analogously to Equation (2), we define ŵe := ŵ0 + a∈path(0,e) δa for all e ∈ E. If for all X ∈ X and all e ∈ E we have</p><formula xml:id="formula_9">E[Y |X, e] = ŵ⊤ e Ψ(X), then, there exists an invertible matrix L ∈ R k×k such that 1. For all x ∈ X , Ψ(x) = L Ψ(x);</formula><p>2. For all e ∈ E, w ⊤ e L = ŵ⊤ e ; and</p><p>3. For all a ∈ A, δ ⊤ a L = δ⊤ a .</p><p>The proof is included in Appendix A.1.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Identification Up To Scaling and Permutation</head><p>The previous section shows that we can identify every δ a up to some common invertible linear transformation L. Recall ∆, ∆ ∈ R |A|×k are simply the concatenations of the δ a and δa , respectively. This means we can write ∆L = ∆. We now show that penalizing the L 0 -norm of our estimate ∆ allows us to identify ∆ up to a permutation and scaling. Assumption 3.5 (1-sparse perturbations). Each δ a has at most one nonzero value. Assumption 3.6 (Sufficient perturbations). For all i ∈ {1, . . . , k}, there exists a ∈ A such that δ a,i ̸ = 0. Proposition 3.7 (Disentanglement via 1-sparse perturbations). Suppose Assumptions 3.5 &amp; 3.6 hold, let L be an invertible matrix and let ∆ := ∆L. If || ∆|| 0 ≤ ||∆|| 0 , then L is a permutation-scaling matrix.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>The proof is included in Appendix A.2.</head><p>Proof sketch To understand the crux of proving this result, recall the aspect of TBR that drives the result in the first place: the L 0 norm prefers solutions ∆ that are sparse. For this regularization to choose the disentangled solution, Ẑ = ZDP, we have to show that ∆ = Z ⊤ L -1 , the result of linearly entangled solution, cannot be sparser than ∆ for the disentangled solution. To this end, our strategy will be to fix the amount of sparsity in the ground-truth matrix ∆. Then, we will show by contradiction that there exists a mapping between the columns of ∆ and ∆ such that each column in ∆ is at least as sparse as the corresponding column in ∆. Using this result, we then show that to meet our constraint on the sparsity of ∆, it must be the case that L is a permutation-scaling matrix.</p><p>While Assumption 3.5, which requires all rows in ∆ to have at most 1 non-zero entry, is unlikely to hold in many practical applications of interest, we do note that we empirically consider violations of this assumption in § 4, and find the results promising. Some further discussion about relaxation of the 1-sparse assumption is included in Appendix A.2.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Empirical studies</head><p>The goal of the empirical studies is to demonstrate that TBR recovers disentangled latents, which further lead to accurate causal inference and transfer learning. To that end, we conduct studies with simulated data and gene expression data across cell types to investigate the behaviour of TBR under various generative settings, robustness to violations of Assumption 3.5 , and potential downstream benefits to disentangled representations. For all these experiments, we compare the representations produced by TBR to those from a baseline method: a standard linear map fit to the target label Y on top of the learned nonlinear representation Ψ. Additional implementation details are included in Appendix A.5. All results are averaged over 10 repetitions unless otherwise specified.</p><p>Performance metric In Figure <ref type="figure" target="#fig_3">3a</ref>, we evaluate the disentanglement of Ẑ using the mean correlation coefficient (MCC), defined in Appendix A.5,. An MCC score of 1.0 indicates an estimated representation is equal to the ground truth up to permutation and scaling.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Simulation details</head><p>The general simulation procedure is: we generate a balanced binary tree T , of depth 7 with a total of 128 leaves. In each non-root environment, we sample 3000 datapoints according to,</p><formula xml:id="formula_10">x ∈ R 16 ∼ N (0, 1) z ∈ R 5 ∼ N (Φ(x), 0.1) Φ(x) = tanh(w ⊤ x); w ∼ N (0, 1) w 0 ∼ N (0, 1)<label>(8)</label></formula><p>Each arc a in T is assigned a sparse δ a ∈ R 5 , with non-zero Gaussian values (σ 2 = 0.25) at a random subset of S indices, where S denotes the number of non-zero entries and is varied throughout experimentation. w e is generated using Equation ( <ref type="formula" target="#formula_2">2</ref>), and the target Y is sampled according Equation (1), with ϵ ∼ N (0, 0.1). In Appendix A.6, we show results for an equivalent simulation where only leaf nodes are observed, more closely matching biological applications.</p><p>Disentanglement. To study the first question about validating our disentanglement theory, we evaluated MCC of the representations learned by TBR and the baseline method while varying the level of sparsity in ∆, from S = 0, indicating each δ ∈ ∆ is a null vector, to S = 5, resulting in a fully dense ∆. The results, displayed in Figure <ref type="figure" target="#fig_3">3a</ref>, align with our theoretical findings. With S = 0, ∆ is completely sparse, and Ψ is free to entangle Ẑ without any increase in regularization cost. In this setting, both TBR and the baseline method learn entangled representations, exhibiting mean MCC of 0.52 ± 0.05 and 0.44 ± 0.05 respectively.</p><p>In the S = 1 setting, which uniquely satisfies Assumption 3.5, TBR elicits mean MCC scores of 0.98 ± 0.03 indicating that the representations of Ẑ are almost fully disentangled.</p><p>Sensitivity to assumption violations. The settings of S ≥ 2 test the robustness of our method to violations of Assumption 3.5, which require 1-sparse changes across environments. As S increases, we see that the MCC scores obtained by TBR gradually decline, a reasonable result given that the guarantees of § 3 no longer hold. However, TBR remains notably stronger than baseline, indicating that tree-based regularization incentivizes partial disentanglement even in settings not covered by our theory. Some additional results exploring further variations on our simulation setting are included in Appendix A, showing robustness to all-linear DGPs, and more stochastic amounts of variation in ∆.</p><p>Predictive performance. We evaluate the MSE of Ŷ for each method while varying the sparsity level S for each δ ∈ ∆. Figure <ref type="figure" target="#fig_3">3b</ref> highlights these results. When S = 0, E[Y |Z] is invariant across environments, matching the model fit by the standard baseline as well as TBR. As expected, both methods perform well in this case. As S increases, TBR maintains low prediction error, while the performance of the baseline method quickly degrades. This aligns with expectations, as the baseline method lacks the capacity to fit the environment-specific effects of the latents Z.</p><p>We further find evidence that varying the dimension of | Ẑ| in order to minimize predictive error can enable estimation of the true dimension of |Z| if it is unknown, satisfying a key assumption of our method. Supporting results and discussion are included in Appendix A.6.  Causal effect estimation. To show the importance of disentangled representations for downstream causal inference, we estimate the causal effects of each high-level latent variable on the target Y by using the representation Ẑ produced by each method as a substitute for the true latents. Following <ref type="bibr" target="#b26">Pearl et al. [2000]</ref>, with mild assumptions, the causal effect of each latent Z k is identified by:</p><formula xml:id="formula_11">ATE k = E Z -k E[Y |Z -k , Z k = z + δ] -E[Y |Z -k , Z k = z]</formula><p>where ATE is the average treatment effect. Given the linear mapping from Z to Y , we estimate the causal effects of Z with ordinary least squares regression, and average the error in estimated effects over 10 environments in the S = 1 setting. We find that the disentangled representation obtained by TBR yields highly accurate effects (MSE=0.05 ± 0.07), while the entangled baseline representations are severely biased (MSE=1.51 ± 1.8). Further details are included in Appendix A.6.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Single-cell RNA-seq experimentation</head><p>In addition to analyzing the behavior of TBR in simulation, we evaluated the ability of our method to learn disentangled representations of ground-truth gene expression data, with simulated downstream cell-state phenotypes.</p><p>In our setup, both X and Z consisted of real gene expression data observed across different cells.</p><p>We selected genes from within a set of 11 broadly expressed house-keeping genes <ref type="bibr" target="#b4">[Eisenberg and Levanon, 2013]</ref> to hold out as latent variables. For X, we extracted all transcription factors (TFs) annotated as regulators of Z, in the hTFtarget database <ref type="bibr" target="#b32">[Zhang et al., 2020]</ref>. We removed from consideration two weakly regulated house-keeping genes, resulting in a set of nine candidate Z genes (see Appendix A.5), each regulated by 18 to 95 TFs within X. We performed all experimentation on the publicly available GTEx V8 snRNA-Seq dataset, described by <ref type="bibr" target="#b6">Eraslan et al. [2022]</ref>. We consider the 43 epithelial cell types as the set of environments E.</p><p>Preprocessing All preprocessing of the GTEx data was performed using standard functions within the Scanpy library <ref type="bibr" target="#b31">[Wolf et al., 2018]</ref>. To denoise the data and adjust for dropout during sequencing, we first applied across the entire dataset the MAGIC function developed in <ref type="bibr" target="#b29">Van Dijk et al. [2018]</ref>. The resulting dataset was highly imbalanced, with a small number of cell types comprising the majority of examples. To prevent these cell types from dominating our analysis, we randomly selected a subset of  We constructed the tree T relating the cell types by running the dendrogram method in the Scanpy library, such that the 43 epithelial cell types made up the leaves in T . We simulated phenotype Y using latent gene expression Z and cell type tree T via the simulation procedure outlined in § 4.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Results</head><p>We repeatedly sampled subsets of 5 candidate genes to serve as Z and the corresponding TF expression X, and compared the performance of TBR and our previously described baseline method across 30 different simulated phenotypes, for each sparsity level S.</p><p>The performance of the two methods in disentangling the latent gene expression values are depicted in Figure <ref type="figure" target="#fig_5">4a</ref>. TBR and the baseline method exhibit equivalent average MCC scores of 0.51 ± 0.01 and 0.50 ± 0.01 respectively in the S = 0 setting, when there is no variation between environments. Once variation is introduced, the performance of TBR increases, exhibiting an average MCC of 0.61 ± 0.02 with both S = 1 and S = 2, while the performance of the baseline method degrades rapidly to 0.31 ± 0.02 as K increases to 2. Globally, MCC scores are lower than observed in simulation. We expect that much of this gap in performance can be attributed to the high levels of endogenous noise within the X → Z relationship.</p><p>Generalization to unseen environments. Since parameter values across related environments only sparsely vary when we consider the true latents, but densely vary when we consider incorrect transformations of these latents, we further expect that better disentanglement should lead to lower error when we transfer our learned predictor to an unseen but similar environment. Thus, to demonstrate the value of learning partially disentangled representations of gene expression, we evaluated the ability of our methods to predict phenotype in environments that were unobserved during training. We selected cell types to use as a test set, and completely excluded them from training.</p><p>We compared the performance between our baseline method, trained on the closest neighboring cell-type to the test type, and TBR, using the parameters from the closest environment to the test type in T . To maximize the potential performance from the baseline, we only considered test cell types whose closest neighbor had a large population (pop. size &gt;= 1000). Additionally, we restricted analysis to test types with a population size &gt;= 100.</p><p>As in the previous experiment, we repeatedly sampled random choices of genes to make up Z and generated simulated phenotypes with varying settings of S. In all cases, the unobserved environments had w test exhibiting 1-sparse changes from the closest observed environment in T , resulting in a non-trivial generalization challenge even when S = 0 for the training environments. The results averaged across all choices of Z are presented in Figure <ref type="figure" target="#fig_5">4b</ref>.</p><p>Notably, training TBR with S = 0 resulted in a test MSE of 1.10 ± 0.58 in the unseen cell types, a significantly higher error rate than the S = 1 and S = 2 settings (respective MSE of 0.49 ± 0.22 and 0.47 ± 0.20). This improvement in MSE when S &gt; 0 is expected, as the 1-sparse changes in the unseen w test could become more widely distributed across the entangled estimated of Ẑ. This reduction in generalization risk in the S &gt;= 1 setting illustrates the value of even partially disentangled representations. The baseline method exhibits significantly higher MSE in all settings, which may be due to the inherent limitations of training on only closely related cell types, restricting sample size.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Related work</head><p>Several papers have shown that with samples from multiple environments, auxiliary labels, and assumptions on the data generating process, we can learn disentangled representations <ref type="bibr" target="#b10">[Hyvarinen and Morioka, 2016</ref><ref type="bibr" target="#b11">, 2017</ref><ref type="bibr" target="#b13">, Hyvarinen et al., 2019</ref><ref type="bibr">, Khemakhem et al., 2020b</ref><ref type="bibr" target="#b30">,a, Von Kugelgen et al., 2021</ref><ref type="bibr" target="#b28">, Shen et al., 2021</ref><ref type="bibr" target="#b17">, Klindt et al., 2021</ref><ref type="bibr" target="#b9">, Gresele et al., 2019]</ref>. Most of these previous works assume the latent variables are causal ancestors of the observed variables, whereas we consider latent variables which are causal descendants of the observations, enabling use of the target distribution as a signal for latent identification, rather than a reconstruction objective. Within the research on disentanglement, this paper relates most closely to two lines of work that exploit sparsity to guarantee disentangled solutions to the representation learning task.</p><p>Sparse changes to latents. One line of work focuses on temporal observations <ref type="bibr" target="#b22">[Lippe et al., 2022]</ref> or paired samples <ref type="bibr" target="#b23">[Locatello et al., 2019</ref><ref type="bibr">, Ahuja et al., 2022a</ref><ref type="bibr" target="#b30">, Von Kugelgen et al., 2021]</ref> generated by varying only a small number of generative factors. Similarly, <ref type="bibr">Lachapelle et al. [2022b</ref><ref type="bibr" target="#b20">Lachapelle et al. [ , 2024] ]</ref> leverage sparse interactions between latent factors across time and/or with auxiliary variables to learn disentangled representations. In this paper, instead of leveraging sparse shifts in the distribution over latent variables, we exploit sparse changes in the mechanism by which the latent variables affect a target variable.</p><p>Sparse mappings. Another line of work exploits sparsity in the mappings from latent to observed variables to establish disentanglement. In the case of generative factors, <ref type="bibr" target="#b24">Moran et al. [2022]</ref>, <ref type="bibr" target="#b2">Brady et al. [2023]</ref>, <ref type="bibr" target="#b33">Zheng et al. [2022]</ref> assume that each latent factor affects a subset of the components of the observation. In the latent features setting that we also study in this paper, Lachapelle et al.</p><p>[2022a], <ref type="bibr" target="#b8">Fumero et al. [2023]</ref> observe multiple targets of interest that depend sparsely on the latent features. In contrast, in this paper, we focus on sparse changes in the mapping from latent features to the single target variable of interest. Another key distinction is that we leverage a hierarchical structure over environments. This allows us to enforce that mechanism changes be sparse locally while still admitting changes that are dense between environments that have diverged significantly. Thus we do not need to constrain all pairs of environments to vary sparsely.</p><p>Tree based regularization Our tree-based regularization scheme is similar to the phylogenetic regularization presented in <ref type="bibr" target="#b21">Layne et al. [2020]</ref> but here we rely on a sparsity penalty to encourage disentanglement, whereas Layne et al. leveraged distributional assumptions for better generalization.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Conclusion</head><p>The ability to learn disentangled representations is an important prerequisite for the use of representation learning in a number of scientific tasks, such as causal effect estimation. There is a growing attention in the literature to the use of sparse variations between environments to achieve disentanglement. We make several novel contributions towards this line of pursuit. We demonstrate that disentanglement is possible when data originates from a set of evolving environments, such as those resulting from cellular differentiation or species evolution, where parameter shifts along a given tree branch are sparse. Tree-branch sparsity suffices to enable disentanglement, even if the resulting pair-wise differences between observable environments may be dense.</p><p>We present novel theoretical results, leveraging sparse tree-based regularization in parameter space to disentangle representations of learned features, downstream from the observable inputs in the causal graph. We validate the value of our approach through a series of simulation studies, that demonstrate improvements in disentanglement scores, prediction error, and estimation of the causal effects of the latent features. We further investigate the ability of TBR to learn disentangled representations of ground truth gene expression data, with simulated downstream cell phenotypes. While further improvements are required to achieve the full potential of causal representation learning on scRNA-seq data, we observe promising trends. Our findings suggest that there is value in leveraging information about cell-type differentiation with TBR-style methodology, both to assist in disentangling latent molecular mechanisms and to improve generalization performance.</p><p>There are multiple directions for future work, including relaxing linearity in the mapping from latents to the target, better characterization of the number of environments required, further exploration into estimation of the number of latents, and expanding our results into more flexible generative processes, such as by relaxing the assumption that p(Z | X) remains invariant.</p><p>A Appendix / supplemental material A.1 Proof of Proposition 4.4</p><p>Proof. By Assumption 3.1, and the conditions on Ŷ outlined in Proposition 4.4, we have</p><formula xml:id="formula_12">E[Y |X, e] = ŵ⊤ e Ψ(X)<label>(9)</label></formula><p>w ⊤ e Ψ(X) = ŵ⊤ e Ψ(X)</p><p>Let e 1 , . . . , e k be the environments given by Assumption 3.2. We can define matrices</p><formula xml:id="formula_14">U =    w ⊤ e1 . . . w ⊤ e k    and Û =    ŵ⊤ e1 . . . ŵ⊤ e k    .</formula><p>By Assumption 3.2, we know U is invertible, which allows us to write</p><formula xml:id="formula_15">UΨ(x) = Û Ψ (x)<label>(11)</label></formula><formula xml:id="formula_16">Ψ(x) = U -1 Û Ψ(x)<label>(12)</label></formula><formula xml:id="formula_17">Ψ(x) = L Ψ(x)<label>(13)</label></formula><p>where L := U -1 Û.</p><p>By Assumption 4, we can create an invertible matrix Q = [Ψ(x 1 ), ..., Ψ(x k )]. We can subsequently denote Q = [ Ψ(x 1 ), ..., Ψ(x k )], allowing us to write Q = L Q. Since Q is invertible, both L and Q must also be invertible.</p><p>Combining (10) and (13) yields</p><formula xml:id="formula_18">w ⊤ e L Ψ(x) = ŵ⊤ e Ψ(x)<label>(14)</label></formula><formula xml:id="formula_19">w ⊤ e L Q = ŵ⊤ e Q<label>(15)</label></formula><p>w</p><formula xml:id="formula_20">⊤ e L = ŵ⊤ e ,<label>(16)</label></formula><p>where the last equation holds because Q is invertible.</p><p>Choose some a ∈ A and assume a = (e 0 , e ′ 0 ). Since ( <ref type="formula" target="#formula_20">16</ref>) holds for all e, it holds in particular for e 0 and e ′ 0 :</p><formula xml:id="formula_21">w ⊤ e0 L = ŵ⊤ e0 (17) w ⊤ e ′ 0 L = ŵ⊤ e ′ 0 .<label>(18)</label></formula><p>By substracting both equations above, we obtain</p><formula xml:id="formula_22">(w e ′ 0 -w e0 ) ⊤ L = ( ŵe ′ 0 -ŵe0 ) ⊤ (19) δ ⊤ a L = δ⊤ a ,<label>(20)</label></formula><p>where the last step above follows from the definition of w e in (2). This concludes the proof.</p><p>A.2 Proof of Proposition 4.7</p><p>This result builds on arguments from both <ref type="bibr" target="#b7">Freyaldenhoven [2020]</ref> and <ref type="bibr">Lachapelle et al. [2022b]</ref>.</p><p>Proof. By Lemma A.1, there exists a permutation π such that for each column i in L, there is an index π(i) where L π(i),i is a non-zero value α. Thus ∆:,i is equal to some linear combination of columns in ∆ where column ∆ :,π(i) has coefficient α. Details are included in Appendix A.</p><p>We use operator S to denote the "sparsity pattern" of a matrix. The sparsity pattern of ∆ is denoted as S ∆ , and is equal to the set of indices of non-zero elements in ∆. S c ∆ indicates the complement of the sparsity pattern: the set of indices corresponding to entries with value zero. Similarly, S ∆:,i denotes the sparsity pattern of ∆ at column i.</p><p>Our proof builds upon a series of column-wise comparisons. For each index i ∈ {1, . . . , k}, we compare the L 0 norm of column ∆ :,π(i) and column ∆:,i .</p><p>We define two sets of indices, Ω i and Γ i ,</p><formula xml:id="formula_23">Ω i := S ∆ :,π(i) ∩ S c ∆:,i<label>(21)</label></formula><formula xml:id="formula_24">Γ i := S c ∆ :,π(i) ∩ S ∆:,i<label>(22)</label></formula><p>Thus, Ω i represents nonzero entries that were present in ∆ :,π(i) , but not in ∆:,i and Γ i represents the opposite, i.e. nonzero entries that were not present in ∆ :,π(i) but that are present in ∆:,i . Thus, the following equality holds:</p><formula xml:id="formula_25">|| ∆:,i || 0 = ||∆ :,π(i) || 0 + |Γ i | -|Ω i |<label>(23)</label></formula><p>We now show that Ω i is empty by contradiction. Assume there exists a ∈ Ω i . This means ∆ a,π(i) ̸ = 0 and ∆a,i = ∆ a,: L :,i = 0. By the 1-sparse assumption, ∆ a,-π(i) = 0. This further implies that ∆ a,: L :,i = ∆ a,π(i) L π(i),i = 0, which is a contradiction. We thus conclude that Ω i is empty.</p><p>Therefore, for arbitrary column i, it will always be the case that</p><formula xml:id="formula_26">|| ∆:,i || 0 ≥ ||∆ :,π(i) || 0 .</formula><p>We rewrite the original sparsity constraint:</p><formula xml:id="formula_27">|| ∆|| 0 ≤ ||∆|| 0 (24) i || ∆:,i || 0 ≤ i ||∆ :,i || 0 (25) i || ∆:,i || 0 ≤ i ||∆ :,π(i) || 0 (26) i (|| ∆:,i || 0 -||∆ :,π(i) || 0 ) ≤ 0<label>(27)</label></formula><p>The above combined with || ∆:,i || 0 -||∆ :,π(i) || 0 ≥ 0 implies that, for all i, || ∆:,i || 0 = ||∆ :,π(i) || 0 . This means Γ i is empty as well.</p><p>Because Γ i is empty for all i, we have that ∀i, a, ∆ a,π(i) = 0 =⇒ ∆a,i = 0 ,</p><p>or, equivalently, ∀i, a, ∆ a,i = 0 =⇒ ∆a,π -1 (i) = 0 ,</p><p>Choose an arbitrary i. By Assumption 3.5 &amp; 3.6, there exists an a such that ∆ a,π(i) ̸ = 0 and ∆ a,-π(i) = 0. By (29), we have</p><formula xml:id="formula_30">∆ a,-π(i) = 0 =⇒ ∆a,π -1 (-π(i)) = 0 (30) ∆a,-i = 0 (31) ∆ a,: L :,-i = 0 (32) ∆ a,π(i) L π(i),-i = 0 ,<label>(33)</label></formula><p>which implies L π(i),-i = 0 (since ∆ a,π(i) ̸ = 0). This holds for all i, thus L is a permutation-scaling matrix.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.3 Useful Lemmas</head><p>The argument for proving the following Lemma is taken from <ref type="bibr">Lachapelle et al. [2022b]</ref>.</p><p>Lemma A.1 (Sparsity pattern of an invertible matrix contains a permutation). Let L ∈ R m×m be an invertible matrix. Then, there exists a permutation π such that L i,π(i) ̸ = 0 for all i.</p><p>Proof. Since the matrix L is invertible, its determinant is non-zero, i.e.</p><formula xml:id="formula_31">det(L) := π∈Sm sign(π) m i=1 L i,π(i) ̸ = 0 ,<label>(34)</label></formula><p>where S m is the set of m-permutations. This equation implies that at least one term of the sum is non-zero, meaning there exists π ∈ S m such that for all i ∈ [m], L i,π(i) ̸ = 0.</p><p>A.4 Remarks on § 3 A.4.1 On relaxing the 1-sparse assumption:</p><p>Assumption 3.5 is particularly stringent, and many problem settings will not adhere to it in practice. We note some of the expected results of relaxing this assumption, as they relate to our theory.</p><p>Central to our proof are the two sets Γ i and Ω i . Ω i is the set of indices where entanglement by L decreases sparsity for column i, and Γ i is the set of indices where sparsity is increased. We reformulate the definition of Ω i</p><formula xml:id="formula_32">Ω i = {j ∈ S ∆ :,π(i) | ∆ j,-π(i) • L -π(i),i = -α∆ j,π(i) }<label>(35)</label></formula><p>One can see that the condition for index j to be in Ω i is equivalent to: ∆ j,π(i) • L π(i),i = 0. Thus, if the number of indices in Ω i = a for some a ≥ 2, it implies that there is a subset of a rows in ∆ where the columns are linearly dependent. Under the assumption that non-zero values of ∆ are generated independently, it seems intuitive that the likelihood of finding a rows with linearly dependent columns decreases rapidly as a increases, and the results in Figure <ref type="figure" target="#fig_3">3a</ref> give some evidence towards this possibility. We leave for future work the possibility for formalizing a probabilistic bound on the size of a. We also note that Lachapelle et al. find an identification result for latent variables that holds in a setting with infinitely many environments but more general assumptions about sparsity, which may have some connections to the probabilistic line of reasoning we outline.</p><p>An additional possible direction for future work towards generalizing our result is to investigate the use of "anchor environments", as used by <ref type="bibr">Moran et al.</ref> to disentangle latent generative factors.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.5 Additional experimental details</head><p>Implementation We instantiated Ψ as a neural network with two hidden layers (256 units, 64 units) and LeakyRelu activations. Performance was compared across two methods of estimating linear map Φ. First, a TBR implementation was used to directly estimate ŵ0 and ∆ in order to predict ŷ. Regularization of || ∆|| 0 was approximated by instead regularizing || ∆|| 1 . We compare against a baseline of training a single estimation of ŵ, without accounting for variation between environments.</p><p>In each experiment, Ψ and the relevant estimation of Φ were jointly optimized with the Adam optimizer <ref type="bibr" target="#b16">Kingma and Ba [2014]</ref>. We trained models on 50% of the data. A validation set of 25% of the data was used to tune hyper-parameters (learning rate, λ for TBR models), and the remaining 25% was held out as a test set for evaluation. All models were implemented in PyTorch <ref type="bibr" target="#b25">Paszke et al. [2019]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Performance metric -mean correlation coefficient</head><p>The MCC between Z and Ẑ is:</p><formula xml:id="formula_33">arg max π∈P 1 k k i=1 || Pearson(( Ẑπ(i) ), Z i ) ||, (<label>36</label></formula><formula xml:id="formula_34">)</formula><p>where P is the set of possible permutations of Ẑ and we calculate the Pearson correlation coefficient.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Hyper-parameters</head><p>Hyper-parameters are summarizes in Table <ref type="table" target="#tab_0">1</ref>. Gene expression experiments were tuned individually per choice of Z and phenotype from the range listed. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Compute requirements</head><p>Experimentation on the fully simulated dataset was performed on a MacBook Pro with 18GB memory and an M3 Pro CPU. Time to generate a simulated phenotype with K = 1 and fit an instance of TBR was estimated at 42.98 ± 13.40 over 10 repetitions.</p><p>Experimentation on gene-expression data described in § 4.1 was performed on a shared compute server with a total of 755GB of ram and 96 CPU cores. Training leveraged shared use of a Quadro RTX 6000 GPU, with an average GPU memory usage of approximately 1GB. Run-time to fit an instance of TBR for a random choice of Z was estimated at 25.37 ± 2.53 seconds over 10 repetitions.    </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.6 Additional experiments and results</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Simulation with observations exclusively at leaves</head><p>Complementary to the experimentation depicted in Figure <ref type="figure" target="#fig_3">3</ref>, we performed an equivalent set of experiments with the simulation altered such that only leaf nodes had observations, which more closely matches our motivating biological applications. We increased the depth of the tree from 7 to 8, keeping the number of observable environments similar. The results display the same trends as discussed in the main text, with an MCC approaching 1.0 exhibited by TBR in the K = 1 setting, and a significant increase in entanglement observed by both methods when K = 0.</p><p>Prediction error and estimating latent dimension. We measured the MSE of Ŷ achieved by the baseline and TBR when varying dimensionality of Ẑ from 1 to 8, while setting the average sparsity to half the dimensionality by setting each entry in ∆ to zero with probability 0.5. For both methods, and for four different values of the dimension |Z|, setting | Ẑ| ≤ |Z| resulted in elevated MSE. Notably, the MSE achieved by TBR distinctly plateaued after reaching the correct dimensionality, as is shown in Figure <ref type="figure" target="#fig_9">6</ref>. While not conclusive, these results suggest that there is indeed potential in the analysis of prediction error with TBR as a method of estimating the number of latent features present. This is significant, as an assumption critical to the guarantees we prove in § 3 is that the dimension of Ẑ is equal to the ground truth dimension of Z.</p><p>Causal effect estimation in simulation experiments. We estimated the causal effects of the highlevel latent variables Z on the target Y by using the representation Ẑ produced by each method as a which measures the change in the mean of Y when we intervene (indicated by the do operator) and increase the value of Z k by some constant δ. Since each ATE is not identified from observational data without assumptions, we follow the necessary assumptions that: (i) there are no hidden confounding variables affect both Z and Y and (ii) for all values z of Z -k , 0 &lt; P (Z k = z|Z -k = z) &lt; 1.</p><p>Following <ref type="bibr" target="#b26">Pearl et al. [2000]</ref>, with these assumptions, and from the graphical model in Figure <ref type="figure" target="#fig_0">1</ref>, each causal effect is identified by,</p><formula xml:id="formula_35">ATE k = E Z -k E[Y |Z -k , Z k = z + δ] -E[Y |Z -k , Z k = z]</formula><p>As a consequence of the linearity in the mapping from Z to Y , each ATE can be estimated by including all variables Z in a linear regression of Y and reading off the fitted linear coefficients.</p><p>In our experiments, we estimate ATE k in ten randomly selected environments in the 1-sparse setting. We fit ordinary least squares regression to Y using the representations Ẑ learned using TBR and the baseline methods and compared the estimated effects to those estimated when using the ground truth Z. We normalized the representation values and calculated the mean squared error of the absolute coefficient values, to ignore the effects of scaling. Table <ref type="table" target="#tab_3">3</ref>, included in the appendix, shows the results from this study. We see that the disentangled representation obtained by TBR yields highly accurate effects (MSE=0.05 ± 0.07) in this setting while the baseline method produces representations that severely introduce bias into the effect estimates (MSE=1.51 ± 1.8).</p><p>The results from estimating causal effects from the estimated Ẑ using either TBR or the baseline method, as described in § 4, are summarized in Table <ref type="table" target="#tab_3">3</ref>. All-linear data-generative process</p><p>We tested the effect of an all-linear DGP, where Ψ(X) was replaced with a linear map with random weights. We maintained the neural network architecture of Ψ. We noticed minimal change in the MCC performance of TBR, results are included in Figure <ref type="figure" target="#fig_10">7</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Stochastic Deltas</head><p>Additionally, we tested the effects of randomly selecting the number of non-zero values in each δ a by drawing from a Bernoulli distribution, while varying the parameter π in order to control the expected level of sparsity. Results are displayed in Figure <ref type="figure" target="#fig_11">8</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Software and data</head><p>Relevant code is released here. Gene expression data can be retrieved via the GTEx portal website.  </p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: The causal directed acyclic graph (DAG) relating observations X, latents Z and target variable of interest Y . The marginal of X and Z → Y relationship is specific to environment e.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: An example of posited DGP and corresponding TBR parameterization for a dataset with samples originating from three different environments (A, B, and C).A set of weights W 0 is associated to the root. A trainable update W e is associated to each edge e. The prediction function f u at node u will make predictions on data samples originating from environment u. Adapted from<ref type="bibr" target="#b21">Layne et al. [2020]</ref>.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head></head><label></label><figDesc>Prediction error (MSE).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: Assessment of model performance across various simulation settings. The x-axis indicates the number of non-zero entries in each δ. Left: A comparison of the MCC between Z and the estimates Ẑ produced by TBR and the baseline method. TBR achieves near perfect disentanglement when S = 1. Right: Comparison of prediction error produced by TBR and the baseline method when estimating Y .</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head></head><label></label><figDesc>error (MSE) on unseen test cell types.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Figure 4 :</head><label>4</label><figDesc>Figure 4: Left panel: A comparison of the MCC between Ẑ and Z across various settings of sparsity in the simulation procedure, when X and Z are both ground-truth gene expression measurements. Results are averaged over 30 simulated phenotypes for each of 75 random choices of genes to serve as Z. Right panel: MSE exhibited when generalizing trained instances of TBR and the baseline method to unseen cell types with 1-Sparse generative parameters changes, while varying the S setting of training environments. Results are averaged over 10 simulated phenotypes each for 50 random choices of Z and 4 held-out test cell types.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head>Figure 5 :</head><label>5</label><figDesc>Figure 5: Assessment of model performance across various simulation settings, with observations available only that the leaf nodes.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_9"><head>Figure 6 :</head><label>6</label><figDesc>Figure 6: An analysis on the effects of changing the dimension of Ẑ on MSE, across various dimensionalities of Z. For |Z| ∈ {4, 5, 6}, TBR achieved minimal predictive loss when | Ẑ| = |Z|. In contrast, the baseline method had no cases where the global minimum for MSE occurred when the estimated and true latent vectors were of the same dimension.</figDesc><graphic coords="18,207.00,72.00,198.00,148.50" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_10"><head>Figure 7 :</head><label>7</label><figDesc>Figure 7: An equivalent plot to Figure 5a, obtained by using a linear map in place of Ψ(X).</figDesc><graphic coords="19,207.00,538.56,198.00,163.55" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_11"><head>Figure 8 :</head><label>8</label><figDesc>Figure 8: An equivalent plot to Figure 5a, obtained by using a Bernoulli distribution of non-zero entries in ∆ in place of a fixed k-sparse setting.</figDesc><graphic coords="20,207.00,299.83,198.00,163.55" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>Table 1 :</head><label>1</label><figDesc>Summary of hyper-parameter settings.Sets of genes for inclusion in Z described in § 4.1 were selected from the list in Table2</figDesc><table><row><cell cols="3">Experiment / Dataset Parameter name Setting or range</cell></row><row><cell>Simulated</cell><cell>λ</cell><cell>0.001</cell></row><row><cell>Simulated</cell><cell>Learning rate</cell><cell>0.001</cell></row><row><cell>Gene Expression</cell><cell>λ</cell><cell>{0.0, 0.1, 0.01, 0.001, 0.0001}</cell></row><row><cell>Gene Expression</cell><cell>Learning rate</cell><cell>{0.001, 0.0001}</cell></row><row><cell>List of house-keeping genes</cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>:</head><label></label><figDesc>Description of error estimatesAll results presented with a mean value accompanied by a ± error estimate indicate standard deviation, computed with a call to numpy's np.std() command. Box plots, such as Figure3a, include quantiles and outliers calculated by seaborn's sns.catplot() function with default settings. Error bars on bar plots, such as Figure4aindicate the 0.95CI and are computed by the errorbar function included in sns.catplot with default settings.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 2 :</head><label>2</label><figDesc>House-keeping genes</figDesc><table><row><cell>Gene Name</cell></row><row><cell>C1orf43</cell></row><row><cell>CHMP2A</cell></row><row><cell>EMC7</cell></row><row><cell>PSMB2</cell></row><row><cell>PSMB4</cell></row><row><cell>REEP5</cell></row><row><cell>SNRPD3</cell></row><row><cell>VCP</cell></row><row><cell>VPS29</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 3 :</head><label>3</label><figDesc>Mean-squared error of effect size estimates calculated using Ẑ, in comparison to estimates calculated using ground-truth Z, computed over 10 trials per environment. TBR achieves a much smaller mean error across all environments, showing that disentangled estimates of Ẑ allow for increased accuracy in determining the effect sizes of latent features.</figDesc><table><row><cell cols="2">Environment TBR MSE</cell><cell>Baseline MSE</cell></row><row><cell>Env 1</cell><cell cols="2">0.05 ± 0.07 0.87±0.76</cell></row><row><cell>Env 2</cell><cell cols="2">0.05 ± 0.07 1.08±0.91</cell></row><row><cell>Env 3</cell><cell cols="2">0.03 ± 0.04 1.29±1.67</cell></row><row><cell>Env 4</cell><cell cols="2">0.06 ± 0.09 1.68±1.72</cell></row><row><cell>Env 5</cell><cell cols="2">0.05 ± 0.08 1.96±3.58</cell></row><row><cell>Env 6</cell><cell cols="2">0.06 ± 0.09 2.55±2.14</cell></row><row><cell>Env 7</cell><cell cols="2">0.05 ± 0.08 1.3±0.94</cell></row><row><cell>Env 8</cell><cell cols="2">0.05 ± 0.07 1.85±1.3</cell></row><row><cell>Env 9</cell><cell cols="2">0.04 ± 0.06 1.19±1.11</cell></row><row><cell>Env 10</cell><cell cols="2">0.04 ± 0.06 1.3±1.29</cell></row><row><cell>Pooled</cell><cell>0.05±0.07</cell><cell>1.51±1.8</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" xml:id="foot_0"><p>Preprint. Under review.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_1"><p>An arc is a directed edge between two nodes.</p></note>
+		</body>
+		<back>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Properties from mechanisms: an equivariance perspective on identifiable representation learning</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Ahuja</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Hartford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=g5ynW-jMq4M" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations, 2022a</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Towards efficient representation identification in supervised learning</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Ahuja</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Hartford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Ahuja</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Mahajan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Syrgkanis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Mitliagkas</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=6ZI4iF_" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems, 2022b</title>
+		<editor>
+			<persName><forename type="first">A</forename><forename type="middle">H</forename><surname>Oh</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">A</forename><surname>Agarwal</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">D</forename><surname>Belgrave</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">K</forename><surname>Cho</surname></persName>
+		</editor>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note>First Conference on Causal Learning and Reasoning</note>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Provably learning object-centric representations</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Brady</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">S</forename><surname>Zimmermann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Sharma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Schölkopf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Von Kügelgen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Brendel</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+			<biblScope unit="page" from="3038" to="3062" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<title level="m" type="main">Weakly supervised causal representation learning</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Brehmer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>De Haan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Lippe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Cohen</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2203.16437</idno>
+		<ptr target="http://arxiv.org/abs/2203.16437" />
+		<imprint>
+			<date type="published" when="2022-10">Oct. 2022</date>
+		</imprint>
+	</monogr>
+	<note>cs, stat</note>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Human housekeeping genes, revisited</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>Eisenberg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">Y</forename><surname>Levanon</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">TRENDS in Genetics</title>
+		<imprint>
+			<biblScope unit="volume">29</biblScope>
+			<biblScope unit="issue">10</biblScope>
+			<biblScope unit="page" from="569" to="574" />
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Cellular differentiation hierarchies in normal and culture-adapted human embryonic stem cells</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Enver</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Soneji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Joshi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Brown</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Iborra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Orntoft</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Thykjaer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Maltby</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Smith</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Abu Dawud</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">M</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">M</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><forename type="middle">P</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Draper</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Andrews</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Human Molecular Genetics</title>
+		<imprint>
+			<biblScope unit="volume">14</biblScope>
+			<biblScope unit="page" from="3129" to="3140" />
+			<date type="published" when="2005">11 2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Single-nucleus cross-tissue molecular reference maps toward understanding disease gene function</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Eraslan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Drokhlyansky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Anand</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Fiskin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Subramanian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Slyper</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Van Wittenberghe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">M</forename><surname>Rouhana</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Waldman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Science</title>
+		<imprint>
+			<biblScope unit="volume">376</biblScope>
+			<biblScope unit="issue">6594</biblScope>
+			<biblScope unit="page">4290</biblScope>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<title level="m" type="main">Identification Through Sparsity in Factor Models. Working Papers 20-25, Federal Reserve Bank of Philadelphia</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Freyaldenhoven</surname></persName>
+		</author>
+		<ptr target="https://ideas.repec.org/p/fip/fedpwp/88229.html" />
+		<imprint>
+			<date type="published" when="2020-06">June 2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Leveraging sparse and shared feature activations for disentangled representation learning</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Fumero</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Wenzel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Zancato</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Achille</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Rodolà</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Soatto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Schölkopf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Locatello</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=IHR83ufYPy" />
+	</analytic>
+	<monogr>
+		<title level="m">Thirty-seventh Conference on Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">The incomplete rosetta stone problem identifiability results for multi-view nonlinear ICA</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Gresele</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">K</forename><surname>Rubenstein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Mehrjou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Locatello</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Scholkopf</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Conference on Uncertainty in Artificial Intelligence</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Unsupervised feature extraction by time-contrastive learning and nonlinear ica</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Hyvarinen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Morioka</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">29</biblScope>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Nonlinear ICA of Temporally Dependent Stationary Sources</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Hyvarinen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Morioka</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">The 20th International Conference on Artificial Intelligence and Statistics</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Nonlinear independent component analysis: Existence and uniqueness results</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Hyvärinen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Pajunen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Neural networks</title>
+		<imprint>
+			<biblScope unit="volume">12</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="429" to="439" />
+			<date type="published" when="1999">1999</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Nonlinear ICA Using Auxiliary Variables and Generalized Contrastive Learning</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Hyvarinen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Sasaki</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">E</forename><surname>Turner</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">The 22nd International Conference on Artificial Intelligence and Statistics</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Variational autoencoders and nonlinear ica: A unifying framework</title>
+		<author>
+			<persName><forename type="first">I</forename><surname>Khemakhem</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Monti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Hyvarinen</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+		<ptr target="https://proceedings.mlr.press/v108/khemakhem20a.html" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Twenty Third International Conference on Artificial Intelligence and Statistics</title>
+		<editor>
+			<persName><forename type="first">S</forename><surname>Chiappa</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">R</forename><surname>Calandra</surname></persName>
+		</editor>
+		<meeting>the Twenty Third International Conference on Artificial Intelligence and Statistics</meeting>
+		<imprint>
+			<date type="published" when="2020-08">Aug 2020</date>
+			<biblScope unit="volume">108</biblScope>
+			<biblScope unit="page" from="26" to="28" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Ice-beem identifiable conditional energybased deep models based on nonlinear ica</title>
+		<author>
+			<persName><forename type="first">I</forename><surname>Khemakhem</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Monti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Hyvärinen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Adam: A method for stochastic optimization</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ba</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="volume">12</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Towards nonlinear disentanglement in natural data with temporal sparse coding</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">A</forename><surname>Klindt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Schott</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Sharma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Ustyuzhaninov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Brendel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Bethge</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Paiton</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=EbIDjBynYJ8" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<monogr>
+		<author>
+			<persName><forename type="first">S</forename><surname>Lachapelle</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Deleu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Mahajan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Mitliagkas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Lacoste-Julien</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Bertrand</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2211.14666</idno>
+		<title level="m">Synergies between disentanglement and sparsity: a multi-task learning perspective</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Disentanglement via mechanism sparsity regularization: A new principle for nonlinear ICA</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Lachapelle</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Rodriguez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Sharma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">E</forename><surname>Everett</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">L</forename><surname>Priol</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Lacoste</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Lacoste-Julien</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=dHsFFekd_-o" />
+	</analytic>
+	<monogr>
+		<title level="m">First Conference on Causal Learning and Reasoning, 2022b</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<monogr>
+		<title level="m" type="main">Nonparametric partial disentanglement via mechanism sparsity: Sparse actions, interventions and sparse temporal dependencies</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Lachapelle</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">R</forename><surname>López</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Sharma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Everett</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">L</forename><surname>Priol</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Lacoste</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Lacoste-Julien</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Supervised learning on phylogenetically distributed data</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>Layne</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">N</forename><surname>Dort</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Hamelin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Blanchette</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Bioinformatics</title>
+		<idno type="ISSN">1367-4803</idno>
+		<imprint>
+			<biblScope unit="volume">36</biblScope>
+			<biblScope unit="issue">Supplement 2</biblScope>
+			<biblScope unit="page" from="895" to="902" />
+			<date type="published" when="2020">12 2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<monogr>
+		<title level="m" type="main">CITRIS: Causal Identifiability from Temporal Intervened Sequences</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Lippe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Magliacane</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Löwe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><forename type="middle">M</forename><surname>Asano</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Cohen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Gavves</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2202.03169</idno>
+		<ptr target="http://arxiv.org/abs/2202.03169" />
+		<imprint>
+			<date type="published" when="2022-06">June 2022</date>
+		</imprint>
+	</monogr>
+	<note>cs, stat</note>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Challenging common assumptions in the unsupervised learning of disentangled representations</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Locatello</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Bauer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Lucic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Raetsch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Gelly</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Schölkopf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Bachem</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">international conference on machine learning</title>
+		<imprint>
+			<publisher>PMLR</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="4114" to="4124" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Identifiable variational autoencoders via sparse decoding</title>
+		<author>
+			<persName><forename type="first">G</forename><forename type="middle">E</forename><surname>Moran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Sridhar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">M</forename><surname>Blei</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Transactions of Machine Learning Research</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Pytorch: An imperative style, high-performance deep learning library</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Paszke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Gross</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Massa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Lerer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Bradbury</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Chanan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Killeen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Gimelshein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Antiga</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Desmaison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Kopf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Devito</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Raison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Tejani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Chilamkurthy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Steiner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Fang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Bai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Chintala</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">H</forename><surname>Wallach</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">H</forename><surname>Larochelle</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">A</forename><surname>Beygelzimer</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">F</forename><surname>Alché-Buc</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">E</forename><surname>Fox</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">R</forename><surname>Garnett</surname></persName>
+		</editor>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">32</biblScope>
+			<biblScope unit="page" from="8024" to="8035" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<monogr>
+		<title level="m" type="main">Models, reasoning and inference</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Pearl</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2000">2000</date>
+			<publisher>CambridgeUniversityPress</publisher>
+			<biblScope unit="volume">19</biblScope>
+			<pubPlace>Cambridge, UK</pubPlace>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">On linear identifiability of learned representations</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Roeder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Metz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">P</forename><surname>Kingma</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 38th International Conference on Machine Learning</title>
+		<meeting>the 38th International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<monogr>
+		<title level="m" type="main">Disentangled generative causal representation learning</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Shen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Lian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Zhang</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Recovering gene interactions from single-cell data using data diffusion</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Van Dijk</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Sharma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Nainys</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Yim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Kathail</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">J</forename><surname>Carr</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Burdziak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">R</forename><surname>Moon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">L</forename><surname>Chaffer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Pattabiraman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Cell</title>
+		<imprint>
+			<biblScope unit="volume">174</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="716" to="729" />
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Self-supervised learning with data augmentations provably isolates content from style</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Von Kugelgen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Sharma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Gresele</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Brendel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Scholkopf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Besserve</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Locatello</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Scanpy: large-scale single-cell gene expression data analysis</title>
+		<author>
+			<persName><forename type="first">F</forename><forename type="middle">A</forename><surname>Wolf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Angerer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><forename type="middle">J</forename><surname>Theis</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Genome biology</title>
+		<imprint>
+			<biblScope unit="volume">19</biblScope>
+			<biblScope unit="page" from="1" to="5" />
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">htftarget: a comprehensive database for regulations of human transcription factors and their targets</title>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H.-M</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G.-Y</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y.-R</forename><surname>Miao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Xia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A.-Y</forename><surname>Guo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">proteomics &amp; bioinformatics</title>
+		<imprint>
+			<biblScope unit="volume">18</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="120" to="128" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note>Genomics</note>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">On the identifiability of nonlinear ICA sparsity and beyond</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Ng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

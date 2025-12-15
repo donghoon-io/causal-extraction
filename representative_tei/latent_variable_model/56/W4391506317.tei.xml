@@ -1,0 +1,986 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">SLIM: Skill Learning with Multiple Critics</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability  status="unknown">
+					<licence/>
+				</availability>
+				<date type="published" when="2024-03-21">21 Mar 2024</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">David</forename><surname>Emukpere</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Bingbing</forename><surname>Wu</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Julien</forename><surname>Perez</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Jean-Michel</forename><surname>Renders</surname></persName>
+						</author>
+						<title level="a" type="main">SLIM: Skill Learning with Multiple Critics</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2024-03-21">21 Mar 2024</date>
+						</imprint>
+					</monogr>
+					<idno type="arXiv">arXiv:2402.00823v2[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-28T22:58+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Self-supervised skill learning aims to acquire useful behaviors that leverage the underlying dynamics of the environment. Latent variable models, based on mutual information maximization, have been successful in this task but still struggle in the context of robotic manipulation. As it requires impacting a possibly large set of degrees of freedom composing the environment, mutual information maximization fails alone in producing useful and safe manipulation behaviors. Furthermore, tackling this by augmenting skill discovery rewards with additional rewards through a naive combination might fail to produce desired behaviors. To address this limitation, we introduce SLIM, a multi-critic learning approach for skill discovery with a particular focus on robotic manipulation. Our main insight is that utilizing multiple critics in an actor-critic framework to gracefully combine multiple reward functions leads to a significant improvement in latent-variable skill discovery for robotic manipulation while overcoming possible interference occurring among rewards which hinders convergence to useful skills. Furthermore, in the context of tabletop manipulation, we demonstrate the applicability of our novel skill discovery approach to acquire safe and efficient motor primitives in a hierarchical reinforcement learning fashion and leverage them through planning, significantly surpassing baseline approaches for skill discovery.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>I. INTRODUCTION</head><p>Self-supervised methods for skill discovery have been extensively developed in recent years as they enable robots to acquire reusable and transferable knowledge. This flexibility is crucial in dynamic and unstructured environments where robots encounter variations, uncertainties, and unforeseen events. Instead of engineering explicit rules and behaviors for each individual task, robots can learn from data and experiences, making the learning process scalable, thus improving the efficiency and versatility of robotic systems.</p><p>One popular approach to skill discovery utilizes the socalled mutual information maximization objective <ref type="bibr" target="#b0">[1]</ref> to derive intrinsic rewards <ref type="bibr" target="#b1">[2]</ref>. Commonly, this involves training a latent-variable conditioned policy with reinforcement learning which maximizes the mutual information between the latent variable i.e. skill, given as input to the agent, and the agent's state <ref type="bibr" target="#b1">[2]</ref>, <ref type="bibr" target="#b2">[3]</ref>. While this formulation has been shown to enable an embodied agent to discover behaviors with respect to changing its own state, as in locomotion <ref type="bibr" target="#b3">[4]</ref>, it struggles in situations where we desire to discover skills that affect degrees of freedom composing the state space outside the agent's own state. For example, impacting object  states, as is the case in robotic manipulation, would require extensive exploration to discover interaction skills. A simple way to tackle this challenging case might be to augment intrinsic rewards with additional components that encourage such interactions within the environment. For example, one can introduce a reaching bonus to reward the end-effector of the considered manipulator to get close to the objects composing the considered scene. Furthermore, ensuring the safety of skill discovery is another critical problem recently introduced in <ref type="bibr" target="#b4">[5]</ref>. Adding this also defines an extra reward component that needs to be carefully combined with other reward terms. In this work, we show that a naive implementation of combining these multiple rewards to obtain meaningful and safe interaction skills typically doesn't work or, in the best case, would require laborious tuning to derive a weighted combination that elicits the desired behavior. To solve this, we introduce a novel multi-critic <ref type="bibr" target="#b5">[6]</ref> approach to self-supervised skill discovery that is simple to implement and requires little to no effort to find the right combination of different rewards for safe and effective robotic manipulation skill discovery.</p><p>We demonstrate the applicability of our approach for acquiring safe and effective motor primitives in a hierarchical reinforcement learning (HRL) fashion. Then, we leverage them for rearrangement and object trajectory following tasks through planning, surpassing the state-of-the-art baseline approaches for skill discovery.</p><p>In summary, our main contributions are:</p><p>• We introduce SLIM, a robust multi-critic approach to latent variable skill discovery which enables us to train skill-conditioned policies with useful, diverse, and safe behaviors.</p><p>• We perform extensive ablation tests that illustrate the benefits of our approach for skill discovery. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>II. RELATED WORK</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Skill Discovery</head><p>Numerous skill discovery methods <ref type="bibr" target="#b2">[3]</ref>, <ref type="bibr" target="#b3">[4]</ref>, <ref type="bibr" target="#b6">[7]</ref>, <ref type="bibr" target="#b7">[8]</ref>, <ref type="bibr" target="#b8">[9]</ref>, <ref type="bibr" target="#b9">[10]</ref>, <ref type="bibr" target="#b10">[11]</ref>, <ref type="bibr" target="#b11">[12]</ref> and benchmarks <ref type="bibr" target="#b12">[13]</ref> for robotics have been actively studied in recent years due to the perceived fruitfulness of unsupervised pretraining for efficient adaptation to new tasks. In general, while most of these methods have produced impressive results in various robotics domains such as locomotion, navigation and simple manipulation settings, for example with narrow initial state distributions and fixed end-effector orientation, they typically struggle in more challenging manipulation environments. One reason for this is the extended exploration due to wider initial state distributions and larger action space (position and orientation) needed to learn consistent interaction with objects. Without these interactions, obtaining intrinsic rewards related to diversity in object manipulation becomes infeasible. In addition, mutual information maximization done without any prior information between the proprioception and exteroception parts of the state definition leads to local minima which leads to agents mostly moving around their embodiment with little environmental impact <ref type="bibr" target="#b13">[14]</ref>, <ref type="bibr" target="#b14">[15]</ref>.</p><p>There exists a few interesting approaches to mitigating this problem with skill discovery in robotic manipulation. MUSIC <ref type="bibr" target="#b15">[16]</ref> takes the approach of partitioning the state space into the agent's state and the surrounding state, then maximizing the mutual information between them. Furthermore <ref type="bibr" target="#b16">[17]</ref> investigate combining MUSIC <ref type="bibr" target="#b15">[16]</ref> with DADS <ref type="bibr" target="#b2">[3]</ref> and multiplicative compositional policy architecture <ref type="bibr" target="#b17">[18]</ref> to encourage acquisition of transferable manipulation skills.</p><p>While MUSIC-based methods can help agents learn how to interact with objects in their environment, exploration remains challenging. Indeed, assuming the agent doesn't interact with changing parts of its surroundings, the quantity of information to learn from is limited. More recently, controllability-aware skill discovery <ref type="bibr" target="#b14">[15]</ref> proposes a framework improving upon distance-maximizing skill discovery <ref type="bibr" target="#b13">[14]</ref> that encourages actively seeking "hard-to-achieve" skills, showing impressive capability to acquire useful robotic manipulation skills. In this paper, we approach this problem by augmenting latent-variable skill discovery with additional rewards that improve exploration efficiency, as well as incorporating safety constraints while focusing on the effective combination of multiple rewards with the multicritic scheme to avoid interference <ref type="bibr" target="#b18">[19]</ref> between various reward components.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Multi Critic Learning</head><p>Multi-critic actor learning <ref type="bibr" target="#b5">[6]</ref> tackles the multi-task reinforcement learning problem by employing multiple critics for each task reward function. This approach was shown to minimize possible interference between multiple-task reward signals and allow for stable policy learning in multi-task reinforcement learning. Their approach was studied and motivated by the context of multi-style learning in games. Additionally, the usage of multiple critics has been widely studied in various reinforcement learning contexts, such as for tackling overestimation in value-based reinforcement learning <ref type="bibr" target="#b19">[20]</ref>, <ref type="bibr" target="#b20">[21]</ref>, <ref type="bibr" target="#b21">[22]</ref>, <ref type="bibr" target="#b22">[23]</ref>, or for stabilizing learning with uncertainty estimation <ref type="bibr" target="#b23">[24]</ref>, <ref type="bibr" target="#b24">[25]</ref>, <ref type="bibr" target="#b25">[26]</ref>. We differ in our motivation for utilizing multiple critics in this paper, as we are more interested in a multi-objective reinforcement learning viewpoint, particularly in the context of robotic manipulation skill discovery. To the best of our knowledge, we are the first to propose utilizing the multi-critic architecture for skill discovery with multiple objectives or constraints in a robotic manipulation framework and demonstrate its effectiveness.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>III. APPROACH A. Preliminaries</head><p>Skill Discovery encompasses unsupervised approaches to reinforcement learning which enable the acquisition of diverse behaviors of a reinforcement learning agent in its environment without specific task rewards. One main approach to this problem relies on mutual information maximization between a latent variable sampled from a fixed distribution p(z) which encodes skills and states visited by a policy conditioned on this skill <ref type="bibr" target="#b1">[2]</ref>, <ref type="bibr" target="#b3">[4]</ref>. This is usually achieved by variational information maximization <ref type="bibr" target="#b0">[1]</ref>, by maximizing the following bound:</p><formula xml:id="formula_0">max I(s; z) = H(z) -H(z|s) ≥ E (s,z) [log q η (z|s)],<label>(1)</label></formula><p>where z ∼ p(z) represents skills, s represents states from an agent's trajectory τ = (s 0 , ..., s T ), and q η (z|s) is a discriminator network approximating the posterior distribution of skills given states.</p><p>To improve mutual information based skill discovery for learning dynamic skills, Lispchitz-constrained unsupervised skill discovery (LSD) <ref type="bibr" target="#b13">[14]</ref> proposes the maximization of the objective:</p><formula xml:id="formula_1">J LSD = E τ,z ϕ(s T ) -ϕ(s 0 ) T z s.t. ∥ϕ(s T ) -ϕ(s 0 )∥ ≤ ∥s T -s 0 ∥.<label>(2)</label></formula><p>This objective effectively encourages maximal displacement in a learned state representation space ϕ(s), constrained by actual state space displacement with a 1-Lipschitz constant, while ensuring diversity by aligning displacement in representation space with latent skill vectors. In <ref type="bibr" target="#b13">[14]</ref>, J LSD is decomposed using a telescoping sum</p><formula xml:id="formula_2">E τ,z t=T -1 t=0 ϕ(s t+1 ) -ϕ(s t )</formula><p>T z to derive per-transition rewards for a skill-conditioned policy π(a|s, z), and the Lipschitz constraint was implemented using Spectral Normalization <ref type="bibr" target="#b26">[27]</ref>. ϕ and π are jointly learned using stochastic gradient descent and reinforcement learning.</p><p>Multi-critic Actor Learning is a model-free reinforcement learning approach targeting composite reward function (i.e. function with multiple reward components). The approach uses multiple critics, one per reward component, in combination with a single actor in an actor-critic reinforcement learning paradigm introduced in <ref type="bibr" target="#b5">[6]</ref>. Practically, for an actor-critic algorithm using a policy gradient optimization approach, the optimization objective is:</p><formula xml:id="formula_3">J π ∝ E τ,π log π(a|s) i ω i A i ,<label>(3)</label></formula><p>where A i represents advantage functions for each reward component and ω i represents weights used to combine these signals. In the seminal multi-critic approach, the authors' primary focus was on learning one critic at a time during updates. They achieved this by utilizing sparse encoding for the weights based on the task being learned. However, they also conducted preliminary experiments to showcase the effectiveness of using equal weights, demonstrating the ability to interpolate between tasks. We build on this approach in our method and adapt it to self-supervised skill discovery.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Method</head><p>We consider a Markov Decision Process <ref type="bibr" target="#b27">[28]</ref> augmented with a skill latent space in the domain of robotic manipulation M = S, A, P, R, Z , where S is the state space with state vectors s ∈ R 42 containing robot joint positions, robot joint velocities, object pose, end-effector pose, object linear velocity, object angular velocity, end-effector linear velocity and end-effector angular velocity. We note here that we consider both cartesian positions and orientations in object and end-effector poses. A is the action space of actions a ∈ R 7 split into two parts: a arm ∈ [-1, 1] 6 corresponding to normalised delta pose of the robot's end-effector in Cartesian space which is converted to joint torques using operational space control (OSC) <ref type="bibr" target="#b28">[29]</ref>, and a gripper ∈ {0, 1} a Boolean action to open or close the gripper. P is the transition function defining our environment dynamics, R is the reward function, and Z is a continuous latent space representing skills. To enable the discovery of meaningful and safe interaction skills, we define R as a composite reward function consisting of the following reward components:</p><formula xml:id="formula_4">r reach = 1 ee pos t -targ pos t 2 2 + ϵ ,<label>(4)</label></formula><p>where targ pos is a pre-specified position of interest, for example, an object's position, ee pos is the robot's end effector position, and ϵ is a threshold for numerical stability,</p><formula xml:id="formula_5">r discovery = ϕ(s t+1 ) -ϕ(s t ) T z t ,<label>(5)</label></formula><p>where we follow the formulation in LSD <ref type="bibr" target="#b13">[14]</ref> that decomposes the trajectory level reward into per transition rewards using a telescoping sum,</p><formula xml:id="formula_6">r safety = -I(s t ),<label>(6)</label></formula><p>where I is a safety indicator function over the states encoding predefined safety constraints which are agent and environment dependent. In the context of robotic manipulation, such constraints involve joint positions, joint velocities, selfcollision avoidance, end-effector velocity, and workspace limits. In the experimental section, we detail the necessity of these three components to develop a viable skill-conditioned policy for contact-rich manipulation scenarios.</p><p>We propose to use a multi-critic actor learning architecture <ref type="bibr" target="#b5">[6]</ref> with three critics for the above reward functions to learn a latent variable skill-conditioned policy π(a|s, z) using PPO <ref type="bibr" target="#b29">[30]</ref>. Fig. <ref type="figure" target="#fig_0">1a</ref> illustrates our method and, as far as our knowledge goes, this proposition hasn't been considered in the context of skill discovery. Specifically, we propose to utilize a fully separate multi-network architecture as it was shown to perform better in <ref type="bibr" target="#b5">[6]</ref>. One key component in our implementation is that we learn the value functions for each reward function using their respective reward scales but perform a batch normalization of the advantages computed from each critic before combining them with weights for actor learning. This scheme has the advantages of (i) fostering unperturbed critic learning per reward component and (ii) easing the burden of choosing appropriate weights to ensure contributions from each reward component are well-balanced when updating the policy. Practically, we use equal weights to combine the normalized advantages. In addition, we follow the skill composition scheme from <ref type="bibr" target="#b4">[5]</ref> by selecting a sequence of skills to execute in each episode which encourages learning safe skill composition. The full algorithm is detailed in Algorithm 1.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>IV. EXPERIMENTS</head><p>In the context of robotic manipulation, we aim to answer the following questions: (Q1) Does SLIM discover more meaningful skills than state-of-the-art skill discovery methods? (Q2) Does SLIM enable effective combination of multiple rewards for skill discovery? (Q3) Do skills discovered by SLIM lead to improved learning speed on downstream tasks? (Q4) Can skills discovered by SLIM be sequenced to perform complex downstream tasks? Update V i : min ∀(s t ,z t )∈τ ∥V i (s t , z t ) -j=T j=t r j i ∥</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>7:</head><p>Compute advantage A i with GAE <ref type="bibr" target="#b30">[31]</ref> 8:</p><p>end for 9:</p><p>for i ∈ {reach, discovery, safety} do 10:</p><p>Batch normalize advantages A i :</p><formula xml:id="formula_7">A i ← ν(A i ) 11:</formula><p>end for 12:</p><p>Update π θ with PPO, using Eq. ( <ref type="formula" target="#formula_3">3</ref>) with ω i = 1 13: until convergence To answer our experimental questions, we proceed in four steps. First, we evaluate sampled rollouts of skill discovery methods to assess their respective diversity in object interaction and safety. Second, we evaluate the capabilities to train safe and efficient motor primitives with Hierarchical Reinforcement Learning (HRL) <ref type="bibr" target="#b31">[32]</ref>. In detail, we evaluate our approach on position and orientation matching, which implicitly involves behaviors like reaching, grasping, pushing, and displacing. Third, we leverage our HRL-trained motor primitives with a planner to validate our approach for safe object-centric trajectory tracking. Finally, we extend our trajectory tracking evaluation for multiple object manipulation.</p><p>Setup We use a tabletop manipulation environment modeled in the IsaacGym simulator <ref type="bibr" target="#b32">[33]</ref> illustrated in Fig. <ref type="figure" target="#fig_0">1b</ref> and Fig. <ref type="figure" target="#fig_0">1c</ref>. The environment includes a Franka Emika Panda robot, a table, and a 5-cm cube. The robot is mounted on the table and is always initialized in a fixed configuration shown in the side view image in Fig. <ref type="figure" target="#fig_0">1c</ref>. Meanwhile, the object is initialized at a randomly sampled position within an initialization area of dimension 24 x 24 cm, illustrated with the orange square in Fig. <ref type="figure" target="#fig_0">1b</ref>. The object's orientation is also initialized randomly using a uniform distribution over axis angle rotations. Compared to tabletop manipulation setups studied in previous works <ref type="bibr" target="#b15">[16]</ref>, <ref type="bibr" target="#b16">[17]</ref>, <ref type="bibr" target="#b13">[14]</ref>, <ref type="bibr" target="#b14">[15]</ref>, our setup is more challenging as our initial object poses are sampled from a wider distribution and our action space is larger 1 . In our experiments, we leverage the high level of parallelism enabled by IsaacGym by running 5000 instances of our environment in parallel. Furthermore, for all experiments, we use a 6-D von Mises-Fisher distribution as the fixed prior skill distribution. Intuitively, these skills correspond to representing position and orientation displacements.</p><p>Baselines We use the following skill discovery methods 1 These works usually consider the Fetch robotics manipulation environments <ref type="bibr" target="#b33">[34]</ref> where the gripper orientation is fixed and object initial orientations are also fixed to be aligned with the gripper. As such the actions only control 3-D cartesian displacements while we control 6-D position and orientation displacements.</p><p>as baselines: DIAYN <ref type="bibr" target="#b3">[4]</ref>, LSD <ref type="bibr" target="#b13">[14]</ref> and SASD <ref type="bibr" target="#b4">[5]</ref>. DIAYN and LSD are chosen to serve as commonly used and cited latent variable skill discovery methods. SASD serves as a baseline that introduces the safe skill discovery formalism and tackles both objectives of skill discovery and safety. For our qualitative evaluation in Fig. <ref type="figure" target="#fig_2">2</ref> we plot colorcoded 3-D object trajectories over 200 environment steps with the skill-conditioned polcies for 100 randomly sampled skill vectors z .</p><p>SLIM vs. Baselines: From Fig. <ref type="figure" target="#fig_2">2</ref> we observe that LSD learns to push the object but quite unsafely as the object gets knocked off the table frequently. On the other hand, SASD learns safe pushing behaviors but fails to grasp and lift, while DIAYN hardly interacts with the object. SLIM outperforms both baselines as even though they both learn some form of pushing, they all fail to learn grasping and lifting in many directions.</p><p>SLIM vs. SLIM ablations: To better understand the effectiveness of the proposed method, we compare SLIM to various ablated versions. These ablations can be grouped in two groups. The first group considers using the same reward functions as SLIM, Eq. ( <ref type="formula" target="#formula_4">4</ref>), Eq. ( <ref type="formula" target="#formula_5">5</ref>), Eq. ( <ref type="formula" target="#formula_6">6</ref>), but combined into a single reward function (by simple summation) and hence a single critic. Note that this provides all the same reward signals used in SLIM except we perform the weighted combination of the rewards before learning a single critic. Our first ablation, henceforth called SLIM unnormalized rewards (a.k.a SLIM ur) consists of summing up all rewards. In Fig. <ref type="figure" target="#fig_2">2b</ref>, the skill policy rollouts with this method shows some grasping and lifting behavior is learned but the trajectories are less diverse than in SLIM which uses multiple critics. Furthermore, to prevent different reward scales to be determinants of performance differences, we define a second ablation version called SLIM normalized rewards (a.k.a SLIM nr). Here, similar to SLIM, we apply normalization to ensure all reward signals are on similar scales before combining them into a single reward function. The trajectories from this version are visualized in Fig. <ref type="figure" target="#fig_2">2c</ref> showing less diversity than SLIM and mostly failing to learn grasping and picking.</p><p>The second ablation group considers subset combinations of the reward functions namely: SLIM no reach (a.k.a. SLIM no r): using r discovery and r safety , SLIM no discovery (a.k.a SLIM no d): using r reach and r safety , and SLIM no safety (a.k.a SLIM no s): using r reach and r discovery . SLIM no reach in Fig. <ref type="figure" target="#fig_2">2d</ref> shows the effect of combining safety with LSD is very similar to SASD. We observe the reward constrains LSD from knocking objects off the table but with limited diversity of object displacements. On the other hand, SLIM no discovery in Fig. <ref type="figure" target="#fig_2">2e</ref> shows safe object manipulations with some grasping, pushing and lifting, but quite limited diversity due to the missing discovery reward component. Finally, for SLIM no safety in Fig. <ref type="figure" target="#fig_2">2f</ref>, we observe that the robot learns to displace the object in multiple directions showing a very effective combination of reaching and distance maximization discovery rewards similar to SLIM, but is unconstrained by the safety component hence it learns to over-extend the robot in order to maximize the discovery component leading to unsafe robot configurations.</p><p>Overall, our ablations show the importance of each component to obtain diverse yet interactive and safe manipulation behaviors. We observe that the three reward components are necessary and complementary to achieve our desired behaviors. In the first group of ablations, we clearly observe the difficulty with combining these three components using normalized or unnormalized sums due to possible interferences between reward signal while learning a skillconditioned policy. Utilizing the multi-critic architecture with dedicated criticis per reward component helps to alleviate this problem and stabilize learning. Furthermore, we show with the second ablation group that while the multi-critic scheme helps with combining reward components, an omission of any of the three rewards, Eq. ( <ref type="formula" target="#formula_4">4</ref>), Eq. ( <ref type="formula" target="#formula_5">5</ref>), Eq. ( <ref type="formula" target="#formula_6">6</ref>), hampers the overall result.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Quantitative evaluation</head><p>Coverage and Safety We evaluate coverage and safety for SLIM, SLIM ablations, and baselines. Coverage is measured over a 50 x 50 x 50 cm centered region discretized into 125 units of 10cm cubes. We evaluate by rolling out 100 trajectories per method repeated for 4 seeds and visualize the mean and standard deviation of the number of cubes covered by the object during the rollouts. Safety is measured as the ratio of safe states according to the indicator function in Eq. ( <ref type="formula" target="#formula_6">6</ref>) encountered during the rollouts. Both measures are visualized as violin plots shown in Fig. <ref type="figure" target="#fig_3">3</ref>. We observe that SLIM matches the strongest safety baseline SASD while being significantly superior in coverage to baselines.</p><p>Skill utility for downstream tasks To assess the utility of discovered skills across all skill discovery methods introduced above, we train a hierarchical controller with HRL above the skill-conditioned policies to solve downstream robotic manipulation tasks. Specifically, we evaluate our approach to the tasks of position-matching and orientationmatching. We chose these two tasks because they correspond to the prime competencies required in robotic manipulation for re-arrangement type tasks. Furthermore, they illustrate how well the full range of skills learned over object position and orientation displacements can be leveraged. We compare SLIM to our baselines, SLIM ablations, and reinforcement learning from scratch with PPO. From Fig. <ref type="figure">4</ref> we observe that only skills learned by SLIM (and SLIM no safety) can be leveraged by the hierarchical controller to solve both tasks with vastly improved sample efficiency.</p><p>Safe object-trajectory following Next, we investigate the ability to use SLIM for safe object-trajectory tracking, which offers more usability than HRL alone for solving downstream tasks. We demonstrate how our skill-based HRL policy, when used as a motor primitive, can be useful. Additionally, we examine the impact of errors in this context across six different types of trajectories. As shown in Fig. <ref type="figure" target="#fig_5">5</ref>, all trajectories are described using five ordered points defined in Cartesian space. We roll out the position-matching HRL policy trained Fig. <ref type="figure">4</ref>: Performance on downstream tasks. We evaluate our approach with the position-matching and orientationmatching tasks. SLIM enables improved sample efficiency across all downstream tasks in the previous section to follow a trajectory by sequentially selecting the points in order as position-matching goals for the policy. We evaluate using the following metrics: (i) Overall success (%) indicates if the trajectory is followed successfully by reaching all the points above a given distance threshold of 5cm, (ii) Maximum distance (m) indicates the maximum distance between the object and the current waypoint at all phases in the trajectory, (iii) Points success indicates the total number of points successfully approached in the trajectory, and (iv) Safety rate (%) indicates the ratio of safe states encounter over the trajectory. Our findings, as displayed in Table <ref type="table" target="#tab_2">I</ref>, suggest that SLIMbased motor primitives can serve within planning algorithms, offering an inherent level of safety. This opens the door to executing complex trajectories over single or multiple objects while ensuring arbitrary safety criteria. Multi-object manipulation Finally, we take our trajectory-following task one step further by evaluating the ability to solve complex downstream tasks involving multiple objects. Specifically, we evaluate the same planning-based trajectory following approach but to re-arrange a set of three cubes into various configurations namely: (a) Line: where we align the cubes to the horizontal axis, and (b) Pyramid: where we form a base with two cubes and place the third cube over this base. For each cube, we plan a trajectory to reach the end pose in the desired configuration and sequentially execute the trajectory following. We evaluate using the same metrics introduced above and the results are also shown in Table <ref type="table" target="#tab_2">I</ref>. Points success for this case refers to the number of cubes correctly placed in their final pose for the desired configuration.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>V. CONCLUSION</head><p>In this paper, we have introduced SLIM, a novel approach to skill discovery tailored to the challenges of robotic manipulation. We empirically demonstrated that by integrating multiple critics and associated reward functions, the resulting skill-conditioned policy acquires safe and diverse manipulation skills that can be leveraged for downstream tasks using hierarchical reinforcement learning and planning. One limitation of our approach is that we assume an easy-to-design and reasonably generic bonus reward function to help with encouraging object interaction. A natural extension for future work is to replace this bonus with another intrinsic reward function that serves the same purpose of easing exploration. Likewise, we plan to further study the interference between multiple rewards, which necessitates such an approach. Additionally, exploring improved compositions of the advantages used in the policy gradient would be an interesting avenue for investigation. Lastly, sim2real deployment of our learned skill policies and assessing the benefits of applying our approach in other fields such as locomotion and navigation holds potential for fruitful exploration.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Fig. 1 :</head><label>1</label><figDesc>Fig. 1: Skill Learning wIth Multiple critics. Our approach enables the effective combination of multiple objectives for self-supervised skill discovery in robotic manipulation. We learn dedicated critics per intrinsic reward function which is used during policy improvement by taking a weighted combination of their normalized advantages. (a) Schematic diagram (b) Simulation top view (c) Simulation side view.</figDesc><graphic coords="1,343.14,275.05,90.71,85.04" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Algorithm 1 repeat 2 : 4 : 5 :</head><label>1245</label><figDesc>Skill Learning with Multiple Critics Require: Reward functions r i , Critics V i , Policy π θ , state representation function ϕ, normalization function ν 1:Sample sequence of skills (z 1 , ..., z n ) for rollouts 3:Collect trajectories using π θ and (z 1 , ..., z n ) Update ϕ with rollout data to maximize Eq. (2) for i ∈ {reach, discovery, safety} do 6:</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Fig. 2 :</head><label>2</label><figDesc>Fig. 2: Skill trajectories for SLIM, SLIM ablations, and baselines. SLIM outperforms baselines in terms of grasping consistency and the diversity of the cube's displacement. The baselines do not learn to pick up the cube. While SLIM ablations show different levels of object interaction with both picking and pushing behaviors emerging, only SLIM learns interactive, diverse and safe displacement manipulations</figDesc><graphic coords="4,313.20,270.08,75.59,56.73" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Fig. 3 :</head><label>3</label><figDesc>Fig. 3: Coverage and Safety. Coverage is the number of boxes discretizing the workspace covered by the object. Safety is the ratio of safe states encountered during random skill rollouts.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Fig. 5 :</head><label>5</label><figDesc>Fig. 5: Safe trajectory following. We evaluate our HRL policies trained over SLIM as motor primitives for safe trajectory following. The six trajectories evaluated are shown in order from top left to bottom right</figDesc><graphic coords="6,471.37,132.91,75.60,70.86" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>•</head><label></label><figDesc>We evaluate SLIM against the main state-of-the-art approaches of skill discovery in challenging robotic manipulation scenarios.</figDesc><table /><note><p>• We demonstrate the benefit of SLIM for training HRLbased motor primitives used for object-centric trajectory tracking.</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>TABLE I :</head><label>I</label><figDesc>Safe object-trajectory following and multi-object rearrangement using SLIM-based motor primitives</figDesc><table><row><cell cols="5">Trajectory Overall success Max distance Points success Safety rate</cell></row><row><cell>1</cell><cell>100</cell><cell>0.04 ± 0.00</cell><cell>5 ± 0.00</cell><cell>100</cell></row><row><cell>2</cell><cell>100</cell><cell>0.04 ± 0.00</cell><cell>5 ± 0.00</cell><cell>100</cell></row><row><cell>3</cell><cell>80</cell><cell>0.05 ± 0.03</cell><cell>4.5 ± 1.20</cell><cell>99.97</cell></row><row><cell>4</cell><cell>60</cell><cell>0.07 ± 0.04</cell><cell>4.4 ± 0.91</cell><cell>100</cell></row><row><cell>5</cell><cell>80</cell><cell>0.12 ± 0.20</cell><cell>4.2 ± 1.66</cell><cell>100</cell></row><row><cell>6</cell><cell>80</cell><cell>0.05 ± 0.02</cell><cell>4.7 ± 0.64</cell><cell>100</cell></row><row><cell>Line</cell><cell>100</cell><cell cols="2">0.034 ± 0.009 3.0 ± 0.00</cell><cell>100</cell></row><row><cell>Pyramid</cell><cell>80</cell><cell cols="2">0.048 ± 0.014 2.8 ± 0.60</cell><cell>99.98</cell></row></table></figure>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>ACKNOWLEDGMENT</head><p>We thank <rs type="person">Taeyoon Lee</rs>, <rs type="person">Younghyo Park</rs>, and the <rs type="institution">Control and Dynamics team at NAVER LABS</rs> for their SASD codebase upon which this research project was developed. We also thank <rs type="person">Paul Jansonnie</rs> and all team members of <rs type="person">Robot Learning</rs> at <rs type="affiliation">NAVER LABS Europe</rs> for insightful discussions and suggestions.</p></div>
+			</div>			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">The im algorithm: a variational approach to information maximization</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Barber</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><forename type="middle">V</forename><surname>Agakov</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">NIPS</title>
+		<imprint>
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Variational intrinsic control</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Gregor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">J</forename><surname>Rezende</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wierstra</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Dynamics-aware unsupervised discovery of skills</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Sharma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">S</forename><surname>Gu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Levine</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Kumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Hausman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ArXiv</title>
+		<imprint>
+			<date type="published" when="1657">1907.01657, 2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Diversity is all you need: Learning skills without a reward function</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Eysenbach</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Gupta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ibarz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Levine</surname></persName>
+		</author>
+		<idno>abs/1802.06070</idno>
+	</analytic>
+	<monogr>
+		<title level="j">ArXiv</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Safety-aware unsupervised skill discovery</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kwon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Park</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Perez</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2023 International Conference on Robotics and Automation (ICRA)</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Multi-critic actor learning: Teaching rl policies to act with style</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Mysore</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Cheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Saenko</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Wu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Efficient exploration via state marginal matching</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Eysenbach</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Parisotto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">P</forename><surname>Xing</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Levine</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Salakhutdinov</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ArXiv</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Explore, discover and learn: Unsupervised discovery of state-covering skills</title>
+		<author>
+			<persName><forename type="first">V</forename><surname>Campos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">R</forename><surname>Trott</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Socher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><forename type="middle">G</forename><surname>Nieto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Torres</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Learning to coordinate manipulation skills via skill behavior diversification</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">J</forename><surname>Lim</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Behavior from the void: Unsupervised active pre-training</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Abbeel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Bottom-up skill discovery from unsegmented demonstrations for long-horizon robot manipulation</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Stone</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Robotics and Automation Letters</title>
+		<imprint>
+			<biblScope unit="volume">7</biblScope>
+			<biblScope unit="page" from="4126" to="4133" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Unsupervised Reinforcement Learning with Contrastive Intrinsic Control</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Laskin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><forename type="middle">B</forename><surname>Peng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Yarats</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Rajeswaran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Abbeel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Urlb: Unsupervised reinforcement learning benchmark</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Laskin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Yarats</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Zhan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Cang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Pinto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Abbeel</surname></persName>
+		</author>
+		<idno>abs/2110.15191</idno>
+	</analytic>
+	<monogr>
+		<title level="j">ArXiv</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Lipschitz-constrained unsupervised skill discovery</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Park</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Choi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Kim</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Controllability-aware unsupervised skill discovery</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Park</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Abbeel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Mutual information state intrinsic control</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Abbeel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Tresp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Xu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Unsupervised reinforcement learning for transferable manipulation skill discovery</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Cho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><forename type="middle">J</forename><surname>Kim</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Robotics and Automation Letters</title>
+		<imprint>
+			<biblScope unit="volume">7</biblScope>
+			<biblScope unit="page" from="7455" to="7462" />
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Mcp: Learning composable hierarchical control with multiplicative compositional policies</title>
+		<author>
+			<persName><forename type="first">X</forename><forename type="middle">B</forename><surname>Peng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Abbeel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Levine</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">H</forename><surname>Wallach</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">A</forename><surname>Larochelle</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">F</forename><surname>Beygelzimer</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">E</forename><surname>Alché-Buc</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">R</forename><surname>Fox</surname></persName>
+		</editor>
+		<editor>
+			<persName><surname>Garnett</surname></persName>
+		</editor>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">32</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Recon: Reducing conflicting gradients from the root for multi-task learning</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X.-M</forename><surname>Wu</surname></persName>
+		</author>
+		<idno>abs/2302.11289</idno>
+	</analytic>
+	<monogr>
+		<title level="j">ArXiv</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Double q-learning</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Hasselt</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Addressing function approximation error in actor-critic methods</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Fujimoto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Van Hoof</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Meger</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Maxmin q-learning: Controlling the estimation bias of q-learning</title>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Lan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Pan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Fyshe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>White</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Randomized ensembled double q-learning: Learning fast without a model</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">W</forename><surname>Ross</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Sunrise: A simple unified framework for ensemble learning in deep reinforcement learning</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Laskin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Srinivas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Abbeel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Uncertainty weighted actor-critic for offline reinforcement learning</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Zhai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Srivastava</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">M</forename><surname>Susskind</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Salakhutdinov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Goh</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Generalizable imitation learning from observation via inferring goal proximity</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Szot</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S.-H</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">J</forename><surname>Lim</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Spectral normalization for generative adversarial networks</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Miyato</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Kataoka</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Koyama</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Yoshida</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Markov decision processes: Discrete stochastic dynamic programming</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">L</forename><surname>Puterman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Wiley Series in Probability and Statistics</title>
+		<imprint>
+			<date type="published" when="1994">1994</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">A unified approach for motion and force control of robot manipulators: The operational space formulation</title>
+		<author>
+			<persName><forename type="first">O</forename><surname>Khatib</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE J. Robotics Autom</title>
+		<imprint>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="page" from="43" to="53" />
+			<date type="published" when="1987">1987</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<monogr>
+		<title level="m" type="main">Proximal policy optimization algorithms</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Schulman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Wolski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Dhariwal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Radford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Klimov</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">High-dimensional continuous control using generalized advantage estimation</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Schulman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Moritz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Levine</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">I</forename><surname>Jordan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Abbeel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Recent advances in hierarchical reinforcement learning</title>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">G</forename><surname>Barto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Mahadevan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Discrete Event Dynamic Systems</title>
+		<imprint>
+			<biblScope unit="volume">13</biblScope>
+			<biblScope unit="page" from="41" to="77" />
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Isaac gym: High performance gpu-based physics simulation for robot learning</title>
+		<author>
+			<persName><forename type="first">V</forename><surname>Makoviychuk</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Wawrzyniak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Storey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Macklin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Hoeller</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Rudin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Allshire</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Handa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>State</surname></persName>
+		</author>
+		<idno>abs/2108.10470</idno>
+	</analytic>
+	<monogr>
+		<title level="j">ArXiv</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<monogr>
+		<title level="m" type="main">Multi-goal reinforcement learning: Challenging robotics environments and request for research</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Plappert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Andrychowicz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Ray</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Mcgrew</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Baker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Powell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Schneider</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tobin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Chociej</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Welinder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Kumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zaremba</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<publisher>ArXiv</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

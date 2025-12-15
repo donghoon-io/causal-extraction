@@ -1,0 +1,592 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Iterative Causal Discovery in the Possible Presence of Latent Confounders and Selection Bias</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability  status="unknown">
+					<licence/>
+				</availability>
+				<date type="published" when="2022-01-17">17 Jan 2022</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Raanan</forename><forename type="middle">Y</forename><surname>Rohekar</surname></persName>
+							<email>raanan.yehezkel@intel.com</email>
+							<affiliation key="aff0">
+								<orgName type="institution">Intel Labs</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Shami</forename><surname>Nisimov</surname></persName>
+							<email>shami.nisimov@intel.com</email>
+							<affiliation key="aff0">
+								<orgName type="institution">Intel Labs</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Yaniv</forename><surname>Gurwicz</surname></persName>
+							<email>yaniv.gurwicz@intel.com</email>
+							<affiliation key="aff0">
+								<orgName type="institution">Intel Labs</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Gal</forename><surname>Novik</surname></persName>
+							<email>gal.novik@intel.com</email>
+							<affiliation key="aff0">
+								<orgName type="institution">Intel Labs</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Iterative Causal Discovery in the Possible Presence of Latent Confounders and Selection Bias</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2022-01-17">17 Jan 2022</date>
+						</imprint>
+					</monogr>
+					<idno type="arXiv">arXiv:2111.04095v2[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-21T20:27+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>We present a sound and complete algorithm, called iterative causal discovery (ICD), for recovering causal graphs in the presence of latent confounders and selection bias. ICD relies on the causal Markov and faithfulness assumptions and recovers the equivalence class of the underlying causal graph. It starts with a complete graph, and consists of a single iterative stage that gradually refines this graph by identifying conditional independence (CI) between connected nodes. Independence and causal relations entailed after any iteration are correct, rendering ICD anytime. Essentially, we tie the size of the CI conditioning set to its distance on the graph from the tested nodes, and increase this value in the successive iteration. Thus, each iteration refines a graph that was recovered by previous iterations having smaller conditioning sets-a higher statistical power-which contributes to stability. We demonstrate empirically that ICD requires significantly fewer CI tests and learns more accurate causal graphs compared to FCI, FCI+, and RFCI algorithms (code is available at <ref type="url" target="https://github.com/IntelLabs/causality-lab">https://github.com/IntelLabs/causality-lab</ref>).</p><p>Recently, causal identification was demonstrated for PAG models <ref type="bibr" target="#b5">(Jaber et al., 2018</ref><ref type="bibr" target="#b6">(Jaber et al., , 2019))</ref>, which is a more practical use of these models. That is, by using only observed data and no prior knowledge on the underlying causal relations, some identification and causal queries can be answered.</p><p>35th Conference on Neural Information Processing Systems (NeurIPS 2021).</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Causality plays an important role in many sciences, such as social sciences, epidemiology, and finance <ref type="bibr" target="#b11">(Pearl, 2010;</ref><ref type="bibr" target="#b17">Spirtes, 2010)</ref>. Understanding the underlying mechanisms is crucial for tasks such as explaining a phenomenon, predicting, and decision making. <ref type="bibr" target="#b10">Pearl (2009)</ref> provided a machinery for automating the process of answering interventional and (retrospective) counterfactual queries even when only observed data is available, and determining if a query cannot be answered given the available data type (identifiability). This requires knowledge about the true underlying causal structure; however, in many real-world situations, this structure is unknown. There is a large body of literature on recovering causal relations from observed data-causal discovery <ref type="bibr" target="#b19">(Spirtes et al., 2000;</ref><ref type="bibr" target="#b12">Peters et al., 2017;</ref><ref type="bibr" target="#b3">Cooper &amp; Herskovits, 1992;</ref><ref type="bibr" target="#b0">Chickering, 2002;</ref><ref type="bibr" target="#b15">Shimizu et al., 2006;</ref><ref type="bibr" target="#b4">Hoyer et al., 2009;</ref><ref type="bibr" target="#b14">Rohekar et al., 2018;</ref><ref type="bibr" target="#b20">Yehezkel &amp; Lerner, 2009;</ref><ref type="bibr" target="#b8">Nisimov et al., 2021)</ref>, differing in the assumptions upon which they rely. In this work we assume a directed acyclic graph (DAG) for the underlying causal structure and focus on learning it from observational data. Furthermore, we assume the causal Markov and faithfulness assumptions, and consider recovering the structure by performing a series of conditional independence (CI) tests <ref type="bibr" target="#b19">(Spirtes et al., 2000)</ref>. In this setting the true DAG is statistically indistinguishable from many other DAGs. Moreover, when considering the possible presence of latent confounders and selection bias (no causal sufficiency), the true DAG cannot be recovered. Instead, <ref type="bibr" target="#b13">Richardson &amp; Spirtes (2002)</ref> proposed the maximal ancestral graph (MAG), which represents independence relations among observed variables, and the partial ancestral graph (PAG), which is a Markov equivalence class of MAGs-a set of MAGs that cannot be ruled out given the observed independence relations.</p><p>In this paper, we address the problem of learning a PAG such that interrupting the learning process results in a correct PAG. That is, all the entailed independence and causal relations are correct, although it can be less informative. This anytime property is important in many real-world settings where it is desired to recover as many causal relations as possible under limited compute power.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Related Work</head><p>Causal discovery in the potential presence of latent confounders and selection bias requires placing additional assumptions. In this paper we assume the causal Markov assumption <ref type="bibr" target="#b10">(Pearl, 2009)</ref>, faithfulness <ref type="bibr" target="#b19">(Spirtes et al., 2000)</ref>, and a DAG structure for the underlying causal relations. In this setting, several causal discovery algorithms have been proposed, FCI <ref type="bibr" target="#b19">(Spirtes et al., 2000)</ref>, RFCI <ref type="bibr" target="#b2">(Colombo et al., 2012)</ref>, FCI+ <ref type="bibr" target="#b1">(Claassen et al., 2013)</ref>, and GFCI <ref type="bibr" target="#b9">(Ogarrio et al., 2016)</ref>. Limitations of FCI have been reported previously where it tends to erroneously exclude many edges that are in the true underlying graph, and it requires many CI tests with large conditioning sets. The GFCI algorithm employs a greedy score-based approach to improve the accuracy for small data sizes (small sample). However, it requires additional assumptions for justifying the score function that it uses. The RFCI algorithm alleviates computational complexity by avoiding the last stage of FCI. This stage requires many CI tests having large conditioning sets. Although it is sound (outputs correct causal information), it is not complete (some MAGs in the equivalence class can be ruled out given the data).</p><p>Similarily to the FCI and FCI+ algorithms, we consider a procedure that is sound and complete in the large sample limit (or when a perfect conditional independence oracle is used). However, these algorithms, for a MAG, treat nodes that are m-separated by adjacent nodes differently from nodes that are m-separated by a minimal separating set that includes nodes outside the neighborhood. In contrast, we treat all possible separating sets in a similar manner. We employ an iterative procedure that gradually increases the search radius on the graph for identifying minimal separating sets. This allows our method to be interrupted at any iteration, returning a correct graph, similarly to the anytime FCI algorithm <ref type="bibr" target="#b16">(Spirtes, 2001)</ref>. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Anytime Iterative Discovery of Causal Relations</head><p>First, we provide definitions and assumptions. Then, we describe the iterative causal discovery (ICD) algorithm and prove its correctness. We conclude by discussing efficiency and stability.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Preliminaries</head><p>A causal DAG, D, over nodes V = O∪S∪L is denoted by D(O, S, L), where O, S, and L represent disjoint sets of observed, selection, and latent variables, respectively. We use an ancestral graph <ref type="bibr" target="#b13">(Richardson &amp; Spirtes, 2002)</ref> to model the conditional independence relations among the observed variables O in the causal DAG D. This class of graphical models is useful since for every causal DAG there exits a unique MAG. In this setting, our method is aimed at recovering the MAG of the true underlying DAG, from the result of CI tests. A CI test is commonly a statistical hypothesis test used to determine from observed data whether two variables are statistically dependent conditioned on a set of some other variables (a conditioning set). If independence is found, the conditioning set is called a separating set for the tested nodes. However, in this setting the MAG cannot be fully recovered, and only a Markov equivalence class, represented by a PAG, can be recovered. In a PAG, a variant edge-mark is denoted by an empty circle '-o X'. Namely, in the equivalence class there exists at least one MAG that has a tail edge-mark '--X' and at least one MAG that has an arrowhead '-&gt;X' at the same location. Definition 1 (O-equivalence <ref type="bibr" target="#b19">(Spirtes et al., 2000)</ref>). Two DAGs, D i (O, S i , L i ) and D j (O, S j , L j ) are said to be O-equivalent if and only if</p><formula xml:id="formula_0">X ⊥ ⊥ Y|(Z ∪ S i ) in D i ⇐⇒ X ⊥ ⊥ Y|(Z ∪ S j ) in D j ,</formula><p>for every possible disjoint subsets X, Y, and Z of O.</p><p>That is, the observed d-separation relations in two O-equivalent DAGs, D i and D j , are identical. <ref type="bibr" target="#b16">Spirtes (2001)</ref> defines equivalence considering an n-oracle for testing conditional independence. It returns "dependence" if the conditioning set size is larger than n, otherwise d-separation is tested and returned. Thus, n-O-equivalence class is defined by using the n-oracle instead of d-separation in Definition 1. The PAG that represents this equivalence class is called n-representing <ref type="bibr" target="#b16">(Spirtes, 2001)</ref>.</p><p>In a MAG, node X is in D-Sep(A, B) (note the capitalization of 'D') if and only if X = A and there is an undirected path between A and X such that every node on the path, except the endpoints, is a collider and is an ancestor of A or B <ref type="bibr" target="#b19">(Spirtes et al., 2000)</ref>. The FCI algorithm utilizes a super-set of D-Sep, called Possible-D-Sep(A, B) <ref type="bibr" target="#b19">(Spirtes et al., 2000)</ref> for testing CI. It is defined for a skeleton learned by the PC algorithm<ref type="foot" target="#foot_0">foot_0</ref>  <ref type="bibr" target="#b19">(Spirtes et al., 2000)</ref> and its identified v-structures, referred in this paper as the first stage of FCI. This super-set, used by FCI in its second stage, includes all the nodes connected by a path to A, where every node on this path, except the end-points, is a collider or part of a triangle, hiding its orientation. We consider a smaller super-set of D-Sep for PAGs and take special interest in the path that connects any Z ∈ Possible-D-Sep(A, B) to A. Definition 2 (PDS-path). A possible-D-Sep-path (PDS-path) from A to Z, with respect to B, in PAG G, denoted Π B (A, Z), is a path A, . . . , Z such that B is not on the path and for every sub-path U, V, W of Π B (A, Z), V is a collider or {U, V, W } forms a triangle.</p><p>Note that an edge in a PAG is a PDS-path. Following the definition of PDS-path, we define a tree rooted at a given node consisting of all PDS-paths from that node. Definition 3 (PDS-tree). A possible-D-Sep-tree (PDS-tree) for A, with respect to B given PAG G, is a tree rooted at A, such that there is a path from A to Z, A, V 1 , . . . , V k , Z , if and only if there is a PDS-path A, V 1 , . . . , V k , Z , with respect to B, in G.</p><p>Lastly, considering the last condition of D-Sep definition, we define a possible ancestor of a node in a given PAG. Definition 4 (Possible Ancestor). In a PAG, V i is a possible ancestor of V i+k if there is a path V i , V i+1 , . . . , V i+k such that, ∀j ∈ {i, . . . , i+k -1}, on the edge (V j , V j+1 ) there is no arrowhead at V j and no tail edge-mark at V j+1 .</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Iterative Causal Discovery Algorithm</head><p>We present a single stage that is called iteratively, for recovering the underlying equivalence class, represented by a PAG, for the true underlying DAG D(O, S, L). Each iteration is parameterized by r, where r ∈ {0, . . . , |O| -2}. Given a PAG returned by the previous r -1 iteration, each pair of connected nodes A and B is tested for independence conditioned on a set Z ⊂ O. If independence is found, the connecting edge is removed. The conditioning set Z should comply with the following conditions for (A, B) or (B, A), which we call ICD-Sep conditions. ICD-Sep conditions for the ordered pair (A, B) are, Condition 1 restricts the conditioning set size, and condition 2 restricts its distance from the tested nodes. Tying these two conditions together is the key idea of the presented ICD algorithm. Condition 3 follows the last condition in the definition of D-Sep. It is not a necessary condition for the correctness of the proposed method but can reduce the number of considered conditioning sets when testing independence. Sets complying with ICD-Sep conditions are denoted ICD-Sep.</p><p>In comparison to Possible-D-Sep that is utilized by the FCI algorithm, ICD-Sep is a smaller super-set of {S | S ⊂ D-Sep, |S| = r}. Nevertheless, ICD-Sep and Possible-D-Sep may be similar when considering densely connected graphs or when the recoverable equivalence class is large (many variant edge-marks), such as a complete graph. However, these cases are usually rare in real-world scenarios.</p><p>Next, consider a PDS-tree for A with respect to B in G. Sets complying with ICD-sep conditions can be created by traversing this tree. Condition 1 restricts the number of nodes to be included in Z to the specific value of r. Condition 2 places constraints on the nodes in Z as follows. Condition 2a limits the radius around A in which the nodes of Z reside, effectively limiting the depth of the PDS-tree. Condition 2b ensures that if a node is in Z, then every node on the PDS-path connecting it to A is also in Z. An example is given in Figure <ref type="figure" target="#fig_0">1</ref>, where (a) is the true underlying DAG and (b) is the corresponding PAG that represents a 2-O-equivalence class. A redundant edge between D and E exists. PDS-trees for D and E are depicted in Figure <ref type="figure" target="#fig_7">1 (c</ref>) and (d), respectively. An example for complying with condition 2b when constructing an ICD-Sep for (D, E) is as follows. From Figure <ref type="figure" target="#fig_0">1</ref> (c) if A is in the set, then B must also be in the set, as it lies on the only path from D to A.</p><p>It is important to note that by parameter r, we bind the conditioning set size to its distance from the tested nodes (ICD-Sep conditions 1 and 2a). That is, the conditioning set size is bounded by the shortest PDS-path length connecting its nodes to the tested nodes.</p><p>In an ICD iteration r, first, all connected edges are tested for independence conditioned on ICD-Sep sets. Then the ICD iteration concludes by orienting the resulting graph. Initially, v-structures are oriented and then FCI-orientation rules <ref type="bibr" target="#b19">(Spirtes et al., 2000;</ref><ref type="bibr" target="#b16">Spirtes, 2001)</ref> are repeatedly applied until no more edges can be oriented. For completeness, in the last ICD iteration, a complete set of orientation rules is applied <ref type="bibr" target="#b21">(Zhang, 2008)</ref>.</p><p>The ICD algorithm is described in Algorithm 1. The main loop, lines 2-4, iterates over conditioning set sizes concurrently with the search radius on the graph. The iterative stage is described in function Iteration, lines 6-18. This function can be viewed as an operator that maps from an (r -1)-Oequivalence class to an r-O-equivalence. Thus, ICD is anytime in the sense that the main loop, lines 2-4, can be terminated for any value of r, resulting in a PAG that entails correct independence and causal relations. That is, terminating the loop after iteration r = n, results in a PAG that represents an n-O-equivalence class. Nevertheless, it still may not entail all relations that are entailed from the O-equivalence class of the underlying causal graph.</p><p>In the first ICD iteration, the initial PAG is a complete graph and r = 0. Thus every pair of nodes is tested for marginal independence (conditioning sets are empty). In the second iteration r = 1, where only nodes that are adjacent to the tested nodes are included in the conditioning set (PDS-path length limit is one edge). Only in succeeding iterations, nodes that are outside the neighborhood of the tested nodes may be included in the conditioning set. Conditioning sets, composed with from adjacent nodes or from outside the neighborhood, are returned by the function PDSepRange.</p><p>The result of PDSepRange(X, Y, r, G), in Algorithm 1-line 9, is an ordered set of possible separating sets {Z i } i=1 , where each Z i complies with the ICD-Sep conditions. The specific order in which these sets are used (Algorithm 1-line 12) to test conditional independence in Algorithm 1-line 13 may affect the total number of CI test in practice. One possible heuristic for ordering this set is such that Z i sets are sorted based on to the average of the shortest PDS-path lengths connecting each node in Z i to the tested nodes. First, for every set Z ∈ {Z i } i=1 created by PDSepRange, the following value is calculated,</p><formula xml:id="formula_1">dX (Z) = 1 |Z| W ∈Z min(|Π Y (X, W )|),<label>(1)</label></formula><p>where Π Y (X, W ) is the PDS-path from X to W , and | • | is path length. Then, the possible separating sets, Z i are ordered according to this value. Note that the correctness of ICD is invariant to this order. </p><formula xml:id="formula_2">{Z i } i=1 ← PDSepRange (X, Y , r, G) Z i complies with ICD-Sep conditions if &gt; 0 then 11 done ← False 12 for i ← 1 to do 13 if Ind(X, Y |Z i ) then 14 remove edge (X, Y ) from G record Z i as a separating set for (X, Y ) 16 break orient edges in G return (G, done)</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3">An Example for the Difference between ICD and FCI</head><p>In this section we demonstrate the difference between the ICD and FCI recovering a simple graph that was used by <ref type="bibr" target="#b19">Spirtes et al. (2000)</ref> to demonstrate FCI. In Figure <ref type="figure" target="#fig_3">2</ref> </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.4">Correctness</head><p>We provide a sketch for the proof of correctness and completness of the ICD algorithm. The complete proof is in the supplementary material. Lemma 1. Let G be a PAG n-representing DAG D(O, S, L). Denote A, B a pair of nodes from O that are connected in G and disconnected in D, and such that A is not an ancestor of B in D.</p><formula xml:id="formula_3">If A ⊥ ⊥ B | [Z ] ∪ S,</formula><p>where Z ⊂ O is a minimal separating set having size n + 1, then there exists a subset Z ⊂ O having the same size of n + 1 such that that A ⊥ ⊥ B | Z ∪ S, and for every node Z ∈ Z there exists a PDS-path Π B (A, Z) in G, such that every node V on the PDS-path is also in Z.</p><p>In essence, from the definition of D-Sep <ref type="bibr">(Spirtes et al., 2000, page 134</ref> and Theorem 6.2), a node Z is in D-Sep(A, B) if and only if in the MAG there is a path between A and V such that every node, except for the end points, is: 1. a collider and 2. an ancestor of A or B (an inducing path for L, S ). For every such path in a MAG, there exists a PDS-path in the corresponding PAG. In an n-representing PAG, we can rule out paths from being such a path in the MAG. Thus, for every such path in the MAG, there is a PDS-Path in an n-representing PAG, which ensures identifying at least one minimal separating set between ever pair of nodes that are m-separated in the MAG. In addition, every sub-path starting at A, of the PDS-path between A and V , is also a PDS-path. This provides a link between the distance of the separating set nodes and the number of nodes in the separating set. Corollary 1. Let G be a PAG n-representing DAG D(O, S, L). Denote A, B a pair of nodes from O that are connected in G and disconnected in D.</p><formula xml:id="formula_4">If A ⊥ ⊥ B | [Z ] ∪ S,</formula><p>where Z ⊂ O is a minimal separating set having size n + 1, then there exists a subset Z ⊂ O having the same size of n + 1 such that that A ⊥ ⊥ B | Z ∪ S, and for every node Z ∈ Z there exists a PDS-path Π B (A, Z) or Π A (B, Z), where every node V on the PDS-path is also in Z.</p><p>The proof follows from Lemma 1. Lemma 2. Let G be a PAG n-representing a causal DAG D. Let S be a skeleton (unoriented graph) that results after removing edges from the skeleton of G between every pair of nodes that are m-separated conditioned on a minimal separating set of size n + 1.</p><p>If S is oriented using anytime-FCI orientation rules, then the resulting graph is a PAG that (n + 1)represents the causal DAG D.</p><p>The proof relies on the correctness of the anytime-FCI algorithm <ref type="bibr" target="#b16">(Spirtes, 2001)</ref>. This ensures the correctness of the orientation in each ICD-iteration. Proposition 1 (Correctness and completeness of the ICD algorithm). Let G be a PAG representing a causal DAG D(O, L, S) and let Ind be a conditional independence oracle that returns d-separation relation for O in D. If Algorithm 1 is called with Ind, then the returned PAG, after uninterrupted termination is G.</p><p>We prove by mathematical induction. In each induction step r + 1 we prove using Corollary 1 that given an r-representing PAG, ICD iteration r + 1 finds all conditional independence relations having a minimal conditioning set of size r + 1, and removes corresponding edges. By Lemma 2, orientation of the resulting graph results in an (r + 1)-representing PAG. Essentially, we prove that a minimal separating set complies with the ICD-Sep conditions, ensuring its identification in Algorithm 1-line 9.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.5">Efficiency Analysis</head><p>We discuss the number of CI test required by ICD with respect to the number of observed variables |O| for learning an n-representing PAG (n-O-equivalence). Namely, the complexity for returning a PAG after n + 1 iterations (recall that ICD is anytime). Let D n be the class of causal DAGs for which the resulting PAG is also completed<ref type="foot" target="#foot_1">foot_1</ref> . For all D(O, S, L) ∈ D n , ∀A, B ∈ O, if ∃Z ⊂ O, such that A ⊥ ⊥ B|Z ∪ S, then there exists a set Z ⊂ O, such that A ⊥ ⊥ B|Z ∪ S and |Z | ≤ n. That is, its observable d-separation relations have at most n nodes in their minimal separating sets. Nevertheless, for this class of DAGs, ICD may not terminate naturally after n + 1 iterations. ICD terminates naturally after n + 1 iterations (and returns a completed PAG) if in the true underlying PAG, n is the size of the largest set complying with the ICD-Sep conditions. Consequently, n is the largest conditioning set size considered by ICD.</p><p>The ICD algorithm starts with a complete graph and consists of a single loop, indexed by r. At iteration r, ICD considers in the worst case |O| 2 edges, and for each edge, up to 2 |O|-2 r conditioning sets. Thus, the total number of CI tests is bounded by N max ,</p><formula xml:id="formula_5">N max = 2 |O| 2 n r=0 |O| -2 r .<label>(2)</label></formula><p>In practice, the number of CI tests is significantly smaller. Firstly, up to iteration r it is ensured that all the edges between nodes that are m-separated, in the true underlying MAG, by conditioning sets of sizes up to r are removed. Secondly, the resulting PAG after each iteration is oriented using FCI orientation rules. These two operations reduce the sizes of PDS-trees in successive iterations, which leads to fewer ICD-Sep sets to consider as conditioning sets.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.6">Stability</head><p>Constraint-based causal discovery algorithms rely on the accuracy of CI tests. In general, CI tests errors in early stages of an algorithm may lead to errors in later stage. For example, erroneously removing an edge in an early stage may lead to erroneously keeping an edge between nodes that are m-separated in the true underlying MAG, which in turn may lead to additional errors. Thus, in general it is desired that a causal discovery algorithm relies in early stages on statistical tests that have higher statistical power than statistical tests in later stages. Commonly, when limited data is available, statistical CI tests suffer from poor estimates of the statistic for large conditioning sets, compared to estimates for small conditioning sets. Thus, it is desired to use CI tests having small conditioning sets in early stages of the algorithm.</p><p>The FCI algorithm employs the PC algorithm <ref type="bibr" target="#b19">(Spirtes et al., 2000)</ref> as an initial stage. The second stage of FCI relies on the accuracy of the resulting skeleton, where subsets of Possible-D-Sep are created based on this skeleton and used for further independence testing. The PC algorithm iterates over conditioning sets sizes and possibly concludes with CI tests having large conditioning sets. This might render the FCI algorithm unstable given limited database size.</p><p>The ICD algorithm benefits from a single iterative loop over conditioning set sizes (in contrast to FCI that has two loops that are executed consecutively). This ensures that CI with small conditioning set sizes are tested before CI test having larger conditioning sets. Thus, ICD is expected to be more stable than FCI and its related algorithms that have two iterative loops over the conditioning set sizes.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Experimental Evaluation</head><p>We evaluate the performance of ICD in terms of number of required CI tests and accuracy of the learned structures, and compare it to the performance of FCI <ref type="bibr" target="#b19">(Spirtes et al., 2000)</ref>, FCI+ <ref type="bibr" target="#b1">(Claassen et al., 2013)</ref>, and RFCI <ref type="bibr" target="#b2">(Colombo et al., 2012)</ref>. In all the experiments we follow a procedure, similar to the one described by <ref type="bibr" target="#b2">Colombo et al. (2012)</ref> for generating random graphs with latent confounders. We create an adjacency matrix A for variables O ∪ L of DAG D(O, L, S = ∅) by independent realization of Bernoulli( ρ /(n-1)) in the upper triangle. If the resulting DAG is unconnected, we repeat until a connected DAG is sampled. For each DAG, we sample half of the parentless nodes that have at least two children and assign them to be the latent set L (making sure there is at least one). The remaining nodes are the observed set O.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Number of Required CI Tests when using a Perfect CI Oracle</head><p>In the following experiments we evaluate the number of required CI tests by ICD, FCI, FCI+, and RFCI. We also analyze the conditioning set sizes of the required CI tests, since in many functions used for testing CI, the statistical power decreases and the computational complexity grows exponentially with the conditioning set size. For the following experiments in this section, we sample 100 random DAGs having n ∈ {15, 20, 25, 35} nodes with a connectivity factor of ρ = 2 (25 DAGs per graph size). The same DAGs are used by each of the compared algorithms allowing a per-DAG comparison.</p><p>A perfect CI oracle is implemented to returns d-separation relations in the true DAG.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1.1">ICD Compared to FCI</head><p>In this experiment we compare the ICD algorithm, using only the necessary ICD-Sep conditions (1 &amp; 2), to the FCI algorithm-both are anytime, sound, and complete. ICD-Sep conditions 1 &amp; 2 serve the key idea of ICD for constructing conditioning sets-tying the condition set size to its distance from the tested nodes.</p><p>From Figure <ref type="figure">3</ref> (a) it is evident that the ICD algorithm requires significantly fewer CI tests compared to FCI for all 100 tested graphs, and that this advantage of ICD is more dominant for graphs that require a larger number of CI tests. From Figure <ref type="figure">3</ref> (b) we find that the total number of CI tests required by ICD increases significantly more slowly with the graph size, compared to FCI. This difference is also evident in difference in run-times. We implemented FCI such that it uses the same routines as ICD, executed both algorithms on a single core of an Intel ® Xeon ® CPU, and measured runtime. The ratio FCI-runtime/ICD-runtime for graphs with 15, 20, 25, and 35 nodes is 1.3, 1.8, 2.9, and 5.6, respectively. As expected, this ratio increases with graph size. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1.2">ICD Compared to FCI+ and RFCI</head><p>In this experiment we compare the ICD algorithm, using all ICD-Sep conditions, to the FCI+ and RFCI algorithms, which are improved versions of FCI, reducing the required number of CI tests.</p><p>Both FCI+ and RFCI are sound. FCI+ is also complete, whereas RFCI is aimed at reducing the number of CI tests (compared to FCI) at the cost of not being complete. We were aided by the R package pcalg <ref type="bibr" target="#b7">(Kalisch et al., 2012)</ref> for evaluating these algorithms.</p><p>In Figure <ref type="figure">5</ref> (a) it is demonstrated that ICD requires fewer CI tests than both FCI+ and RFCI<ref type="foot" target="#foot_2">foot_2</ref> . On average, as evident from Figure <ref type="figure">5</ref> (b) the number of CI tests required by FCI+ and RFCI increases similarly with graph size, whereas this number for ICD grows significantly more slowly.</p><p>Lastly, we analyze the number of CI tests per conditioning set size, per graph size. Our observation from Figure <ref type="figure">6</ref> is threefold: (1) ICD requires fewer CI tests than FCI+ and RFCI for any conditioning set size, (2) the largest difference between ICD and FCI+/RFCI is evident for conditioning set sizes for which FCI+/RFCI, and (3) this difference increases with graph size, whereas the difference between FCI+ and RFCI becomes smaller relatively to the difference between them and ICD.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Structural Accuracy</head><p>In the following experiment we evaluate the accuracy of learned structures and the required number of statistical CI tests. To this end, we sample 100 DAGs, each having 15 nodes and an expected neighborhood 2, and quantify each edge of the DAGs by sampling from Uniform([-0.5, -2.0] [0.5, 2.0]). A probabilistic model is created by treating each node value as normally distributed with standard deviation 1, and mean being a weighted sum of the patents' values. From this model, for each of the 100 DAGs, we sample 5 data sets having sizes <ref type="bibr">[100,</ref><ref type="bibr">200,</ref><ref type="bibr">500,</ref><ref type="bibr">1000,</ref><ref type="bibr">3000]</ref>. For each of the 500 data sets we learn graphical models using FCI, FCI+, RFCI, and ICD.</p><p>We measure the accuracy of the skeleton by calculating false-positive ratio (FPR), false-negative ratio (FNR) and F1-score. Correctly identifying the presence of an edge is considered true-positive.</p><p>We measure the accuracy of edge orientation by calculating the percentage of correctly oriented edge-marks. Finally, we also count the number of CI tests required by each algorithm per data set. The average values (over 100 graphs) of the number of CI tests, skeleton F1 score, and orientation accuracy are summarized in Figure <ref type="figure" target="#fig_6">7</ref>.</p><p>From the experiments, it is evident that ICD requires significantly fewer CI tests. Compared to the other methods, ICD has higher skeleton FPR (extra-edges), but lower skeleton FNR (missing edges, erroneously-identified independence relation). Overall, ICD has the highest F1 score. Lastly, it is evident that ICD has an advantage in orientation accuracy over the other methods.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Conclusions</head><p>We presented ICD, an anytime, sound, and complete causal discovery algorithm for learning PAGs representing n-O-equivalence classes. The ICD algorithm is a simple procedure that consists of a single loop over conditioning set sizes of CI tests. Having a single loop ensures that CI tests with small conditioning sets are tested before CI tests having larger conditioning set sizes. This can lead to greater stability in practical cases.</p><p>The ICD algorithm gradually increases the search radius, from a local neighborhood to the entire graph, for separating sets around connected nodes, resulting in an efficient search procedure. In early iterations, where the graph is dense and a small number of edges are oriented, the search for a separating set is localized. In later iterations, where the graph is sparser and more edges are oriented, a global search for a separating set becomes more efficient.</p><p>An important difference of the proposed ICD algorithm from FCI and its related algorithms is that, right from the outset it considers nodes for the conditioning set that are not in the local neighborhood of the tested nodes. One might suspect that this could result in a high number of CI tests evaluated by the ICD algorithm compared to the FCI algorithm. However when proceeding from one iteration to the next, the ICD algorithm reduces the number of nodes to consider for the conditioning sets by complete orientation in each iteration, and by limiting the distance of the conditioning nodes from the tested nodes.</p><p>Finally, from the experimental results, the ICD algorithm requires significantly fewer CI tests compared to FCI, and its related efficient algorithms FCI+ and RFCI, especially for large conditioning sets. Moreover, it is evident that the advantage of ICD increases with the graph size. In addition, ICD learns more accurate causal graphs. We believe that these advantages can be appealing to many real-world applications in domains such as economics, health, and social sciences. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B Additional Experimental Results for Structural Accuracy</head><p>In this section we provide Table <ref type="table" target="#tab_0">1</ref>, the experimental results discussed in Section 4.2 of the paper.</p><p>We measure the accuracy of the skeleton by calculating false-positive ratio (FPR), false-negative ratio (FNR) and F1-score. Correctly identifying the presence of an edge is considered true-positive. We measure the accuracy of edge orientation by calculating the percentage of correctly oriented edge-marks. Finally, we also count the number of CI tests required by each algorithm and normalize it by the number required by FCI (per data set).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C Broader Impact</head><p>The significant progress made in ML research over the past few years, has led to increasing deployment of algorithms in real world applications. While state of the art models often reach high quality results, they have been criticized for making black box decisions, not providing their users tools to explain how they reach their conclusions. Understanding how models arrive at their decisions is critical for the use of AI, as it builds users' trust in ML based automatic systems, especially in decision critical applications. Such trust can be built by giving the user insights on how a system reaches its conclusions, which is especially important with high dimensional data having a large number of domain variables to consider. Causal structure discovery provides various capabilities beyond inference, such as counterfactual analysis, association, intervention, and imagining, and therefore, may also serve as an addition to the Explainable AI toolset, as it aims to improve the ability to identify the causal relationships among domain variables, thereby providing the decision makers with tools to understand those decisions, e.g. which variables are important and to what degree? which do not influence a specific result? which domain variables are the cause of a phenomena, and which merely correlate with it? By having such ability, human operators can supervise the recommendations of the method, intervene and point to cases that, in their view as experts, are potentially arguable, and therefore require an in-depth analysis before concluding with a final decision. Positive examples of such are abundant, especially from observational clinical data, and offer guidance to accurately discover known causal relationships in the medical domain. Fairness, inequality and bias issues, e.g. against minorities, oftentimes exist in data, and our approach, through the causal graph, provides the human supervisor with an inherent ability to inquire the ruling of the algorithm, thereby to consider potential ethical bridges that may reside in the causal graph, and consequently to overrule and correct them. With this innate transparency, we believe that our method is posited better to handle some of those ethical concerns, reinforcing the users' trust in the method, and positively impacting their willingness to use and rely on it. </p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: An example for the construction of conditioning sets by the ICD algorithm. (a) The true underlying DAG, where black circles represent latent variables. (b) A PAG resulting after three ICD iterations, r ∈ {0, 1, 2}-a 2-O-equivalence class. (c) and (d) PDS-trees with r = 3 search radii for nodes D and E, respectively, where radial coordinate indicates distance from the root.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>1.</head><label></label><figDesc>|Z| = r, 2. ∀Z ∈ Z, there exists a PDS-path Π B (A, Z) such that, (a) |Π B (A, Z)| ≤ r and (b) every node on Π B (A, Z) is in Z, 3. ∀Z ∈ Z, node Z is a possible ancestor of A or B (not a necessary condition).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Algorithm 1 :</head><label>1</label><figDesc>Iterative causal discovery (ICD algorithm) Input: n: desired n-representing PAG (default: |O| -2) Ind: a conditional independence oracle Output: G: a PAG for n-O-equivalence class (a completed PAG is returned for the default n = |O| -2) initialize: r ← 0, G ← a complete graph with 'o' edge-marks, and done ← False while (r ≤ n) &amp; (done = False) do (G, done) ← Iteration (G, r) refine G using conditioning sets of size r r ← r + 1 return G Function Iteration(G, r): done ← True for edge (X, Y ) in edges(G) do</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: An example for comparing ICD with FCI using a simple 7-node graph that was used by Spirtes et al. (2000) to describe FCI. (a) A MAG corresponding to the true underlying DAG. (b) A PAG corresponding to the MAG. (c) Skeleton and v-structure orientations that is used by FCI (and FCI+). (d) The PAG resulting after ICD iteration r = 1. In both cases FCI (c) and ICD (d) it is desired to identify the independence between nodes A and E. ICD requires significantly fewer CI tests compared to FCI (and PC in this specific case).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 3 :Figure 4 :</head><label>34</label><figDesc>Figure 3: Total number of CI tests. (a) A scatter plot using all DAGs in the experiment (ICD requires fewer CI tests than FCI for all the 100 tested DAGs). (b) Average total number of CI tests as a function of graph size.</figDesc><graphic coords="8,108.23,234.18,97.02,72.77" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Figure 5 :Figure 6 :</head><label>56</label><figDesc>Figure 5: Total number of CI tests. (a) A scatter plot using all DAGs in the experiment (ICD requires fewer CI tests than FCI+ and RFCI for all the 100 tested DAGs). (b) Average total number of CI tests as a function of the graph size.</figDesc><graphic coords="9,108.23,233.13,97.02,72.77" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>Figure 7 :</head><label>7</label><figDesc>Figure 7: Average (a) number of CI tests, (b) accuracy of skeleton, and (c) accuracy of oriented edges, as a function of dataset size for the FCI, FCI+, RFCI, and ICD algorithms.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head>Algorithm 1 :</head><label>1</label><figDesc>Iterative causal discovery (ICD algorithm) Input: n: desired n-representing PAG (default: |O| -2) Ind: a conditional independence oracle Output: G: a PAG for n-O-equivalence class (a completed PAG is returned for the default n = |O| -2) initialize: r ← 0, G ← a complete graph with 'o' edge-marks, and done ← False while (r ≤ n) &amp; (done = False) do (G, done) ← Iteration (G, r) refine G using conditioning sets of size r r ← r + 1 return G Function Iteration(G, r): done ← True for edge (X, Y ) in edges(G) do{Z i } i=1 ← PDSepRange (X, Y , r, G) Z i complieswith ICD-Sep conditions if &gt; 0 then 11 done ← False 12 for i ← 1 to do 13 if Ind(X, Y |Z i ) then 14 remove edge (X, Y ) from G 15 record Z i as a separating set for (X, Y )</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>Table 1 :</head><label>1</label><figDesc>Structural accuracy of learned graphs and the required number of CI tests for FCI, FCI+, RFCI, and (proposed) ICD. The accuracy of graph skeleton is measured by false-positive ratio (FPR), false-negative ratio (FNR), and F1 score. Edge orientation accuracy is measured by the percentage of correctly oriented edges.</figDesc><table><row><cell cols="4">Data Samples Algorithm # CI Tests Ratio FPR</cell><cell cols="3">FNR F1 Score Orientation Accuracy</cell></row><row><cell>100</cell><cell>FCI</cell><cell>1.0</cell><cell cols="2">0.010 0.638</cell><cell>0.52</cell><cell>0.19</cell></row><row><cell>100</cell><cell>FCI+</cell><cell>1.3</cell><cell cols="2">0.012 0.628</cell><cell>0.52</cell><cell>0.20</cell></row><row><cell>100</cell><cell>RFCI</cell><cell>0.9</cell><cell cols="2">0.012 0.628</cell><cell>0.52</cell><cell>0.20</cell></row><row><cell>100</cell><cell>ICD</cell><cell>0.5</cell><cell cols="2">0.023 0.606</cell><cell>0.54</cell><cell>0.22</cell></row><row><cell>200</cell><cell>FCI</cell><cell>1.0</cell><cell cols="2">0.014 0.589</cell><cell>0.56</cell><cell>0.24</cell></row><row><cell>200</cell><cell>FCI+</cell><cell>1.1</cell><cell cols="2">0.019 0.570</cell><cell>0.58</cell><cell>0.25</cell></row><row><cell>200</cell><cell>RFCI</cell><cell>0.8</cell><cell cols="2">0.019 0.570</cell><cell>0.58</cell><cell>0.25</cell></row><row><cell>200</cell><cell>ICD</cell><cell>0.4</cell><cell cols="2">0.039 0.515</cell><cell>0.61</cell><cell>0.28</cell></row><row><cell>500</cell><cell>FCI</cell><cell>1.0</cell><cell cols="2">0.011 0.519</cell><cell>0.63</cell><cell>0.29</cell></row><row><cell>500</cell><cell>FCI+</cell><cell>0.9</cell><cell cols="2">0.017 0.485</cell><cell>0.65</cell><cell>0.30</cell></row><row><cell>500</cell><cell>RFCI</cell><cell>0.7</cell><cell cols="2">0.016 0.485</cell><cell>0.65</cell><cell>0.30</cell></row><row><cell>500</cell><cell>ICD</cell><cell>0.3</cell><cell cols="2">0.062 0.389</cell><cell>0.69</cell><cell>0.34</cell></row><row><cell>1000</cell><cell>FCI</cell><cell>1.0</cell><cell cols="2">0.008 0.482</cell><cell>0.66</cell><cell>0.32</cell></row><row><cell>1000</cell><cell>FCI+</cell><cell>0.6</cell><cell cols="2">0.018 0.428</cell><cell>0.70</cell><cell>0.35</cell></row><row><cell>1000</cell><cell>RFCI</cell><cell>0.5</cell><cell cols="2">0.017 0.429</cell><cell>0.70</cell><cell>0.35</cell></row><row><cell>1000</cell><cell>ICD</cell><cell>0.2</cell><cell cols="2">0.081 0.320</cell><cell>0.73</cell><cell>0.39</cell></row><row><cell>3000</cell><cell>FCI</cell><cell>1.0</cell><cell cols="2">0.005 0.447</cell><cell>0.69</cell><cell>0.38</cell></row><row><cell>3000</cell><cell>FCI+</cell><cell>0.25</cell><cell cols="2">0.020 0.359</cell><cell>0.75</cell><cell>0.40</cell></row><row><cell>3000</cell><cell>RFCI</cell><cell>0.20</cell><cell cols="2">0.019 0.360</cell><cell>0.75</cell><cell>0.40</cell></row><row><cell>3000</cell><cell>ICD</cell><cell>0.08</cell><cell cols="2">0.111 0.209</cell><cell>0.77</cell><cell>0.46</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>PC is a causal discovery algorithm assuming causal sufficiency (absence of hidden confounders and selection bias). Conditioning sets consist of nodes only from the neighborhood of the tested nodes.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_1"><p>A completed PAG represents an equivalence class of MAGs such that no MAG can be ruled out given all CI relations. Not to be confused with a complete graph in which every node is connected to every other node.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="3" xml:id="foot_2"><p>We found RFCI to require slightly fewer CI tests than FCI+ for all tested DAGs.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="4" xml:id="foot_3"><p><ref type="bibr" target="#b19">Spirtes et al. (2000)</ref> defined Possible-D-Sep as a super-set of D-Sep based on the PDS-path generalization of DS-paths.</p></note>
+		</body>
+		<back>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Supplementary A Correctness and Completeness of the ICD Algorithm</head><p>In this section we provide a detailed proof for the correctness and completeness of the ICD algorithm. For easier referencing we describe ICD in Algorithm 1, and describe the ICD-Sep conditions. A set Z is a subset of ICD-Sep(A, B) given r ∈ {0, . . . , |O| -2}, if and only if 1. |Z| = r, 2. ∀Z ∈ Z, there exists a PDS-path Π B (A, Z) such that, (a) |Π B (A, Z)| ≤ r and (b) every node on Π B (A, Z) is in Z, and 3. ∀Z ∈ Z, node Z is a possible ancestor of A or B (not a necessary condition).</p><p>Lemma 1. Let G be a PAG n-representing DAG D(O, S, L). Denote A, B a pair of nodes from O that are connected in G and disconnected in D, and such that A is not an ancestor of B in D.</p><p>where Z ⊂ O is a minimal separating set having size n + 1, then there exists a subset Z ⊂ O having the same size of n + 1 such that that A ⊥ ⊥ B | Z ∪ S, and for every node Z ∈ Z there exists a PDS-path Π B (A, Z) in G, such that every node V on the PDS-path is also in Z.</p><p>Proof. It was previously shown that a minimal separating set for A and B, where A is not an ancestor of B, is a subset of D-Sep(A, B) <ref type="bibr">(Spirtes et al., 2000, page 134 and Theorem 6.2;</ref><ref type="bibr" target="#b18">Spirtes et al., 1999)</ref>. By definition, a node Z is in D-Sep(A, B) if and only if in the MAG there is a path between A and Z such that every node, except for the end points, is: 1. a collider and 2. an ancestor of A or B. Denote such path DS-Path (an inducing path for L, S ). For every DS-Path in a MAG, there exists a PDS-path (possible-DS-path) in the corresponding PAG. In an n-representing PAG, we can rule out a path from being a DS-Path in the MAG if it contains at least one sub-path X o-o Y o-o Z, where X and Z are not connected, or if one of the nodes on the path (except the end points) is not a possible ancestor of A or B. For an n-representing PAG, if a path between A and B has been ruled out of being a DS-Path, then identifying additional independence relations with conditioning set size greater than n will not result in transforming this path into a DS-path. That is, X o-o Y o-o Z, where X and Z are not connected will not become an unshielded collider, and new ancestral relations identified in ICD-iteration n + 1 will not contradict ancestral relations identified in previous ICD-iterations <ref type="bibr">(cf. Spirtes, 2001)</ref>. Thus, for every DS-Path in the MAG, there is a PDS-Path in an n-representing PAG, consisting of the same sequence of nodes, which ensures identifying at least one minimal separating set between every pair (A, B) that are m-separated in the MAG 4 .</p><p>From the minimality of a separating set Z for (A, B), ∀Z ∈ Z there is an open path between Z and A conditioned on</p><p>Otherwise Z is redundant and Z is not minimal. Let C be the set of nodes on a DS-path between A and Z. A DS-path between A and Z is open (m-connected) conditioned on all the nodes between them on the path, A ⊥ ⊥ Z|C ∪ S. For a PDS-path Π B (A, Z), A ⊥ ⊥ Z|(Nodes(Π B (A, Z) \ {A, Z}) ∪ S; namely, the PDS-path becomes an open path. Note that every sub-path starting from A is also a PDS-Path. Thus, if Z ∈ Z then there exists a PDS-path connecting A and Z such that all the nodes on this path are in Z.</p><p>Corollary 1. Let G be a PAG n-representing DAG D(O, S, L). Denote A, B a pair of nodes from O that are connected in G and disconnected in D.</p><p>where Z ⊂ O is a minimal separating set having size n + 1, then there exists a subset Z ⊂ O having the same size of n + 1 such that that A ⊥ ⊥ B | Z ∪ S, and for every node Z ∈ Z there exists a PDS-path Π B (A, Z) or Π A (B, Z), where every node V on the PDS-path is also in Z.</p><p>Proof. The proof follows from Lemma 1. Note that a minimal separating set for A and B is in</p><p>Lemma 2. Let G be a PAG n-representing a causal DAG D. Let S be a skeleton (unoriented graph) that results after removing edges from the skeleton of G between every pair of nodes that are m-separated conditioned on a minimal separating set of size n + 1.</p><p>If S is oriented using anytime-FCI orientation rules, then the resulting graph is a PAG that (n + 1)represents the causal DAG D.</p><p>Proof. We refer to the proof for the anytime FCI algorithm <ref type="bibr" target="#b16">(Spirtes, 2001)</ref>. It was shown, that a skeleton for any pair of disjoint nodes A, B ∈ O, such that A ⊥ ⊥ B|[Z] ∪ S in D(O, S, L), where Z ⊂ O and |Z| &lt; n, can be safely oriented by first orienting v-structures and then using the iterative FCI-orientation rules. Namely, it is sound in the sense that every orientation (head '-&gt;' or tail '-') also exists in all that MAGs in the equivalence class of the true underlying MAG. Importantly, subsequent removal of edges, using conditioning set sizes greater than n + 1, will not invert the orientation of an edge-mark (a head will not be turned into a tail and vice versa), nor any oriented edge-mark (head or tail) will become invariant ('-o'). <ref type="bibr" target="#b21">Zhang (2008)</ref> proved the completeness of the orientation rules step. Note that the proofs by <ref type="bibr" target="#b16">Spirtes (2001)</ref> and <ref type="bibr" target="#b21">Zhang (2008)</ref>, both consider the presence of selection bias.</p><p>Proposition 1 (Correctness and completeness of the ICD algorithm). Let G be a PAG representing a causal DAG D(O, L, S) and let Ind be a conditional independence oracle that returns d-separation relation for O in D. If Algorithm 1 is called with Ind, then the returned PAG, after uninterrupted termination is G.</p><p>Proof. We prove by mathematical induction. In each induction step r + 1 we prove that given an r-representing PAG, ICD iteration r + 1 finds all conditional independence relations having a minimal conditioning set of size r + 1, and removes corresponding edges. By Lemma 2, orientation of the resulting graph results in an (r + 1)-representing PAG. Essentially, we prove that a minimal separating set complies with the ICD-Sep conditions, ensuring its identification in Algorithm 1-line 9.</p><p>Let the true underlying DAG be D(O, L, S), and G be the graph returned after an ICD iteration. Throughout the proof Z ⊂ O, and A ∈ O, B ∈ O are any pair of nodes.</p><p>Base step (r = 1). The first ICD iteration r = 0 is trivial, where every pair of nodes is tested for marginal independence (ICD is initialized with a complete graph). From Lemma 2, the orientation of the graph using FCI-orientation rules returns a 0-representing PAG. We define our base case for the second ICD iteration r = 1. Minimal separating set consisting of a single node are sought. Let A ⊥ ⊥ B|[Z] ∪ S in D, such that |Z| = 1 (a single-node set). The ICD-Sep conditions for r = 1 effectively restrict the search to the neighborhood of A and B. Although there may be multiple separating single-node sets for (A, B), there exist at least one in their neighborhood. Recall that by conditioning on a separating set, paths between A and B are blocked. Since we are considering singlenode separating sets, there exists an active path that is blocked by a single node, such that it does not consist any collider (otherwise the collider is included in the separating set and the size is greater than 1). Thus, this path can be blocked by at least one of the neighbors of A and B. This ensures that considering only neighbors of the tested nodes, all the independence relations with minimal separating sets of size one are identified, and corresponding edges are removed (Algorithm 1-lines 12-16). Following Lemma 2, orientation using FCI-orientation rules ensures that the resulting graph is a PAG that 1-represents the causal DAG D.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Induction step (r + 1). Let</head><p>From Corollary 1, there exists a separating set of size r + 1 that complies with ICD-Sep condition 2. Condition 1 is complied by definition. This ensures identifying all independence relations with a minimal separation set of size r + 1 are identified and corresponding edges are removed (Algorithm 1-lines 12-16). Following Lemma 2, orientation using FCI-orientation rules ensures that the resulting graph is a PAG that (r + 1)-represents the causal DAG D.</p><p>From the definition of ICD-Sep it follows that for a pair of adjacent nodes A and B, if ICD-Sep(A, B) given r is empty, then ICD-Sep(A, B) given r + 1 is empty. Thus, concluding the algorithm at iteration r if | ICD-Sep(A, B)| is empty for any ordered pair of adjacent nodes (A, B) ensures that all independence relations have been identified, which ensures completeness.</p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Optimal structure identification with greedy search</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">M</forename><surname>Chickering</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of machine learning research</title>
+		<imprint>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="page" from="507" to="554" />
+			<date type="published" when="2002-11">Nov. 2002</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Learning sparse causal models is not NP-hard</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Claassen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">M</forename><surname>Mooij</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Heskes</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Uncertainty in Artificial Intelligence</title>
+		<imprint>
+			<publisher>Citeseer</publisher>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page">172</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Learning high-dimensional directed acyclic graphs with latent and selection variables</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Colombo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">H</forename><surname>Maathuis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Kalisch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">S</forename><surname>Richardson</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">The Annals of Statistics</title>
+		<imprint>
+			<biblScope unit="page" from="294" to="321" />
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">A Bayesian method for the induction of probabilistic networks from data</title>
+		<author>
+			<persName><forename type="first">G</forename><forename type="middle">F</forename><surname>Cooper</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Herskovits</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Machine learning</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="309" to="347" />
+			<date type="published" when="1992">1992</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Nonlinear causal discovery with additive noise models</title>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">O</forename><surname>Hoyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Janzing</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">M</forename><surname>Mooij</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Peters</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Schölkopf</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+			<biblScope unit="page" from="689" to="696" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Causal identification under markov equivalence</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Jaber</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Bareinboim</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Association for Uncertainty in Artificial Intelligence (AUAI)</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="978" to="987" />
+		</imprint>
+	</monogr>
+	<note>34th Conference on Uncertainty in Artificial Intelligence</note>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Causal identification under markov equivalence: Completeness results</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Jaber</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Bareinboim</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="2981" to="2989" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Causal inference using graphical models with the R package pcalg</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Kalisch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Mächler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Colombo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">H</forename><surname>Maathuis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Bühlmann</surname></persName>
+		</author>
+		<ptr target="https://www.jstatsoft.org/article/view/v047i11" />
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Statistical Software</title>
+		<imprint>
+			<biblScope unit="volume">47</biblScope>
+			<biblScope unit="issue">11</biblScope>
+			<biblScope unit="page" from="1" to="26" />
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Improving efficiency and accuracy of causal discovery using a hierarchical wrapper</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Nisimov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Gurwicz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">Y</forename><surname>Rohekar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Novik</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Uncertainty in Artificial Intelligence (UAI 2021), the 4th Workshop on Tractable Probabilistic Modeling</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">A hybrid causal search algorithm for latent variable models</title>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">M</forename><surname>Ogarrio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Spirtes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ramsey</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Conference on Probabilistic Graphical Models</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="368" to="379" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<title level="m" type="main">Causality: Models, Reasoning, and Inference</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Pearl</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+			<publisher>Cambridge university press</publisher>
+		</imprint>
+	</monogr>
+	<note>second edition</note>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">An introduction to causal inference</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Pearl</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">The international journal of biostatistics</title>
+		<imprint>
+			<biblScope unit="volume">6</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<monogr>
+		<title level="m" type="main">Elements of causal inference</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Peters</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Janzing</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Schölkopf</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<publisher>The MIT Press</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Ancestral graph markov models</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Richardson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Spirtes</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">The Annals of Statistics</title>
+		<imprint>
+			<biblScope unit="volume">30</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="962" to="1030" />
+			<date type="published" when="2002">2002</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Bayesian structure learning by recursive bootstrap</title>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">Y</forename><surname>Rohekar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Gurwicz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Nisimov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Koren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Novik</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems (NeurIPS)</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">A linear non-gaussian acyclic model for causal discovery</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Shimizu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">O</forename><surname>Hoyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Hyvärinen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Kerminen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Machine Learning Research</title>
+		<imprint>
+			<biblScope unit="volume">7</biblScope>
+			<biblScope unit="page" from="2003" to="2030" />
+			<date type="published" when="2006-10">Oct. 2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">An anytime algorithm for causal inference</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Spirtes</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Artificial Intelligence and Statistics (AISTATS)</title>
+		<imprint>
+			<date type="published" when="2001">2001</date>
+			<biblScope unit="page" from="278" to="285" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Introduction to causal inference</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Spirtes</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Machine Learning Research</title>
+		<imprint>
+			<biblScope unit="volume">11</biblScope>
+			<biblScope unit="page" from="1643" to="1662" />
+			<date type="published" when="2010-05">May. 2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">An algorithm for causal inference in the presence of latent variables and selection bias</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Spirtes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Meek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Richardson</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Computation, causation, and discovery</title>
+		<imprint>
+			<biblScope unit="volume">21</biblScope>
+			<biblScope unit="page" from="1" to="252" />
+			<date type="published" when="1999">1999</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<monogr>
+		<title level="m" type="main">Causation, Prediction and Search</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Spirtes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Glymour</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Scheines</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2000">2000</date>
+			<publisher>MIT Press</publisher>
+		</imprint>
+	</monogr>
+	<note>2nd edition</note>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Bayesian network structure learning by recursive autonomy identification</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Yehezkel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Lerner</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Machine Learning Research (JMLR)</title>
+		<imprint>
+			<biblScope unit="volume">10</biblScope>
+			<biblScope unit="page" from="1527" to="1570" />
+			<date type="published" when="2009-07">Jul. 2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">On the completeness of orientation rules for causal discovery in the presence of latent confounders and selection bias</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Artificial Intelligence</title>
+		<imprint>
+			<biblScope unit="volume">172</biblScope>
+			<biblScope unit="issue">16-17</biblScope>
+			<biblScope unit="page" from="1873" to="1896" />
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

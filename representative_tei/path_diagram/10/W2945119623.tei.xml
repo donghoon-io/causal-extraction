@@ -1,0 +1,1192 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Symbolic Path Tracing to Find Android Permission-Use Triggers</title>
+				<funder>
+					<orgName type="full">UMIACS</orgName>
+				</funder>
+				<funder>
+					<orgName type="full">Google Research Award</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Kristopher</forename><surname>Micinski</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Thomas</forename><surname>Gilray</surname></persName>
+							<email>gilray@uab.edu</email>
+						</author>
+						<author>
+							<persName><forename type="first">Daniel</forename><surname>Votipka</surname></persName>
+							<email>dvotipka@cs.umd.edu</email>
+						</author>
+						<author>
+							<persName><forename type="first">Michelle</forename><forename type="middle">L</forename><surname>Mazurek</surname></persName>
+							<email>mmazurek@cs.umd.edu</email>
+						</author>
+						<author>
+							<persName><forename type="first">Jeffrey</forename><forename type="middle">S</forename><surname>Foster</surname></persName>
+							<email>jfoster@cs.tufts.edu</email>
+						</author>
+						<author>
+							<affiliation key="aff0">
+								<orgName type="institution">University of Alabama Birmingham</orgName>
+								<address>
+									<settlement>Haverford College Haverford</settlement>
+									<region>PA AL</region>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff1">
+								<orgName type="institution">University of Maryland College Park</orgName>
+								<address>
+									<region>MD</region>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff2">
+								<orgName type="institution">University of Maryland College Park</orgName>
+								<address>
+									<region>MD</region>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff3">
+								<orgName type="institution">Tufts University Medford</orgName>
+								<address>
+									<region>MA</region>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Symbolic Path Tracing to Find Android Permission-Use Triggers</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+					<idno type="DOI">10.14722/bar.2019.23083</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-14T18:02+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<textClass>
+				<keywords>
+					<term>Symbolic execution</term>
+					<term>Android</term>
+					<term>symbolic path tracing</term>
+					<term>triggers</term>
+				</keywords>
+			</textClass>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Understanding whether Android apps are safe requires, among other things, knowing what dynamically triggers an app to use its permissions, and under what conditions. For example, an app might access contacts after a button click, but only if a certain setting is enabled. Automatically inferring such conditional trigger information is difficult because Android is callback-oriented and reasoning about conditions requires analysis of program paths. To address these issues, we introduce Hogarth, an Android app analysis tool that constructs trigger diagrams, which show, post hoc, what sequence of callbacks, under what conditions, led to a permission use observed at run time. Hogarth works by instrumenting apps to produce a trace of relevant events. Then, given a trace, it performs symbolic path tracing-symbolic execution restricted to path segments from that trace-to infer path conditions at key program locations, and path splicing to combine the per-segment information into a trigger diagram. We validated Hogarth by showing its results match those of a manual reverse-engineering effort on five small apps. Then, in a case study, we applied Hogarth to 12 top apps from Google Play. We found that Hogarth provided more precise information about triggers than prior related work, and was able successfully generate a trigger diagram for all but one permission use in our case study. Hogarth's performance was generally good, taking at most a few minutes on most of our subject apps. In sum, Hogarth provides a new approach to discovering conditional trigger information for permission uses on Android.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>I. INTRODUCTION</head><p>Android apps must request permissions before accessing sensitive resources such as the user's microphone or location. However, on their own, permissions are insufficient for auditing an app's actual security implications <ref type="bibr" target="#b0">[1]</ref>- <ref type="bibr" target="#b3">[4]</ref>. This is because the presence of a permission alone does not convey why the permission will be used.</p><p>In this paper, we propose to shed light on why apps use permissions by introducing the concept of trigger diagrams, which describe paths through an app that lead to a permission use. For example, Figure <ref type="figure" target="#fig_0">1</ref> shows trigger diagram explaining a case in which the Ovia Pregnancy app accesses the user's location. The nodes of the graph are either callbacks invoked by the Android framework or permission uses in the app. An edge from one node to another indicates control flow, and edges are labeled with path conditions: logical formulas that must hold when the control flow occurs. For example, this diagram shows a case in which, when the app goes off screen (i.e., when onStop is called by Android), it starts a new thread whose run method uses location. Examining the path conditions reveals, among other things, that the app checks that it has permission to access location before using it along this path (we provide a detailed overview in Section II). Thus, trigger diagrams can help elucidate the circumstances of a permission use, which could potentially be useful for tasks such as auditing app behavior and reverse engineering.</p><p>In theory, trigger diagrams could be constructed using static analysis, but this is impractical. The key challenge is that apps are tightly coupled with the Android framework, i.e., significant control and data flow occur through the framework. Yet the framework is not amenable to precise static analysis, because it is large, complex, and includes native code. Thus, we cannot statically analyze an app in tandem with the framework. To alleviate this problem, some researchers have explored developing Android framework models <ref type="bibr" target="#b4">[5]</ref>- <ref type="bibr" target="#b11">[12]</ref>, but Android has tens of thousands of methods, and, to date, there is no modeling approach that scales to all of Android. As a result, while other researchers have explored a range of problems related to trigger diagrams <ref type="bibr" target="#b5">[6]</ref>, <ref type="bibr" target="#b8">[9]</ref>, <ref type="bibr" target="#b9">[10]</ref>, <ref type="bibr" target="#b11">[12]</ref>- <ref type="bibr" target="#b15">[16]</ref>, no prior work has demonstrated a scalable, precise technique that could be used to construct them.</p><p>To remedy this situation, in this paper, we introduce Hogarth, <ref type="foot" target="#foot_0">1</ref> a novel Android app analysis tool for inferring trigger diagrams. The key insight behind Hogarth is to use dynamic analysis, rather than static analysis. More specifically, Hogarth works by instrumenting apps to produce a trace of relevant events. The user runs the app to generate a set of execution traces, and then Hogarth generates a trigger diagrams for selected permission uses within those traces.</p><p>Hogarth uses two core technical ideas to construct trigger diagrams from traces. First, it observes precisely what objects are registered as callbacks, and what callbacks are invoked by Android. For example, in Figure <ref type="figure" target="#fig_0">1</ref>, this allows Hogarth to determine that there is control flow from onStop, which registers flurry.Task, to the latter's run method. Because Hogarth observes registrations and callbacks at runtime, it does not need a precise model of Android-it only needs to know which methods could possibly register callbacks.</p><p>Second, to infer path conditions, Hogarth uses what we call symbolic path tracing and path splicing. Given the target permission use, Hogarth performs symbolic execution from the start of the callback containing that permission use. Critically, however, Hogarth only follows the path observed in the trace. Again, this obviates the need for a precise framework model, because, via the trace, Hogarth has an exact, realizable path that reaches the permission use of interest. During symbolic execution, Hogarth replaces concrete values returned from the Android framework with symbolic variables whose names describe where the value came from, either framework calls or fields. The result is a path condition that describes that path segment in terms of those symbolic variables. For example, this allows us to see the location permission check along the path in Figure <ref type="figure" target="#fig_0">1</ref>. Hogarth repeats this process, working backward from handler to handler until it reaches a root, which is the trigger. In effect, this novel design allows Hogarth to turn a concrete execution trace into a more general description of what happened in the app along that path. Moreover, Hogarth achieves all this without needing app source code or a detailed framework model. (Section III describes trigger diagram inference formally.)</p><p>Hogarth is implemented on top of Redexer <ref type="bibr" target="#b16">[17]</ref>, a Dalvik bytecode rewriting tool, and SymDroid <ref type="bibr" target="#b17">[18]</ref>, a Dalvik bytecode symbolic executor we modified extensively. To achieve sufficient tracing performance, Hogarth uses a fast parallel queue to buffer runtime traces and write them to a file with a separate thread. Hogarth elides some information, specifically about arrays, from path conditions to make them more readable. Finally, Hogarth invokes symbolic path tracing in a demanddriven fashion to reduce the amount of code that must be symbolically executed. (Section IV describes Hogarth's implementation in more detail.)</p><p>To validate the Hogarth prototype, we applied it to a set of five apps selected from F-Droid <ref type="bibr" target="#b18">[19]</ref> and the Contagio Malware dump <ref type="bibr" target="#b19">[20]</ref>. We found that Hogarth discovers trigger diagrams that match information one of the authors produced manually with a time-consuming reverse engineering effort.</p><p>We also performed a case study in which we applied Hogarth to 12 top apps from Google Play, chosen from a dataset from a prior related paper <ref type="bibr" target="#b15">[16]</ref>. We found that Hogarth successfully identified triggers that could not be resolved by the prior work, which used a simpler temporal heuristic to find triggers <ref type="bibr" target="#b15">[16]</ref>. Hogarth also allowed us to effectively understand why apps were using permissions. For example, we were able to determine that one app (Doctor on Demand) checked to see whether the user had selected to visit a nearby doctor before polling for location data, and that another (Samsung Cloud Print) compared the user's country code to ensure they were in the US or South Korea before accessing their phone number. Finally, we found that Hogarth generally performs well, e.g., Hogarth can build a model of the location permission in Grubhub in 46 seconds, given a 4.4 million line log. (Section V discusses our evaluation.)</p><p>In summary, Hogarth introduces a new approach to construct trigger diagrams showing the cause and the conditions leading to a target permission use. While Hogarth focuses on Android and permission uses, we believe our approach can be used for debugging, reverse engineering, and other auditing purposes more generally.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>II. OVERVIEW</head><p>Figure <ref type="figure" target="#fig_1">2</ref> shows Hogarth's architecture. Its input is an Android APK file, which contains the app's Dalvik bytecode. Hogarth's first step is to instrument the app so that, when run, it produces a trace of the app's execution. For performance reasons, the trace is sparse in that it only logs key program points needed to reproduce the observed execution.</p><p>The user runs the modified app to produce one or more traces and selects a permission use of interest (more precisely, an Android API call that requires a permission). Hogarth then performs symbolic path tracing to infer path conditions for various program points that were observed in the trace. A path condition is a formula over inputs to the callback (including values it receives from the Android framework) that holds whenever that program point is reached. Finally, Hogarth performs path splicing to work backward from the permission use to find its triggers, connecting all such paths together to yield a trigger diagram.</p><p>In the remainder of this section, we illustrate how Hogarth can be used to produce the diagram in Figure <ref type="figure" target="#fig_0">1</ref>. (Hogarth currently outputs a textual description of the graph; we manually drew the visualization in the figure .) a) Bytecode Instrumentation and Trace Generation: Hogarth adds logging instrumentation to app bytecode using Redexer <ref type="bibr" target="#b16">[17]</ref>, a Dalvik bytecode rewriting tool. First, we use Redexer to statically link our logging library into the app. Our logging library contains a new method log(. . .) that writes its arguments and the current thread id to a Con-currentLinkedQueue. Our logging instrumentation creates a background thread to dequeue log entries and asynchronously write them to a file. This helps ensure logging does not slow down the main app thread.</p><p>Then, we add calls to log(. . .) to record key events. More specifically, we insert code to record the class and identity of the method's arguments (including the receiver object) at every method's entry. For example, we add logging to the beginning of the BaseActivity.onStop handler within Ovia. We also log the arguments and return values of every API call. Finally, we insert a call to log(. . .) at the entry of every basic block. Hogarth uses this information later in its process to recover exact control flow.</p><p>Figure <ref type="figure">3</ref> shows two portions of the trace generated by running the instrumented Ovia app. The trace at the top is for flurry.Task.run, which is an app method as indicated by the Mtd &gt; line in the log. Because this trace entry is not nested inside any other method call entry, Hogarth infers that this is a callback invoked by the Android framework. That same trace line lists the thread id (in this case 1) so that Hogarth can distinguish otherwise intertwined log entries from different threads. It also includes the method arguments, in this case just the receiver object. Objects are recorded as the object's class followed by the object's Java id (every object has a unique integer id in the Java runtime). Note that, to improve performance, we do not record object fields. Hogarth only uses object ids to identify callbacks (discussed more below).</p><p>The line BBEntry 1 2477570 records the entry to basic block numbered 2477570 (a number assigned by Hogarth during app instrumentation). Hogarth uses this information later during symbolic path tracing to decide which way to follow branches. The next two lines record the call to (API &gt; 1) and return from (API &lt; 1) Handler.post, an Android API method. Redexer marks a call API whenever it cannot find the target method in the app's method definitions. In this case, the call to Handler.post asks Android to create a thread for the flurry.Task object passed as its second argument. Finally, the last line in the top portion of the figure indicates the return from onStop.</p><p>The bottom portion of Figure <ref type="figure">3</ref> shows a portion of the trace for the subsequent execution of flurry.Task.run. Note that in general, arbitrary other trace elements might occur between the top and bottom portions of the trace, depending on the Android scheduler. (For this particular trace, several other threads do execute between the post and the run.) Once the run method begins, it eventually enters a basic block that calls requestLocationUpdates, which is an Android framework method that requires the location permission.</p><p>b) Symbolic Path Tracing: Next, Hogarth performs symbolic path tracing by running symbolic execution <ref type="bibr" target="#b20">[21]</ref>, <ref type="bibr" target="#b21">[22]</ref> from the start of each relevant callback, stepping through that method's instructions and those of any called app methods, until it reaches target points in the trace. (We discuss exactly where Hogarth starts and stops symbolic path tracing below.) For each target point, Hogarth records the path condition generated by symbolic execution. Whenever Hogarth reaches a branch, it follows the path taken in the trace, which is apparent from the BBEntry trace items.</p><p>For example, Hogarth begins symbolic path tracing at onStop. The receiver this is bound to an abstract value representing the actual value seen in the log, in this case SplashActivity@207023171. As Hogarth continues, it builds more complex abstract values to encode primitive operations and represent returns from framework calls, as necessary. As Hogarth branches, it conjoins the branch condition on to the path condition, which is initially just true. For example, when Hogarth eventually reaches the call to Handler.post in Ovia, Hogarth obtains the following path condition φ 1 : new 35 = 0 ∧ staticfd 113 .c.a.get(argument 0 .f)).iterator().hasNext() ∧ !argument 1 .isChangingConfigurations() ∧ !argument 0 .f.isEmpty() ∧ staticfd 12 .c.a.get(argument 0 .f) = 0 ∧ new 34 .iterator().hasNext() This path condition mentions objects created by the app, e.g., new 35 is an object created at source location 35. The actual trace includes the object id; we have abbreviated for clarity. The path condition also mentions the state of static fields, e.g., functions on staticfd 113 , as well as functions on the state of the arguments, e.g., !argument 1 .isChanging-Configurations() asserts that the app is not currently changing screen configurations.</p><p>Similarly, when Hogarth executes flurry.Task.run, it will eventually reach the call to requestLocationUpdates with the path condition φ 2 :</p><p>"passive" = 0 ∧ staticfd 113 = 0 ∧ new 18 .x ≥ new 19 .y ∧ staticfd 50 .c.getSvc("connectivity").isConnected() ∧ com.flurry.sdk.fd.class = 0∧ !staticfd 18 .isEmpty() ∧ staticfd 50 .c.getSvc("connectivity").getActiveNetworkInfo = 1 ... ∧ staticfd 50 .c.checkCalling..Permission("ACCESS_FINE_LOCATION") This path condition mentions the state of many global variables, but most relevant to our analysis are the frameworkrelated calls to check the state of the connectivity service and the check that the app has permission to access location. c) Path Splicing: Finally, Hogarth performs path splicing, which connects the symbolic path traces together and summarizes them to construct a trigger diagram. Hogarth invokes symbolic path tracing on-demand during path splicing. This final step begins with a user-specified permission use. In this case, we choose the call to requestLocationUpdates in Figure <ref type="figure">3</ref>. Hogarth then begins working backward. Since this call occurred during flurry.Task.run, Hogarth adds a node for that callback to the diagram, runs symbolic path tracing from the start of the callback to the permission use, and then adds an edge between the nodes, labeled with the path condition φ 2 . If there were multiple such path conditions, Hogarth would label the edge with the disjunction of the path conditions.</p><p>Next, Hogarth determines where the callback flurry.Task.run was registered. Hogarth heuristically looks for calls to API methods that register callbacks according to the Edge-Miner <ref type="bibr" target="#b22">[23]</ref> dataset. Hogarth assumes that any such call where the argument matches the value bound to this in the callbackhere, flurry.Task.run@222621802-was responsible for registering the callback. In our example, this occurred in the call to Handler.post. Thus, Hogarth runs symbolic path tracing from the beginning of the callback containing the registration up to that registration point, adding appropriate nodes and edges to the diagram. In this case, there will be an edge from onStop to run labeled with φ 1 .</p><p>This process continues until Hogarth can find no more matching callback registrations. In our example, Hogarth stops with onStop.</p><p>In addition to using EdgeMiner to determine callback connections, there are some cases where this is not possible (e.g., Intent passing), so Hogarth adds extra metadata to certain objects to help establish these connections. We discuss this further in Section IV.</p><p>d) Reviewing Trigger Diagrams: Finally, we use the resulting trigger diagram to investigate the circumstances under which permissions are used. An expert can use the diagrams to make a range of decisions or to aid more general reverse engineering tasks. In our experiments (Section V), we systematically considered each node in the trigger diagram and studied the path condition generated by Hogarth. For example, in Ovia, the first use registered the thread when the app was not restarting the screen, and used the user's location through an analytics library after ensuring it had permission to do so. In the second permission use we examined, the app accessed the filesystem to store cached data as the result of a network request performed by the app. </p><formula xml:id="formula_0">prog ::= ---→ class class ::= C &lt;: C ----→ method f method ::= m( r) i i ::= goto j | if r then j | r ← c | r ← r | r ← r ⊕ r | r ← r.f | r.f ← r | r ← new C | r ← r.m(r, . . .) | ret r c ::= n | str | true | false ⊕ ::= {+, -, * , &lt;, ¬, ∧, ∨, . . .} C ∈ classes m ∈ methods f ∈ fields r ∈ regs n ∈ integers str ∈ strings</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>III. TRIGGER DIAGRAM INFERENCE</head><p>This section gives a formal presentation of our symbolic path tracing analysis to find triggers. To keep our presentation compact, we describe our approach using the simplified Dalvik bytecode language in Figure <ref type="figure" target="#fig_3">4</ref>. Here and below, we write x for a sequence of zero or more x's, and we write x i to signify the ith element of such a sequence (starting from index 0). In this language, a program prog consists of a sequence of class definitions ---→ class. A single class definition consists of a class name C, its superclass, a sequence of method definitions ----→ method , and a sequence of field names f . Each method definition includes the method name m, a sequence of registers r for the formal parameters, and a sequence of instructions i for the method body.</p><p>Instructions are fairly standard. An unconditional jump goto j sets the program counter so the instruction at index j is executed next. A conditional jump if r then j branches to instruction j if the content of register r is true. Assignments of the form r ← c write a constant integer, string, or boolean into register r; assignments r 1 ← r 2 copy r 2 to r 1 ; and assignments r 1 ← r 2 ⊕r 3 apply some operation ⊕ to r 2 and r 3 , storing the result in r 1 . Fields are read with r 1 ← r 2 .f and written with r 1 .f ← r 2 . Allocation r ← new C creates a fresh instance of class C and stores a pointer to it in r. Method invocation r ← r 0 .m(r 1 , . . .) performs dynamic dispatch of method m with the given receiver r 0 and arguments r 1 , . . ., assigning the result to r. Lastly, ret r exits the current method, returning r.</p><p>Note that this language omits many features of Dalvik bytecode, such as arrays, static methods and fields, etc. We discuss details of handling full Android apps in Section IV.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Trace Generation</head><p>As previously discussed, we begin by instrumenting and executing the program to gather a set of traces. In our implementation (Section IV), we modify the app's bytecode to add tracing instrumentation. Here we elide that step, and simply describe the trace this instrumentation yields.</p><p>Figure <ref type="figure">5</ref> gives a grammar for program traces pt, which consist of a sequence of callback traces ct. Each callback trace records what happens from the time Android invokes an app callback to the time the callback returns to the framework.</p><formula xml:id="formula_1">pt ::= ct [program trace] ct ::= C.m( v ) ti [callback trace] ti ::= C.m [app call] | C.m( v ) [API call] | then | else [branch] v ::= | C@id [value]</formula><p>Fig. <ref type="figure">5</ref>: Traces.</p><p>A callback trace C.m( v ) ti records the class C and method m called by the framework, along with the argument values v , where v 0 encodes the method receiver. Each value is either ignored, written , or a class C paired with an id , written C@id . In our implementation, we log all constants as for performance reasons (specifically, writing all strings to the trace is expensive). Notice that we do not record object fields-we only record object addresses to match up callback registrations to the actual callbacks, as discussed below.</p><p>Each callback trace also includes a sequence of trace items ti that occurred during the callback. There are four kinds of trace items. First, C.m logs a call to an app method m of class C. We elide arguments because these will be recovered via symbolic execution. Second, C.m( v ) logs a call to an API method m of class C. In this case, we do record the argument values v since they may include possible callback registrations. Lastly, then and else log which way each if instruction branched. These model the BBEntry trace entries in Section II. We describe symbolic path tracing as a series of operational rules over machine states i, rf , κ, φ, ti . Here i is the sequence of instructions remaining to be executed. The register file rf maps registers to abstract values a, which include constants, object id s paired with classes, and operations among abstract values, which are standard. Abstract values also include r, which stands for the value read from a register (here, always a method parameter); a.f , which stands the value read from a field of an object; and C.m( a), which stands for the value returned from an API call with arguments a (where, again, the first argument is the receiver object). These last three forms allow Hogarth to track the conditions on "inputs" to the callback from parameters or from values returned by the Android framework.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Symbolic Path Tracing</head><p>Each machine state also includes a stack κ, a (possiblyempty) sequence of triples (r, rf , i), where r is the register to be written upon returning, rf is the previous register file to reinstate, and i is the sequence of instructions to resume upon returning. The last two items in the machine state are the path condition φ, a (boolean) abstract value, and ti , the remaining trace to be followed. </p><formula xml:id="formula_2">::= i, rf , κ, φ, ti [machine state] rf : regs a [register file] κ ::= | (r, rf , i) : κ [stack] φ ::= a [path condition] a ::= c | C@id | ⊕ a [abstract value] | r | a.f | C.m( a)</formula><p>(a) Abstract machine domains.  Figure <ref type="figure" target="#fig_7">6b</ref> lists the machine's operational rules. [Jump] replaces the instruction sequence with those at the target address, using helper function instr (j) (not formalized). [Then] and [Else] handle conditional branches, using the observed trace to guide the machine. When the head of the trace is then, the concrete execution took the true branch, so [Then] conjoins the branch condition rf (r) to the current path condition φ and jumps. When the head of the trace is else, execution fell through, so [Else] simply steps past the branch instruction and conjoins the negation of the branch condition with the path condition.</p><formula xml:id="formula_3">goto j : i, rf , κ, φ, ti instr (j), rf , κ, φ, ti [Jump] if r then j : i, rf , κ, φ, then : ti [Then] instr (j), rf , κ, rf (r)∧φ, ti if r then j : i, rf , κ, φ, else : ti [Else] i, rf , κ, ¬rf (r)∧φ, ti r ← c : i, rf , κ, φ, ti i, rf [r → c], κ, φ, ti [AssnC] r ← r : i, rf , κ, φ, ti i, rf [r → rf (r )], κ, φ, ti [AssnR] r1 ← r2 ⊕ r3 : i, rf , κ, φ, ti [AssnOp] i, rf [r1 → ⊕(rf (r2),rf (r3))], κ, φ, ti r ← r.m( r) : i, rf , κ, φ, C.m : ti [Call] i , rf , κ , φ, ti where rf = [ r → rf ( r)] ∧ m( r ) i = lookup(C.m) ∧ κ = (r , rf , i) : κ ret r : i, rf , (r , rf , i ) : κ, φ, ti [Ret] i , rf [r → rf (r)], κ, φ, ti r ← r.f : i, rf , κ, φ, ti i, rf , κ, φ, ti [AssnF] where rf = rf [r → a.f ] ∧ a = rf (r) r.f ← r : i, rf , κ, φ, ti i, rf , κ, φ, ti [FWrite] r ← new C : i, rf , κ, φ, ti [New] i, rf [r → C@id ], κ,</formula><p>[AssnC], [AssnR], and [AssnOp] update the register file so the left-hand side register r maps to the given constant, register contents, or operation, respectively.</p><p>[Call] handles an invocation of one of the app's methods.</p><p>At these control points, the log has recorded C.m, the class and method that was invoked at run time. Thus, the rules use lookup (not formalized) to retrieve the corresponding method definition.</p><p>[Call] then pushes the return register, the current register file, and the remaining instruction sequence onto the stack. It then begins executing the callee's instructions under a new register file mapping the formal parameters to the actual arguments.</p><p>[Ret] handles a return by popping the stack frame and updating the return register.</p><p>The remaining rules introduce abstract values that represent data from "outside" the current method, i.e., from fields and from the framework. [AssnF] looks up the value stored in a register and produces an abstract value representing its field f .</p><p>[FWrite] is a simply no-op, since any subsequent read of the field will represent the read symbolically. [New] handles an allocation, in which a fresh id (meaning one not chosen before and not in the trace) is paired with C and bound in the register file. Finally, [API] binds an abstract value representing the call. Notice this is similar in spirit to reading a field, where rather than try to model a value coming from outside the method, we simply track where it came from.</p><p>To build the trigger diagram, described next, Hogarth runs symbolic path tracing on each relevant handler in the trace. Hogarth starts at the beginning of the handler and runs until reaching a particular instruction-either the target, permissionusing API call, or an intermediate callback on the way to that API call.</p><p>Given a program trace pt = ct 0 , ct 1 , . . . and a particular ct j = C.m( v ) ti , we write C.m( v ) ti * state if state is reachable in zero or more steps of the machine starting in the initial (entry-point) state, defined as</p><formula xml:id="formula_4">lookup(C.m), rf [r i → a(r i , v i )], , true, ti</formula><p>where a(r i , C@id) = C@id and a(r i , ) = r i Here we begin with the instructions of the target method and a register file where each formal parameter r i is bound to a(r i , v i ). The initial stack is empty, the initial path condition is true, and the initial sequence of trace items comes from the callback trace.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Path Splicing</head><p>Finally, we can construct the trigger diagram by splicing together the paths that lead to the permission use. For purposes of this discussion, we assume we have run symbolic path tracing on every callback to every possible location. In our actual implementation (discussed next), we do so on demand to improve performance.</p><p>We begin by choosing an API call C.m( v) of interest in the trace-in our application, this is an API call that requires a permission. Then we add an edge</p><formula xml:id="formula_5">C .m ( v ) φ -→ C.m( v) to the diagram for the C .m ( v ) ti ∈ pt such that C .m ( v ) ti * _, _, _, φ, C.m( v) : ti</formula><p>for some φ. In other words, we add nodes for the callback that contains the target call and for the call itself, and we add an edge between them labeled with the path condition from symbolic path tracing. For example, this corresponds to the edge from flurry.Task.run to location in Figure <ref type="figure" target="#fig_0">1</ref>.</p><p>Next, until we reach a fixed-point, we pick a node C.m( v) in the graph and find all C .m ( v ) ti ∈ pt such that there exists a state In other words, we work backward from the target permission use, adding edges from registrars to callbacks until we can add no more such edges. A call is considered a registration if one of its arguments ( v i ) is the callback receiver ( v 0 ). In our implementation, we further restrict this step to methods known to be callback registrars.</p><p>Finally, we compress the diagram slightly. Notice that, as constructed so far, the diagram may have multiple edges, with different path conditions, between the same pair of nodes. To create the final trigger diagram we combine these edges. For every connected pair of nodes C .m ( v ) and C.m( v) we consider all their path conditions</p><formula xml:id="formula_6">C .m ( v ) φ0 -→ C.m( v) C .m ( v ) φ1 -→ C.m( v) . . .</formula><p>and replace them with a single edge</p><formula xml:id="formula_7">C .m ( v ) φ0∨φ1∨... -----→ C.m( v)</formula><p>In our implementation, we perform some further simplifications to make the diagrams easier to read.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>IV. IMPLEMENTATION</head><p>We implemented Hogarth using Redexer <ref type="bibr" target="#b16">[17]</ref> and Sym-Droid <ref type="bibr" target="#b17">[18]</ref>, the latter of which we had to extend significantly. Our code was written in Java (for the logging machinery) and OCaml (for additions to Redexer and for symbolic path tracing), and comprises around 10K lines of code. In the rest of this section we discuss several unique challenges in implementing Hogarth. An artifact for our submsision is available at the following URL: <ref type="url" target="https://go.umd.edu/hogarth-bar-2019">https://go.umd.edu/hogarth-bar-2019</ref> a) Logging instrumentation: In practice, it is crucial to ensure Hogarth's instrumentation does not affect app performance too much, especially in the UI thread, since Android kills applications whose UI thread becomes non-responsive. Thus, our inserted log calls do not perform logging directly. Instead, they add messages to a ConcurrentLinkedQueue, which uses a wait-free algorithm to communicate with a separate worker thread that retrieves messages from the queue to produce the trace output. In total, the message passing interface adds between 10 and 20 Dalvik instructions for each inserted log call, depending on the number of arguments.</p><p>In our formalism, API calls always return to app code without any intervening calls to the app. But in practice, this may not hold. For example, within a call to java.util.Collections.sort, the framework will call a compare from the app, which will contain logging calls. Our implementation handles this case by extending the symbolic executor to support a nested stack for the call from the framework to the app. b) Symbolic Path Tracing: Recall that the abstract values in Figure <ref type="figure" target="#fig_7">6a</ref> have a fairly rich structure. Hogarth encodes registers, field accesses, and method calls as symbolic variables with special names. For example, an API call value C.m(a) where C is a BufferedReader, m is a readLine, and a is a new C , may be encoded as a symbolic variable named BufferedReader.readLine(new56) where 56 refers to a particular allocation site.</p><p>One issue arises from this encoding: in the presence of loops, we may reuse a symbolic name. This may cause the same symbolic variable to stand for multiple values, which might then yield multiple, possibly contradictory path conditions. To sidestep this issue, we observe that path condition clauses relevant for permission uses typically do not involve variables that change with loop iterations. Thus, if Hogarth is in a loop and is about to reuse a symbolic variable already in the path condition, it heuristically removes all clauses involving that variable before reusing it, strongly updating its meaning in the path condition. In practice this means path conditions only include information about the last iteration of a loop, which in our experience is the most useful behavior.</p><p>As we developed Hogarth, we found that path conditions contain many abstract values for arrays. These values are often uninteresting, and their presence makes path conditions harder to read. Thus, our implementation includes a special abstract value that represents any possible abstract value. We model all arrays as . Constraints on are discarded and not added to the path condition, and abstract values derived from are widened to (e.g., .f evaluates to ).</p><p>A final issue in symbolic path tracing involves &lt;clinit&gt; methods, which are invoked whenever the Dalvik Virtual Machine decides to load a class. Because there is no syntactic call site for such calls, they do not fit well within a trigger diagram. We opted to simply elide such calls from our analysis, which is sound because these methods can never register handlers. c) Inter-callback connections: Recall that we use the EdgeMiner <ref type="bibr" target="#b22">[23]</ref> database to identify possible registrar methods, and then we connect up a registrar with a callback if the receiver of the latter was an argument to the former, using the object id for comparison. While this is largely successful, there are a few cases where Android reuses the same object for different callbacks, particularly Intents and Threads; thus we cannot rely on their object ids. We address this by using a different id in these cases. For Intents (which are essentially key-value maps), we add a magic id field that gets a fresh value each time, and use that in place of the object id. For Threads, we use the thread id in place of the object id.</p><p>d) Demand-driven path splicing: In practice, traces are quite long-in our experiments, up to around 10 million lines. Thus, it is important that Hogarth not perform symbolic path tracing on the entire trace. Instead, Hogarth is demand-driven.</p><p>It first divides the trace into segments, one for each toplevel callback. To begin path tracing, all paths in the trace containing the target permission use are symbolically traced, and the results are combined and put into the trigger diagram. Then, Hogarth works backward one callback at a time, running symbolic path tracing only on callbacks that registered nodes in the diagram so far. We found this approach achieved dramatic speedups compared to an earlier implementation that timed out on even modestly sized logs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>V. EVALUATION</head><p>We evaluated Hogarth using two studies. First, we performed a validation study to confirm that Hogarth's output is correct. We ran Hogarth on five moderately sized apps for which the third author had earlier created trigger diagrams manually. We compared the manual results to Hogarth's results and found they were consistent, except Hogarth's path conditions were sometimes more verbose and Hogarth missed some edges because it relies on dynamic traces.</p><p>Second, we conducted a case study in which we applied Hogarth to 12 popular free apps from Google Play and constructed trigger diagrams for two permission uses per app. We found that Hogarth allowed us to identify triggers for each permission use we studied, analyzing most apps within minutes. Additionally, we found that the path conditions produced by Hogarth were helpful in identifying why apps were accessing permissions.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Validation Study</head><p>To test the correctness of Hogarth, we wanted to compare Hogarth's output to ground truth. We selected five apps that were small enough that they could be manually analyzed by the third author, a reverse engineering expert with professional experience. Our expert decompiled each app with JEB <ref type="bibr" target="#b23">[24]</ref>, identified API calls corresponding to permission uses, and then manually read through the code line-by-line to construct a trigger diagram. JEB simplified the task of manual reverse engineering by allowing variable renaming and the on-demand display of all potential static calls for a given function (using control-flow analysis). We then ran Hogarth on the app and compared its output to our manual results.</p><p>Our first three apps were selected from the F-Droid repository <ref type="bibr" target="#b18">[19]</ref>. Call Recorder <ref type="bibr" target="#b24">[25]</ref> allows users to record calls and store a copy on their device. Hogarth correctly identifies that the microphone is used after recording is enabled. For example, Hogarth finds a path condition that mentions the app's state being in recording mode, and also that the directory in which recordings will be stored exists. Misbothering SMS <ref type="bibr" target="#b25">[26]</ref> mutes notifications for any message sent by a user not in the contacts list. Using Hogarth, we correctly observed that contacts are accessed by a callback after receiving a text message. Third, Contact Merger <ref type="bibr" target="#b26">[27]</ref> identifies duplicate contacts by analyzing a user's contact list and recommending entries that may refer to the same person. Hogarth identified the use of the contacts in this app, but failed to observe the use of contacts whenever a new app was installed, because we did not see this behavior in the generated trace. Incomplete logs, of course, are a limitation of dynamic analysis.</p><p>The next app was SmartStudioProxy, a piece of malware from the Contagio Malware dump <ref type="bibr" target="#b19">[20]</ref>. This app collects a variety of user data and ships it to an attacker <ref type="bibr" target="#b27">[28]</ref>. Hogarth correctly found the triggers for each permission use in the trace, but failed to find a path that was triggered every 30 minutes, as we did not run the app that long.</p><p>The last app was Camera2Basic, an Android example app <ref type="bibr" target="#b28">[29]</ref> that allows the user to take a picture by pressing a button. We modified Camera2Basic by injecting the Dendroid <ref type="bibr" target="#b29">[30]</ref> malware, also from the Contagio dump, into it. Dendroid contacts a remote command-and-control server on a timer. The app may also secretly take a picture, without the user pressing a button, and upload it. Hogarth successfully finds both the legitimate and malicious use of camera in the modified app. For example, Hogarth generated the following path condition for the final handler before using the camera: isConnected(getActiveNetworkInfo(getSystemService("connectivity"))) ∧ getActiveNetworkInfo(...) ∧ readLine(new16) ∧ find(matcher(compile("\(([^)]+)\)"),readLine(new16))) ∧ contains(readLine(new16),"takephoto(") ∧ equals(group(matcher(compile("\(([^)]+)\)"),readLine(new16)),1),"")) ∧ equalsIgnoreCase(get(new7,0),"front(") This path condition checks that the phone is connected to the internet and examines the structure of a command received from the malware command-and-control server, looking for a takePhoto command for the front-facing camera. Other path conditions in the app included several clauses our expert did not report in his analysis because he found them irrelevant For example, Hogarth will include all loop postconditions in the path condition; however, not all postconditions will necessarily be relevant to an auditor's interpretation of the eventual permission use.</p><p>In sum, Hogarth's results generally matched the results from our expert reverse engineer. The key differences were due to missing possible executions because the analysis is dynamic, and due to generating more verbose path conditions.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Case Study</head><p>Next, we applied Hogarth to a range of larger apps to evaluate its scalability and usefulness in a more realistic settig. Specifically, we sought to evaluate whether Hogarth could correctly identify triggers, what information we could learn from the path conditions it generated, and how it scaled to large apps. We selected 12 apps from the dataset used by Micinski et al.'s paper on AppTracer <ref type="bibr" target="#b15">[16]</ref>, which inferred information related to trigger diagrams (see Section VI for more discussion). To choose apps, we ordered Micinski et al.'s list of apps by the number of permission uses reported in that paper, most to least. From this list, we chose the first 12 that did not use multidex 2 , which Hogarth does not currently support. We considered only apps that included uses of two 2 a feature that allows writing apps with more than one Dalvik file to circumvent bytecode size restrictions Log Size 1st P.  We instrumented each app and generated a trace for it by manually running it. We attempted to cover as much app behavior as we could find, e.g., by clicking on all buttons and screens we could (excluding behavior which costs money). We then used the PScout <ref type="bibr" target="#b30">[31]</ref> database to identify API calls in the trace that required permissions. Next, we chose two distinct, "interesting" permissions and selected one use of each at random. Our interesting permissions, in order of priority, were camera (Cam), microphone (Mic), location (Loc), write user settings (Set), user accounts (Acc), external storage (Sto), phone state (Pho), and Near-Field Communication (NFC). For example, if an app used Mic, Set, and Acc, we chose one random use of Mic and one random use of Set.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Results</head><p>The results of our case study are shown in Table <ref type="table" target="#tab_1">I</ref>. Each row in the table corresponds to an app in our dataset. The columns are split into three parts: app metadata (app name, total number of logged lines, and size of app bytecode), results for the first permission use, and results for the second use. For each permission we report the length of the longest path from the permission use to the trigger. For example, if an app accessed location within the onCreate method, this size would be zero. If the app instead registered a callback via setOnClickHandler and the use occurred in that callback, the length of the path would be 1. Last, we report two performance statistics: the number of instructions Hogarth symbolically stepped through and the wall-clock runtime (average of three runs). We ran  Hogarth's analysis step on an 2.5GHz Intel Core i7, 16GB RAM, and an SSD, running Mac OS 10.13.1. a) Triggers: To evaluate the extent to which Hogarth was useful for determing permission-use triggers, we compared its output to Micinski et al.'s AppTracer. AppTracer infers triggers using a dynamic tracing architecture similar to the one used by Hogarth. However, AppTracer uses a temporal locality heuristic to attribute permission uses to UI events <ref type="bibr" target="#b15">[16]</ref>. This heuristic can create ambiguities when triggers are temporally far from their associated permission uses; Hogarth's symbolic path tracing was designed to resolve these ambiguities.</p><p>We found that, in fact, the data we collected matched App-Tracer's results for every permission use where the AppTracer authors marked themselves as certain. In addition, Hogarth allowed us to understand triggers for apps about which App-Tracer provided uncertain results (Ovia, Flip, Cloud Print). In Grubhub and Ringtone Maker, Hogarth was able to identify UI-related triggers that AppTracer missed because they were too far away temporally. We therefore conclude that Hogarth can successfully improve on AppTracer's ability to audit permission-use triggers and identify which are interactive.</p><p>b) Path Conditions: Next, we sought to understand how the path conditions produced by Hogarth could be used to help understand why permissions were used by apps. To do this, we examined the path conditions in each of the trigger diagrams.</p><p>Most path conditions produced by Hogarth include 20-100 clauses, and we were able to examine all of them within five minutes. Broadly, we found that path conditions alone allowed us to understand the app's interaction with the framework, but were less helpful at understanding app state. This is because the Android framework's semantics is consistent across apps (for example, several apps call checkSelfPermission to ensure they have a permission), but understanding parts of the path conditions related to app state often requires reading the app's code. Often this was complicated by obfuscation.</p><p>Table <ref type="table" target="#tab_3">II</ref> details several themes we observed from looking at the path conditions from our case study apps. The most frequent checks we observed in path conditions related to the app being careful about accessing resources to avoid the app crashing. For example, Grubhub called File.exists from within a thread to check that a path exists before writing an app log file for analytics purposes. Next, several apps checked that a particular resource (such as fine-grained location or telephony data) was available before accessing the resource. For example, Samsung Cloud Print checked to ensure IMEI was available before accessing it to send to analytics data to the app's server. Last, we saw several apps that examined the app's configuration or network requests.</p><p>We also inspected each of the produced path conditions to consider how much irrelevant information they contained. We observed two main cases in which Hogarth produced irrelevant information. The first was when apps use large third-party libraries. These libraries are often complicated and generate many branches, which end up in the app's path conditions. For example, Flipp called a networking library to parse data coming from a server, which generated a large number of calls to equalsIgnoreCase as part of parsing a packet. Second, Hogarth often produced large path conditions when it examined longrunning threads, which often performed irrelevant operations before using a permission. In each of these cases, we were able to inspect the path condition and (within several minutes) ascertain the relevant aspects of the path conditions. c) Performance: Finally, we observe that, even given traces with millions of entries, Hogarth takes at most a few minutes. Across our experiments, runtime is usually dominated by the amount of time it takes to parse the log. This is because symbolic path tracing is performed in a demanddriven way, only looking at parts of the trace relevant to the permission use. We observed that, occasionally, Hogarth explores large and irrelevant portions of the log. This is because Hogarth performs symbolic tracing on a per-callback basis. For example, in DoctorOnDemand, Hogarth made 536K calls to the step function because it explored an execution of a particular thread that lasted the length of the execution. In one case, Set in AVG Antivirus, Hogarth timed out because it explored hundreds of similar threads, each of which had very long traces. We believe this problem could be addressed by introducing search heuristics to skip over portions of the trace.</p><p>We believe that Hogarth greatly reduces the task of inferring trigger diagrams. All of the apps in our case study consist of at least several thousand methods, and Hogarth allowed us to understand the conditions under which permissions were used within a few minutes. By contrast, reverse engineering the apps from our validation study took several hours per trigger. Our case study apps were much larger and often included obfuscated code, so we believe that performing this task for those apps would have been significantly more challenging.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D. Limitations and Threats to Validity</head><p>Hogarth has several limitations. First, as Hogarth is a dynamic analysis, it is necessarily incomplete, i.e., it will find app behavior covered in at least one trace, but will miss app behaviors not included in traces. Based on our experience, however, it still produces useful results. Second, Hogarth relies on the EdgeMiner dataset to identify possibly callback registrations. We found several instances in which this dataset was missing certain methods. We thus used an amended dataset in our experiments, but it is possible we might have missed some cases. We also needed to add special handling of Intent objects, which are not callbacks but do effectively trigger other callbacks to run. Last, Hogarth does not support multidex (apps with multiple Dalvik bytecode files) or instrumenting native code, since SymDroid does not include these features. Both could be added with further engineering effort.</p><p>There are several threats to the validity of our results. First, we only study 12 apps in our case study, which may not be indicative of the Android app landscape as a whole. We suspect we might have seen different uses of permissions if we studied lesser-known or explicitly malicious apps. Last, we do not have ground truth for our case study apps, meaning our path conditions could fail to include relevant information. However, we did not observe this in our validation study.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>VI. RELATED WORK</head><p>Contextual Security Analysis for Android: Several researchers have proposed program analyses that aim to infer the various aspects of security-relevant actions in Android apps. Pegasus <ref type="bibr" target="#b11">[12]</ref> analyzes apps to infer Permission Event Graphs (PEGs), which describe the relationship between Android events and permission uses. In contrast to Hogarth's trigger diagrams, PEGs do not include predicates about the app state. Unlike Hogarth, Pegasus requires a system model to operate, and its implementation defines models for 64 methods in the Android API. Unfortunately, this is too small to scale to any to any of the apps we studied in either our validation or case study (which utilize thousands of methods). Hogarth operates without the need for a complete system model by inferring inter-callback connections based on observed registrations.</p><p>Several systems use dataflow analyses to identify triggering conditions in apps. DroidSIFT <ref type="bibr" target="#b12">[13]</ref> builds data-dependency graphs using a context-sensitive, flow-sensitive, interprocedural dataflow analysis to identify either user interactions or system events for sensitive resource use. Similarly, App-Context <ref type="bibr" target="#b8">[9]</ref> identifies interprocedural control-flow paths from program entry points to potentially malicious behaviors. Then AppContext performs a dataflow analysis to identify the conditions that may trigger malicious behaviors.</p><p>Other systems apply symbolic execution to identify triggers in apps. AppIntent <ref type="bibr" target="#b5">[6]</ref> first uses dataflow analysis to identify program paths that may leak private information, and then employs directed symbolic execution on those paths to find inputs that could trigger a leak. As the full Android system is too complicated to effectively apply symbolic execution in a scalable manner, the authors use a system model to assist the analysis. TriggerScope <ref type="bibr" target="#b9">[10]</ref> uses a combination of static analysis and symbolic execution to identify particularly complex trigger conditions associated with potentially malicious code. The tool attempts to detect "logic bombs" by identifying path conditions that are abnormally complex when simplified.</p><p>Hogarth has three key differences with these four systems. First, because we rely on a minimal model of the system, our approach is more resilient to the changes in Android from version to version. Second, because we use dynamic traces to drive further analysis of the application, we achieve a more precise result because all events observed in our dynamic traces are possible. However, because Hogarth depends on a representative corpus of dynamic traces, we cannot guarantee that all permission uses will be exercised. We see Hogarth as complementary to these systems, in that it achieves greater precision and scalability at the cost of completeness.</p><p>FuzzDroid <ref type="bibr" target="#b13">[14]</ref> uses a mutation fuzzer to drive execution of an app toward a specific target location. IntelliDroid <ref type="bibr" target="#b14">[15]</ref> uses static analysis to identify an overapproximation of inputs that could trigger malicious activity and then dynamically executes them to prune false positives. Similarly, SmartDroid <ref type="bibr" target="#b6">[7]</ref> determines interprocedural control-flow paths from app entry points to possibly malicious activity. SmartDroid then executes the app on a modified version of Android, attempting all possible interactions to determine the set of triggers necessary to progress from the entry point to the potentially malicious behavior. These approaches identify a single path that reaches a target, whereas Hogarth identifies the set of conditions that could lead to sensitive resource use. Lastly, AppTracer <ref type="bibr" target="#b15">[16]</ref> uses dynamic analysis to discover what user interactions temporally precede sensitive resource uses. Instead of temporal heuristics, Hogarth uses symbolic path tracing to infer much richer contextual information about sensitive resource uses and identify interactive triggers App-Tracer misses. (This comparison is detailed in Section V-C.)</p><p>Taint and Flow Analysis for Android: TaintDroid <ref type="bibr" target="#b31">[32]</ref> modifies the Android firmware to perform system-wide dynamic taint-tracking and notifies the user whenever sensitive data is leaked. Phosphor <ref type="bibr" target="#b32">[33]</ref> provides similar taint-tracking, but instead modifies the JVM to improve portability. Flow-Droid <ref type="bibr" target="#b4">[5]</ref> uses static dataflow analysis find sensitive data leaks. User-centric dependence analysis <ref type="bibr" target="#b33">[34]</ref> uses a dataflow dependence analysis to characterize "normal" data consumption behaviors along paths from user inputs to sensitive resource uses. These tools all focus on data flow, which is orthogonal to the control-flow dependencies that Hogarth discovers.</p><p>Concolic Execution: One style of symbolic execution is concolic execution <ref type="bibr" target="#b20">[21]</ref>, <ref type="bibr" target="#b34">[35]</ref>, <ref type="bibr" target="#b35">[36]</ref>, in which programs are instrumented to track symbolic expressions at run-time along with their concrete counterparts in the actual run. Hogarth is similar in spirit in that it performs symbolic execution on a path corresponding to a program execution. However, rather than using the result to branch and explore further executions, Hogarth presents path conditions as output in trigger diagrams. Moreover, rather than concretize at system calls, Hogarth introduces symbolic variables to represent those calls and then finds path conditions in terms of those variables.</p><p>Dynamic Slicing: Dynamic slicing <ref type="bibr" target="#b36">[37]</ref>, <ref type="bibr" target="#b37">[38]</ref> is a related approach that has also been used to investigate contextual security in Android apps <ref type="bibr" target="#b38">[39]</ref>. A static program slice is the minimal set of program expressions that may affect a given program value. A dynamic slice is a minimal subset of the program that actually does affect the target value for a provided input. Dynamic slicing considers a specific execution trace and effectively eliminates all code in the static slice that is unrelated to the target for the trace. Our approach is related as it reasons about dependencies that were observed to cause a permission use. However, Hogarth infers symbolic path conditions and coarser control-flow information-a callback sequence-rather than a more precise dynamic slice.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>VII. CONCLUSION AND FUTURE WORK</head><p>In this paper we introduced Hogarth, a new tool to create trigger diagrams that explain the cause of permission uses in Android apps. Hogarth works by using two novel techniques. The first is symbolic path tracing, which performs symbolic execution along a dynamically-generated program trace. The second is path splicing, which splices together callbacks with the callbacks in which they are registered. This allows Hogarth to work without a detailed model of the Android framework. Our implementation performs demand-driven path splicing, which enabled it to scale to 12 top applications from Google Play, generally taking only minutes to explore apps that generated logs comprising millions of lines.</p><p>We believe that Hogarth provides a promising proof of concept, and we think the approach has the potential to be of significant aid in debugging, reverse engineering, and other auditing purposes.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Fig. 1 :</head><label>1</label><figDesc>Fig. 1: Trigger diagram for the Ovia Pregnancy app.</figDesc><graphic coords="1,383.51,205.96,108.00,84.13" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Fig. 2 :</head><label>2</label><figDesc>Fig. 2: Hogarth's architecture.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Mtd &gt; 1 Fig. 3 :</head><label>13</label><figDesc>Fig. 3: Two partial traces for Ovia.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Fig. 4 :</head><label>4</label><figDesc>Fig. 4: Simplified Dalvik bytecode.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 6 formalizes</head><label>6</label><figDesc>Figure 6 formalizes symbolic path tracing, which symbolically executes a program along the path in a given trace. Hogarth uses symbolic path traces as a subroutine when constructing a trigger diagram.We describe symbolic path tracing as a series of operational rules over machine states i, rf , κ, φ, ti . Here i is the sequence of instructions remaining to be executed. The register file rf maps registers to abstract values a, which include constants, object id s paired with classes, and operations among abstract values, which are standard. Abstract values also include r, which stands for the value read from a register (here, always a method parameter); a.f , which stands the value read from a field of an object; and C.m( a), which stands for the value returned from an API call with arguments a (where, again, the first argument is the receiver object). These last three forms allow Hogarth to track the conditions on "inputs" to the callback from parameters or from values returned by the Android framework.Each machine state also includes a stack κ, a (possiblyempty) sequence of triples (r, rf , i), where r is the register to be written upon returning, rf is the previous register file to reinstate, and i is the sequence of instructions to resume upon returning. The last two items in the machine state are the path condition φ, a (boolean) abstract value, and ti , the remaining trace to be followed.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head></head><label></label><figDesc>state</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head></head><label></label><figDesc>φ, ti where id fresh r ← r.m( r) : i, rf , κ, φ, C.m( v ) : ti [API] i, rf [r → C.m(rf ( r))], κ, φ, ti (b) Abstract machine semantics.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head>Fig. 6 :</head><label>6</label><figDesc>Fig. 6: Formalism for symbolic path tracing.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head>_</head><label></label><figDesc>, _, _, φ, C .m ( v ) : ti , where v 0 = v i , for some i and add an edge C .m ( v ) φ -→ C.m( v) to the trigger diagram.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>TABLE I :</head><label>I</label><figDesc>Case study results.</figDesc><table /><note><p>different permissions (excluding internet and wifi state, which AppTracer's authors considered uninteresting).</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>TABLE II :</head><label>II</label><figDesc>Themes Observed in Path Conditions.</figDesc><table /></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>Named after one of the main characters in the movie The Iron Giant. Just because.</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>ACKNOWLEDGMENTS</head><p>We thank <rs type="person">Seth Rabin</rs> and the anonymous reviewers for their helpful feedback. This research was supported in part by a <rs type="funder">UMIACS</rs> contract under the partnership between the <rs type="institution">University of Maryland and DoD</rs>, and by a <rs type="funder">Google Research Award</rs>.</p></div>
+			</div>
+			<listOrg type="funding">
+			</listOrg>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">little brothers watching you&quot;: Raising awareness of data leaks on smartphones</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Balebako</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Jung</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">F</forename><surname>Cranor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Nguyen</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/2501604.2501616</idno>
+		<idno>12:1-12:11</idno>
+		<ptr target="http://doi.acm.org/10.1145/2501604.2501616" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 9th Symposium on Usable Privacy and Security, ser. SOUPS &apos;13</title>
+		<meeting>the 9th Symposium on Usable Privacy and Security, ser. SOUPS &apos;13<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">No technical understanding required: Helping users make informed choices about access to their personal data</title>
+		<author>
+			<persName><forename type="first">I</forename><surname>Liccardi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Pato</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">J</forename><surname>Weitzner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Abelson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>De Roure</surname></persName>
+		</author>
+		<idno type="DOI">10.4108/icst.mobiquitous.2014.258066</idno>
+		<ptr target="http://dx.doi.org/10.4108/icst.mobiquitous.2014.258066" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 11th International Conference on Mobile and Ubiquitous Systems: Computing, Networking and Services, ser. MOBIQUITOUS &apos;14</title>
+		<meeting>the 11th International Conference on Mobile and Ubiquitous Systems: Computing, Networking and Services, ser. MOBIQUITOUS &apos;14<address><addrLine>Brussels, Belgium, Belgium</addrLine></address></meeting>
+		<imprint>
+			<publisher>ICST</publisher>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="140" to="150" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Leakiness and creepiness in app space: Perceptions of privacy and mobile app use</title>
+		<author>
+			<persName><forename type="first">I</forename><surname>Shklovski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">D</forename><surname>Mainwaring</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><forename type="middle">H</forename><surname>Skúladóttir</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Borgthorsson</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/2556288.2557421</idno>
+		<ptr target="http://doi.acm.org/10.1145/2556288.2557421" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 32nd ACM Conference on Human Factors in Computing Systems, ser. CHI &apos;14</title>
+		<meeting>the 32nd ACM Conference on Human Factors in Computing Systems, ser. CHI &apos;14<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="2347" to="2356" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">When it&apos;s better to ask forgiveness than get permission: Attribution mechanisms for smartphone resources</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Thompson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Johnson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Egelman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wagner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>King</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/2501604.2501605</idno>
+		<ptr target="http://doi.acm.org/10.1145/2501604.2501605" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 9th Symposium on Usable Privacy and Security, ser. SOUPS &apos;13</title>
+		<meeting>the 9th Symposium on Usable Privacy and Security, ser. SOUPS &apos;13<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="1" to="1" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Flowdroid: Precise context, flow, field, object-sensitive and lifecycle-aware taint analysis for android apps</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Arzt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Rasthofer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Fritz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Bodden</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bartel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Klein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Le Traon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Octeau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Mcdaniel</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/2594291.2594299</idno>
+		<ptr target="http://doi.acm.org/10.1145/2594291.2594299" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 35th ACM Conference on Programming Language Design and Implementation, ser. PLDI &apos;14</title>
+		<meeting>the 35th ACM Conference on Programming Language Design and Implementation, ser. PLDI &apos;14<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="259" to="269" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Appintent: analyzing sensitive data transmission in android for privacy leakage detection</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Gu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Ning</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><forename type="middle">S</forename><surname>Wang</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/2508859.2516676</idno>
+		<ptr target="http://doi.acm.org/10.1145/2508859.2516676" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 20th ACM conference on Computer &amp;#38; communications security, ser. CCS &apos;13</title>
+		<meeting>the 20th ACM conference on Computer &amp;#38; communications security, ser. CCS &apos;13<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page" from="1043" to="1054" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Smartdroid: An automatic system for revealing ui-based trigger conditions in android applications</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Dai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Gu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Gong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Han</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zou</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/2381934.2381950</idno>
+		<ptr target="http://doi.acm.org/10.1145/2381934.2381950" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2nd ACM Workshop on Security and Privacy in Smartphones and Mobile Devices, ser. SPSM &apos;12</title>
+		<meeting>the 2nd ACM Workshop on Security and Privacy in Smartphones and Mobile Devices, ser. SPSM &apos;12<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2012">2012</date>
+			<biblScope unit="page" from="93" to="104" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Static control-flow analysis of user-driven callbacks in android applications</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Yan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Rountev</surname></persName>
+		</author>
+		<ptr target="http://dl.acm.org/citation.cfm?id=2818754.2818768" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 37th International Conference on Software Engineering</title>
+		<meeting>the 37th International Conference on Software Engineering<address><addrLine>Piscataway, NJ, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>IEEE Press</publisher>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="89" to="99" />
+		</imprint>
+	</monogr>
+	<note>ser. ICSE &apos;15</note>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Appcontext: Differentiating malicious and benign mobile app behaviors using context</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Xiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Andow</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Enck</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 37th IEEE International Conference on Software Engineering, ser. ICSE &apos;15</title>
+		<meeting>the 37th IEEE International Conference on Software Engineering, ser. ICSE &apos;15<address><addrLine>Florence, Italy</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2015-05">May 2015</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="303" to="313" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Triggerscope: Towards detecting logic bombs in android applications</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Fratantonio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bianchi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Robertson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Kirda</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Kruegel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Vigna</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 37th IEEE Symposium on Security and Privacy, ser. IEEE S&amp;P &apos;16</title>
+		<meeting>the 37th IEEE Symposium on Security and Privacy, ser. IEEE S&amp;P &apos;16<address><addrLine>San Jose, CA</addrLine></address></meeting>
+		<imprint>
+			<publisher>IEEE Press</publisher>
+			<date type="published" when="2016-05">May 2016</date>
+			<biblScope unit="page" from="377" to="396" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Selective control-flow abstraction via jumping</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Blackshear</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B.-Y</forename><forename type="middle">E</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Sridharan</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/2814270.2814293</idno>
+		<ptr target="http://doi.acm.org/10.1145/2814270.2814293" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 30th ACM International Conference on Object-Oriented Programming, Systems, Languages, and Applications, ser. OOPSLA &apos;15</title>
+		<meeting>the 30th ACM International Conference on Object-Oriented Programming, Systems, Languages, and Applications, ser. OOPSLA &apos;15<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="163" to="182" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Contextual policy enforcement in android applications with permission event graphs</title>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">Z</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">M</forename><surname>Johnson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Silva</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Dai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Macnamara</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">R</forename><surname>Magrino</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">X</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Rinard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">X</forename><surname>Song</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 20th Network and Distributed System Security Symposium, ser. NDSS &apos;13</title>
+		<meeting>the 20th Network and Distributed System Security Symposium, ser. NDSS &apos;13<address><addrLine>San Diego, CA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Internet Society</publisher>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page">234</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Semantics-aware android malware classification using weighted contextual api dependency graphs</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Duan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Yin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhao</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/2660267.2660359</idno>
+		<ptr target="http://doi.acm.org/10.1145/2660267.2660359" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 21st ACM Conference on Computer and Communications Security, ser. CCS &apos;14</title>
+		<meeting>the 21st ACM Conference on Computer and Communications Security, ser. CCS &apos;14<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="1105" to="1116" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Making malory behave maliciously: Targeted fuzzing of android execution environments</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Rasthofer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Arzt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Triller</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Pradel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 39th International Conference on Software Engineering, ser. ICSE &apos;17</title>
+		<meeting>the 39th International Conference on Software Engineering, ser. ICSE &apos;17<address><addrLine>Buenos Aires, Argentina</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="300" to="311" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Intellidroid: A targeted input generator for the dynamic analysis of android malware</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">Y</forename><surname>Wong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Lie</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 23rd Network and Distributed System Security Symposium, ser. NDSS &apos;16</title>
+		<meeting>the 23rd Network and Distributed System Security Symposium, ser. NDSS &apos;16<address><addrLine>San Diego, CA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Internet Society</publisher>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">User interactions and permission use on android</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Micinski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Votipka</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Stevens</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Kofinas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">L</forename><surname>Mazurek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">S</forename><surname>Foster</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3025453.3025706</idno>
+		<ptr target="http://doi.acm.org/10.1145/3025453.3025706" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 35th ACM Conference on Human Factors in Computing Systems, ser. CHI &apos;17</title>
+		<meeting>the 35th ACM Conference on Human Factors in Computing Systems, ser. CHI &apos;17<address><addrLine>Denver, Colorado, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="362" to="373" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Dr. android and mr. hide: fine-grained permissions in android applications</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Jeon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">K</forename><surname>Micinski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">A</forename><surname>Vaughan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Fogel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Reddy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">S</forename><surname>Foster</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Millstein</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2nd ACM Workshop on Security and Privacy in Smartphones and Mobile Devices, ser. SPSM &apos;12</title>
+		<meeting>the 2nd ACM Workshop on Security and Privacy in Smartphones and Mobile Devices, ser. SPSM &apos;12<address><addrLine>Raleigh, NC, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2012">2012</date>
+			<biblScope unit="page" from="3" to="14" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<monogr>
+		<title level="m" type="main">Symbolic execution for dalvik bytecode</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Jeon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">K</forename><surname>Micinski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">S</forename><surname>Foster</surname></persName>
+		</author>
+		<idno>CS-TR-5022</idno>
+		<imprint>
+			<date type="published" when="2012">2012</date>
+		</imprint>
+		<respStmt>
+			<orgName>University of Maryland</orgName>
+		</respStmt>
+	</monogr>
+	<note type="report_type">Tech Report</note>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<monogr>
+		<title level="m" type="main">F-droid -free and open source android repository</title>
+		<author>
+			<persName><forename type="first">F.-D</forename><surname>Limited</surname></persName>
+		</author>
+		<ptr target="https://f-droid.org/" />
+		<imprint>
+			<date type="published" when="2017-11">2017. Accessed 4-11-2017</date>
+		</imprint>
+	</monogr>
+	<note>F-Droid Limited</note>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Contagio mobile</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Parkour</surname></persName>
+		</author>
+		<ptr target="http://contagiominidump.blogspot.com/" />
+	</analytic>
+	<monogr>
+		<title level="j">Mila Parkour</title>
+		<imprint>
+			<date type="published" when="2017-04">2017. 4-11-2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">EXE: Automatically generating inputs of death</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Cadar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Ganesh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">M</forename><surname>Pawlowski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">L</forename><surname>Dill</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">R</forename><surname>Engler</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/1180405.1180445</idno>
+		<ptr target="http://dx.doi.org/10.1145/1180405.1180445" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 13th ACM Conference on Computer and Communications Security, ser. CCS &apos;06</title>
+		<meeting>the 13th ACM Conference on Computer and Communications Security, ser. CCS &apos;06<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2006">2006</date>
+			<biblScope unit="page" from="322" to="335" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">KLEE: Unassisted and automatic generation of high-coverage tests for complex systems programs</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Cadar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Dunbar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Engler</surname></persName>
+		</author>
+		<ptr target="http://portal.acm.org/citation.cfm?id=1855756" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 8th USENIX Conference on Operating Systems Design and Implementation, ser. OSDI&apos;08</title>
+		<meeting>the 8th USENIX Conference on Operating Systems Design and Implementation, ser. OSDI&apos;08<address><addrLine>Berkeley, CA, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>USENIX Association</publisher>
+			<date type="published" when="2008">2008</date>
+			<biblScope unit="page" from="209" to="224" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Edgeminer: Automatically detecting implicit control flow transitions through the android framework</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Cao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Fratantonio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bianchi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Egele</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Kruegel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Vigna</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Chen</surname></persName>
+		</author>
+		<ptr target="http://www.internetsociety.org/doc/edgeminer-automatically-detecting\-implicit-control-flow-transitions\-through\-android-framework" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 22nd Network and Distributed System Security Symposium, ser. NDSS &apos;15</title>
+		<meeting>the 22nd Network and Distributed System Security Symposium, ser. NDSS &apos;15<address><addrLine>San Diego, CA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Internet Society</publisher>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Jeb decompiler</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Software</surname></persName>
+		</author>
+		<ptr target="www.pnfsoftware.com" />
+	</analytic>
+	<monogr>
+		<title level="j">PNF Software</title>
+		<imprint>
+			<date type="published" when="2017-05">2017. 5-19-2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<monogr>
+		<title level="m" type="main">Misbothering sms receiver</title>
+		<author>
+			<persName><surname>Axet</surname></persName>
+		</author>
+		<ptr target="https://f-droid.org/packages/com.github.axet.callrecorder/" />
+		<imprint>
+			<date type="published" when="2015-04">2015. 4-11-2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<monogr>
+		<title level="m" type="main">Misbothering sms receiver</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Yalon</surname></persName>
+		</author>
+		<ptr target="https://f-droid.org/repository/browse/?fdfilter=Misbothering+SMS+Receiver&amp;fdid=net.yxejamir.misbotheringsms" />
+		<imprint>
+			<date type="published" when="2015-08-25">2015. 8-25-2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<monogr>
+		<title level="m" type="main">Contact merger</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Treffer</surname></persName>
+		</author>
+		<ptr target="https://f-droid.org/repository/browse/?fdfilter=contacts&amp;fdid=de.measite.contactmerger" />
+		<imprint>
+			<date type="published" when="2014-04">2014. 4-11-2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<monogr>
+		<title level="m" type="main">Android trojan spy goes 2 year undetected</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Stefanko</surname></persName>
+		</author>
+		<ptr target="http://b0n1.blogspot.com/2015/04/android-trojan-spy-goes-2-years.html?spref=tw" />
+		<imprint>
+			<date type="published" when="2015-04">2015. 4-11-2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<monogr>
+		<title level="m" type="main">Camera2basic android sample app</title>
+		<author>
+			<persName><forename type="first">Inc</forename><surname>Google</surname></persName>
+		</author>
+		<ptr target="https://github.com/googlesamples/android-Camera2Basic" />
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Dendroid malware can take over your camera, record audio, and sneak into google play</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Rogers</surname></persName>
+		</author>
+		<ptr target="https://blog.lookout.com/blog/2014/03/06/dendroid/" />
+	</analytic>
+	<monogr>
+		<title level="j">Lookout Inc</title>
+		<imprint>
+			<date type="published" when="2014-04">2014. 4-11-2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Pscout: Analyzing the android permission specification</title>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">W Y</forename><surname>Au</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><forename type="middle">F</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Lie</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/2382196.2382222</idno>
+		<ptr target="http://doi.acm.org/10.1145/2382196.2382222" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 19th ACM Conference on Computer and Communications Security, ser. CCS &apos;12</title>
+		<meeting>the 19th ACM Conference on Computer and Communications Security, ser. CCS &apos;12<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2012">2012</date>
+			<biblScope unit="page" from="217" to="228" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Taintdroid: An information-flow tracking system for realtime privacy monitoring on smartphones</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Enck</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Gilbert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B.-G</forename><surname>Chun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">P</forename><surname>Cox</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Jung</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Mcdaniel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">N</forename><surname>Sheth</surname></persName>
+		</author>
+		<ptr target="http://dl.acm.org/citation.cfm?id=" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 9th USENIX Conference on Operating Systems Design and Implementation, ser. OSDI&apos;10</title>
+		<meeting>the 9th USENIX Conference on Operating Systems Design and Implementation, ser. OSDI&apos;10<address><addrLine>Berkeley, CA, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>USENIX Association</publisher>
+			<date type="published" when="2010">2010. 1924943. 1924971</date>
+			<biblScope unit="page" from="393" to="407" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Phosphor: Illuminating dynamic data flow in commodity jvms</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Bell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Kaiser</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/2660193.2660212</idno>
+		<ptr target="http://doi.acm.org/10.1145/2660193.2660212" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 29th ACM International Conference on Object Oriented Programming Systems Languages &amp; Applications, ser. OOPSLA &apos;14</title>
+		<meeting>the 29th ACM International Conference on Object Oriented Programming Systems Languages &amp; Applications, ser. OOPSLA &apos;14<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="83" to="101" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">User-centric dependence analysis for identifying malicious mobile apps</title>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">O</forename><surname>Elish</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Yao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">G</forename><surname>Ryder</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 1st Workshop on Mobile Security Technologies, ser. MoST &apos;12</title>
+		<meeting>the 1st Workshop on Mobile Security Technologies, ser. MoST &apos;12<address><addrLine>San Jose, CA</addrLine></address></meeting>
+		<imprint>
+			<publisher>IEEE Press</publisher>
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Dart: Directed automated random testing</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Godefroid</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Klarlund</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Sen</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/1065010.1065036</idno>
+		<ptr target="http://doi.acm.org/10.1145/1065010.1065036" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 28th ACM Conference on Programming Language Design and Implementation, ser. PLDI &apos;05</title>
+		<meeting>the 28th ACM Conference on Programming Language Design and Implementation, ser. PLDI &apos;05<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2005">2005</date>
+			<biblScope unit="page" from="213" to="223" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Cute: A concolic unit testing engine for c</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Sen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Marinov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Agha</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/1081706.1081750</idno>
+		<ptr target="http://doi.acm.org/10.1145/1081706.1081750" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 10th European Software Engineering Conference Held Jointly with 13th ACM SIGSOFT International Symposium on Foundations of Software Engineering, ser. ESEC/FSE-13</title>
+		<meeting>the 10th European Software Engineering Conference Held Jointly with 13th ACM SIGSOFT International Symposium on Foundations of Software Engineering, ser. ESEC/FSE-13<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2005">2005</date>
+			<biblScope unit="page" from="263" to="272" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Program slicing</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Weiser</surname></persName>
+		</author>
+		<ptr target="http://dl.acm.org/citation.cfm?id=800078.802557" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 5th International Conference on Software Engineering, ser. ICSE &apos;81</title>
+		<meeting>the 5th International Conference on Software Engineering, ser. ICSE &apos;81<address><addrLine>Piscataway, NJ, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>IEEE Press</publisher>
+			<date type="published" when="1981">1981</date>
+			<biblScope unit="page" from="439" to="449" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Dynamic program slicing</title>
+		<author>
+			<persName><forename type="first">H</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">R</forename><surname>Horgan</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/93542.93576</idno>
+		<ptr target="http://doi.acm.org/10.1145/93542.93576" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 12th ACM Conference on Programming Language Design and Implementation, ser. PLDI &apos;90</title>
+		<meeting>the 12th ACM Conference on Programming Language Design and Implementation, ser. PLDI &apos;90<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="1990">1990</date>
+			<biblScope unit="page" from="246" to="256" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Mass discovery of android traffic imprints through instantiated partial execution</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>You</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zou</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2017 ACM SIGSAC Conference on Computer and Communications Security</title>
+		<meeting>the 2017 ACM SIGSAC Conference on Computer and Communications Security<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="815" to="828" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

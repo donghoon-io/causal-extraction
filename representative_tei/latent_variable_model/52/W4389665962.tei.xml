@@ -1,0 +1,1339 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">LEF: Late-to-Early Temporal Fusion for LiDAR 3D Object Detection</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability  status="unknown">
+					<licence/>
+				</availability>
+				<date type="published" when="2023-09-28">28 Sep 2023</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Tong</forename><surname>He</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Pei</forename><surname>Sun</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Zhaoqi</forename><surname>Leng</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Chenxi</forename><surname>Liu</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Dragomir</forename><surname>Anguelov</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Mingxing</forename><surname>Tan</surname></persName>
+						</author>
+						<title level="a" type="main">LEF: Late-to-Early Temporal Fusion for LiDAR 3D Object Detection</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2023-09-28">28 Sep 2023</date>
+						</imprint>
+					</monogr>
+					<idno type="arXiv">arXiv:2309.16870v1[cs.CV]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-28T22:40+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>We propose a late-to-early recurrent feature fusion scheme for 3D object detection using temporal LiDAR point clouds. Our main motivation is fusing object-aware latent embeddings into the early stages of a 3D object detector. This feature fusion strategy enables the model to better capture the shapes and poses for challenging objects, compared with learning from raw points directly. Our method conducts lateto-early feature fusion in a recurrent manner. This is achieved by enforcing window-based attention blocks upon temporally calibrated and aligned sparse pillar tokens. Leveraging bird's eye view foreground pillar segmentation, we reduce the number of sparse history features that our model needs to fuse into its current frame by 10×. We also propose a stochastic-length FrameDrop training technique, which generalizes the model to variable frame lengths at inference for improved performance without retraining. We evaluate our method on the widely adopted Waymo Open Dataset and demonstrate improvement on 3D object detection against the baseline model, especially for the challenging category of large objects.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>I. INTRODUCTION</head><p>The goal of LiDAR temporal fusion is aggregating learned history information to improve point clouds based tasks. The history information could be of various implicit (e.g. latent embeddings), explicit (e.g. point clouds, 3D box tracklets) representations or a mixture of both, depending on the models and tasks at hand. Temporal fusion is critical for multiple driving related tasks, such as 3D object detection, tracking, segmentation, and behavior prediction. Here we mainly study LiDAR-based fusion methods for 3D object detection, which is a crucial task for recognizing and localizing surrounding objects in modern autonomous driving systems. Point clouds of a single frame can only serve as partial observation of the scenes, lacking complete coverage of environment context and agent dynamics. This information bottleneck is caused by several factors such as object self-occlusion, occlusion by other objects, sensor field-of-view limitation, and data noises. Moreover, for moving objects, models with only singleframe data will struggle to understand their short-term states (velocities, accelerations) and long-term intentions (future trajectories). Tackling these issues demands effective ways of LiDAR temporal fusion, which can enable the model to understand scene / object attributes and dynamics from a wide time horizon.</p><p>The main challenge of temporal fusion is how to represent and aggregate the long-sequence information of history frames. See Figure <ref type="figure">1a</ref> for a high-level illustration and comparison. Generally speaking, previous solutions can be classified into two types. One of the most widely used methods is early-to-early fusion based point cloud stacking.  Fig. <ref type="figure">1</ref>: Comparisons of temporal fusion approaches. Our late-to-early fusion approach achieves better detection quality (e.g. 54.4 3D AP for the challenging large objects) than previous early-to-early and late-to-late methods.</p><p>Multi-frame LiDAR points are directly stacked together as model inputs, resulting in better performance than a single frame of LiDAR points. However, the performance quickly saturates when more frames are simply stacked together <ref type="bibr" target="#b0">[1]</ref> without careful modeling of the inter-frame relationships. Moreover, each frame needs to be repeatedly processed when they are stacked into different adjacent frames, greatly increasing computation cost. Fitting long sequences will also greatly increase memory cost, reduce model efficiency or even result in out of memory (OOM) issues. Ideally, a model should leverage what it has already learned from the data, not simply stacking its raw sensory inputs. To overcome this issue, another type of fusion methods turn to late-tolate fusion so as to utilize the learned history embeddings. A representative method is ConvLSTM <ref type="bibr" target="#b0">[1]</ref> which recurrently fuses latent embeddings between consecutive frames at deep layers of the model. This approach reduces memory usage and computation cost, but its results are usually inferior to early-to-early fusion, as shown in Figure <ref type="figure">1b</ref>. We suspect that this is because the backbone only has access to single-frame data before late fusion happens. The task of understanding temporally fused deep features falls upon the detection heads, which usually consist of low-capacity multi-layer perceptron (MLP) layers. Consequently, most state-of-the-art LiDAR 3D object detectors (e.g. PVRCNN++ <ref type="bibr" target="#b1">[2]</ref>, <ref type="bibr" target="#b2">[3]</ref>, CenterPoint <ref type="bibr" target="#b3">[4]</ref>, SST <ref type="bibr" target="#b4">[5]</ref>, SWFormer <ref type="bibr" target="#b5">[6]</ref>, etc.) still rely on early-to-early fusion with point cloud stacking.</p><p>In this paper, we propose a new fusion method named LEF: Late-to-Early temporal Fusion. We argue that this fusion scheme can leverage learned history knowledge, and in the meantime its backbone does not suffer from singleframe data deficiency issues. Long history LIDAR fusion is a fundamental block for autonomous driving, and our work opens a promising direction to achieving that goal. There are three main contributions in our paper:</p><p>• We propose a recurrent architecture that fuses latestage sparse pillar features into early stages of the next frame. To align the underlying static objects, we propose an inverse calibration and alignment module to fuse history and current sparse sets of pillar features. As for moving objects, we leverage window-based attention layers, which can associate relevant features within the windows and thus connect pillar tokens that belong to the same object. The proposed late-to-early temporal fusion scheme leads to improved 3D detection results on the widely used Waymo Open Dataset (WOD) <ref type="bibr" target="#b6">[7]</ref> and demonstrates large gains on challenging large objects. We also conduct extensive ablation studies on various design choices made in our method, providing several interesting insights.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>II. RELATED WORK</head><p>3D Object Detection. LiDAR-based 3D object detection plays an essential role in autonomous driving. Early efforts of research such as PointRCNN <ref type="bibr" target="#b7">[8]</ref> usually operate on raw 3D point clouds through PointNet(++) <ref type="bibr" target="#b8">[9]</ref>- <ref type="bibr" target="#b10">[11]</ref>. But they struggle to generalize to large-scale data, such as longsequence fused LiDAR <ref type="bibr" target="#b6">[7]</ref> with millions of points. Heavily relying on MLP-based backbones, these detectors are soon outperformed by models with more advanced architectures like submanifold sparse convolution <ref type="bibr" target="#b11">[12]</ref> or Transformers <ref type="bibr" target="#b12">[13]</ref>- <ref type="bibr" target="#b14">[15]</ref>. By voxelizing free-shape point sets into regular 2D<ref type="foot" target="#foot_0">foot_0</ref> or 3D-shape voxels, LiDAR-based detectors <ref type="bibr" target="#b15">[16]</ref>- <ref type="bibr" target="#b17">[18]</ref> can leverage numerous advancements on image 2D object detection, and start to demonstrate promising 3D detection results. Particularly, CenterPoint <ref type="bibr" target="#b3">[4]</ref> utilizes sparse convolution layers and CenterNet-based detection heads <ref type="bibr" target="#b18">[19]</ref> to predict 3D boxes. Some recent works, such as SST <ref type="bibr" target="#b19">[20]</ref> and SWFormer <ref type="bibr" target="#b5">[6]</ref>, exploit Swin-Transformer <ref type="bibr" target="#b20">[21]</ref> and push the detection performance to a new state of the art. Meanwhile, several methods <ref type="bibr" target="#b1">[2]</ref>, <ref type="bibr" target="#b2">[3]</ref>, <ref type="bibr" target="#b21">[22]</ref>- <ref type="bibr" target="#b29">[30]</ref> look into alternative LiDAR representations and strive towards a balance between detection efficiency and efficacy.</p><p>LiDAR Temporal Fusion. Compared with the rapid progresses achieved on 3D detection backbones, approaches of LiDAR temporal fusion are less well-studied. Point clouds of a single frame in WOD <ref type="bibr" target="#b6">[7]</ref> have already caused huge computation burden (i.e., ∼200k points), let alone long history sequences. As briefly discussed in the introduction section, LiDAR temporal fusion solutions can be generally classified into three types: early-to-early, late-to-late and lateto-early fusion. Early-to-early fusion is also referred to as point cloud stacking. It is most widely adopted in recent LiDAR object detectors (e.g. CenterPoint <ref type="bibr" target="#b3">[4]</ref>, RSN <ref type="bibr" target="#b21">[22]</ref>, SWFormer <ref type="bibr" target="#b5">[6]</ref>, etc.) due to its simple setup. Multi-frame point sets are merged together. Timestamp offsets w.r.t. to the current frame are appended to sensory signals of each 3D point to serve as markers indicating different frame sources. However, point stacking struggles to work on long sequences due to the cost of fusing, saving and jointly preprocessing millions of points. It is also possible to use a Transformer to early fuse point clouds from different frames <ref type="bibr" target="#b30">[31]</ref>. While early-to-early fusion simply stacks raw sensory inputs without carefully modeling inter-frame relationships and ignores knowledge learned from prior frames, late-to-late fusion tries to tackle these issues by ConvLSTM <ref type="bibr" target="#b0">[1]</ref>, <ref type="bibr" target="#b31">[32]</ref>. It recurrently fuses sparse latent embeddings between deep layers of the backbone with improved efficiency than point stacking, but the results are often not as competitive as early-to-early fusion. This is presumably because its backbone can only utilize single-frame data until fusion happens at deep layers. 3D-MAN <ref type="bibr" target="#b32">[33]</ref> may also be viewed as a form of late-tolate fusion, because the temporal fusion in this method is done through various kinds of cross-attention between box proposals and features in the memory bank, which are both after the backbone of its network. FaF <ref type="bibr" target="#b33">[34]</ref> studied both early fusion and late fusion. To the best of our knowledge, late-to-early fusion has not been explored before in LiDAR detectors. A similar fusion framework is studied in <ref type="bibr" target="#b34">[35]</ref> but targeting on camera-based detection. It faces very different challenges from our problems. We need to process sparsely distributed 3D data at wide ranges, which requires dedicated designs for sparse features alignment, fusion and also new training recipes.</p><p>Finally, we note that our review so far concentrates on a single-stage trainable model that internalizes the temporal fusion schemes. It is also possible to follow up the box predictions with a second-stage offline refinement, using the terminology from a recent exemplar of this two-stage approach, MPPNet <ref type="bibr" target="#b35">[36]</ref>. MPPNet runs a pre-trained Center-Point <ref type="bibr" target="#b3">[4]</ref> on 4-frame stacked LiDAR point clouds to generate anchor boxes, which will then be tracked and aggregated across long sequences. Specifically, latent embeddings or raw points within the box regions of one frame will be cropped and intertwined with those extracted from other frames in order to refine the box states. The key differentiating factor about the two-stage approach is that the two stages / models are trained separately <ref type="bibr" target="#b35">[36]</ref>, suggesting that the improvement inherently built into the first stage, like ours, is complementary to the second-stage innovation.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>III. METHOD</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Problem Statement</head><p>We use {P i }, i = 1, ..., T to represent a consecutive sequence of LiDAR point clouds with</p><formula xml:id="formula_0">P i : {X i,j ∈ R 3 }, j = 1, ..., N i . Our goal is to detect 3D object boxes {B i,m }, m = 1, ..., M i for each frame-t using {P i | i ⩽ t}.</formula><p>Ideally the model should be capable of fusing history information F (P 1 , ..., P t ) up to the current timestamp-t, where F (•) denotes the fusion function. LiDAR temporal fusion is known to be an open challenge due to the sparse and widerange spatial distribution of point clouds, let alone diverse object dynamics. Currently early-to-early fusion (i.e., point stacking) is most widely used P t-l ∪ ... ∪ P t , which is easy to implement. However, due to memory constraint the sequence length is usually small, e.g. l ∈ {2, 3}. Moreover, point clouds {X i,j } of one frame have to be repeatedly processed for (l+1) times when we conduct model inference on adjacent frames, causing huge waste of computation. As for detection performance, whether directly stacking the raw sensory inputs without reusing learned history knowledge can lead to the optimal results also remains questionable.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Recurrent Late-to-Early Fusion</head><p>To address the aforementioned issues, we propose a recurrent late-to-early temporal fusion strategy. As shown in Figure <ref type="figure" target="#fig_1">2</ref>, the fusion pipeline works like a "Markov chain", which can accumulate history information from long sequences and reduce redundant computation. Thus, the fusion function F (•) can be iteratively defined as:</p><formula xml:id="formula_1">f i = ψ(h(f i-1 ⊕ τ (t i -t i-1 ), ν({X i,j })))<label>(1)</label></formula><p>where f i-1 indicates history deep-layer voxel embeddings, and τ (•) is a Sinusoidal function for encoding the timestamp offset. ν(•) represents VoxelNet <ref type="bibr" target="#b17">[18]</ref> used to obtain pillar features from point clouds. h(•) is the backbone for recurrent fusion and multi-scale sparse pillar features extraction, and ψ(•) is the foreground segmentation module. History features. Particularly, we use the latent features of segmented foreground pillars as f i-1 and pass them into the next timestamp. Without loss of generality, we use SWFormer <ref type="bibr" target="#b5">[6]</ref> as our backbone and center-based detection heads <ref type="bibr" target="#b3">[4]</ref> as examples in our following discussion if needed.</p><p>The diagram is plotted in Figure <ref type="figure" target="#fig_1">2</ref>. The model works on sparse pillar tokens and thus the segmentation outputs can be written as</p><formula xml:id="formula_2">f i-1 : {V i-1,k ∈ R 2+d }, k = 1, ..., K i-1 .</formula><p>The first two dimensions record BEV coordinates of the pillars and the rest are extracted embeddings (i.e., d = 128), which contain rich scene and object-aware information. Moreover, compared with the raw point clouds size N i-1 (∼200k), the foreground pillar feature set size K i-1 (∼2k) is much smaller. Therefore, we are motivated to fuse these deeplayer features into early stages of the next frame in order to efficiently reuse learned high-level knowledge for 3D detection, especially on challenging large objects.</p><p>Fusion location. To achieve recurrent late-to-early fusion, we fuse f i-1 with VoxelNet <ref type="bibr" target="#b17">[18]</ref> </p><formula xml:id="formula_3">outputs ν({X i,j }) → {V ′ i,n ∈ R 2+d }, n = 1, ..., N ′</formula><p>i before they are fed into the the main backbone network. Meanwhile, instead of early fusion before the backbone, some may argue that an alternative way is conducting late fusion after the backbone process, which is close to the network stage where f i-1 is extracted. Diagrams of these two different fusion locations are plotted in Figure <ref type="figure">1</ref>. We think that presumably late fusion can cause the backbone B to lose access to temporally aggregated LiDAR sequence information, and thus the low-capacity detection heads H will struggle to understand fused features and predict object poses and shapes. Ablation studies on early-to-early, late-to-late and our proposed late-to-early fusion methods are provided in Table <ref type="table" target="#tab_5">IV</ref> and Section IV-C, which empirically proved the advantages of our approach.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Inverse Calibration and Alignment</head><p>While image sequences are naturally aligned across different frames by the shapes (height, width, channel), sparse sets of pillar features {V i-1,k }, {V ′ i,n } are neither aligned nor with the same cardinality (i.e., K i-1 ̸ = N ′ i ). Intuitively one could convert sparse features into dense BEV maps</p><formula xml:id="formula_4">{V i-1,k } → I i-1 ∈ R H×W ×d , {V ′ i,n } → I ′ i ∈</formula><p>R H×W ×d and then align them. However, as Figure <ref type="figure" target="#fig_1">2</ref> shows, directly doing so without proper calibration can result in misalignment between underlying objects of the scene. This is because pillar features extracted by the backbones are from their corresponding local vehicle coordinates with poses of g i-1 ∈ R 4×4 , g i ∈ R 4×4 . To alleviate this misalignment issue, we need to calibrate the history BEV maps I i-1 .</p><formula xml:id="formula_5">I i-1 • g -1 i-1 • g i → Ĩi-1<label>(2)</label></formula><p>here • means applying vehicle coordinates transformation and Ĩi-1 represents the calibrated BEV maps. However, in practice if we apply forward calibration upon I i-1 we might get more than one pillars that fall into the same discrete coordinates within Ĩi-1 . To address this issue we conduct inverse transformation from Ĩi-1 to I i-1 and sample the history BEV features. We use zero padding to fill in the pillar features of empty samples and also for outof-view locations, e.g. red cross markers in Figure <ref type="figure" target="#fig_1">2</ref> Outputs from the attention fusion layers will then be fed into the main backbone network (e.g. SWFormer <ref type="bibr" target="#b5">[6]</ref>), followed by a foreground pillar segmentation layer and the final detection head <ref type="bibr" target="#b3">[4]</ref> for 3D bounding box predictions.</p><p>R H×W ×2d . Next, we apply a MLP on J i for dimension reduction (i.e., 2d → d) and get the temporally aligned pillar features J ′ i . Note that not all the coordinates within J ′ i have valid features. We use the union BEV boolean mask O i ∈ R H×W obtained from the current and calibrated history BEV features to mark valid coordinates of J ′ i . Thus, we do not lose the data sparsity.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D. Window-based Attention Fusion</head><p>Pillars of the static objects are effectively aligned after the prior steps, but the moving ones are still facing the misalignment issue. One solution is to apply flow estimation to further calibration the history BEV features Ĩi-1 before temporal alignment with I ′ i . But that requires adding additional occupancy flow models, losses and feature coordinates transformation, which might greatly increase the computation overhead of the 3D object detector. Therefore, we propose to learn such association implicitly from the data by windowbased attention blocks. We sparsify the dense BEV feature map J ′ i and its boolean mask O i into a sparse set of pillar tokens</p><formula xml:id="formula_6">{V ′′ i,u }, u = 1, ..., U i . Usually we have U i ⩾ N ′ i .</formula><p>Because the cardinality U i means the number of fused pillars after temporal alignment between the history and current features through the steps in Section III-C. While {V ′′ i,u } is used as the query tensor for the attention blocks, we can make different choices when determining the key and value tensors: using {V ′′ i,u } again or the sparsified set of history pillar tokens in (2): Ĩi-1 → { Ṽi-1,c }, c = 1, ..., Ki-1 . Most often, Ki-1 ⩽ K i-1 due to out-of-view truncation after vehicle coordinates calibration.</p><p>The resulting variants are: self / cross / mix-attention. In self-attention the key and value tensors are the same as query. Cross-attention uses { Ṽi-1,c } as key and value and mixattention uses the union set of prior two attention variants. We apply Sinusoidal functions based absolute positional encoding to inform the attention blocks of the sparse pillar coordinates within a window. Detailed ablation studies on different attention designs are provided in Section IV-C. With window-based attention fusion, features of both static and moving pillars now can be associated and fused for later being passed into the main backbone network.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E. Stochastic-Length FrameDrop</head><p>To enable robust training upon long sequences, we randomly drop history frames from (P 1 , ..., P t ) during each training iteration. In other words, we randomly sample S i history frames, with S i being a stochastic number at different training steps and the sampled frames are not necessarily adjacent ones. In comparison, the previous LiDAR temporal fusion methods usually fix S i to be a constant (e.g. 3 or 4) and sample consecutive frames. We apply stop gradient between each recurrent pass when fusing deep-layer history features into early layers of the next frame, without which long-sequence training of 3D object detectors can easily get intractable or run into OOM. During training, the model only predicts 3D boxes { Bi,m } in the last forward pass. Losses are </p><formula xml:id="formula_7">L = λ 1 L seg + λ 2 L center + L box<label>(3)</label></formula><p>in which L means the total losses. L seg is focal loss for foreground segmentation. L center is also based on focal loss but for object-center heatmap estimation <ref type="bibr" target="#b3">[4]</ref>, <ref type="bibr" target="#b37">[38]</ref>. L box contains SmoothL1 losses for box azimuth, center offsets and sizes regression. A detailed explanation is in <ref type="bibr" target="#b5">[6]</ref>.</p><p>The training randomness introduced in LiDAR sequence sampling enables the model to be robust to various motion patterns of pillar trajectories across time. Thus our recurrent model can understand different object dynamics, and generalize to variable frame lengths during inference without retraining. More experiments and analysis are provided in Table <ref type="table" target="#tab_7">VI</ref> and the ablation studies.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>F. Implementation Details</head><p>We conduct 3D object detection within a wide range of 164×164 meters (m) square zone, centering on the top LiDAR sensor. Point clouds inside this region are voxelized into 2D pillars with 0.32m spatial resolutions. The window attention blocks are based on 10×10 grouping sizes. The loss weights λ 1 , λ 2 defined in (3) are 200, 10 respectively. We use AdamW <ref type="bibr" target="#b38">[39]</ref>, <ref type="bibr" target="#b39">[40]</ref> optimizer with 128 batch sizes and 240k iterations for distributed training on 128 TPUv3.</p><p>The training takes about 2 days. TPU memory usage is 5.4 GB on average and 7.4 GB at peak. The first 10k steps will warm up the learning rate from 5.0e-4 to 1.0e-3, after which the learning rate will follow a cosine annealing schedule to zero.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>IV. EXPERIMENTS</head><p>In this section, we will compare our model with other state-of-the-art methods, and perform ablation studies upon the impact of our designs on detection performance.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Dataset and Backbone</head><p>We choose Waymo Open Dataset <ref type="bibr" target="#b6">[7]</ref> over nuScenes <ref type="bibr" target="#b40">[41]</ref> and KITTI <ref type="bibr" target="#b41">[42]</ref> because WOD has large-scale and highquality LiDAR data, which can better simulate the settings for developing on-road fully autonomous vehicles. There are about 160k annotated training frames in WOD but only around 30k frames in nuScenes. As for per-frame point cloud densities, WOD is ∼200k and nuScenes is ∼30k. Therefore WOD is widely used in recent LiDAR-based methods: PV-RCNN(++), SST, RSN, SWFormer and so on <ref type="bibr" target="#b1">[2]</ref>- <ref type="bibr" target="#b3">[4]</ref>, <ref type="bibr" target="#b5">[6]</ref>, <ref type="bibr" target="#b19">[20]</ref>, <ref type="bibr" target="#b21">[22]</ref>, <ref type="bibr" target="#b23">[24]</ref>, <ref type="bibr" target="#b25">[26]</ref>, <ref type="bibr" target="#b32">[33]</ref>, <ref type="bibr" target="#b35">[36]</ref>. WOD has 798 training sequences, 202 validation and 150 test sequences, covering diverse driving scenarios and agent status. LiDAR data collection frequency is 10Hz. Each frame of point clouds consists of data gathered from five sensors: one long-range and four short-range LiDAR. For evaluation metrics, we adopt the officially recommended 3D AP / APH under two difficulty levels (L1, L2) depending on point densities of the ground-truth bounding boxes. APH is a weighted metric of AP using heading angles (i.e., azimuth).</p><p>We adopt the state-of-the-art SWFormer <ref type="bibr" target="#b5">[6]</ref> as our detection backbone, and replace its original early-to-early LiDAR fusion with our proposed LEF. For fair comparisons, all training settings are kept the same as <ref type="bibr" target="#b5">[6]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Main Results and Comparisons</head><p>The overall vehicle detection results with other competing methods are in Table <ref type="table" target="#tab_2">I</ref>. We compare against methods both with and without box refinement steps, although our model is a single-stage method without refinement and generally more efficient than those with box refinement. Our method LEF surpasses the prior best single-stage model SWFormer by +1.3 3D APH on L2 test data (e.g. 75.16 vs. 73.87), demonstrating the strong overall performance of our approach. Our method is particularly useful for detecting challenging large objects whose maximum dimension is beyond 7 meters: truck, bus, construction vehicle, etc. We conduct detailed analysis on validation set in Table <ref type="table" target="#tab_3">II</ref>. Our method LEF outperforms SWFormer by +9.3% relative increase on L1 3D AP: 54.35 vs. 49.74. Hard cases such as large vehicles suffer from partial observation issues more often than small or medium size objects. Faithfully detecting these challenging cases requires LiDAR temporal fusion at long frame lengths in order to enlarge the sensory data coverage. Moreover, our late-to-early fusion scheme can reuse learned scene and object-aware latent features from prior frames, not simply stacking the point clouds as in RSN and SWFormer. Such high-level history knowledge can enable the model to more easily tackle challenging detection cases, compared with solving them from scratch using stacked raw sensory inputs.</p><p>Qualitative results are visualized in Figure <ref type="figure" target="#fig_2">3</ref>. Typical errors of SWFormer are highlighted in the red zones. Our results are aligned better (i.e., have higher 3D IoU) with the ground truth boxes than SWFormer predictions, especially for challenging large objects. Moreover, our results contain fewer false negative and false positive predictions than SWFormer results. We also measure model latency, flops and parameter sizes of different LiDAR 3D object detectors in Table <ref type="table" target="#tab_4">III</ref>, following the same benchmark settings as <ref type="bibr" target="#b5">[6]</ref>. PointPillars and SWFormer both use point stacking. The results demonstrate the efficiency advantages of our late-toearly recurrent fusion method.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Ablation Studies</head><p>Fusion strategy. We conduct apple-to-apple comparisons to study the effect of early-to-early (E2E), late-to-late (L2L)   and late-to-early (L2E) fusion strategies as illustrated in Figure <ref type="figure">1a</ref>. Specifically, we test all fusion variants with the same backbone and frame number (i.e., 3) to factorize out the influence of model architectures and LiDAR sequence lengths. Results on validation set large objects are in Table IV. Our L2E fusion surpasses the other two methods with 7.8% relative gains on L1 3D AP. By comparing E2E and L2L fusion, we observe that their results on 2D AP are comparable. But E2E clearly outperforms L2L on 3D AP, indicating higher 3D object detection quality. These results validate our arguments about the benefits of late-to-early fusion. Compared with E2E fusion, L2E enables the model to reuse learned scene and object-aware knowledge from prior frames. Compared with L2L, the model capacity of L2E fusion is not constrained because its backbone has early access to the temporally aggregated sensory data. Different object sizes. Besides the overall results and hard example analysis in Section IV-B, we are also interested in knowing the impact of our method on different object sizes. Thus we divide validation set objects into: large, medium and small. Typical large objects are bus and truck. Medium and small objects usually include sedan and pedestrian, respectively. Detailed results are in Table <ref type="table" target="#tab_6">V</ref>. Although our method LEF achieves comparable results with the competing methods on small objects, we observe increasingly more gains as object sizes grow larger. On L2 medium objects, LEF improves SWFormer by 0.73 AP and the gains further bump to 4.11 AP on large objects. One possible explanation is that small objects suffer less from partial-view observation issues than large objects, and thus do not significantly benefit from temporal fusion. From the results we believe that our method works robustly across different object sizes.  Foreground pillar segmentation. To efficiently fuse history pillar features in a recurrent manner, we apply BEV foreground segmentation before passing history latent pillar embeddings into the next frame. the number of history pillars that need to be recurrently fused can be reduced from ∼20k to ∼2k on average after removing a huge amount of uninformative background data. Therefore the computation burden of our late-to-early temporal fusion scheme can be greatly reduced and maintained at a relatively low constant cost.</p><p>Inverse calibration and alignment. Inverse calibration and alignment, as illustrated in Figure <ref type="figure" target="#fig_1">2</ref>, is important for fusing two sparse sets of pillar features between the prior and the current frames. Features belonging to the same underlying static objects can be effectively aligned after this  Window-based Attention Fusion. We apply windowbased attention blocks on temporally aligned sparse pillar tokens to further fuse information of the history and current frames. As explained in Section III-D, we explore three different attention designs: self / cross / mix-attention. Detection AP on large objects of WOD validation set are shown in Table <ref type="table" target="#tab_9">VIII</ref>. For all methods, we use the sparse set of pillar tokens {V ′′ i,u } converted from the temporally aligned BEV feature map J ′ i as the query tensor. In selfattention, query, key and value are based on the same tensor. In cross-attention, the key and value tensors are the sparse set of pillar tokens { Ṽi-1,c } converted from the calibrated history features Ĩi-1 . Mix-attention uses the union set of prior methods as key and value. We observe that selfattention consistently outperforms the other two attention variants. This is presumably because the history tokens exist in a quite different latent space from the temporally aligned tokens. Therefore attention between { Ṽi-1,c } and {V ′′ i,u } might easily lead to intractable feature fusion and eventually hurt detection. Meanwhile, since J ′ i has already merged information from the history Ĩi-1 and the current I i , selfattention is competent to associate relevant pillar tokens and fulfill the fusion task.</p><p>Window-based attention fusion plays an important role in fusing the information from moving object pillars. In Table <ref type="table" target="#tab_10">IX</ref>, we present validation set 3D AP comparisons between with and without window-based self-attention fusion. We report subcategory metrics under different speed ranges: [0, 0.45), [0.45, 2.24), [2.24, 6.71), <ref type="bibr">[6.71, 22.37)</ref>, <ref type="bibr">[22.37, +∞)</ref> miles per hour for static, slow, medium, fast, very fast objects. The metrics are averaged over different size objects. We observe that attention fusion brings consistent detection gains across different object speed ranges. Particularly, the improvements achieved on high-speed objects are larger than those on low-speed objects: +9.4 (fast) vs. +6.1 (static) 3D AP gains. The comparisons empirically prove that window-based self-attention fusion is critical in associating relevant pillars that belong to the same underlying objects, which is especially important for moving object detection.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>V. CONCLUSIONS AND FUTURE WORK</head><p>In this paper, we conduct an in-depth study on the temporal fusion aspect of 3D object detection from LiDAR sequences. We propose a late-to-early temporal feature fusion method that recurrently extracts sparse pillar features from both object-aware latent embeddings and LiDAR sensor raw inputs. To handle the alignment issues of static and moving objects, we propose inverse calibration and alignment as well as window-based attention fusion methods. We also apply foreground segmentation to obtain sparse pillar features from history for computation reduction. The resulting model, LEF, performs favorably against its base model SWFormer in both detection quality and efficiency. The improvement is especially significant on large objects that require multiple LiDAR sweeps fused across space and time to achieve high surface coverage rate.</p><p>As future work, we plan to extend our method to multimodal sensor fusion with a focus on integrating camera and radar information. Recurrent late-to-early temporal fusion schemes like ours and BEVFormer <ref type="bibr" target="#b34">[35]</ref> have been explored in very few papers. To further demonstrate the effectiveness of this approach, it would be beneficial to test it on various backbone models and extend its application beyond the scope of 3D object detection task.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head></head><label></label><figDesc>(a) Overview structures of three temporal fusion approaches, where B denotes the backbone, H denotes the detection head. Performance comparisons on Waymo Open Dataset.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Fig. 2 :</head><label>2</label><figDesc>Fig.2: Detection pipeline with our proposed LEF. In each forward pass, the early-stage pillar encoding will be aligned and fused with the history late-stage foreground pillar features f i-1 . The alignment is achieved by an inverse calibration and alignment process (Section III-C) that enables pillar features of the underlying static objects to be matched. To effectively associate moving object features, we further use window-based attention blocks (Section III-D) to connect relevant pillars. Outputs from the attention fusion layers will then be fed into the main backbone network (e.g. SWFormer<ref type="bibr" target="#b5">[6]</ref>), followed by a foreground pillar segmentation layer and the final detection head<ref type="bibr" target="#b3">[4]</ref> for 3D bounding box predictions.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Fig. 3 :</head><label>3</label><figDesc>Fig. 3: Box colors are explain in the legend. Errors of the baseline SWFormer are highlighted in dashed red regions.</figDesc><graphic coords="6,86.77,241.76,218.70,68.44" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>TABLE I :</head><label>I</label><figDesc>Overall performance comparisons on Waymo Open Dataset. Refine means that the detectors need an additional step of box refinement via feature pooling and fusion from the box areas, which usually increases time cost and might not be end-to-end trainable. For fair comparisons we focus on single-stage detectors without (w/o) box refinement.</figDesc><table><row><cell>Method</cell><cell>Refine</cell><cell cols="2">Test set 3D AP/APH L1 L2</cell><cell cols="2">Validation set 3D AP/APH L1 L2</cell></row><row><cell>3D-MAN [33]</cell><cell>with</cell><cell cols="2">78.71 / 78.28 70.37 / 69.98</cell><cell>74.53 / 74.03</cell><cell>67.61 / 67.14</cell></row><row><cell>CenterPoint [4]</cell><cell>with</cell><cell cols="2">80.20 / 79.70 72.20 / 71.80</cell><cell>76.60 / 76.10</cell><cell>68.90 / 68.40</cell></row><row><cell>SST [5]</cell><cell>with</cell><cell cols="2">80.99 / 80.62 73.08 / 72.72</cell><cell>77.00 / 76.60</cell><cell>68.50 / 68.10</cell></row><row><cell>PVRCNN++ [2]</cell><cell>with</cell><cell cols="2">81.62 / 81.20 73.86 / 73.47</cell><cell>79.30 / 78.80</cell><cell>70.60 / 70.20</cell></row><row><cell>MPPNet [36]</cell><cell>with</cell><cell cols="2">84.27 / 83.88 77.29 / 76.91</cell><cell>82.74 / 82.28</cell><cell>75.41 / 74.96</cell></row><row><cell>CenterFormer [37]</cell><cell>with</cell><cell cols="2">84.70 / 84.40 78.10 / 77.70</cell><cell>78.80 / 78.30</cell><cell>74.30 / 73.80</cell></row><row><cell>PointPillars [16]</cell><cell>w/o</cell><cell cols="2">68.60 / 68.10 60.50 / 60.10</cell><cell>63.30 / 62.70</cell><cell>55.20 / 54.70</cell></row><row><cell>RSN [22]</cell><cell>w/o</cell><cell cols="2">80.70 / 80.30 71.90 / 71.60</cell><cell>78.40 / 78.10</cell><cell>69.50 / 69.10</cell></row><row><cell>SWFormer [6]</cell><cell>w/o</cell><cell cols="2">82.25 / 81.87 74.23 / 73.87</cell><cell>79.03 / 78.55</cell><cell>70.55 / 70.11</cell></row><row><cell>LEF (ours)</cell><cell>w/o</cell><cell>83.39 / 83.02</cell><cell>75.51 / 75.16</cell><cell>79.64 / 79.18</cell><cell>71.37 / 70.94</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>TABLE II :</head><label>II</label><figDesc>Detection results on challenging large objects.</figDesc><table><row><cell>Method</cell><cell>2D</cell><cell>L1</cell><cell>3D</cell><cell>2D</cell><cell>L2</cell><cell>3D</cell></row><row><cell>RSN [22]</cell><cell>53.10</cell><cell></cell><cell>45.20</cell><cell>-</cell><cell></cell><cell>40.90</cell></row><row><cell cols="2">SWFormer [6] 58.33</cell><cell></cell><cell>49.74</cell><cell>53.45</cell><cell></cell><cell>45.23</cell></row><row><cell>LEF (ours)</cell><cell>62.63</cell><cell></cell><cell>54.35</cell><cell>57.42</cell><cell></cell><cell>49.34</cell></row></table><note><p>enforced upon certain intermediate outputs (e.g. foreground pillar segmentation) and the final box parameter predictions (e.g. shapes and poses).</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>TABLE III :</head><label>III</label><figDesc>Computation cost. For fair comparisons, we use 3-frame temporal fusion settings on WOD for measurement.</figDesc><table><row><cell>Method</cell><cell cols="3">Latency Flops Parameters</cell></row><row><cell>PointPillars [16]</cell><cell>93ms</cell><cell>375G</cell><cell>6.4M</cell></row><row><cell>SWFormer [6]</cell><cell>47ms</cell><cell>35G</cell><cell>4.4M</cell></row><row><cell>LEF (ours)</cell><cell>38ms</cell><cell>29G</cell><cell>4.6M</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>TABLE IV :</head><label>IV</label><figDesc>Ablation studies on different types of temporal fusion schemes. All methods are trained with SLF.</figDesc><table><row><cell>Fusion Strategy</cell><cell>2D</cell><cell>L1</cell><cell>3D</cell><cell>2D</cell><cell>L2</cell><cell>3D</cell></row><row><cell>Early-to-Early</cell><cell>58.33</cell><cell></cell><cell>49.74</cell><cell>53.45</cell><cell></cell><cell>45.23</cell></row><row><cell>Late-to-Late</cell><cell>58.74</cell><cell></cell><cell>48.83</cell><cell>53.67</cell><cell></cell><cell>44.32</cell></row><row><cell>Late-to-Early</cell><cell>61.46</cell><cell></cell><cell>53.13</cell><cell>56.37</cell><cell></cell><cell>48.28</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>TABLE V :</head><label>V</label><figDesc>Ablation studies on different object sizes. The 3D AP gains achieved by LEF increase as object size grows.</figDesc><table><row><cell>Method</cell><cell cols="6">L1 Large Medium Small Large Medium Small L2</cell></row><row><cell>RSN [22]</cell><cell>45.20</cell><cell>77.30</cell><cell>79.40</cell><cell>40.90</cell><cell>68.60</cell><cell>69.90</cell></row><row><cell>SWFormer [6]</cell><cell>49.74</cell><cell>79.11</cell><cell>82.36</cell><cell>45.23</cell><cell>70.59</cell><cell>74.04</cell></row><row><cell>LEF (ours)</cell><cell>54.35</cell><cell>79.62</cell><cell>82.46</cell><cell>49.34</cell><cell>71.32</cell><cell>74.15</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head>TABLE VI :</head><label>VI</label><figDesc>Long frame history generalization studies. For each trained model, we evaluate its inference generalization ability to different frame (f) lengths without retraining.</figDesc><table><row><cell>Method</cell><cell>3-f</cell><cell>L1 6-f</cell><cell>9-f</cell><cell>3-f</cell><cell>L2 6-f</cell><cell>9-f</cell></row><row><cell>SWFormer [6]</cell><cell>46.23</cell><cell cols="2">38.76 OOM</cell><cell>41.93</cell><cell>35.09</cell><cell>OOM</cell></row><row><cell>LEF (w/o SLF)</cell><cell>51.18</cell><cell>51.44</cell><cell>50.84</cell><cell>46.58</cell><cell>46.91</cell><cell>46.28</cell></row><row><cell cols="2">LEF (with SLF) 53.13</cell><cell>53.96</cell><cell>54.35</cell><cell>48.28</cell><cell>48.99</cell><cell>49.34</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_8"><head>TABLE VII :</head><label>VII</label><figDesc>Inverse calibration and alignment (ICA) can improve detection AP across different object sizes. Due to memory constraint of the computing devices, GPU or TPU, 3D object detectors with LiDAR temporal fusion usually sample a fixed number of history frames (e.g. 2 or 3) during training. However, during inference, there are usually additional frames available to the model depending on the history lengths. For typical earlyto-early fusion based multi-frame detectors (e.g. CenterPoint, SWFormer), if we want to test a trained model on different frame lengths, the training settings need to be modified and the model needs to be retrained. With stochastic-length FrameDrop (SLF), LEF can generalize to variable frame lengths without retraining. It can leverage additional frames and achieve increasingly improved results. Large objects 3D AP are shown in TableVI. In contrast, SWFormer and LEF without SLF can not make best of long history and might even face performance decrease. This is because long history frames can exhibit diverse motion patterns of temporally aggregated data, posing generalization difficulties for methods trained without SLF. Moreover, since SWFormer is based on point cloud stacking, it will run into OOM if we simply stack a long LiDAR sequence into millions of 3D points and use them as inputs. These observations indicate that stochastic-length FrameDrop and recurrent fusion are critical in generalizing our method LEF to variable frame lengths during inference.</figDesc><table><row><cell>ICA</cell><cell>2D</cell><cell cols="2">Large</cell><cell>3D</cell><cell cols="2">Medium 2D 3D</cell><cell>2D</cell><cell>Small</cell><cell>3D</cell></row><row><cell>w/o</cell><cell cols="2">60.85</cell><cell cols="2">51.34</cell><cell>92.72</cell><cell>78.30</cell><cell cols="2">85.92</cell><cell>80.59</cell></row><row><cell>with</cell><cell cols="2">62.63</cell><cell cols="2">54.35</cell><cell>93.02</cell><cell>79.62</cell><cell cols="2">87.40</cell><cell>82.46</cell></row><row><cell cols="6">Frame length generalization.</cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_9"><head>TABLE VIII :</head><label>VIII</label><figDesc>Variants of window-based attention blocks for recurrent temporal fusion. Based on the comparisons, we adopt self-attention as default in other experiments.</figDesc><table><row><cell>Attention Type</cell><cell>2D</cell><cell>L1</cell><cell>3D</cell><cell>2D</cell><cell>L2</cell><cell>3D</cell></row><row><cell>Cross-Attn</cell><cell cols="3">51.69 42.35</cell><cell cols="3">47.06 38.36</cell></row><row><cell>Mix-Attn</cell><cell cols="3">61.68 52.94</cell><cell cols="3">56.46 48.06</cell></row><row><cell>Self-Attn</cell><cell cols="3">62.63 54.35</cell><cell cols="3">57.42 49.34</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_10"><head>TABLE IX :</head><label>IX</label><figDesc>The impact of window-based self-attention on different speed objects.</figDesc><table><row><cell>Self-Attention</cell><cell>Static</cell><cell>Slow</cell><cell>Medium</cell><cell>Fast</cell><cell>Very Fast</cell></row><row><cell>without</cell><cell>60.55</cell><cell>63.46</cell><cell>74.58</cell><cell>53.07</cell><cell>75.47</cell></row><row><cell>with</cell><cell>66.62</cell><cell>69.27</cell><cell>79.62</cell><cell>62.46</cell><cell>82.14</cell></row><row><cell cols="6">temporal alignment process. In Table VII we show that in-</cell></row><row><cell cols="6">verse calibration and alignment achieves consistent detection</cell></row><row><cell cols="6">improvement across different size objects, including truck,</cell></row><row><cell cols="3">sedan, pedestrian, and so on.</cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>2D-shape voxels are often referred to as pillars.</p></note>
+		</body>
+		<back>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">An lstm approach to temporal 3d object detection in lidar point clouds</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Kundu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Pantofaru</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">A</forename><surname>Ross</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Funkhouser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Fathi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ECCV</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="266" to="282" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Pvrcnn: Point-voxel feature set abstraction for 3d object detection</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Li</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">CVPR</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="10" to="529" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<monogr>
+		<title level="m" type="main">Pv-rcnn++: Point-voxel feature set abstraction with local vector representation for 3d object detection</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Li</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<publisher>ArXiv</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Center-based 3d object detection and tracking</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Yin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Krahenbuhl</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">CVPR</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page">793</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Embracing single stride 3d object detector with sparse transformer</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Fan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Pang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y.-X</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">CVPR</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="8458" to="8468" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Swformer: Sparse window transformer for 3d object detection in point clouds</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Tan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Xia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Leng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Anguelov</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ECCV</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Scalability in perception for autonomous driving: Waymo open dataset</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Kretzschmar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Dotiwalla</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Chouard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Patnaik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Tsui</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Chai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Caine</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">CVPR</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<title level="m" type="main">Pointrcnn: 3d object proposal generation and detection from point cloud</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Li</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="770" to="779" />
+		</imprint>
+		<respStmt>
+			<orgName>CVPR</orgName>
+		</respStmt>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<monogr>
+		<title level="m" type="main">Frustum pointnets for 3d object detection from rgb-d data</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Qi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Su</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">J</forename><surname>Guibas</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="918" to="927" />
+		</imprint>
+		<respStmt>
+			<orgName>CVPR</orgName>
+		</respStmt>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Pointnet: Deep learning on point sets for 3d classification and segmentation</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Qi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Su</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Mo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">J</forename><surname>Guibas</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">CVPR</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Pointnet++: Deep hierarchical feature learning on point sets in a metric space</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Qi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Yi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Su</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">J</forename><surname>Guibas</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NIPS</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<title level="m" type="main">Submanifold sparse convolutional networks</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Graham</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Van Der Maaten</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1706.01307</idno>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Attention is all you need</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Vaswani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Shazeer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Parmar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Uszkoreit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Jones</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">N</forename><surname>Gomez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ł</forename><surname>Kaiser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Polosukhin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">NeurIPS</title>
+		<imprint>
+			<biblScope unit="volume">30</biblScope>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Point transformer</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Jia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">H</forename><surname>Torr</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Koltun</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICCV</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page">268</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Voxel transformer for 3d object detection</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Mao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Xue</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Niu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Bai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Xu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICCV</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Pointpillars: Fast encoders for object detection from point clouds</title>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">H</forename><surname>Lang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Vora</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Caesar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Beijbom</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">CVPR</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page">705</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Second: Sparsely embedded convolutional detection</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Yan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Mao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Li</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Sensors</title>
+		<imprint>
+			<biblScope unit="volume">18</biblScope>
+			<date type="published" when="2018">2018</date>
+			<pubPlace>Basel, Switzerland</pubPlace>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Voxelnet: End-to-end learning for point cloud based 3d object detection</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Tuzel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">CVPR</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="4490" to="4499" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Objects as points</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Krähenbühl</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ArXiv</title>
+		<imprint>
+			<date type="published" when="1904">1904.07850, 2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<monogr>
+		<title level="m" type="main">Embracing single stride 3d object detector with sparse transformer</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Fan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Pang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y.-X</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhang</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="8448" to="8458" />
+		</imprint>
+		<respStmt>
+			<orgName>CVPR</orgName>
+		</respStmt>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<monogr>
+		<title level="m" type="main">Swin transformer: Hierarchical vision transformer using shifted windows</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Cao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Guo</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page">2</biblScope>
+		</imprint>
+		<respStmt>
+			<orgName>ICCV</orgName>
+		</respStmt>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Rsn: Range sparse net for efficient, accurate lidar 3d object detection</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Chai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Elsayed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bewley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Sminchisescu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Anguelov</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">CVPR</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="5725" to="5734" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<monogr>
+		<title level="m" type="main">Lasernet: An efficient probabilistic 3d object detector for autonomous driving</title>
+		<author>
+			<persName><forename type="first">G</forename><forename type="middle">P</forename><surname>Meyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">G</forename><surname>Laddha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Kee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Vallespi-Gonzalez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">K</forename><surname>Wellington</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page">678</biblScope>
+		</imprint>
+		<respStmt>
+			<orgName>CVPR</orgName>
+		</respStmt>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Starnet: Targeted computation for object detection in point clouds</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ngiam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Caine</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Han</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Chai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Yi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Alsharif</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Shlens</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Vasudevan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ArXiv</title>
+		<imprint>
+			<date type="published" when="1908">1908.11069, 2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Pillar-based object detection for autonomous driving</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Fathi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Kundu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">A</forename><surname>Ross</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Pantofaru</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Funkhouser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Solomon</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ECCV</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="18" to="34" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">To the point: Efficient 3d object detection in the range image with graph convolution kernels</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Chai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ngiam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Caine</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Vasudevan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Anguelov</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">CVPR</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<monogr>
+		<title level="m" type="main">Rangedet: In defense of range view for lidar-based 3d object detection</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Fan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhang</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="2898" to="2907" />
+		</imprint>
+		<respStmt>
+			<orgName>ICCV</orgName>
+		</respStmt>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Lidar r-cnn: An efficient and universal 3d object detector</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Wang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">CVPR</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="7546" to="7555" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Improving 3d object detection with channel-wise transformer</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Sheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Cai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X.-S</forename><surname>Hua</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M.-J</forename><surname>Zhao</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICCV</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="2743" to="2752" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Lidarnas: Unifying and searching neural architectures for 3d point clouds</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Leng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Cheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">R</forename><surname>Qi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Tan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Anguelov</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ECCV</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="158" to="175" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Temporalchannel transformer for 3d lidar-based video object detection for autonomous driving</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Yuan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Bai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Ouyang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">TCSVT</title>
+		<imprint>
+			<biblScope unit="volume">32</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="2068" to="2078" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Lidar-based online 3d video object detection with graph-based message passing and spatiotemporal transformer attention</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Yin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Shen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Guan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Yang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">CVPR</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">3d-man: 3d multi-frame attention network for object detection</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ngiam</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">CVPR</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Fast and furious: Real time endto-end 3d detection, tracking and motion forecasting with a single convolutional net</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Luo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Urtasun</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">CVPR</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="3569" to="3577" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<monogr>
+		<title level="m" type="main">Bevformer: Learning bird&apos;s-eye-view representation from multicamera images via spatiotemporal transformers</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Sima</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Dai</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2203.17270</idno>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<monogr>
+		<title level="m" type="main">Mppnet: Multi-frame feature intertwining with proxy points for 3d temporal object detection</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">C</forename><surname>Cheung</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Li</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2205.05979</idno>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Centerformer: Center-based transformer for 3d object detection</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Foroosh</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ECCV</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<monogr>
+		<title level="m" type="main">Objects as points</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Krähenbühl</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1904.07850</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">in arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<monogr>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">P</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ba</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1412.6980</idno>
+		<title level="m">Adam: A method for stochastic optimization</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<monogr>
+		<title level="m" type="main">Decoupled weight decay regularization</title>
+		<author>
+			<persName><forename type="first">I</forename><surname>Loshchilov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Hutter</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1711.05101</idno>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">nuscenes: A multimodal dataset for autonomous driving</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Caesar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Bankiti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">H</forename><surname>Lang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Vora</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">E</forename><surname>Liong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Krishnan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Pan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Baldan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Beijbom</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">CVPR</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Are we ready for autonomous driving? the kitti vision benchmark suite</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Geiger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Lenz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Urtasun</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">CVPR</title>
+		<imprint>
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

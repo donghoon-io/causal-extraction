@@ -1,0 +1,1356 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">CausalGraph2LLM: Evaluating LLMs for Causal Queries</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability  status="unknown">
+					<licence/>
+				</availability>
+				<date type="published" when="2025-02-18">18 Feb 2025</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Ivaxi</forename><surname>Sheth</surname></persName>
+							<email>ivaxi.sheth@cispa.de</email>
+							<affiliation key="aff0">
+								<orgName type="department">CISPA Helmholtz Center for Information Security</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Bahare</forename><surname>Fatemi</surname></persName>
+							<email>baharef@google.com</email>
+							<affiliation key="aff1">
+								<orgName type="department">Google Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Mario</forename><surname>Fritz</surname></persName>
+							<email>fritz@cispa.de</email>
+							<affiliation key="aff0">
+								<orgName type="department">CISPA Helmholtz Center for Information Security</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">CausalGraph2LLM: Evaluating LLMs for Causal Queries</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2025-02-18">18 Feb 2025</date>
+						</imprint>
+					</monogr>
+					<idno type="arXiv">arXiv:2410.15939v2[cs.CL]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-21T20:27+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Causality is essential in scientific research, enabling researchers to interpret true relationships between variables. These causal relationships are often represented by causal graphs, which are directed acyclic graphs. With the recent advancements in Large Language Models (LLMs), there is an increasing interest in exploring their capabilities in causal reasoning and their potential use to hypothesize causal graphs. These tasks necessitate the LLMs to encode the causal graph effectively for subsequent downstream tasks. In this paper, we introduce CausalGraph2LLM, a comprehensive benchmark comprising over 700k queries across diverse causal graph settings to evaluate the causal reasoning capabilities of LLMs. We categorize the causal queries into two types: graph-level and node-level queries. We benchmark both open-sourced and propriety models for our study. Our findings reveal that while LLMs show promise in this domain, they are highly sensitive to the encoding used. Even capable models like GPT-4 and Gemini-1.5 exhibit sensitivity to encoding, with deviations of about 60%. We further demonstrate this sensitivity for downstream causal intervention tasks. Moreover, we observe that LLMs can often display biases when presented with contextual information about a causal graph, potentially stemming from their parametric memory.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>The recent success of Large Language Models (LLMs) <ref type="bibr" target="#b8">(Brown et al., 2020;</ref><ref type="bibr">Achiam et al., 2023;</ref><ref type="bibr">Reid et al., 2024)</ref> across various applications has opened up new avenues for their use beyond standard Natural Language Processing (NLP) tasks <ref type="bibr">(Srivastava et al., 2022;</ref><ref type="bibr" target="#b42">Wei et al., 2022)</ref>. Trained on massive corpora of structured and unstructured data <ref type="bibr">(Achiam et al., 2023)</ref>, these models have demonstrated the ability to extract insights and exhibit emergent behaviors that can be harnessed for a wide range of applications (Bubeck </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Causal query</head><p>The causal relationships in a causal graph are -&lt;0&gt; causes &lt;1&gt;, &lt;0&gt; causes &lt;2&gt;, &lt;0&gt; causes &lt;3&gt; and &lt;2&gt; causes &lt;3&gt;.</p><p>[ 0, 2 ] + +</p><p>Now using this causal graph, list all the nodes that directly cause the node &lt;3&gt;. et <ref type="bibr">al., 2023;</ref><ref type="bibr" target="#b32">Qi et al., 2023;</ref><ref type="bibr" target="#b40">Wang et al., 2023;</ref><ref type="bibr" target="#b43">Zhao et al., 2024)</ref>.</p><p>Causal reasoning plays a pivotal role in guiding scientific research to establish causal relationships between different variables of an environment <ref type="bibr" target="#b31">(Pearl, 2009)</ref>. These relationships are often represented and modeled using causal graphs, which are directed and acyclic graphs. Traditionally, causal inference and discovery have been largely driven by observational data obtained through experiments <ref type="bibr" target="#b36">(Spirtes and Zhang, 2016;</ref><ref type="bibr">Nogueira et al., 2022;</ref><ref type="bibr" target="#b18">Huang et al., 2020;</ref><ref type="bibr" target="#b13">Cooper and Yoo, 2013)</ref>. However, inferring causal graphs from observational data alone is a challenging problem <ref type="bibr" target="#b36">(Spirtes and Zhang, 2016;</ref><ref type="bibr" target="#b7">Brouillard et al., 2020)</ref>. This bottleneck of causal discovery has led to an increasing interest in the potential of LLMs to assist in this process <ref type="bibr">(Vashishtha et al., 2023;</ref><ref type="bibr" target="#b0">Abdulaal et al., 2024;</ref><ref type="bibr" target="#b27">Liu et al., 2024;</ref><ref type="bibr">Ban et al., 2023b,a;</ref><ref type="bibr" target="#b2">Afonja et al., 2024)</ref>. Therefore, the current paradigm for employing LLMs in causal discovery typically involves the use of metadata, particularly in the form of variable names to guide the models in identifying and interpreting causal relationships. Existing works utilize LLMs in various roles such as priors, critics, and post-processors for causality-related tasks.</p><p>While LLMs have demonstrated competitive performance <ref type="bibr" target="#b0">(Abdulaal et al., 2024)</ref> against traditional data-driven methods, their effectiveness is constrained by their sequential text-based train-ing paradigm. Current models typically necessitate a user to decompose their causal reasoning task into first textualizing a causal graph and then the task prompt. In essence, for downstream tasks, the LLMs need to be able to handle and manipulate textual representations of causal graphs effectively. This capability of LLMs being able to process causal graphs as text efficiently with any encoding is often assumed in current works. <ref type="bibr" target="#b14">Fatemi et al. (2024)</ref> have demonstrated sensitivity to prompts and encoding strategy for graphs, however, the focus of these works is on graph theory-based tasks, different from causal queries.</p><p>We challenge the assumption that LLMs can seamlessly encode causal graphs and evaluate their true capabilities in this area. By introducing the benchmark, we aim to shed light on the strengths and limitations of these models in encoding causal graphs. To fully harness the potential of LLMs for causal reasoning, it is crucial to understand not only the opportunities they present but also the risks and precautions necessary for their effective use. While LLMs can enhance our ability to discover and understand causal relationships, they may also propagate biases from their training data and their performance can vary based on the prompting strategy and task. Therefore, careful evaluation and consideration of potential biases and limitations are essential when using LLMs for causal reasoning. Considering the application of using LLMs as causal hypothesis generators <ref type="bibr" target="#b27">(Liu et al., 2024;</ref><ref type="bibr" target="#b25">Kıcıman et al., 2023;</ref><ref type="bibr">Ban et al., 2023a;</ref><ref type="bibr" target="#b34">Sheth et al., 2024)</ref>, it is imperative to evaluate their basic causal graph understanding capabilities before advancing to more complex tasks. Addressing any potential challenges early on can help in refining the models, making them more robust and effective as tools for causal reasoning and hypothesis generation.</p><p>Contributions. In this work, we aim to investigate the ability of LLMs to encode causal graphs and their effectiveness in assisting with causal reasoning tasks. We propose the benchmark, Causal-Graph2LLM, designed to evaluate LLMs on tasks related to understanding causal graphs. Our work is the first work to focus on the encoding strategies and sensitivities of LLMs in the context of causal graphs. We assess the performance of a variety of LLMs across a broad spectrum of tasks, each inspired by potential subtasks that LLMs might need to solve for a downstream task. This benchmark serves as a foundational reference for future works that use LLMs for causal reasoning-based tasks. Our contributions can be summarised as follows:</p><p>• We conduct a comprehensive study on various techniques to encode causal graphs into text for an LLM. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Related Works</head><p>Causal discovery and inference have predominantly been dominated by data-driven methods <ref type="bibr" target="#b36">(Spirtes and Zhang, 2016)</ref>. However, due to the complexity of inferring causal structures, previous works have introduced priors on causal graphs in terms of interventions, domain expertise, edge existence, or ancestral constraints <ref type="bibr" target="#b12">(Constantinou et al., 2023;</ref><ref type="bibr">Ban et al., 2023b;</ref><ref type="bibr" target="#b7">Brouillard et al., 2020)</ref>. These priors help to reduce the search spaces of potential causal graphs. Recent advancements in LLMs have motivated the use of LLM-based priors and causal discovery <ref type="bibr" target="#b28">(Long et al., 2023;</ref><ref type="bibr" target="#b10">Cai et al., 2023;</ref><ref type="bibr" target="#b0">Abdulaal et al., 2024;</ref><ref type="bibr">Jin et al., 2023a;</ref><ref type="bibr" target="#b25">Kıcıman et al., 2023)</ref>. Unlike data-driven methods, LLMs leverage causal variable names to evaluate the existence of edges between them, thereby constructing causal graphs. The rich parametric knowledge of LLMs has proven to be almost as effective in discovering causal structures as traditional data-driven methods <ref type="bibr">(Vashishtha et al., 2023;</ref><ref type="bibr" target="#b25">Kıcıman et al., 2023;</ref><ref type="bibr" target="#b2">Afonja et al., 2024)</ref>. These initial results have motivated the integration of LLMs as priors combined with different statistical causal discovery methods.</p><p>For instance, <ref type="bibr">Vashishtha et al. (2023)</ref> used pairwise queries to discover the existence of edges between different causal variables and then applied methods such as PC <ref type="bibr" target="#b35">(Spirtes et al., 2001)</ref> to reorient the edges, whereas <ref type="bibr">Ban et al. (2023b)</ref> utilized LLMbased priors for scoring-based discovery methods. <ref type="bibr">Vashishtha et al. (2023)</ref> suggest triplet-based prompting strategies, and <ref type="bibr">Jiralerspong et al. (2024)</ref> proposed reducing the prompting complexity by prompting in a depth-first search manner. More re-{"0": {"parents": []}, "1": {"parents": ["0"]}, "2": {"parents": ["0", "1"]},} digraph G { 0 -&gt; 1; 0 -&gt; 2; 1 -&gt; 2; } (0, 1), (0, 2), (1, 2) &lt;graphml xmlns&gt; &lt;edge source="0" target="1"/&gt; &lt;edge source="0" target="2"/&gt; &lt;/graphml&gt; 0 1 2 0 0 1 1 1 0 0 1 2 0 0 0 cently, <ref type="bibr" target="#b0">Abdulaal et al. (2024)</ref> proposed an iterative collaboration between LLMs and structural causal models, where the LLM refines the output of SCMs.</p><p>Another line of previous works <ref type="bibr" target="#b15">(Girju et al., 2002;</ref><ref type="bibr" target="#b16">Hassanzadeh et al., 2020;</ref><ref type="bibr">Tan et al., 2023)</ref> explored the use of LLMs to discover potential causal structures from unstructured data. Most of these works assume a specific prompting strategy. However, it remains unclear which strategy would be most effective. In this paper, we aim to contribute to this line of research by benchmarking a variety of LLMs on a range of tasks related to causal graphs and exploring the effectiveness of different causal graph encoders.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">CausalGraph2LLM</head><p>Understanding causal graphs is a crucial step in harnessing LLMs for tasks based on causal graphs. Our benchmark, CausalGraph2LLM, is designed to evaluate the proficiency of LLMs in interpreting and utilizing causal graphs, a skill that is vital for applications in causal inference and discovery. An overview of the benchmark is depicted in Figure <ref type="figure" target="#fig_1">1</ref>. By evaluating the ability of these models to process and comprehend the structure and implications of causal graphs, we aim to gain a deeper understanding of their potential and limitations in complex reasoning tasks.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Preliminaries</head><p>Causal graphs serve as an effective medium for conveying the perceived interactions among variables. These assumptions can be demonstrated in a directed acyclic graph (DAG), enabling researchers to infer which variables need to be controlled to reduce bias and identify those that could potentially introduce bias if controlled in the analy-sis. A causal graph is mathematically denoted as G = (V, E), where V is a finite set of vertices or nodes, represented as {v 1 , v 2 , . . . , v n }, with each v i signifying a distinct variable in the system. E is a set of ordered pairs of vertices, denoted as {(v i , v j ) | v i , v j ∈ V and i ̸ = j}, with each pair (v i , v j ) representing a directed edge from node v i to node v j . The presence of an edge from v i to v j signifies a causal effect of the variable represented by v i on the variable represented by v j . Importantly, G is a DAG, meaning that for any node v i , there does not exist a directed sequence of edges that starts and ends at v i .</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Prompting</head><p>Instruction-tuned LLMs are gaining popularity for solving tasks using LLMs, driven by their ability to leverage pre-trained knowledge to infer causal structures by simply prompting these models. Therefore, we employ prompting in our approach. We benchmark the ability of LLMs to understand causal graphs by transforming the causal graph into a verbalized prompt. Given a causal graph G, we define a prompting function p : G → P , where P is the space of all possible prompts. This function transforms the graph into a verbalized format that the LLM can process. In this benchmark, we use various prompting transformations as used in current works or graph learning literature. We perform extensive experiments on 7 different encoding strategies. A brief overview of the encoding functions is illustrated in Figure <ref type="figure" target="#fig_2">3</ref>. In Appendix B, we go into the details for each encoding strategy. We hypothesize that popular graph representations can influence performance in downstream tasks. While the specific graph structures encountered during LLM pretraining are unknown, our benchmark aims to benchmark which graph representation enhances performance for LLMs. The different encoders we use:</p><p>• JSON -This encoding represents the causal graph in a JSON format, capturing nodes and their causal relationships hierarchically <ref type="bibr" target="#b0">(Abdulaal et al., 2024)</ref>. • Adjacency -This encoding lists all edges in You will be given a causal graph. The causal relationships in this causal graph are -0 causes 1. 0 causes 2. 0 causes 3. 0 causes 4. 1 causes 3. 1 causes 4. 1 causes 2. 2 causes 3. 2 causes 4.3 causes 4. Now answer using this causal graph only, name all of the direct mediators between node 0 and node 4 in the graph. A direct mediator in a causal graph is a variable that lies on the direct path between two other immediate variables. Only consider mediators that exist in the direct causal path (not mediated via other mediators).</p><p>Think step by step. Give reasoning and then give answer within &lt;Answer&gt; [a1,a2,a3..] &lt;/Answer&gt;, if Null then return &lt;Answer&gt;Null&lt;/Answer&gt;. the graph, showing direct causal relationships between nodes <ref type="bibr" target="#b14">(Fatemi et al., 2024)</ref>. • Adjacency matrix -This encoding uses a matrix to represent the graph, with each cell indicating the presence (1) or absence (0) of a direct causal relationship between nodes. • GraphML -This encoding uses the GraphML format, a comprehensive XML-based format for graph representation. • Graphviz -This encoding uses the DOT language, which can be visualized using Graphviz tools. • Single node -This encoding lists each node with its direct effects in a straightforward textual description. • Multi node -This encoding provides a multinode description where each cause is followed by all its effects.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3">Tasks</head><p>For the benchmark, we consider various causalitybased tasks that could serve as potential subtasks, each of which may be crucial for a language model's downstream performance in understanding causal graphs. Following the graph encoding prompt, a task question prompt is added. Each task is designed to evaluate an LLM's ability to interpret causal graphs from different aspects of causality. Given a causal graph G = (V, E), we explore various types of relationships between nodes, each with its relevance to causality, causal inference, and causal discovery.</p><p>Child and Parent: If there is a directed edge from node v i to node v j in E, then v i is the parent of v j , and v j is the child of v i . This relationship signifies a direct causal effect from the parent variable to the child variable.</p><p>Source and Sink: A source node is a node that has no incoming edges. It represents a variable that is not caused by any other variable in the system, often serving as the starting point of causal chains.</p><p>A sink node is a node that has no outgoing edges. It represents a variable that does not cause any other variable in the system, often serving as the endpoint of causal chains.</p><p>Mediator: A mediator node in V is a node that lies on the path between two other nodes in E. It represents a variable that mediates the causal effect from one variable to another, playing a key role in the propagation of causal effects.</p><p>Confounder: A confounder node in V is a node that has outgoing edges to two or more other nodes in E. It represents a variable that can induce spurious associations between its child variables if not properly controlled. By evaluating the LLM's ability to identify and interpret these different types of relationships, we aim to gain a comprehensive understanding of its capabilities and limitations in the context of causal reasoning.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3.1">Downstream Task</head><p>We build upon the graph interventional effect task as proposed by <ref type="bibr" target="#b24">Kasetty et al. (2024)</ref> to evaluate the intervention reasoning abilities of an LLM as a downstream task.</p><p>We expand the dataset to include larger graphs beyond 3 variables. In causal inference, interventions alter variable values within a causal graph, breaking their causal dependencies. This is represented using Pearl's do-calculus notation as do(X = x), where X is the intervened variable and x is the set value. This intervention isolates X from its original causes, allowing for the analysis of the intervention's downstream effects.</p><p>In a causal graph G = (V, E), where V is a set of variables and E is a set of directed edges representing causal relationships, applying do(X = x) results in a modified graph where X is fixed at x and any incoming edges to X are removed.</p><p>The task is to determine the intervention's impact on other variables. The LLM must infer whether the intervened variable X causes changes in the other variables, based on the causal graph's structure. The LLM's task is to identify and quantify the intervention do(X = x)'s downstream effects on the variables V \X. This requires the LLM to interpret the causal graph and perform interventional reasoning. We evaluate this task by measuring the accuracy of LLM predictions.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.4">Experimental Setup</head><p>We evaluate our benchmark setup on a diverse array of graphs, including synthetic, and realistic contextual graphs. To control the complexity and structure of the graphs, we construct synthetic DAGs. Our benchmark also includes commonly used causal graphs from recent literature <ref type="bibr">(Ban et al., 2023b;</ref><ref type="bibr">Vashishtha et al., 2023;</ref><ref type="bibr">Ban et al., 2023a</ref>), which incorporate contextual information i.e. variable semantics. We consider the causal graphs part of BNLearn repository -Insurance:G(27, 52) <ref type="bibr" target="#b6">(Binder et al., 1997)</ref>, and Alarm:G(37, 46) <ref type="bibr" target="#b5">(Beinlich et al., 1989)</ref>.</p><p>We evaluate the benchmark for various opensource and closed models. The models we use are GritLM <ref type="bibr" target="#b29">(Muennighoff et al., 2024)</ref>, Mistral-7B-Instruct-v0.2 <ref type="bibr">(Jiang et al., 2023)</ref>, <ref type="bibr">Mixtral-8x7BInstruct-v0.1 (Jiang et al., 2024)</ref>, Gemini <ref type="bibr">(Reid et al., 2024)</ref> <ref type="foot" target="#foot_0">foot_0</ref> , GPT-3.5 <ref type="bibr" target="#b8">(Brown et al., 2020)</ref>, and GPT-4 <ref type="bibr">(Achiam et al., 2023)</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Results</head><p>This section presents our benchmark results on causal graph understanding through causal queries. We investigate how effectively LLMs can interpret and reason about causal graphs encoded in different formats, addressing both graph-level and node-level queries. Additionally, we explore biases introduced by graph contextual information. The variances are reported in Appendix C.1 for brevity.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Graph-level Queries</head><p>To evaluate the baseline graph level causal queries, we prompt the LLMs with causal query tasks resembling those encountered in larger causal reasoning tasks with different encodings. We measure the performance of these queries using the F1 score.</p><p>LLMs may struggle with simple causal query tasks. From Figure <ref type="figure">4</ref>, we observe a range of per-formances across different models and encoding types, highlighting the variability in how well each LLM handles causal graph encoding and interpretation. Out of Source and Sink based queries, interestingly the LLM has stronger performance on performing source tasks. We ablate in Appendix C.2 and observe that the order of causal graph description also has an impact on the performance of source and sink queries. This implies that the model's understanding of causal relationships may be influenced by the sequence in which information is presented. Tasks of greater complexity, such as identifying mediators, appear to be more challenging. This could be because the task of identifying a mediator intuitively involves breaking down the task into identifying 'child' and 'parent' elements, adding a layer of complexity to the task. We also conclude a correlation between graph complexity and performance in Figure <ref type="figure" target="#fig_9">11</ref> and Figure <ref type="figure" target="#fig_10">12</ref>.</p><p>Average performance. Observing the average performance for each model across different encodings suggests that the LLMs are highly sensitive to graph encoding. Adjacency-matrix encoding generally results in the lowest average performance across all models, despite being a popular format to represent causal graphs in code.</p><p>High sensitivity to the causal graph representation. We observe that different encodings for the same causal graphs have different performances across each causal query. For instance, for the Mistral model, JSON encoding has the F1 score of 0.21, however for GraphML or GraphViz encoding the performance increases to 0.46 for the Mediator task. GPT-4 and Gemini 1.5 Pro perform exceptionally well with certain encodings like GraphML and JSON, respectively, indicating that these formats might align better with the potential pretraining of the model. GritLM and Mistral show greater variability in their average performance, highlighting their sensitivity to the encoding methods used.</p><p>Correlation between query and encodings. Some queries may seem easier due to the definition of the encoding and its potential alignment with the encoding. For instance, for JSON encoding, identifying parent nodes might be relatively easier for all LLMs. This could be because the JSON-based prompt used by <ref type="bibr" target="#b0">(Abdulaal et al., 2024)</ref> defines the dictionary by specifying the parents of each node. This alignment between the query and encoding likely facilitates the model's understanding of the causal relationships, resulting in improved performance on tasks involving parent nodes. This shows the importance of considering the encoding method coupled with the query when concerned with a causal graph-level reasoning task.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Effect of pretraining knowledge</head><p>In our previous experiment, we used synthetically generated causal graphs to assess the ability of LLMs to interpret and reason about causal relationships in a controlled setting. However, in this experiment, we aim to evaluate the impact of pretraining knowledge on the understanding of causal graphs. Current research often employs LLMs to extract causal priors by leveraging the semantic information embedded in variable names <ref type="bibr" target="#b0">(Abdulaal et al., 2024;</ref><ref type="bibr">Vashishtha et al., 2023;</ref><ref type="bibr">Ban et al., 2023a;</ref><ref type="bibr" target="#b34">Sheth et al., 2024)</ref>. Their goal is to harness the knowledge and emergent reasoning abilities of LLMs to generate causal hypotheses. The primary motivation there is to harness the knowledge and emergent reasoning abilities of LLMs to generate causal hypotheses. Consequently, in this experiment, we specifically test causal graphs that incorporate contextual knowledge, allowing us to assess how pretraining influences LLMs' performance directly. We specifically consider two popular causal DAGs -Insurance <ref type="bibr" target="#b6">(Binder et al., 1997), and</ref><ref type="bibr">Alarm (Beinlich et al., 1989)</ref>. These graphs were presented in two formats: one set featured contextual causal knowledge with semantically meaningful labels, and the other set consisted of the same graphs labeled with random identifiers.</p><p>From Figure <ref type="figure" target="#fig_4">5</ref> we observe that giving contextual knowledge in terms of semantically meaningful causal variable names for the causal understanding tasks improves the performance across the models. This boost suggests that LLMs are effectively utilizing their pretraining on vast text corpora, where they have been exposed to a wide range of contexts and scenarios involving related variables. The semantics of the variable names likely help the models to enable a more accurate interpretation of the causal relationships by activating their parametric memory.</p><p>Risks associated with reliance on contextual knowledge. While the improvement in performance with contextual knowledge is promising, it also raises some concerns. Primarily, the potential (over-) reliance on semantically meaningful variable names can introduce biases based on the  language and cultural context inherent in the training data of the LLMs. We additionally observe that due to contextual knowledge, false positives were increased as in the case of GPT-4 for the Child query for the Insurance graph. This occurs because the LLM assumes there are more causal relationships than are specified by the causal graphs. This observation aligns with findings from <ref type="bibr">(Vashishtha et al., 2023)</ref>, where it was also observed that LLMs suggest more causal relationships as a causal prior in comparison to the ground truth causal graph. Moreover, when flipping the directions of the DAG to generate an anti-commonsense DAG, there is a drop in performance (see Table <ref type="table">8</ref>). This suggests that if a causal DAG with contextual information does not follow the pretraining of the LLM, due to inherited biases of the LLM, it may lead to more incorrect causal query inferences.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">Node-level queries are simpler for LLM</head><p>In the above experiments, we considered graphlevel tasks only, that require the LLM to identify and list all instances of the mentioned node type present in a given causal graph. This requires the model to understand the entire graph structure and identify all nodes that follow the given task criteria (such as source, sink). In this experiment, we break down the graph-level tasks into binary queries for node-inspection tasks to better understand the model's performance on simpler, more focused queries. The graph-level tasks are converted into binary queries reducing the processing load on the model. Each binary query asks whether a specific node in the graph is of a given type allowing LLM to focus on individual nodes. Our results, summarized in Figure <ref type="figure" target="#fig_5">6</ref>, indicate that LLMs generally perform better on node-level query tasks. Lower performance for graph-level tasks can be attributed to the difficulty of the tasks. This could be explained as the graph-level queries require the LLM to maintain a holistic understanding of the graph's structure. Secondly, incorrectly identifying one node can lead to a cascade of errors, hence reducing LLM's ability to understand the entire graph structure. In contrast, node-inspection tasks isolate each node-based query, reducing the impact of individual errors and leading to more accurate overall performance.</p><formula xml:id="formula_0">G r i t L M M i s t r a l M i x t</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3.1">Overestimation and Underestimation biases</head><p>For the binary node-level queries, we can further break down the results for each LLM and evaluate their false positives (FP) and false negatives (FN). This allows for an insight into the LLM to evaluate where the error truly comes from. False positives occur when the LLM incorrectly identifies a node as a specific type when it is not. False negatives occur when the LLM fails to identify a specific node type. We average the ratio of FP to FN across every task and embedding to report this ratio (τ ) for each model. A high τ ratio indicates that the model is more prone to false positives, meaning it frequently identifies nodes as a specific type even when they are not. Conversely, a low τ ratio (i.e., τ &lt; 1) would indicate a higher rate of false negatives, where the model fails to identify nodes that are of a specific type. This underestimation suggests that the model might be overly conservative in identifying causal relationships. From Figure <ref type="figure">7</ref>, we observe that GritLM, GPT-3.5, and GPT-4 have τ &gt; 1 ratios. It suggests that the model tends to causal overestimation bias even without the influence of contextual information. Some of the recent works have also explored the overestimation phenomenon of LLMs <ref type="bibr" target="#b17">(Herrera-Berg et al., 2023;</ref><ref type="bibr" target="#b26">Li et al., 2024)</ref>. However, Gemini, Mistral, and Mixtral portray opposite behaviors, and their False Negative predictions are higher. Such biases could arise from their RLHF finetuning stage as well and require further investigation to explore such biases for causal queries.</p><formula xml:id="formula_1">G r i t L M M i s t r a l M i x t r a l G P T -3 . 5 G e m i n i G P T -4 -1 0 1 2 3 4</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.4">Downstream task performance</head><p>In this work, we aimed to benchmark LLM performance for various causal graph queries. From ??, we observed that different encodings have varied effects across different causal tasks. In this experiment, however, we aim to observe this effect on a downstream task.</p><p>From Figure <ref type="figure">8</ref>, we observed variability in model performances due to different encoding functions for downstream intervention tasks. At first glance, it may seem that adjacency-matrix encoding has higher performance in the intervention tasks as compared to graph-level queries. However, the random baseline is 0.50, and the results here for the adjacency matrix are close to the random baseline even for the best-performing GPT-4 model.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Discussion</head><p>Our study, centered on zero-shot prompting, assesses how the comprehensive training of current models impacts their responses to causal queries. As shown in Table <ref type="table">1</ref>, models can handle causal queries reasonably well with appropriate encoding. However, performance varies based on the encoding used, likely due to differences in understanding the rich distribution within each encoding. We hypothesize that fine-tuning could improve performance across different encodings by allowing models to adapt their pre-existing knowledge to specific causal queries. We tested this by fine-tuning the Mistral-7b model in Table <ref type="table">7</ref>. We observe the biggest increase in the performance of adjacency matrix encoding. In addition to textual encoding, we also explored visual graph encoding with more advanced models. In this approach, the LLM is prompted with an image of the causal graph. Interestingly, we found that the performance using visual encoding outperformed some of the textual encodings, although it did not emerge as the best approach (see Table <ref type="table" target="#tab_8">6</ref>).</p><p>Despite the improvements brought about by finetuning, the performance indicates that there is still room for enhancement. Additionally, while finetuning proved effective, the influence of contextual knowledge and biases on performance remains an open question. We anticipate that this benchmark will serve as a valuable tool in addressing these questions and developing defence method against the biases.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1">Key Takeaways</head><p>Our findings highlight several critical aspects of causal graph understanding in LLMs, revealing both strengths and limitations.</p><p>1. We observe up to a 60% variation in performance across different graph encodings. This suggests that model performance is not solely dependent on inherent reasoning abilities but also on how causal information is represented.</p><p>Selecting the optimal encoding can significantly enhance LLM performance for specific causal tasks.</p><p>2. Certain encodings, such as JSON for parentchild tasks, align naturally with specific query structures. This interaction between encoding format and query type has been largely overlooked in prior work. Adaptive encoding strategies that optimize performance across a range of causal query types.</p><p>3. Our results reveal a strong pretrainingdriven bias: models perform significantly better when variable names align with patterns encountered in their training data. This finding raises concerns about applying LLMs to domains like medical causal graphs, where emerging research might deviate from pretraining knowledge.</p><p>4. Tasks focusing on individual nodes, such as identifying mediators, are consistently easier than graph-level tasks.</p><p>5. We observe overestimation (false positives) and underestimation (false negatives). This suggests that encoding choice not only affects overall performance but also introduces systematic errors, which could have significant implications for fields like policy modeling and epidemiology.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Conclusion</head><p>With the increasing use of LLMs to assist with causal inference and discovery tasks, it is crucial to explore their potential and limitations. In this paper, we introduced CausalGraph2LLM, the first benchmark designed to evaluate how well LLMs encode and reason about causal DAGs across both graph-level and node-level queries. Our findings highlight not only the strengths of LLMs in handling causal queries but also the risks posed by pretraining biases, encoding sensitivity, and disparities in reasoning across different query types. These insights underscore the need for careful encoding choices, fine-tuning strategies, and bias mitigation techniques when applying LLMs to causal tasks. We hope this benchmark serves as a foundation for future research, driving improvements in LLM robustness, interpretability, and applicability for causal DAG analysis.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7">Limitations and Future Work</head><p>The scope of the evaluation is primarily limited to synthetic and well-known causal graphs, which may not fully capture the complexity of real-world causal graphs. We presented 6 diverse tasks, which can be built upon for future work. Future work can expand the diversity of causal graphs and models evaluated, develop more robust encoding techniques, and explore methods to mitigate contextual biases. Enhancing the models' ability to handle complex tasks and improving downstream task performance will also be crucial. Additionally, a deeper investigation into biased sources can provide a more nuanced understanding of LLM capabilities in causal inference. Given the modular nature of the benchmark, we aim to continue to build up this benchmark to assess newer models as they come.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="8">Ethics and Risks</head><p>All of the datasets used are publicly available. Our implementation utilizes the PyTorch 1.12 framework, an open-source library. Our research is conducted per the licensing agreements of the Mistral-7B, GPT-3.5, and GPT-4 models. We ran our experiments on A100 Nvidia GPU and via OpenAI API.</p><p>While this benchmark can serve as a research tool for studying LLMs' capabilities and improving their robustness, it should not be interpreted as an endorsement of LLMs as reliable causal inference tools. Users should apply caution and rigorous validation when leveraging LLMs for causal analysis, ensuring that their outputs are interpreted critically rather than taken at face value.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="9">Acknowledgements</head><p>This work was partially funded by ELSA -European Lighthouse on Secure and Safe AI funded by the European Union under grant agreement No. 101070617. Moreover, the computation resources used in this work are supported by the Helmholtz Association's Initiative and Networking Fund on the HAICORE@FZJ partition. Views and opinions expressed are however those of the authors only and do not necessarily reflect those of the European Union or European Commission. Neither the European Union nor the European Commission can be held responsible for them.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A Reproduciblility</head><p>We will release our code, prompts, evaluation setup, and all models' outputs of our experiments. For reproducibility, we used temperature 0 and top-p value as 1 across all of the models. We also mentioned the snapshot of the model used. We have also included the prompts and examples below. Our code will be made public post the anonymity period.</p><p>The Alarm and Insurance datasets are under CC BY-SA 3.0 which allows us to modify the datasets for benchmarking freely. Our benchmark will be released under the CC BY-SA License.</p><p>Mistral and GritLM were run on 1 A100 GPU whereas Mixtral was run on 8 A100 GPUs. Since we used off-the shelf LLM, each graph-level experiment took no more than 30 minutes to run (longer for mediator, child, parent, confounder whereas source and sink took ≈ 3 mins to run). All of the experiments for each model took ≈ 38 hours. GPT-3.5 and GPT-4 were accessed via API.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.1 Dataset descriptions</head><p>The datasets used can be divided into two: 1. Contextual i.e realistic datasets and 2. synthetic datasets.</p><p>We use the two real-world-based datasets. These are semi-synthetic datasets available from the BNLearn library. The first graph, named Alarm, is a well-known benchmark in the field of causal inference. The Alarm dataset (see Figure <ref type="figure" target="#fig_9">11</ref>) is designed to model the relationships and dependencies in an intensive care unit (ICU) monitoring system. It includes variables such as heart rate, blood pressure, and other vital signs, making it a complex and realistic representation of medical data. This dataset is particularly useful for evaluating the ability of LLMs to handle intricate causal relationships in a medical high-stakes environment.</p><p>The second dataset, Insurance, is another widely used benchmark that models the risk factors and dependencies in the insurance domain. This graph (see Figure <ref type="figure" target="#fig_10">12</ref>) includes variables related to policyholders, such as age, driving history, and vehicle type, and their relationships to insurance claims and premiums. The Insurance dataset provides a different context from the medical domain, allowing us to assess the versatility of LLMs in understanding and reasoning about causal relationships in a financial setting.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.2 Synthetic dataset</head><p>In addition to real-world-based datasets, we created synthetic datasets with varying levels of difficulty to rigorously evaluate the performance of LLMs. These synthetic datasets were designed to systematically vary in complexity by adjusting the number of nodes and edges in the causal graphs. This variation allows us to assess how well the models handle different levels of graph complexity and density. The synthetic datasets serve as a controlled environment to test the models' ability to interpret and reason about causal relationships under varying conditions. By incrementally increasing the number of edges while keeping the number of nodes constant, we can observe how the models' performance scales with the complexity of the causal structure. This approach provides valuable insights into the strengths and limitations of LLMs in handling more intricate causal graphs, which is crucial for understanding their potential applications in real-world scenarios. For the experiments, we synthesized graphs with 20 and 30 nodes. For each of these node variables, we experimented with different densities of nodes. Hence we had density = 1 x nodes, 1.5 x nodes and 2 x nodes.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.3 Dataset statistics</head><p>Scale of the benchmark. The benchmark covers a wide range of graph sizes and tasks, including both graph-level and node-level queries, ensuring robust evaluation. Our benchmark includes a total of 70,638 + 36,184 = 106,822 (contextual + synthetic) queries for each encoding. Hence the total number of queries across all of the encoding is 747,754. Utility. Our benchmark evaluates both synthetic and contextual graphs, allowing users to assess models' performance in general and domain-specific scenarios.</p><p>Below is a summary of the total number of queries for each task:</p><formula xml:id="formula_2">B.2 Encoding Adjacency ( 0 , 1 ) ( 0 , 2 ) ( 1 , 3 ) ( 2 , 3 ) ( 2 , 4 ) ( 3 , 4 ) ( 0 , 3 ) ( 1 , 4 ) ( 0 , 4 ) ( 1 , 2 )</formula><p>Adjacency Matrix 0 1 2 3 4 0 0 1 1 1 1 1 0 0 1 1 1 2 0 0 0 1 1 3 0 0 0 0 1 4 0 0 0 0 0 GraphML &lt;?xml version="1.0" encoding="UTF-8"?&gt; &lt;graphml xmlns="<ref type="url" target="http://graphml.graphdrawing.org/xmlns">http://graphml.graphdrawing.org/xmlns</ref>"&gt; &lt;graph edgedefault="directed"&gt; &lt;node id="0"/&gt; &lt;node id="1"/&gt; &lt;node id="2"/&gt; &lt;node id="3"/&gt; &lt;node id="4"/&gt; &lt;edge source="0" target="1"/&gt; &lt;edge source="0" target="2"/&gt; &lt;edge source="1" target="3"/&gt; &lt;edge source="2" target="3"/&gt; &lt;edge source="2" target="4"/&gt; &lt;edge source="3" target="4"/&gt; &lt;edge source="0" target="3"/&gt; &lt;edge source="1" target="4"/&gt; &lt;edge source="0" target="4"/&gt; &lt;edge source="1" target="2"/&gt; &lt;/graph&gt; &lt;/graphml&gt; GraphViz digraph G { 0 -&gt; 1; 0 -&gt; 2; 1 -&gt; 3; 2 -&gt; 3; 2 -&gt; 4; 3 -&gt; 4; 0 -&gt; 3; 1 -&gt; 4; 0 -&gt; 4; 1 -&gt; 2; } JSON { "0": { "parents": [] }, "1": { "parents": [ "0" ] }, "2": { "parents": [ "0", "1" ] }, "3": { "parents": [ "0", "1", "2" ] }, "4": { "parents": [ "0", "1", "2", "3" ] } } Multi node 0 causes 1, 2, 3, 4. 1 causes 3, 4, 2. 2 causes 3, 4. 3 causes 4.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Single node</head><p>0 causes 1. 0 causes 2. 0 causes 3. 0 causes 4. 1 causes 3. 1 causes 4. 1 causes 2. 2 causes 3. 2 causes 4. 3 causes 4.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B.3 Prompt template</head><p>For further prompt templates, please check the codebase.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Graph-level query prompt</head><p>Hello. You will be given a causal graph. Hello. You will be given a causal graph. The causal relationships in this causal graph are -0 causes 1. 0 causes 2. 0 causes 3. 0 causes 4. 1 causes 3. 1 causes 4. 1 causes 2. 2 causes 3. 2 causes 4. 3 causes 4. Now answer using this causal graph only, name all of the direct mediators between node 0 and node 4 in the graph. A direct mediator in a causal graph is a variable that lies on the direct path between two other immediate variables. Only consider mediators that exist in the direct causal path (not mediated via other mediators). Think step by step. Give reasoning and then give answer within &lt;Answer&gt; [a1,a2,a3..] &lt;/Answer&gt;, if Null then return &lt;Answer&gt;Null&lt;/Answer&gt;.  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C Experiments</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.2 Ordering of nodes matter for causal queries</head><p>In BFS, the traversal starts from the source nodes, while in BFS-R, the traversal begins from the sink nodes. The values in the table represent the performance of the models on the tasks, with higher values indicating better performance.</p><p>The results show that the traversal order significantly impacts the performance of the models. For instance, GritLM performs better on source tasks when the traversal is in BFS order, while it performs better on sink tasks when the traversal is in BFS-R order. This pattern is consistent across all models, suggesting that BFS is more suitable for identifying source nodes, while BFS-R is more suitable for identifying sink nodes. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.3 Downstream performance under/over estimation bias</head><p>In the main paper, we analyzed over and underestimation bias for the binary node inspection task. We can conduct a similar analysis on the downstream task. Here, we observe a similar trend to the estimation biases in Section 4.3.1. Notably, GPT-3.5 and GPT-4 usually have FP/FN ratios closer to 1. See Figure <ref type="figure" target="#fig_8">10</ref>. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.4 Effect of node explanations</head><p>In our experimental setup, we took an approach to defining each task for every metric. This was primarily due to the varying terminologies used in causal inference across different academic circles. For instance, what some researchers might refer to as a 'source', others might call a 'root'. To avoid any potential confusion, we provided clear definitions for each term used in our causal queries.</p><p>Since pretraining for each model was not known, this adds an element of uncertainty to the task. To counteract this, we explicitly mentioned the query in our experiments. We conducted a set of preliminary experiments without an explanation of the query to demonstrate its effectiveness. The results showed a decrease in model performance, suggesting that providing explicit direction in the form of a mentioned query can be beneficial. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.5 Node complexity</head><p>Graph complexity can significantly impact the performance of LLMs in processing and understanding structured data. One critical factor contributing to this complexity is the number of nodes within a graph.</p><p>As the number of nodes increases, the structural complexity of the graph grows, introducing additional dependencies and relationships that the model must learn. Additionally, a denser graph with more edges introduces more pathways and connections, making it more challenging for the model to infer accurate relationships.  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.6 Multimodal models</head><p>In this work we focus on textual encodings into LLMs, however with the developments of multimodal models, we can test LLM's ability to answer causal queries when presented with image inputs. We performed our experiment on GPT-4 model with T=0. Future works can be built upon to test better image inputs for multimodal models. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.7 Effect of finetuning</head><p>In this paper, we focused on zero-shot prompting as the current models have billions of trainable parameters and have been trained on a plethora of training data, potentially including causal graphs. We hence aimed to evaluate how this reflects in the causal queries. Additionally, most current methods utilize LLMs without fine-tuning for causal discovery queries, and our study aimed to replicate this environment to provide a realistic benchmark. We performed QLORA on Mistral 7b specifically on synthetic datasets. As expected, we observed an increase in the performance with finetuning.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: CausalGraph2LLM: Causal graphs are ingested into LLMs via prompt encoding strategies which are evaluated for causal queries.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: An example prompt with single node encoding, with mediator graph-level query.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 5 :</head><label>5</label><figDesc>Figure 5: Performance of different models across (a) Insurance and (b) Alarm graphs. Bars represent performance without context, while dots indicate performance with context. The results are averaged over different encodings for each model.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Figure 6 :</head><label>6</label><figDesc>Figure 6: Node-level vs. graph-level query performances.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>Figure 7 :Figure 8 :</head><label>78</label><figDesc>Figure 7: Evaluation of overestimation and underestimation biases. The models with positive values have high false positives and the models with negative values have high false negatives.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head>Figure 9 :</head><label>9</label><figDesc>Figure 9: Evaluation of over-and underestimation biases.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head>Figure 10 :</head><label>10</label><figDesc>Figure 10: Evaluation of over-and underestimation biases for downstream task.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_9"><head>Figure 11 :</head><label>11</label><figDesc>Figure11: With an increase in graph complexity by increasing the number of nodes, we observe poorer performance of the LLM -Mistral model.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_10"><head>Figure 12 :</head><label>12</label><figDesc>Figure12: With an increase in graph complexity by increasing the number of edges, we observe poorer performance of the LLM -Mistral model.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head></head><label></label><figDesc>The causal relationships in this causal graph are -[causalgraph-based-encoding]. Now answer using this causal graph only, name all of the [node-type] in the graph. [node-type-description]. Think step by step. Give reasoning and then give answer within &lt;Answer&gt; [a1,a2,a3..] &lt;/Answer&gt;, if Null then return &lt;Answer&gt;Null&lt;/Answer&gt;. Hello. You will be given a causal graph. The causal relationships in this causal graph are -[causal-graph-encodingbased]. Now answer using this causal graph only, is [nodeX] a [node-type] in the graph. [node-type-description]. Think step by step. Give reasoning and then give answer within &lt;Answer&gt; Yes/No &lt;/Answer&gt;.</figDesc><table><row><cell>Node-level query prompt</cell></row><row><cell>Example: Single node: graph-level: Mediator</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Table 2 :</head><label>2</label><figDesc>Performance comparison across methods and encodings.</figDesc><table><row><cell cols="2">Model Enc</cell><cell cols="2">Source Sink</cell><cell cols="2">Parent Child</cell><cell>Mediator</cell><cell cols="2">Confounder Avg</cell></row><row><cell></cell><cell>JSON</cell><cell>0.25 ±0.07</cell><cell>0.30 ±0.05</cell><cell>0.15 ±0.02</cell><cell>0.20 ±0.07</cell><cell>0.10 ±0.08</cell><cell>0.15 ±0.07</cell><cell>0.19±0.10</cell></row><row><cell>GritLM</cell><cell>Adjacency Adjacency-M GraphML</cell><cell>0.20 ±0.03 0.00 ±0.00 0.38 ±0.06</cell><cell>0.26 ±0.04 0.05 ±0.01 0.24 ±0.04</cell><cell>0.12 ±0.01 0.08 ±0.01 0.14 ±0.03</cell><cell>0.06 ±0.02 0.11 ±0.02 0.21 ±0.05</cell><cell>0.35 ±0.05 0.06 ±0.01 0.18 ±0.04</cell><cell>0.26 ±0.04 0.06 ±0.01 0.29 ±0.05</cell><cell>0.20±0.12 0.06±0.03 0.24±0.08</cell></row><row><cell></cell><cell>GraphViz</cell><cell>0.15 ±0.03</cell><cell>0.25 ±0.05</cell><cell>0.19 ±0.04</cell><cell>0.23 ±0.04</cell><cell>0.17 ±0.03</cell><cell>0.22 ±0.04</cell><cell>0.20±0.03</cell></row><row><cell></cell><cell>Multi node</cell><cell>0.11 ±0.02</cell><cell>0.32 ±0.06</cell><cell>0.10 ±0.02</cell><cell>0.43 ±0.08</cell><cell>0.19 ±0.04</cell><cell>0.24 ±0.05</cell><cell>0.23±0.12</cell></row><row><cell></cell><cell>Single node</cell><cell>0.12 ±0.03</cell><cell>0.34 ±0.06</cell><cell>0.18 ±0.04</cell><cell>0.36 ±0.07</cell><cell>0.25 ±0.05</cell><cell>0.17 ±0.04</cell><cell>0.23±0.10</cell></row><row><cell></cell><cell>JSON</cell><cell>0.30 ±0.03</cell><cell>0.04 ±0.01</cell><cell>0.58 ±0.06</cell><cell>0.20 ±0.02</cell><cell>0.21 ±0.02</cell><cell>0.19 ±0.02</cell><cell>0.25±0.18</cell></row><row><cell>Mistral</cell><cell>Adjacency Adjacency-M GraphML</cell><cell>0.36 ±0.04 0.07 ±0.01 0.18 ±0.02</cell><cell>0.15 ±0.02 0.16 ±0.02 0.21 ±0.02</cell><cell>0.26 ±0.03 0.11 ±0.01 0.31 ±0.03</cell><cell>0.56 ±0.06 0.10 ±0.01 0.59 ±0.06</cell><cell>0.28 ±0.03 0.09 ±0.01 0.46 ±0.05</cell><cell>0.31 ±0.03 0.10 ±0.01 0.61 ±0.06</cell><cell>0.32±0.13 0.10±0.03 0.39±0.18</cell></row><row><cell></cell><cell>GraphViz</cell><cell>0.35 ±0.04</cell><cell>0.27 ±0.03</cell><cell>0.36 ±0.04</cell><cell>0.43 ±0.04</cell><cell>0.46 ±0.05</cell><cell>0.39 ±0.04</cell><cell>0.37±0.06</cell></row><row><cell></cell><cell>Multi node</cell><cell>0.37 ±0.04</cell><cell>0.25 ±0.03</cell><cell>0.24 ±0.02</cell><cell>0.45 ±0.05</cell><cell>0.31 ±0.03</cell><cell>0.42 ±0.04</cell><cell>0.34±0.08</cell></row><row><cell></cell><cell>Single node</cell><cell>0.50 ±0.05</cell><cell>0.22 ±0.02</cell><cell>0.44 ±0.04</cell><cell>0.43 ±0.04</cell><cell>0.33 ±0.03</cell><cell>0.20 ±0.02</cell><cell>0.35±0.12</cell></row><row><cell></cell><cell>JSON</cell><cell>0.61 ±0.06</cell><cell>0.04 ±0.01</cell><cell>0.54 ±0.05</cell><cell>0.18 ±0.02</cell><cell>0.22 ±0.02</cell><cell>0.43 ±0.04</cell><cell>0.33±0.22</cell></row><row><cell>Mixtral</cell><cell>Adjacency Adjacency-M GraphML</cell><cell>0.32 ±0.03 0.11 ±0.01 0.38 ±0.04</cell><cell>0.56 ±0.05 0.08 ±0.01 0.14 ±0.01</cell><cell>0.45 ±0.04 0.09 ±0.01 0.30 ±0.03</cell><cell>0.49 ±0.05 0.12 ±0.01 0.39 ±0.04</cell><cell>0.44 ±0.04 0.10 ±0.01 0.45 ±0.04</cell><cell>0.32 ±0.03 0.09 ±0.01 0.37 ±0.04</cell><cell>0.43±0.09 0.10±0.01 0.34±0.10</cell></row><row><cell></cell><cell>GraphViz</cell><cell>0.76 ±0.07</cell><cell>0.50 ±0.05</cell><cell>0.46 ±0.04</cell><cell>0.39 ±0.04</cell><cell>0.55 ±0.05</cell><cell>0.37 ±0.04</cell><cell>0.50±0.14</cell></row><row><cell></cell><cell>Multi node</cell><cell>0.39 ±0.04</cell><cell>0.49 ±0.05</cell><cell>0.27 ±0.03</cell><cell>0.29 ±0.03</cell><cell>0.49 ±0.05</cell><cell>0.19 ±0.02</cell><cell>0.35±0.12</cell></row><row><cell></cell><cell>Single node</cell><cell>0.71 ±0.07</cell><cell>0.33 ±0.03</cell><cell>0.48 ±0.05</cell><cell>0.42 ±0.04</cell><cell>0.54 ±0.05</cell><cell>0.39 ±0.04</cell><cell>0.48±0.13</cell></row><row><cell></cell><cell>JSON</cell><cell>0.75 ±0.07</cell><cell>0.25 ±0.03</cell><cell>0.47 ±0.05</cell><cell>0.08 ±0.01</cell><cell>0.37 ±0.04</cell><cell>0.26 ±0.03</cell><cell>0.36±0.23</cell></row><row><cell>GPT-3.5</cell><cell>Adjacency Adjacency-M GraphML</cell><cell>0.47 ±0.05 0.05 ±0.01 0.72 ±0.07</cell><cell>0.29 ±0.03 0.19 ±0.02 0.51 ±0.05</cell><cell>0.44 ±0.04 0.10 ±0.01 0.50 ±0.05</cell><cell>0.77 ±0.08 0.11 ±0.01 0.61 ±0.06</cell><cell>0.65 ±0.07 0.15 ±0.02 0.36 ±0.04</cell><cell>0.84 ±0.09 0.10 ±0.01 0.37 ±0.04</cell><cell>0.57±0.21 0.12±0.11 0.51±0.13</cell></row><row><cell></cell><cell>GraphViz</cell><cell>0.70 ±0.07</cell><cell>0.18 ±0.02</cell><cell>0.58 ±0.06</cell><cell>0.77 ±0.08</cell><cell>0.55 ±0.06</cell><cell>0.43 ±0.04</cell><cell>0.53±0.12</cell></row><row><cell></cell><cell>Multi node</cell><cell>0.39 ±0.04</cell><cell>0.24 ±0.02</cell><cell>0.50 ±0.05</cell><cell>0.70 ±0.07</cell><cell>0.64 ±0.06</cell><cell>0.59 ±0.06</cell><cell>0.51±0.17</cell></row><row><cell></cell><cell>Single node</cell><cell>0.70 ±0.07</cell><cell>0.30 ±0.03</cell><cell>0.56 ±0.06</cell><cell>0.67 ±0.07</cell><cell>0.55 ±0.06</cell><cell>0.45 ±0.05</cell><cell>0.54±0.14</cell></row><row><cell></cell><cell>JSON</cell><cell>0.80 ±0.08</cell><cell>0.77 ±0.08</cell><cell>0.97 ±0.10</cell><cell>0.56 ±0.06</cell><cell>0.68 ±0.07</cell><cell>0.72 ±0.07</cell><cell>0.76±0.13</cell></row><row><cell>Gemini</cell><cell>Adjacency Adjacency-M GraphML</cell><cell>0.53 ±0.05 0.12 ±0.01 0.84 ±0.08</cell><cell>0.62 ±0.06 0.49 ±0.05 0.54 ±0.05</cell><cell>0.66 ±0.07 0.07 ±0.01 0.76 ±0.08</cell><cell>0.74 ±0.07 0.12 ±0.01 0.56 ±0.06</cell><cell>0.64 ±0.06 0.11 ±0.01 0.67 ±0.07</cell><cell>0.73 ±0.07 0.07 ±0.01 0.60 ±0.06</cell><cell>0.66±0.07 0.22±0.16 0.67±0.11</cell></row><row><cell></cell><cell>GraphViz</cell><cell>0.48 ±0.05</cell><cell>0.56 ±0.06</cell><cell>0.57 ±0.06</cell><cell>0.64 ±0.06</cell><cell>0.59 ±0.06</cell><cell>0.69 ±0.07</cell><cell>0.58±0.07</cell></row><row><cell></cell><cell>Multi node</cell><cell>0.50 ±0.05</cell><cell>0.73 ±0.07</cell><cell>0.70 ±0.07</cell><cell>0.70 ±0.07</cell><cell>0.63 ±0.06</cell><cell>0.59 ±0.06</cell><cell>0.64±0.08</cell></row><row><cell></cell><cell>Single node</cell><cell>0.88 ±0.09</cell><cell>0.62 ±0.06</cell><cell>0.69 ±0.07</cell><cell>0.73 ±0.07</cell><cell>0.71 ±0.07</cell><cell>0.57 ±0.06</cell><cell>0.71±0.10</cell></row><row><cell></cell><cell>JSON</cell><cell>0.68 ±0.07</cell><cell>0.69 ±0.07</cell><cell>0.52 ±0.05</cell><cell>0.43 ±0.04</cell><cell>0.75 ±0.08</cell><cell>0.74 ±0.07</cell><cell>0.80±0.13</cell></row><row><cell>GPT-4</cell><cell>Adjacency Adjacency-M GraphML</cell><cell>0.77 ±0.08 0.10 ±0.01 0.80 ±0.08</cell><cell>0.58 ±0.06 0.18 ±0.02 0.80 ±0.08</cell><cell>0.69 ±0.07 0.21 ±0.02 0.85 ±0.09</cell><cell>0.69 ±0.07 0.11 ±0.01 0.90 ±0.09</cell><cell>0.84 ±0.08 0.10 ±0.01 0.76 ±0.08</cell><cell>0.75 ±0.08 0.13 ±0.01 0.75 ±0.08</cell><cell>0.73±0.09 0.14±0.04 0.81±0.05</cell></row><row><cell></cell><cell>GraphViz</cell><cell>0.67 ±0.07</cell><cell>0.67 ±0.07</cell><cell>0.80 ±0.08</cell><cell>0.85 ±0.09</cell><cell>0.70 ±0.07</cell><cell>0.69 ±0.07</cell><cell>0.71±0.07</cell></row><row><cell></cell><cell>Multi node</cell><cell>0.66 ±0.07</cell><cell>0.65 ±0.07</cell><cell>0.73 ±0.07</cell><cell>0.88 ±0.09</cell><cell>0.84 ±0.08</cell><cell>0.79 ±0.08</cell><cell>0.75±0.09</cell></row><row><cell></cell><cell>Single node</cell><cell>0.80 ±0.08</cell><cell>0.42 ±0.04</cell><cell>0.89 ±0.09</cell><cell>0.90 ±0.09</cell><cell>0.69 ±0.07</cell><cell>0.87 ±0.09</cell><cell>0.77±0.18</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>Table 4 :</head><label>4</label><figDesc>Comparing the order for prompts, BFS means it starts from source and BFS-R means it starts from sinks.</figDesc><table><row><cell cols="2">D Model</cell><cell cols="2">Source</cell><cell></cell><cell>Sink</cell></row><row><cell></cell><cell></cell><cell cols="4">BFS BFS-R BFS BFS-R</cell></row><row><cell></cell><cell>GritLM</cell><cell>0.18</cell><cell>0.24</cell><cell cols="2">0.27 0.0.47</cell></row><row><cell>Synthetic</cell><cell cols="2">Mistral Mixtral GPT-3.5 0.57 0.32 0.48 Gemini 0.65 GPT-4 0.68</cell><cell>0.26 0.40 0.48 0.54 0.57</cell><cell>0.21 0.31 0.31 0.62 0.61</cell><cell>0.39 0.44 0.64 0.82 0.89</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head>Table 5 :</head><label>5</label><figDesc>Performance comparison across methods and encodings for GPT-3.5 without causal query explanations.</figDesc><table><row><cell cols="2">Model Enc</cell><cell cols="2">Source Sink</cell><cell cols="2">Parent Child</cell><cell cols="2">Mediator Confounder</cell></row><row><cell></cell><cell>JSON</cell><cell>0.52</cell><cell>0.25</cell><cell>0.47</cell><cell>0.08</cell><cell>0.30</cell><cell>0.31</cell></row><row><cell></cell><cell>Adjacency</cell><cell>0.32</cell><cell>0.26</cell><cell>0.44</cell><cell>0.65</cell><cell>0.72</cell><cell>0.51</cell></row><row><cell>GPT-3.5</cell><cell cols="2">Adjacency-M 0.06 GraphML 0.34 GraphViz 0.42</cell><cell>0.15 0.38 0.19</cell><cell>0.10 0.50 0.58</cell><cell>0.11 0.61 0.77</cell><cell>0.08 0.37 0.52</cell><cell>0.12 0.39 0.28</cell></row><row><cell></cell><cell>Multi node</cell><cell>0.39</cell><cell>0.24</cell><cell>0.50</cell><cell>0.70</cell><cell>0.64</cell><cell>0.27</cell></row><row><cell></cell><cell>Single node</cell><cell>0.45</cell><cell>0.27</cell><cell>0.56</cell><cell>0.67</cell><cell>0.39</cell><cell>0.50</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_8"><head>Table 6 :</head><label>6</label><figDesc>Performance metrics for vision </figDesc><table><row><cell cols="5">Source Sink Child Parent Mediator Confounder</cell></row><row><cell>0.58</cell><cell>0.62 0.71</cell><cell>0.65</cell><cell>0.58</cell><cell>0.63</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>The author affiliated with Google was responsible for the Gemini experiments and the authors affiliated with CISPA Helmholtz Center for Information Security were responsible for the rest experiments.</p></note>
+		</body>
+		<back>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B Prompting Strategies</head><p>We query the llms by prompting. below we go through different types of prompts. prompt can be broken into:</p><p>1. Causal query explanation 2. Encoding 3. Query</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B.1 Causal query explanation</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Source</head><p>A source node in a causal graph is a variable that does not have any incoming edges, meaning it is not caused by any other variable in the graph.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Sink</head><p>A sink node in a causal graph is a variable that does not have any children in the graph, meaning it is not caused by any other variables in the system.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Direct Mediator</head><p>A direct mediator in a causal graph is a variable that lies on the direct path between two other immediate variables. Only consider mediators that exist in the direct causal path (not mediated via other mediators).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Confounder</head><p>A confounder in a causal graph is a variable that influences both the cause and the effect variables.</p><p>It is a common cause for both the dependent and independent variables.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Parents</head><p>What nodes are the direct causes of Node X?</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Child</head><p>What nodes are directly caused by Node X? </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.8 Anti-commonsense context results</head><p>In this experiment, we essentially flipped the arrows of the DAG. We observed that the LLM showed a decrease in performance showing its reliance on background parametric knowledge for reasoning tasks.  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D Contextual Graphs</head></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<title level="m" type="main">Causal modelling agents: Causal graph discovery through synergising metadata-and data-driven reasoning</title>
+		<author>
+			<persName><forename type="first">Ahmed</forename><surname>Abdulaal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nina</forename><surname>Montana-Brown</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tiantian</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ayodeji</forename><surname>Ijishakin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ivana</forename><surname>Drobnjak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Daniel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><forename type="middle">C</forename><surname>Castro</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Alexander</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+	<note>In ICLR</note>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<author>
+			<persName><forename type="first">Josh</forename><surname>Achiam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Steven</forename><surname>Adler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sandhini</forename><surname>Agarwal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lama</forename><surname>Ahmad</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ilge</forename><surname>Akkaya</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Florencia</forename><surname>Leoni Aleman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Diogo</forename><surname>Almeida</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Janko</forename><surname>Altenschmidt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sam</forename><surname>Altman</surname></persName>
+		</author>
+		<title level="m">Shyamal Anadkat, et al. 2023. Gpt-4 technical report</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<monogr>
+		<title level="m" type="main">Llm4grn: Discovering causal gene regulatory networks with llms-evaluation through synthetic data generation</title>
+		<author>
+			<persName><forename type="first">Tejumade</forename><surname>Afonja</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ivaxi</forename><surname>Sheth</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ruta</forename><surname>Binkyte</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Waqar</forename><surname>Hanif</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Ulas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Becker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mario</forename><surname>Fritz</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2410.15828</idno>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<title level="m" type="main">2023a. Causal structure learning supervised by large language model</title>
+		<author>
+			<persName><forename type="first">Taiyu</forename><surname>Ban</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lyuzhou</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Derui</forename><surname>Lyu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiangyu</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Huanhuan</forename><surname>Chen</surname></persName>
+		</author>
+		<idno>arXiv</idno>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<monogr>
+		<title level="m" type="main">From query tools to causal architects: Harnessing large language models for advanced causal discovery from data</title>
+		<author>
+			<persName><forename type="first">Taiyu</forename><surname>Ban</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lyvzhou</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiangyu</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Huanhuan</forename><surname>Chen</surname></persName>
+		</author>
+		<idno>arXiv</idno>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">The alarm monitoring system: A case study with two probabilistic inference techniques for belief networks</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Ingo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Henri</forename><forename type="middle">Jacques</forename><surname>Beinlich</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>Suermondt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gregory</forename><forename type="middle">F</forename><surname>Chavez</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Cooper</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AIME 89: Second European Conference on Artificial Intelligence in Medicine</title>
+		<meeting><address><addrLine>London</addrLine></address></meeting>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="1989-08-29">1989. August 29th-31st 1989</date>
+			<biblScope unit="page" from="247" to="256" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Adaptive probabilistic networks with hidden variables</title>
+		<author>
+			<persName><forename type="first">John</forename><surname>Binder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daphne</forename><surname>Koller</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stuart</forename><surname>Russell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Keiji</forename><surname>Kanazawa</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Machine Learning</title>
+		<imprint>
+			<biblScope unit="volume">29</biblScope>
+			<biblScope unit="page" from="213" to="244" />
+			<date type="published" when="1997">1997</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Differentiable causal discovery from interventional data</title>
+		<author>
+			<persName><forename type="first">Philippe</forename><surname>Brouillard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sébastien</forename><surname>Lachapelle</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexandre</forename><surname>Lacoste</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Simon</forename><surname>Lacoste-Julien</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexandre</forename><surname>Drouin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="21865" to="21877" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Language models are few-shot learners</title>
+		<author>
+			<persName><forename type="first">Tom</forename><surname>Brown</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Benjamin</forename><surname>Mann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nick</forename><surname>Ryder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Melanie</forename><surname>Subbiah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jared</forename><forename type="middle">D</forename><surname>Kaplan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Prafulla</forename><surname>Dhariwal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arvind</forename><surname>Neelakantan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pranav</forename><surname>Shyam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Girish</forename><surname>Sastry</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amanda</forename><surname>Askell</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">NeurIPS</title>
+		<imprint>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="1877" to="1901" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">Sébastien</forename><surname>Bubeck</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Varun</forename><surname>Chandrasekaran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ronen</forename><surname>Eldan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Johannes</forename><surname>Gehrke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eric</forename><surname>Horvitz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ece</forename><surname>Kamar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yin</forename><surname>Tat Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuanzhi</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Scott</forename><surname>Lundberg</surname></persName>
+		</author>
+		<imprint/>
+	</monogr>
+	<note>et al. 2023. Sparks of artificial general intelligence: Early experiments with gpt-4. arXiv</note>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<author>
+			<persName><forename type="first">Hengrui</forename><surname>Cai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shengjie</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rui</forename><surname>Song</surname></persName>
+		</author>
+		<title level="m">Is knowledge all large language models needed for causal reasoning? arXiv</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<author>
+			<persName><forename type="first">Sirui</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mengying</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kun</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xingyu</forename><surname>Zeng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rui</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shengjie</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chaochao</forename><surname>Lu</surname></persName>
+		</author>
+		<title level="m">Clear: Can language models really understand causal graphs? arXiv</title>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">The impact of prior knowledge on causal structure learning</title>
+		<author>
+			<persName><forename type="first">Zhigao</forename><surname>Anthony C Constantinou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Neville</forename><forename type="middle">K</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Kitson</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Knowledge and Information Systems</title>
+		<imprint>
+			<biblScope unit="volume">65</biblScope>
+			<biblScope unit="issue">8</biblScope>
+			<biblScope unit="page" from="3385" to="3434" />
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<monogr>
+		<title level="m" type="main">Causal discovery from a mixture of experimental and observational data</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Gregory</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Changwon</forename><surname>Cooper</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Yoo</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Talk like a graph: Encoding graphs for large language models</title>
+		<author>
+			<persName><forename type="first">Bahare</forename><surname>Fatemi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jonathan</forename><surname>Halcrow</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bryan</forename><surname>Perozzi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICLR</title>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Text mining for causal relations</title>
+		<author>
+			<persName><forename type="first">Roxana</forename><surname>Girju</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dan</forename><forename type="middle">I</forename><surname>Moldovan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">FLAIRS conference</title>
+		<imprint>
+			<date type="published" when="2002">2002</date>
+			<biblScope unit="page" from="360" to="364" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Causal knowledge extraction through large-scale text mining</title>
+		<author>
+			<persName><forename type="first">Oktie</forename><surname>Hassanzadeh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Debarun</forename><surname>Bhattacharjya</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mark</forename><surname>Feblowitz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kavitha</forename><surname>Srinivas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Perrone</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shirin</forename><surname>Sohrabi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Katz</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI Conference on Artificial Intelligence</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="page" from="13610" to="13611" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Large language models are biased to overestimate profoundness</title>
+		<author>
+			<persName><forename type="first">Eugenio</forename><surname>Herrera-Berg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tomás</forename><surname>Vergara Browne</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pablo</forename><surname>León-Villagrá</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marc-Lluís</forename><surname>Vives</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Cristian</forename><surname>Buc Calderon</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">EMNLP</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Causal discovery from heterogeneous/nonstationary data</title>
+		<author>
+			<persName><forename type="first">Biwei</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kun</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiji</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joseph</forename><surname>Ramsey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ruben</forename><surname>Sanchez-Romero</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Clark</forename><surname>Glymour</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bernhard</forename><surname>Schölkopf</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Machine Learning Research</title>
+		<imprint>
+			<biblScope unit="volume">21</biblScope>
+			<biblScope unit="issue">89</biblScope>
+			<biblScope unit="page" from="1" to="53" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">Alexandre</forename><surname>Albert Q Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arthur</forename><surname>Sablayrolles</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Mensch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Devendra</forename><surname>Bamford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Diego</forename><surname>Singh Chaplot</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Florian</forename><surname>De Las Casas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gianna</forename><surname>Bressand</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillaume</forename><surname>Lengyel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lucile</forename><surname>Lample</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Saulnier</surname></persName>
+		</author>
+		<imprint/>
+	</monogr>
+	<note>et al. 2023. Mistral 7b. arXiv</note>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">Alexandre</forename><surname>Albert Q Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Antoine</forename><surname>Sablayrolles</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arthur</forename><surname>Roux</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Blanche</forename><surname>Mensch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Savary</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Devendra</forename><surname>Bamford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Diego</forename><surname>Singh Chaplot</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Emma</forename><forename type="middle">Bou</forename><surname>De Las Casas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Florian</forename><surname>Hanna</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Bressand</surname></persName>
+		</author>
+		<imprint/>
+	</monogr>
+	<note>et al. 2024. Mixtral of experts. arXiv</note>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<monogr>
+		<title level="m" type="main">2023a. CLadder: Assessing causal reasoning in language models</title>
+		<author>
+			<persName><forename type="first">Zhijing</forename><surname>Jin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuen</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Felix</forename><surname>Leeb</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luigi</forename><surname>Gresele</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ojasv</forename><surname>Kamal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiheng</forename><surname>Lyu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kevin</forename><surname>Blin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fernando</forename><surname>Gonzalez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Kleiman-Weiner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mrinmaya</forename><surname>Sachan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bernhard</forename><surname>Schölkopf</surname></persName>
+		</author>
+		<imprint/>
+	</monogr>
+	<note>In NeurIPS</note>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<monogr>
+		<author>
+			<persName><forename type="first">Zhijing</forename><surname>Jin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiarui</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiheng</forename><surname>Lyu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Spencer</forename><surname>Poff</surname></persName>
+		</author>
+		<title level="m">Mrinmaya Sachan, Rada Mihalcea, Mona Diab, and Bernhard Schölkopf. 2023b. Can large language models infer causation from correlation? arXiv</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<monogr>
+		<title level="m" type="main">Yash More, Vedant Shah, and Yoshua Bengio. 2024. Efficient causal graph discovery using large language models</title>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Jiralerspong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaoyin</forename><surname>Chen</surname></persName>
+		</author>
+		<idno>arXiv</idno>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Gintare Karolina Dziugaite, Alexandre Drouin, and Dhanya Sridhar</title>
+		<author>
+			<persName><forename type="first">Tejas</forename><surname>Kasetty</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Divyat</forename><surname>Mahajan</surname></persName>
+		</author>
+		<idno>arXiv</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Evaluating interventional reasoning capabilities of large language models</title>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<monogr>
+		<author>
+			<persName><forename type="first">Emre</forename><surname>Kıcıman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Robert</forename><surname>Ness</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amit</forename><surname>Sharma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chenhao</forename><surname>Tan</surname></persName>
+		</author>
+		<title level="m">Causal reasoning and large language models: Opening a new frontier for causality</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<monogr>
+		<title level="m" type="main">Your large language model is secretly a fairness proponent and you should prompt it like one</title>
+		<author>
+			<persName><forename type="first">Tianlin</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaoyu</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chao</forename><surname>Du</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tianyu</forename><surname>Pang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qian</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qing</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chao</forename><surname>Shen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yang</forename><surname>Liu</surname></persName>
+		</author>
+		<idno>arXiv</idno>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<monogr>
+		<author>
+			<persName><forename type="first">Chenxi</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yongqiang</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tongliang</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mingming</forename><surname>Gong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><surname>Cheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bo</forename><surname>Han</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kun</forename><surname>Zhang</surname></persName>
+		</author>
+		<idno>arXiv</idno>
+		<title level="m">Discovery of the hidden world with large language models</title>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<monogr>
+		<author>
+			<persName><forename type="first">Stephanie</forename><surname>Long</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tibor</forename><surname>Schuster</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexandre</forename><surname>Piché</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ser-Vicenow</forename><surname>Research</surname></persName>
+		</author>
+		<title level="m">Can large language models build causal graphs? arXiv</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<monogr>
+		<author>
+			<persName><forename type="first">Niklas</forename><surname>Muennighoff</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongjin</forename><surname>Su</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Liang</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nan</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Furu</forename><surname>Wei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tao</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amanpreet</forename><surname>Singh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Douwe</forename><surname>Kiela</surname></persName>
+		</author>
+		<title level="m">Generative representational instruction tuning</title>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Salvatore Ruggieri, Dino Pedreschi, and João Gama. 2022. Methods and tools for causal discovery and causal inference</title>
+		<author>
+			<persName><forename type="first">Ana</forename><surname>Rita Nogueira</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrea</forename><surname>Pugnana</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Wiley interdisciplinary reviews: data mining and knowledge discovery</title>
+		<imprint>
+			<biblScope unit="volume">12</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page">1449</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<monogr>
+		<title level="m" type="main">Causality</title>
+		<author>
+			<persName><forename type="first">Judea</forename><surname>Pearl</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+			<publisher>Cambridge university press</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Large language models are zero shot hypothesis proposers</title>
+		<author>
+			<persName><forename type="first">Biqing</forename><surname>Qi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kaiyan</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Haoxiang</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kai</forename><surname>Tian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sihang</forename><surname>Zeng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bowen</forename><surname>Zhang-Ren Chen</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Zhou</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NeurIPS 2023 Workshop on Instruction Tuning and Instruction Following</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">Machel</forename><surname>Reid</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nikolay</forename><surname>Savinov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Denis</forename><surname>Teplyashin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dmitry</forename><surname>Lepikhin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Timothy</forename><surname>Lillicrap</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jean-Baptiste</forename><surname>Alayrac</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Radu</forename><surname>Soricut</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Angeliki</forename><surname>Lazaridou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Orhan</forename><surname>Firat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Julian</forename><surname>Schrittwieser</surname></persName>
+		</author>
+		<imprint/>
+	</monogr>
+	<note>et al. 2024. Gemini 1.5: Unlocking multimodal understanding across millions of tokens of context. arXiv</note>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<monogr>
+		<author>
+			<persName><forename type="first">Ivaxi</forename><surname>Sheth</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sahar</forename><surname>Abdelnabi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mario</forename><surname>Fritz</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2409.02604</idno>
+		<title level="m">Hypothesizing missing causal variables with llms</title>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<monogr>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Spirtes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Clark</forename><surname>Glymour</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Richard</forename><surname>Scheines</surname></persName>
+		</author>
+		<title level="m">Causation, prediction, and search</title>
+		<imprint>
+			<publisher>MIT press</publisher>
+			<date type="published" when="2001">2001</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Causal discovery and inference: concepts and recent methodological advances</title>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Spirtes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kun</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Applied informatics</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="page" from="1" to="28" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">Aarohi</forename><surname>Srivastava</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abhinav</forename><surname>Rastogi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abhishek</forename><surname>Rao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abu</forename><surname>Awal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Md</forename><surname>Shoeb</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abubakar</forename><surname>Abid</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Fisch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Adam R Brown</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aditya</forename><surname>Santoro</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adrià</forename><surname>Gupta</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Garriga-Alonso</surname></persName>
+		</author>
+		<imprint/>
+	</monogr>
+	<note>et al. 2022. Beyond the imitation game: Quantifying and extrapolating the capabilities of language models. arXiv</note>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Unicausal: Unified benchmark and repository for causal text mining</title>
+		<author>
+			<persName><forename type="first">Fiona</forename><surname>Anting Tan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xinyu</forename><surname>Zuo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">See-Kiong</forename><surname>Ng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Big Data Analytics and Knowledge Discovery</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2023">2023</date>
+			<biblScope unit="page" from="248" to="262" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<monogr>
+		<author>
+			<persName><forename type="first">Aniket</forename><surname>Vashishtha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gowtham</forename><surname>Abbavaram</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abhinav</forename><surname>Reddy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Saketh</forename><surname>Kumar</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Bachu</surname></persName>
+		</author>
+		<title level="m">Vineeth N Balasubramanian, and Amit Sharma. 2023. Causal inference using llm-guided discovery</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<monogr>
+		<author>
+			<persName><forename type="first">Ruocheng</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eric</forename><surname>Zelikman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gabriel</forename><surname>Poesia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yewen</forename><surname>Pu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nick</forename><surname>Haber</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noah</forename><forename type="middle">D</forename><surname>Goodman</surname></persName>
+		</author>
+		<idno>arXiv</idno>
+		<title level="m">Hypothesis search: Inductive reasoning with language models</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Causalbench: A comprehensive benchmark for evaluating causal reasoning capabilities of large language models</title>
+		<author>
+			<persName><forename type="first">Zeyu</forename><surname>Wang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">SIGHAN Workshop</title>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+			<biblScope unit="page" from="143" to="151" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">Chain-of-thought prompting elicits reasoning in large language models</title>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Wei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xuezhi</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dale</forename><surname>Schuurmans</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maarten</forename><surname>Bosma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fei</forename><surname>Xia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ed</forename><surname>Chi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Quoc</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Denny</forename><surname>Le</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Zhou</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">NeurIPS</title>
+		<imprint>
+			<biblScope unit="volume">35</biblScope>
+			<biblScope unit="page" from="24824" to="24837" />
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">Expel: Llm agents are experiential learners</title>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Quentin</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthieu</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yong-Jin</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gao</forename><surname>Huang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+			<biblScope unit="volume">38</biblScope>
+			<biblScope unit="page" from="19632" to="19642" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

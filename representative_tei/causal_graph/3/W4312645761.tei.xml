@@ -1,0 +1,997 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">OrphicX: A Causality-Inspired Latent Variable Model for Interpreting Graph Neural Networks</title>
+				<funder>
+					<orgName type="full">Amazon Faculty Research Award</orgName>
+				</funder>
+				<funder ref="#_RAG6y5A">
+					<orgName type="full">Internal Research Fund at The Hong Kong Polytechnic University</orgName>
+				</funder>
+				<funder ref="#_B3HG4uH">
+					<orgName type="full">National Science Foundation</orgName>
+					<orgName type="abbreviated">NSF</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Wanyu</forename><surname>Lin</surname></persName>
+							<email>wan-yu.lin@polyu.edu.hk</email>
+							<affiliation key="aff0">
+								<orgName type="institution">The Hong Kong Polytechnic University</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Hao</forename><surname>Lan</surname></persName>
+							<email>hao.lan@mail.utoronto.ca</email>
+							<affiliation key="aff1">
+								<orgName type="institution">University of Toronto</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Hao</forename><surname>Wang</surname></persName>
+							<affiliation key="aff2">
+								<orgName type="institution">Rutgers University</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Baochun</forename><surname>Li</surname></persName>
+							<affiliation key="aff1">
+								<orgName type="institution">University of Toronto</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">OrphicX: A Causality-Inspired Latent Variable Model for Interpreting Graph Neural Networks</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-14T18:31+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>This paper proposes a new eXplanation framework, called OrphicX, for generating causal explanations for any graph neural networks (GNNs) based on learned latent causal factors. Specifically, we construct a distinct generative model and design an objective function that encourages the generative model to produce causal, compact, and faithful explanations. This is achieved by isolating the causal factors in the latent space of graphs by maximizing the information flow measurements. We theoretically analyze the cause-effect relationships in the proposed causal graph, identify node attributes as confounders between graphs and GNN predictions, and circumvent such confounder effect by leveraging the backdoor adjustment formula. Our framework is compatible with any GNNs, and it does not require access to the process by which the target GNN produces its predictions. In addition, it does not rely on the linearindependence assumption of the explained features, nor require prior knowledge on the graph learning tasks. We show a proof-of-concept of OrphicX on canonical classification problems on graph data. In particular, we analyze the explanatory subgraphs obtained from explanations for molecular graphs (i.e., Mutag) and quantitatively evaluate the explanation performance with frequently occurring subgraph patterns. Empirically, we show that OrphicX can effectively identify the causal semantics for generating causal explanations, significantly outperforming its alternatives.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1.">Introduction</head><p>Graph neural networks (GNNs) have found various applications in many scientific domains, including iamge classification <ref type="bibr" target="#b9">[10]</ref>, 3D-shape analysis <ref type="bibr" target="#b16">[17]</ref>, video analysis <ref type="bibr" target="#b34">[36]</ref>, speech recognition <ref type="bibr" target="#b5">[6]</ref>, and social information systems <ref type="bibr" target="#b8">[9,</ref><ref type="bibr" target="#b11">12]</ref>. The decisions of powerful GNNs for graphstructural data are difficult to interpret. In this paper, we focus on providing post-hoc explanations for any GNN by parameterizing the process of generating explanations. Specifically, given a pre-trained GNN of interest, an explanation model, or called explainer, is trained for generating compact subgraphs, leading to the model outcomes. However, learning the explanation process can be difficult as no ground-truth explanations exist. If an explanation highlights subjectively irrelevant subgraph patterns of the input instance, this may correctly reflect the target GNN's unexpected way of processing the data, or the explanation may be inaccurate.</p><p>Recently, a few recent works have been proposed to explain GNNs via learning the explanation process. XGNN <ref type="bibr" target="#b32">[34]</ref> was proposed to investigate the graph patterns that lead to a specific class by learning a policy network. PGExplainer <ref type="bibr" target="#b13">[14]</ref> was proposed to learn a mask predictor to obtain the edge masks for providing explanations. However, XGNN fails to explain individual instances and therefore lacks local fidelity <ref type="bibr" target="#b20">[22]</ref>, while PGExplainer heavily relies on the learned embeddings of the target model, and has the restrictive assumption of having domain knowledge over the learning tasks (e.g., the explicit subgraph patterns are provided). The closest to ours is Gem <ref type="bibr" target="#b10">[11]</ref>, wherein an explainer is learned based on the concept of Granger causality. The distillation process of ground-truth explanation naturally implies the independent assumptions of the explained features <ref type="foot" target="#foot_0">1</ref> , which might be problematic as the graph-structured data is inherently interdependent <ref type="bibr" target="#b29">[31]</ref>.</p><p>In this work, we define a distinct generative model as an explainer that can provide interpretable explanations for any GNNs through the lens of causality, in particular from the notion of the structural causal model (SCM) <ref type="bibr">[19,</ref><ref type="bibr" target="#b27">29]</ref>. In principle, generating causal explanations require reasoning about how changing different concepts of the input instance -which can be thought of as enforcing perturbations or interventions on the input -affects the decisions over the target model (or the response of the system) <ref type="bibr" target="#b14">[15]</ref>. Different from prior works quantifying the causal influence from the data space (e.g., Gem <ref type="bibr" target="#b10">[11]</ref>), we propose to identify the underlying causal factors from latent space. By doing so, we can avoid working with input spaces with complex interdependency. The intuition is that if the latent features<ref type="foot" target="#foot_1">foot_1</ref> can untwist the causal factors and the spurious factors between the input instance and the corresponding output of the target GNN, generating causal explanations is possible.</p><p>For this purpose, we first present a causal graph that models both causal features and spurious features to the GNN's prediction. The causal features causing the prediction might be informative to generate a graph-structural mask for the explanation. Our causal analysis shows that there exists a confounder from the data space while considering the causeeffect relationships between the latent features and the GNN outcome <ref type="bibr" target="#b3">[4,</ref><ref type="bibr" target="#b25">27,</ref><ref type="bibr" target="#b26">28]</ref>. Specifically, when interpreting graphstructural data, node features/attributes can be a confounder that affects both the generated graph structures and corresponding model outcomes. The existence of the confounder represents a barrier to causal quantification <ref type="bibr">[19]</ref>. To this end, we adopt the concept of information flow <ref type="bibr" target="#b0">[1]</ref>, along with the backdoor adjustment formula <ref type="bibr" target="#b18">[20]</ref>, to bypass the confounder effect and measure the causal information transmission from the latent features to the predictions.</p><p>Then we instantiate our explainer with a variational graph auto-encoder (VGAE) <ref type="bibr" target="#b7">[8]</ref>, which consists of an inference network and a generative network (shown in Figure <ref type="figure" target="#fig_0">1</ref>). The inference network seeks a representation of the input, in which the representation is learned in such a way that a subset of the factors with large causal influence, i.e. the causal features, can be identified. The generative network is to map the causal features into an adjacency mask for the explanation. Importantly, the generative network ensures that the learned latent representations (the causal features and the spurious features together) are within the data distribution.</p><p>In a nutshell, our main contributions are highlighted as follows. We propose a new explanation technique, called OrphicX, that eXplains the predictions of any GNN by identifying the causal factors in the latent space. We utilize the notion of information flow measurements to quantify the causal information flowing from the latent features to the model predictions. We theoretically analyze the causaleffect relationships in the proposed causal model, identify a confounder, and circumvent it by leveraging the backdoor adjustment formula. We empirically demonstrate that the learned features with causal semantics are indeed informative for generating interpretable and faithful explanations for any GNNs. Our work improves model interpretability and increases trust in GNN model explanation results.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.">Method</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.1.">Notations and Problem Setting</head><p>Notations. Given a pre-trained GNN (the target model to be explained), denoted as f : G → Y, where G is the space of input graphs to the model and Y is the label space. Specifically, the input graph G = (V, E) of the GNN includes the corresponding adjacency matrix (A ∈ R |V |×|V | ) and a node attribute matrix (X ∈ R |V |×D ). We use (Dc+Ds) to denote the latent feature matrix, where Z c is the causal feature sub-matrix and Z s is the spurious feature sub-matrix. Correspondingly for each node, we denote its node attribute vector by x (one row of X), its causal latent features by z c , and its spurious latent features by z s .</p><formula xml:id="formula_0">Z = [Z c , Z s ] ∈ R |V |×</formula><p>The desiderata for GNN explanation methods. An essential criterion for explanations is fidelity <ref type="bibr" target="#b20">[22]</ref>. A faithful explanation/subgraph should correspond to how the target GNN behaves in the vicinity of the given graph of interest. Stated differently, the outcome of feeding to the explanatory subgraph to the target GNN should be similar to that of the graph to be explained. Another essential criterion for explanations is human interpretability, which implies that the generated explanations should be sparse/compact in the context of graph-structured data <ref type="bibr" target="#b19">[21]</ref>. In other words, a human-understandable explanation should highlight the most important part of the input while discarding the irrelevant part. In addition, an explainer should be able to explain any GNN model, commonly known as "model-agnostic" (i.e., treat the target GNN as a black box).</p><p>Problem setting. Therefore, our ultimate goal is to obtain a generative model as an explainer, denoted as F, that can identify which part of the input causes the GNN prediction, while achieving the best possible performance under the above criteria. Consistent with prior works <ref type="bibr" target="#b10">[11,</ref><ref type="bibr" target="#b13">14,</ref><ref type="bibr" target="#b32">34]</ref>, we focus on explanations on graph structures. We consider the black-box setting where we do not have any information about the ground-truth labels of the input graphs and we specifically do not require access to, nor knowledge of, the process by which the target GNN produces its output. Nevertheless, we are allowed to retrieve different predictions by performing multiple queries, and we assume that the gradients of the target GNN are provided.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.2.">OrphicX</head><p>Overview. In this paper, we propose a generative model as an explainer, called OrphicX, that can generate causal explanations by identifying the causal features leading to the GNN outcome. In particular, we propose to isolate the causal features and the spurious features from the latent space. For this purpose, we first propose a causal graph to model the relationships among the causal features, the spurious features, the input graph, and the prediction of the . Illustration of OrphicX. We instantiate our explainer with a variational graph auto-encoder (VGAE), which consists of an inference network and a generative network. The causal features along with the spurious features can be used to reconstruct the graph structure within the data distribution, while the causal features are mapped to a graph-structured mask for the causal explanation. The target GNN is pre-trained, and the parameters would not be changed during the training of OrphicX. target model. Then we show how to train OrphicX with a faithful causal-quantification mechanism based on the notion of information flow along with the backdoor adjustment formula. With the identified causal features, we are able to generate a graph-structured mask for the explanation.</p><p>Information flow for causal measurements. Recall that, our objective is to generate compact subgraphs as the explanations for the pre-trained GNN. The explanatory subgraph is causal in the sense that it tends to be independent of the spurious aspects of the input graph while holding the causal portions contributing to the prediction of the target GNN. One challenge, therefore, is how to quantify the causal influence of different data aspects in the latent space, so as to identify the portion with large causal influence, denoted by Z c . To address this issue, we leverage recent work on information-theoretic measures of causal influence <ref type="bibr" target="#b0">[1]</ref>. Specifically, we measure the causal influence of Z c on the model prediction y using the information flow, denoted as I (Z c → y), between them. Here information flow can be seen as the causal counterpart of mutual information I (Z c ; y).</p><p>Succinctly, our framework attempts to isolate a subset of the representation from the hidden space, denoted as Z c , such that the information flow from Z c to y is maximized.</p><p>In what follows, we will show how to quantify this term corresponding to our causal model. Causal analysis. Throughout this paper, we assume the causal model in Figure <ref type="figure" target="#fig_1">2</ref>. Specifically, the causal features and the spurious features together form the representation of the input graph, which can be used to reconstruct the graph structure, denoted as A. This ensures that the learned latent features still reflect the same data distribution as the one captured by the target GNN. The graph structure A, along with the node attribute X, contributes to the model prediction y. Stated differently, X is a confounder when we consider the cause-effect relationships between the latent features (i.e. causal features and spurious features) and the model prediction. Consequently, directly ignoring X can lead to inaccurate estimates of the causal features. To address this issue, we leverage the classic backdoor adjustment formula <ref type="bibr" target="#b18">[20]</ref> and have:</p><formula xml:id="formula_1">P (y|do(Z c )) = X P (y|Z c , X)P (X).<label>(1)</label></formula><p>Eqn. 1 is crucial to circumvent the confounder effect introduced by node attributes and compute the information flow I(Z c → y), which is the causal counterpart of mutual information <ref type="bibr" target="#b0">[1]</ref>. Intuitively, Eqn. 1 goes through different versions of X while keeping Z c fixed to estimate the causal effect Z c has on y. Note that P (y|do(Z c )) = X P (y|Z c , X)P (X) is different from P (y|Z c ) = X P (y|Z c , X)P (X|Z c ); the former samples from the marginal distribution P (X), while the latter samples X from the conditional distribution P (X|Z c ). In causal theory, P (y|do(Z c )) = X P (y|Z c , X)P (X) is referred to as the backdoor adjustment formula <ref type="bibr" target="#b18">[20]</ref>. Our Theorem 2.1 below provides a way of computing the information flow I(Z c → y). </p><formula xml:id="formula_2">y X P (y|Zc, X)P (X)• log X P (y|Zc, X)P (X) Zc X P (y|Zc, X)P (X)dZc dZc</formula><p>Note that due to the confounder X, I(Z c → y) is not equal to the mutual information I(Z c ; y). The term X P (y|Z c , X) comes from Eqn. 1 and can be estimated efficiently. Specifically, we have</p><formula xml:id="formula_3">P (y|do(Zc)) = X P (y|Zc, X)P (X)<label>(2)</label></formula><p>= X A Zs P (y|A, X)P (A|Zs, Zc)P (Zs|Zc, X)P (X)dZs</p><formula xml:id="formula_4">≈ 1 NxNsNz Nx k=1 Ns j=1 Nz n=1 P (y|A (kjn) , X (k) ).<label>(3)</label></formula><p>Here k indexes the N x sampled node attribute matrices X (k) from the dataset; j indexes the N s samples for each</p><formula xml:id="formula_5">X (k) , i.e., Z<label>(kj) s</label></formula><formula xml:id="formula_6">∼ P (Z s |Z c , X (k) ); n indexes the N z sam- pled graphs for each Z (kj) s , i.e., A (kjn) ∼ p(A|Z c , Z<label>(kj) s</label></formula><p>).</p><p>Note that in practice we use the variational distribution q(Z s |A, X (k) ) to approximate the true posterior distribution P (Z s |Z c , X (k) ), and that in Eqn. 3, X, Z c , and Z s do not necessarily belong to the same graph in the original dataset. Intuitively this is to remove the confounding effect of X on Z c and Z s . Consequently we have</p><formula xml:id="formula_7">Zc P (Z c )P (y|do(Z c ))dZ c (4) = Zc X A Zs P (y|A, X)P (A|Z s , Z c )<label>(5)</label></formula><formula xml:id="formula_8">P (Z s |Z c , X)P (X)P (Z c )dZ s dZ c ≈ 1 N c N x N s N z Nc i=1 Nx k=1 Ns j=1 Nz n=1 P (y|A (ikjn) , X (k) ), (6) Similarly, i indexes the N c samples from Z c 's marginal distribution, i.e., Z (i) c ∼ P (Z c ); k indexes the N x sam- pled node attribute matrices from X's marginal distribu- tion X (k) ∼ P (X); j indexes the N s samples of Z s for each pair (Z (i) c , X (k) ), i.e., Z (ikj) s ∼ P (Z s |Z (i) c , X (k) ); n indexes the N z sampled graphs for each pair (Z (i) c , Z (kj) s ), i.e., A (ikjn) ∼ p(A|Z (i) c , Z (kj) s</formula><p>). Note that in practice we use the variational distribution q(Z s |A,</p><formula xml:id="formula_9">Z (i) c , X (k) ) to ap- proximate the true posterior distribution P (Z s |Z (i) c , X (k) ).</formula><p>Put together, we have  k) ) .</p><p>Graph generative model as an explainer. Our framework, OrphicX, leverages the latent space of a variational graph auto-encoder (VGAE) to avoid working with input spaces with complex interdependency. Specifically, our VGAE-based framework (shown in Figure <ref type="figure" target="#fig_0">1</ref>) consists of an inference network and a generative network. The former is instantiated with a graph convolutional encoder and the latter is a multi-layer perceptron equipped with an inner product decoder. More concretely, the inference network seeks a representation -a latent feature matrix Z of the input graph, of which the causal features Z c , a sub-matrix with large causal influence, can be isolated. The generative network serves two purposes: (1) it maps the causal sub-matrix into an adjacency mask, which is used as the causal explanation, and (2) it ensures that the causal features, merged with the spurious features, can reconstruct the graphs within the data distribution characterized by the target GNN.</p><p>Learning OrphicX. Learning of OrphicX can be cast as the following optimization problem:</p><formula xml:id="formula_11">min -I (Z c → y) + λL VGAE ,<label>(7)</label></formula><p>where L VGAE is the negative evidence lower bound (ELBO) loss term that encourages the latent features Z to stay in the data manifold <ref type="bibr" target="#b7">[8]</ref>, and Z c is the causal sub-matrix of Z. A detailed description of the ELBO term of the VGAE is provided in Appendix. Our empirical results suggest that the ELBO term helps learn a sub-matrix that embeds more relevant information leading to the GNN prediction.</p><p>Recall that, our objective is to generate explanations that can provide insights into how the target GNN truly computes its predictions. An ideal explainer should fulfill the three desiderata presented in Section 2.1: high fidelity (faithful), high sparsity (compact), and model agnostic. Therefore, apart from the objective function Eqn. 7, we further enforce the fidelity and sparsity criteria through regularization specifically tailored to such explainers. Concretely, we denote the generated explanatory subgraph as G c and the corresponding adjacency matrix as A c . The sparsity criterion is measured by ||Ac||1 ||A||1 , where || • || 1 denotes the l 1 norm of the adjacency matrix. The fidelity criterion implies that the GNN outcome corresponding to the explanatory subgraph should be approximated to that of the target instance, i.e. f (G c ) ≈ f (G), where f (•) is the probability distribution over the classesthe outcome of the target GNN. For this purpose, we introduce a Kullback-Leibler (KL) divergence term to measure how much the two outputs differ.</p><p>Therefore, the optimization problem can be reformulated as:</p><formula xml:id="formula_12">min -I (Z c → y) + λ 1 L VGAE + λ 2 ||A c || 1 ||A|| 1 +λ 3 KL (f (G c ), f (G)) ,</formula><p>where λ i (i ∈ {1, 2, 3}) controls the associated regularizer terms. To understand OrphicX comprehensively, a series of ablation studies for the loss function are performed. Note that, the parameters of the target GNN (shown in Figure <ref type="figure" target="#fig_0">1</ref>) are pre-trained and would not be changed during the training of OrphicX. OrphicX only works with the model inputs and the outputs, rather than the internal structure of specific models. Therefore, our framework can be used to explain any GNN models as long as their gradients are admitted.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.">Experiments</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1.">Datasets and Settings</head><p>Datasets. We conducted experiments on benchmark datasets for interpreting GNNs: 1) For the node classification task, we evaluate different methods with synthetic datasets, including BA-shapes and Tree-cycles, where ground-truth explanations are available. We followed data processing in the literature <ref type="bibr" target="#b30">[32]</ref>. 2) For the graph classification task, we use two datasets in bioinformatics, MUTAG <ref type="bibr" target="#b1">[2]</ref> and NCI1 <ref type="bibr" target="#b24">[26]</ref>. Note that the model architectures for node classification <ref type="bibr" target="#b4">[5]</ref> and graph classification <ref type="bibr" target="#b28">[30]</ref> tasks are different (more details of the dataset descriptions and corresponding model architectures are provided in Appendix A.2).</p><p>Comparison methods. We compare our approach against various powerful interpretability frameworks for GNNs. They are GNNExplainer <ref type="bibr" target="#b30">[32]</ref>, PGExplainer <ref type="bibr" target="#b13">[14]</ref>, and Gem <ref type="bibr" target="#b10">[11]</ref> 3 . Among others, PGExplainer and Gem explain the target GNN via learning an explainer. As for GNNExplainer, there is no training phase, as it is naturally designed for explaining a given instance at a time. Unless otherwise stated, we set all the hyperparameters of the baselines as reported in the corresponding papers.</p><p>Hyperparameters in OrphicX. For all datasets on different tasks, the explainers share the same model structure <ref type="bibr" target="#b7">[8]</ref>. For the inference network, we applied a three-layer GCN with output dimensions 32, 32, and 16. The generative model is equipped with a two-layer MLP and an inner product decoder. We trained the explainers using the Adam optimizer <ref type="bibr" target="#b6">[7]</ref> with a learning rate of 0.003 for 300epochs. For all experiments, we set N x = 5, N z = 2, N c = 25, N s = 100, D c = 3, λ 1 = 0.1, λ 2 = 0.1, and λ 3 = 0.2. The results 3 We use the source code released by the authors. reported in the paper correspond to the best hyperparameter configurations. With this testing setup, our goal is to fairly compare best achievable explanation performance of the methods. Detailed implementations, including our hyperparameter search space are given in Appendix A.2.</p><p>Evaluation metrics. We evaluate our approach with two criteria. 1) Faithfulness<ref type="foot" target="#foot_2">foot_2</ref> /fidelity: are the explanations indicative of "true" model behaviors? 2) Sparsity: are the explanations compact and understandable? Below, we address these criteria, proposing quantitative metrics for evaluating fidelity and sparsity and qualitative assessment via visualizing the explanations.</p><p>To evaluate fidelity, we generate explanations for the test set <ref type="foot" target="#foot_3">5</ref> according to OrphicX, Gem, PGExplainer, and GN-NExplainer, respectively. We then evaluate the explanation accuracy of different methods by comparing the predicted labels of the explanatory subgraphs with the predicted labels of the input graphs using the pre-trained GNN <ref type="bibr" target="#b10">[11]</ref>. An explanation is faithful only when the predicted label of the explanatory subgraph is the same as the corresponding input graph. To evaluate sparsity, we use different evaluation metrics. Specifically, in Mutag, the type and the size of explainable motifs are various. We measure the fraction of edges (i.e., edge ratio denoted as R) selected as "important" by different explanation methods for Mutag and NCI1. For the synthetic datasets, we use the number of edges (denoted as K), as did in prior works <ref type="bibr" target="#b10">[11,</ref><ref type="bibr" target="#b30">32]</ref>. A smaller fraction of edges or a smaller number of edges selected implies a more compact subgraph or higher sparsity.</p><p>To further check the interpretability, we use the visualized explanations to analyze the performance qualitatively. However, we do not know the ground-truth explanations for the real-world datasets. For Mutag <ref type="foot" target="#foot_4">6</ref> , we ask an expert from Biochemical Engineering to label the explicit subgraph patterns as our explanation ground truth (i.e., carbon rings with chemical groups such as the azo N=N, NO 2 and NH 2 for the mutagenic class). Specifically, 739/933 instances containing the subgraph patterns fall into the mutagenic class in the entire dataset, which corroborates that these patterns are sufficient for the ground-truth explanation. Figure <ref type="figure" target="#fig_4">3</ref> describes the detailed distribution of instances with various occurring subgraph patterns. With these occurring subgraph patterns, we can evaluate the explanation performance on Mutag with edge AUC. The evaluation intuition is elaborated in the Section 3.2.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2.">Empirical Results</head><p>Explanation performance. We first report the explanation performance for synthetic datasets and real-world  datasets. In particular, we evaluate the explanation accuracy under various sparseness constraints (i.e., various R for the real-world datasets and various K for the synthetic datasets). Table <ref type="table" target="#tab_0">1</ref> and Table 2 report the explanation accuracy of different methods specifically. A smaller number of edges (denoted as K) or a smaller value of edge ratio (denoted as R) indicates that the explanatory subgraphs are more compact. As observed, OrphicX consistently outperforms baselines across various sparseness constraints over all datasets. As the model architectures for node and graph classification <ref type="bibr" target="#b28">[30]</ref> tasks are different, the performance corroborates that our framework is model architecture-agnostic (see the model architectures in the Appendix).</p><p>Following existing works <ref type="bibr" target="#b10">[11,</ref><ref type="bibr" target="#b17">18]</ref>, we also evaluate the Log-odds difference to illustrate the fidelity of generated explanations in a more statistical view. Log-odds difference describes the resulting change in the pre-trained GNNs' outcome by computing the difference (the initial graph and the explanation subgraph) in log odds. The detailed definition of Log-odds difference is elaborated in Appendix A.2. Figure <ref type="figure" target="#fig_5">4</ref> depicts the distributions of log-odds difference over the entire test set for synthetic datasets. We can observe that the log-odds difference of OrphicX is more concentrated  OrphicX consistently achieves the best performance overall (denser distribution around 0 is better).</p><p>For fair comparisons, we also report the explanation fidelity of different methods in terms of edge AUC in Table 3. We follow the experimental settings of GNNExplainer and PGExplainer <ref type="foot" target="#foot_5">7</ref> , where the explanation problem was formalized as a binary classification of edge. The mean and standard deviation are calculated over 5 runs. This metric works for the datasets with ground-truth explanations (i.e., the "house"-structured pattern/motif of BA-shapes and the labeled subgraph patterns in Mutag). The intuition is that a good explanation method assigns higher weights to the edges within the ground-truth subgraphs/motifs. Regarding edge  The graphs in the first column are the target instances to be explained. The solid edges in other columns are identified as 'important' by corresponding methods. The closer the probability to that of the target instance, the better the explanation is. importance, one might naturally consider the self-attention mechanism as a feasible solution. Prior works have shown its performance for model explanations. For clarity, we also report the experimental results of the self-attention mechanism denoted as ATT in Table <ref type="table" target="#tab_2">3</ref>. The results of synthetic datasets are from GNNExplainer and PGExplainer. For Mutag, we evaluate the subgraph patterns labeled by the domain expert. As might be expected, OrphicX exhibits its superiority in identifying the most important edges captured by the pretrained GNNs. We also observe that the prior causality-based approach, Gem, does not perform well evaluating with edge AUC. We conjecture that the explainable subgraph patterns are destroyed due to the distillation process <ref type="bibr" target="#b10">[11]</ref>. Though the generated subgraphs with Gem can well reflect the classification pattern captured by the pre-trained GNN, it degrades the human interpretability of the generated explanations. Explanation visualization. Figure <ref type="figure" target="#fig_6">5</ref> plots the visualized explanations of different methods. In particular, we focus on the visualization on Mutag, which can reflect the interpretability quantitatively and qualitatively. The first column shows the initial graphs and corresponding probabilities of being classified as "mutagenic" class by the pre-trained GNN, while the other columns report the explanation subgraphs. Associated probabilities belonging to the "mutagenic" class based on the pre-trained GNN are reported below the subgraphs. Specifically, in the first case (the first row), OrphicX can identify the essential subgraph patterna complete carbon ring with a NO 2 -leading to its label ( "mutagenic"). Nevertheless, prior works, particularly Gem, fail to recognize the explainable motif. In the second instance (the second row), OrphicX can well identify a complete carbon ring with a NH 2 . At the same time, PGExplainer fails to recognize the NH 2 , leading to a high probability of being classified into the wrong class -"non-mutagenic" -by the target GNN, with a probability of 0.9942. In the third instance (the third row), a complete carbon ring with a N=N is the essential motif, consistent with the criterion from the domain expert. Overall, OrphicX can identify the explanatory subgraphs that best reflect the predictions of the pre-trained GNN. The visualization of synthetic datasets and more visualization plots on Mutag are provided in Appendix A.3.</p><p>Information flow measurements. To validate Theorem 2.1, we evaluate the information flow of the causal factors (Z c ) and the spurious factors (Z s ) corresponding to the model prediction, respectively. Figure <ref type="figure" target="#fig_12">10a</ref> in Appendix A.3 shows that, as desired, the information flow from the causal factors to the model prediction is large while the information flow from the spurious factors to the prediction is small. We also evaluate the prediction performance while adding noise (mean is set as 0) to the causal factors and the  <ref type="table" target="#tab_3">4</ref>, we can observe that adding perturbations to the causal factors degrades the prediction performance of the pre-trained GNN significantly with the increase of the standard deviation of the noise (mean is set as 0) while adding the perturbations on the spurious counterparts does not. These insights, in turn, verify the efficacy of applying the concept of information flow for the causal influence measurements.</p><p>Ablation studies. An ablation study for the information flow in the hidden space was performed by removing the causal influence term. From Figure <ref type="figure" target="#fig_12">10b</ref> in Appendix A.3, we can observe that without the causal influence term, the causal influence to the model prediction is distributed across all hidden factors. In addition, we also inspect the explanation performance for our framework as an ablation study for the loss function proposed. We empirically prove the need for different forms of regularization leveraged by the OrphicX loss function. Due to space constraints, the empirical results are provided in the Appendix.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.">Related Work</head><p>We focus on the discussions on causality-based interpretation methods. Other prior works, including GNNExplainer <ref type="bibr" target="#b30">[32]</ref>, PGExplainer <ref type="bibr" target="#b13">[14]</ref>, PGM-Explainer <ref type="bibr" target="#b23">[25]</ref>, Sub-graphX <ref type="bibr" target="#b33">[35]</ref>, GraphMask <ref type="bibr" target="#b21">[23]</ref>, XGNN <ref type="bibr" target="#b32">[34]</ref> and others <ref type="bibr" target="#b19">[21]</ref> are provided in Appendix A. <ref type="bibr" target="#b3">4</ref>.</p><p>Explanation essentially seeks the answers to the questions of "what if" and "why," which are intrinsically causal. Causality, therefore, has been a plausible language for answering such questions <ref type="bibr" target="#b10">[11,</ref><ref type="bibr" target="#b17">18]</ref>. There are several viable formalisms of causality, such as structural causal models <ref type="bibr" target="#b17">[18,</ref><ref type="bibr">19]</ref>, Granger causality <ref type="bibr" target="#b2">[3,</ref><ref type="bibr" target="#b10">11]</ref>, and causal Bayesian networks <ref type="bibr">[19]</ref>. While most existing works are designed for explaining conventional neural networks on image domain, Gem <ref type="bibr" target="#b10">[11]</ref> falls into the research line of explaining graphstructural data. Specifically, Gem framed the explanation task for GNNs as a causal learning task and proposed a causal explanation model that can learn to generate compact subgraphs towards its prediction. Fundamentally, this approach monitored the response of the target GNN by perturbing the input aspects in the data space and naturally impelled the independent assumption of the explained features. Due to the interdependence property of graph-structured data and the non-linear transformation of GNNs, we argue that this assumption may reduce the efficacy and optimality of the explanation performance. Different from prior works, we quantify the causal attribution of the data aspects in the latent space, and we do not have the independent assumption of the explained features, as OrphicX is designed to generate the explanations as a whole.</p><p>Graph information bottleneck. Our work is somewhat related to the work of information bottleneck for subgraph recognition <ref type="bibr" target="#b31">[33]</ref> but different in terms of the problem and the goals. GIB-SR <ref type="bibr" target="#b31">[33]</ref> seeks to recognize maximally informative yet compressed subgraph given the input graph and its properties (e.g, ground truth label). On the contrary, our framework is about generating explanations to unveil the inner working of GNNs, which seeks to understand the behavior of the target model (the prediction results) rather than the ground truth labels. More concretely, the model explanation is to analyze models rather than data <ref type="bibr" target="#b15">[16]</ref>. Moreover, our objective maximizes the causal information flowing from the latent features to the model predictions.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.">Conclusion</head><p>In this paper, we propose OrphicX, a framework for generating causal, compact, and faithful explanations for any graph neural networks. Our findings remain consistent across datasets and various graph learning tasks. Our analysis suggests that OrphicX can identify the causal semantics in the latent space of graphs via maximizing the information flow measurements. In addition, OrphicX enjoys several advantages over many powerful explanation methods: it is model-agnostic, and it does not require the knowledge of the internal structure of the target GNN, nor rely on the linear-independence assumption of the explained features. We show that causal interpretability via isolating the causal factors in the latent space offers a promising tool for explaining GNNs and mining patterns in subgraphs of graph inputs.</p><p>Explainability will promote transparency, trust, and fairness in society. It can be very helpful for graphs, including but not limited to molecular graphs, for example, visual scene graph -a graph-structured data where nodes are objects in the scene and edges are relationships between objects. Explainability can identify subgraphs relevant to a given classification, e.g., identify a scene as being indoor. In the future, additional user studies should confirm to what extent explanations in other domains (e.g., visual scene graph) provided by our OrphicX align with the needs and requirements of practitioners in real-world settings.</p><p>Potential negative impact. The privacy risks of model explanations have been empirically characterized for deep neural networks for non-relational data (with respect to graphstructured data) <ref type="bibr" target="#b22">[24]</ref>. We conjecture that the generated explanation for GNNs may also expose private information of the training data. This will pose risks for deploying GNNbased AI systems across various domains that value model explainability and privacy the most, such as finance and healthcare.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.2. Further Implementation Details</head><p>Datasets. BA-shapes was created with a base Barabasi-Albert (BA) graph containing 300 nodes and 80 five-node "house"-structured network motifs. Tree-cycles were built with a base 8-level balanced binary tree and 80 six-node cycle motifs. Mutag <ref type="bibr" target="#b1">[2]</ref> and NCI1 <ref type="bibr" target="#b24">[26]</ref> are for graph classification tasks. Specifically, Mutag contains 4337 molecule graphs, where nodes represent atoms, and edges denote chemical bonds. It contains the non-mutagenic and mutagenic class, indicating the mutagenic effects on Gramnegative bacterium Salmonella typhimurium. NCI1 consists of 4110 instances; each chemical compound screened for activity against non-small cell lung cancer or ovarian cancer cell lines. The statistics of four datasets are presented in Table <ref type="table" target="#tab_4">5</ref>. Note that, we report the average number of nodes and the average number of edges over all the graphs for the real-world datasets.</p><p>Model architectures. For classification architectures, we use the same setting as prior works <ref type="bibr" target="#b10">[11,</ref><ref type="bibr" target="#b30">32]</ref>. Specifically, for node classification, we apply three layers of GCNs with output dimensions equal to 20 and perform concatenation to the output of three layers, followed by a linear transformation to obtain the node label. For graph classification, we employ three layers of GCNs with dimensions of 20 and perform global max-pooling to obtain the graph representations. Then a linear transformation layer is applied to obtain the graph label. Figure <ref type="figure" target="#fig_7">6</ref> (c) depicts the model architecture of OphicX for generating explanations. For the inference network, we applied a three-layer GCN with output dimensions 32, 32, and 16. The generative model is equipped with a two-layer MLP and an inner product decoder. We trained the explainers using the Adam optimizer <ref type="bibr" target="#b6">[7]</ref> with a learning rate of 0.003 for 300epochs. Table <ref type="table" target="#tab_6">7</ref> shows the detailed data splitting for model training, testing, and validation. Note that both classification models and our explanation models use the same data splitting. See Table <ref type="table" target="#tab_7">8</ref> for our hyperparameter search space. Table <ref type="table" target="#tab_5">6</ref> reports the model accuracy on four datasets, which indicates that the models to be explained are performed reasonably well. Unless otherwise stated, all models, including GNN classification models and our explanation model, are implemented using PyTorch 8 and trained with Adam optimizer. Negative ELBO term. The negative ELBO term is de-  fined as Eqn. 8:</p><formula xml:id="formula_13">L VGAE = E q(Z|X,A) [log p(A|Z)]-KL[q(Z|X, A) ∥ p(Z)],<label>(8)</label></formula><p>where KL[q(•) ∥ p(•)] is the Kullback-Leibler divergence between q(•) and p(•). The Gaussian prior is p(Z) = i p(z i ) = i N (z i |0, 1). We follow the reparameterization trick in <ref type="bibr" target="#b7">[8]</ref> for training.</p><p>Log-odds difference. We measure the resulting change in the pre-trained GNNs' outcome by computing the difference in log odds and investigate the distributions over the entire test set. The log-odds difference is formulated as:</p><formula xml:id="formula_14">∆log-odds = log-odds (f (G)) -log-odds (f (G c )) (9)</formula><p>where log-odds(p) = log p 1-p , and f (G) and f (G c ) are the outputs of the pre-trained GNN. Figure <ref type="figure" target="#fig_9">7</ref> depicts the distributions of log-odds difference over the entire test set for the real-world datasets.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.3. More Experimental Results</head><p>Log-odds difference on the real-world datasets. Figure <ref type="figure" target="#fig_9">7</ref> depicts the distributions of log-odds difference over the entire test set for the real-world datasets. We can observe that the log-odds difference of OrphicX is more concentrated around 0, which indicates OrphicX can well capture the most relevant subgraphs towards the predictions by the pre-trained GNNs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Gem</head><p>GNNExp.</p><p>PGExp. Orphicx OrphicX consistently achieves the best performance overall (denser distribution around 0 is better).</p><p>More visualization results. Figure <ref type="figure">8</ref> plots the visualized explanations of different methods on BA-shapes. The "house" in green is the ground-truth motif that determines the node labels. The red node is the target node to be explained. By looking at the explanations for a target node (the instance on the left side), shown in Figure <ref type="figure">8</ref>, OrphicX can successfully identify the "house" motif that explains the node label ("middle-node" in red), when K = 6, while GNNExplainer wrongly attributes the prediction to a node (in orange) that is out of the "house" motif. For the right one, OrphicX consistently performs well, while Gem and GNNExplainer both fail when K = 6. Figure <ref type="figure" target="#fig_11">9</ref> plots more visualized explanations of different methods on Mutag.</p><p>Causal evaluation. To further verify that the generated explanations are causal and therefore robust to distribution shift in the confounder (i.e., the node attributes X), we construct harder versions of both datasets. Specifically, we use k-means (k=2) to split the dataset into two clusters according to the node attributes. In Mutag, we use the cluster with Figure <ref type="figure">8</ref>. Explanation comparisons on BA-shapes. The "house" in green is the ground-truth motif that determines the node labels. The red node is the target node to be explained (better seen in color). 3671 graph instances for explainer training and validation; we evaluate the explaining accuracy of the trained explainer on the other cluster with 665 instances. In NCI1, we use the cluster with 3197 graph instances to train an explainer, in which the training set contains 2558 instances and the validation set contains 639 instances; the explaining accuracy is evaluated with the other cluster with 906 instances. See Table <ref type="table" target="#tab_8">9</ref> for details. We can observe that our approach is indeed robust to the distribution shift in the confounder.</p><p>Information flow measurements. To validate Theorem 2.1, we evaluate the information flow of the causal factors (Z c = Z[1 : 3]) and the spurious factors (Z s = Z <ref type="bibr">[4 : 16]</ref>) corresponding to the model prediction, respectively. Figure <ref type="figure" target="#fig_12">10a</ref> shows that, as desired, the information flow from the causal factors to the model prediction is large while the information flow from the spurious factors to the prediction is small.</p><p>Ablation study. We inspect the explanation performance for our framework as an ablation study for the loss function proposed. We empirically prove the need for different forms of regularization leveraged by the OrphicX loss function. In particular, we compute the average explanation accuracy of 3 runs. Table <ref type="table" target="#tab_10">10</ref> shows the explanation accuracy of removing a particular regularization term for Mutag and NCI1, respectively. We observe considerable performance gains from introducing the VGAE ELBO term, sparsity, and fidelity penalty. In summary, these results empirically motivate the need for different forms of regularization leveraged by the OrphicX loss function.</p><p>Efficiency evaluation. OrphicX, Gem, and PGExplainer can explain unseen instances in the inductive setting. We  The graphs in the first column are the target instances to be explained. The solid edges in other columns are identified as 'important' by corresponding methods. The closer the probability to that of the target instance, the better the explanation is. measure the average inference time for these methods. As GNNExplainer explains an instance at a time, we measure its average time cost per explanation for comparisons. As reported in Table <ref type="table" target="#tab_11">11</ref>, we can conclude that the learningbased explainers such as OrphicX, Gem, and PGExplaienr are more efficient than GNNExplainer. These experiments were performed on an NVIDIA GTX 1080 Ti GPU with an Intel Core i7-8700K processor.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.4. More related work on GNN interpretation</head><p>Several recent works have been proposed to provide explanations for GNNs, in which the most important features (e.g., nodes or edges or subgraphs) of an input graph are selected as the explanation to the model's outcome. In essence,  most of these methods are designed for generating inputdependent explanations. GNNExplainer <ref type="bibr" target="#b30">[32]</ref> searches for soft masks for edges and node features to explain the predictions via mask optimization. <ref type="bibr" target="#b19">[21]</ref> extended explainability methods designed for CNNs to GNNs. PGM-Explainer <ref type="bibr" target="#b23">[25]</ref> adopts a probabilistic graphical model and explores the dependencies of the explained features in the form of conditional probability. SubgraphX explores the subgraphs with Monte Carlo tree search and evaluates the importance of the subgraphs with Shapley values <ref type="bibr" target="#b33">[35]</ref>. In general, these methods explain each instance individually and can not generalize to the unseen graphs, thereby lacking a global view of the target model.</p><p>A recent study has shown that separate optimization for each instance induces hindsight bias and compromises faithfulness <ref type="bibr" target="#b21">[23]</ref>. To this end, PGExplainer <ref type="bibr" target="#b13">[14]</ref> was proposed to learn a mask predictor to obtain edge masks for providing instance explanations. XGNN <ref type="bibr" target="#b32">[34]</ref> was proposed to investigate graph patterns that lead to a specific class. GraphMask <ref type="bibr" target="#b21">[23]</ref> is specifically designed for GNN-based natural language processing tasks, where it learns an edge mask for each internal layer of the learning model. Both these approaches require access to the process by which the target model produces its predictions. As all the edges in the dataset share the same predictor, they might be able to provide a global understanding of the target GNNs. Our work falls into this line of research, as our objective is to learn an explainer that can generate compact subgraph structures contributing to the predictions for any input instances. Different from existing works, we seek faithful explanations from the language of causality [19].</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1</head><label>1</label><figDesc>Figure1. Illustration of OrphicX. We instantiate our explainer with a variational graph auto-encoder (VGAE), which consists of an inference network and a generative network. The causal features along with the spurious features can be used to reconstruct the graph structure within the data distribution, while the causal features are mapped to a graph-structured mask for the causal explanation. The target GNN is pre-trained, and the parameters would not be changed during the training of OrphicX.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 .</head><label>2</label><figDesc>Figure 2. Illustration of the causal graph. The causal features are a set of factors in the latent space. The causal features and the spurious features together form the representation of the input graph. The graph structure is reconstructed based on the latent representation; it forms the input of the target GNN, along with the feature matrix. y denotes the predicted label of the GNN target.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Theorem 2 . 1 (</head><label>21</label><figDesc>Information flow between Z c and y) The information flow between the causal factors Z c and the prediction y can be computed as I(Zc → y)</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 3 .</head><label>3</label><figDesc>Figure 3. The frequency of occurring subgraph patterns indicates that it is reasonable to treat the labeled motifs/subgraph patterns as the explanation ground truth, i.e., carbon rings with chemical groups such as N=N, NO2, and NH2 for the mutagenic class.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Figure 4 .</head><label>4</label><figDesc>Figure 4. Explanation Performance with Log-Odds Difference.OrphicX consistently achieves the best performance overall (denser distribution around 0 is better).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>Figure 5 .</head><label>5</label><figDesc>Figure 5. Explanation Visualization (MUTAG): p is the corresponding probability of being classified as Mutagenic class by the pre-trained GNN. The graphs in the first column are the target instances to be explained. The solid edges in other columns are identified as 'important' by corresponding methods. The closer the probability to that of the target instance, the better the explanation is.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head>Figure 6 (</head><label>6</label><figDesc>a) and 6 (b) are the model architectures for node classification and graph classification, receptively.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head>Figure 6 .</head><label>6</label><figDesc>Figure 6. Model architectures.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_9"><head>Figure 7 .</head><label>7</label><figDesc>Figure 7. Explanation Performance with Log-Odds Difference.OrphicX consistently achieves the best performance overall (denser distribution around 0 is better).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_11"><head>Figure 9 .</head><label>9</label><figDesc>Figure 9. Explanation Visualization (MUTAG): p is the corresponding probability of being classified as Mutagenic class by the pre-trained GNN. The graphs in the first column are the target instances to be explained. The solid edges in other columns are identified as 'important' by corresponding methods. The closer the probability to that of the target instance, the better the explanation is.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_12"><head>Figure 10 .</head><label>10</label><figDesc>Figure 10. Information Flow Measurements. Figure10areports the information flow measurements in the hidden space, where i denotes the ith dimension. Figure10breports the ones while the causal influence term was removed from the loss function.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>Table 1 .</head><label>1</label><figDesc>Explanation Accuracy on Synthetic Datasets (%).</figDesc><table><row><cell>K</cell><cell cols="3">BA-SHAPES</cell><cell></cell><cell></cell><cell cols="3">TREE-CYCLES</cell></row><row><cell>#of edges 5</cell><cell>6</cell><cell>7</cell><cell>8</cell><cell>9</cell><cell>6</cell><cell>7</cell><cell>8</cell><cell>9 10</cell></row><row><cell cols="9">OrphicX 82.4 97.1 97.1 97.1 100 85.7 91.4 100 100 100</cell></row><row><cell cols="9">64.7 94.1 91.2 91.2 91.2 74.3 88.6 100 100 100 GNNExp. 67.6 67.6 82.4 88.2 85.3 20.0 54.3 74.3 88.6 97.1 Gem PGExp. 59.5 59.5 59.5 59.5 64.3 76.2 81.5 91.3 95.4 97.1</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 2 .</head><label>2</label><figDesc>Explanation Accuracy on Real-World Datasets (%). .5 0.6 0.7 0.8 0.9 0.5 0.6 0.7 0.8 0.9 OrphicX 71.<ref type="bibr" target="#b3">4</ref> 71.2 77.2 78.8 83.2 66.9 72.7 77.1 81.3 85.4 Gem 66.4 67.7 71.4 76.5 81.8 61.8 68.6 70.6 74.9 83.9 GNNExp. 65.0 66.6 66.4 71.0 78.3 64.2 65.7 68.6 75.2 81.8 PGExp. 59.3 58.</figDesc><table><row><cell>R</cell><cell>Mutag</cell><cell>NCI1</cell></row><row><cell>edge ratio 0</cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 3 .</head><label>3</label><figDesc>Explanation Accuracy with Edge AUC (* means the rounded estimate of 0.9995 ± 0.0006).</figDesc><table><row><cell>DATASETS</cell><cell>OrphicX</cell><cell>GEM</cell><cell>GNNEXP.</cell><cell>PGEXP.</cell><cell>ATT</cell></row><row><cell cols="6">0.988 ± 0.008 0.597 ± 0.001 0.956 ± 0.001 0.924 ± 0.042 TREE-CYCLES 0.988 ± 0.001 0.761 ± 0.002 0.961 ± 0.003 0.952 ± 0.000 BA-SHAPES MUTAG 1.000 ± 0.001  *  0.988 ± 0.013 0.998 ± 0.001 0.998 ± 0.001 0.686 ± 0.098 0.815 0.824</cell></row><row><cell>Original</cell><cell>OrphicX</cell><cell>Gem</cell><cell>GNNExplainer</cell><cell>PGExplainer</cell><cell></cell></row><row><cell>p=0.9924</cell><cell>p=0.9993</cell><cell>p=0.4142</cell><cell>p=0.9668</cell><cell>p=0.9716</cell><cell></cell></row><row><cell>p=0.9781</cell><cell>p=0.9721</cell><cell>p=0.9309</cell><cell>p=0.7137</cell><cell>p=0.0058</cell><cell></cell></row><row><cell>p=0.8679</cell><cell>p=0.8634</cell><cell>p=0.8634</cell><cell>p=0.9991</cell><cell>p=0.0322</cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 4 .</head><label>4</label><figDesc>Prediction Accuracy of the Pre-trained GNN on Mutag with Various Perturbation (mean is set as 0).</figDesc><table><row><cell>PERTURBATION STD 0.0 0.3 0.5 0.8 1.0 1.3</cell></row><row><cell>CAUSAL FACTORS 0.935 0.926 0.926 0.887 0.860 0.826</cell></row><row><cell>SPURIOUS FACTORS 0.935 0.936 0.936 0.935 0.934 0.926</cell></row><row><cell>spurious factors, respectively. From Table</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 5 .</head><label>5</label><figDesc>Data Statistics of Four Datasets.</figDesc><table><row><cell cols="4">DATASETS BA-SHAPES TREE-CYCLES MUTAG NCI1</cell></row><row><cell>#GRAPHS #NODES #EDGES #LABELS</cell><cell>1 700 4, 110 4</cell><cell>1 871 1, 950 2</cell><cell>4, 337 4, 110 29 30 30 32 2 2</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Table 6 .</head><label>6</label><figDesc>Model Accuracy of Four Datasets (%).</figDesc><table><row><cell cols="4">DATASETS BA-SHAPES TREE-CYCLES MUTAG NCI1</cell></row><row><cell>ACCURACY</cell><cell>94.1</cell><cell>97.1</cell><cell>88.5 78.6</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>Table 7 .</head><label>7</label><figDesc>Data Splitting for Four Datasets.</figDesc><table><row><cell cols="4">DATASETS #OF TRAINING #OF TESTING #OF VALIDATION</cell></row><row><cell>BA-SHAPES TREE-CYCLES MUTAG NCI1</cell><cell>300 270 3, 468 3, 031</cell><cell>50 45 434 410</cell><cell>50 45 434 411</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head>Table 8 .</head><label>8</label><figDesc>Hyperparameters and Ranges</figDesc><table><row><cell>HYPERPARAMETER</cell><cell>RANGE</cell></row><row><cell>CAUSAL DIMENSION Dc</cell><cell>{1, 2, 3, • • • , 8}</cell></row><row><cell cols="2">NEGATIVE ELBO λ1 {0, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1}</cell></row><row><cell>SPARSITY λ2</cell><cell>{0, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1}</cell></row><row><cell>FIDELITY λ3</cell><cell>{0, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1}</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_8"><head>Table 9 .</head><label>9</label><figDesc>Causal Evaluation (%).</figDesc><table><row><cell></cell><cell>Mutag</cell><cell>NCI1</cell></row><row><cell cols="3">R (edge ratio) 0.7 0.8 0.9 0.7 0.8 0.9</cell></row><row><cell>original</cell><cell cols="2">77.2 78.8 83.2 77.1 81.3 85.4</cell></row><row><cell cols="3">deconfounder 67.1 71.5 81.5 71.6 79.2 87.3</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_10"><head>Table 10 .</head><label>10</label><figDesc>Ablation Studies for Different Regularization Terms (%).</figDesc><table><row><cell cols="6">TYPE CAUSAL ELBO SPARSITY FIDELITY MUTAG NCI1</cell></row><row><cell></cell><cell>INFLUENCE</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>OrphicX A B C</cell><cell>✓ ✓ ✓ ✓</cell><cell>✓ ✓ ✓</cell><cell>✓ ✓ ✓</cell><cell>✓ ✓ ✓</cell><cell>0.854 0.832 0.829 0.633 0.804 0.824 0.594 0.633</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_11"><head>Table 11 .</head><label>11</label><figDesc>Explanation Time of Different Methods (Per Instance (ms)).</figDesc><table><row><cell>DATASETS</cell><cell cols="3">BA-SHAPES TREE-CYCLES MUTAG NCI1</cell></row><row><cell>OrphicX</cell><cell>0.61</cell><cell>2.31</cell><cell>0.01 0.02</cell></row><row><cell>GEM GNNEXPLAINER PGEXPLAINER</cell><cell>0.67 260.2 6.9</cell><cell>0.50 206.5 6.5</cell><cell>0.05 0.03 253.2 262.4 5.5 5.4</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>We are aware of the drawbacks of reusing the term "feature." Specifically, nodes and edges are the explained features in an explanatory subgraph.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_1"><p>Features and factors are used interchangeably, e.g., causal features are equivalent to causal factors.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="4" xml:id="foot_2"><p>In the context of model interpretability, "faithfulness" means high fidelity<ref type="bibr" target="#b12">[13]</ref>, which is different from the meaning used in causal discovery.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="5" xml:id="foot_3"><p>The detailed data splitting is provided in the Appendix.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="6" xml:id="foot_4"><p>As we cannot obtain the ground-truth explanations for NCI1, we focus on the quantitative evaluation for this dataset.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="7" xml:id="foot_5"><p>We use PGExp. and GNNExp. to represent PGExplainer and GNNExplainer for simplicity.</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head n="6.">Acknowledgement</head><p>The authors thank the reviewers/AC for the constructive comments to improve the paper. This project is supported by the <rs type="funder">Internal Research Fund at The Hong Kong Polytechnic University</rs> <rs type="grantNumber">P0035763</rs>. HW is partially supported by <rs type="funder">NSF</rs> Grant <rs type="grantNumber">IIS-2127918</rs> and an <rs type="funder">Amazon Faculty Research Award</rs>.</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funding" xml:id="_RAG6y5A">
+					<idno type="grant-number">P0035763</idno>
+				</org>
+				<org type="funding" xml:id="_B3HG4uH">
+					<idno type="grant-number">IIS-2127918</idno>
+				</org>
+			</listOrg>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0" />			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Information Flows in Causal Networks</title>
+		<author>
+			<persName><forename type="first">Nihat</forename><surname>Ay</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Polani</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Complex Systems</title>
+		<imprint>
+			<biblScope unit="volume">11</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page">3</biblScope>
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Structure-Activity Relationship of Mutagenic Aromatic and Heteroaromatic Nitro Compounds. Correlation with Molecular Orbital Energies and Hydrophobicity</title>
+		<author>
+			<persName><forename type="first">Asim</forename><surname>Kumar Debnath</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rosa</forename><forename type="middle">L</forename><surname>Lopez De Compadre</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gargi</forename><surname>Debnath</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alan</forename><forename type="middle">J</forename><surname>Shusterman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Corwin</forename><surname>Hansch</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Medicinal Chemistry</title>
+		<imprint>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page">11</biblScope>
+			<date type="published" when="1991">1991</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Investigating Causal Relations by Econometric Models and Cross-Spectral Methods</title>
+		<author>
+			<persName><forename type="first">Clive Wj</forename><surname>Granger</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Econometrica: Journal of the Econometric Society</title>
+		<imprint>
+			<biblScope unit="issue">8</biblScope>
+			<biblScope unit="page" from="424" to="438" />
+			<date type="published" when="1969">1969</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Correcting exposure bias for link recommendation</title>
+		<author>
+			<persName><forename type="first">Shantanu</forename><surname>Gupta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hao</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zachary</forename><surname>Lipton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuyang</forename><surname>Wang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Inductive Representation Learning on Large Graphs</title>
+		<author>
+			<persName><forename type="first">Will</forename><surname>Hamilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhitao</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. Advances in Neural Information Processing Systems</title>
+		<meeting>Advances in Neural Information essing Systems</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Deep Graph Random Process for Relational-Thinking-Based Speech Recognition</title>
+		<author>
+			<persName><forename type="first">Hengguan</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fuzhao</forename><surname>Xue</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hao</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ye</forename><surname>Wang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Adam: A Method for Stochastic Optimization</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Diederik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jimmy</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Ba</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. International Conference for Learning Representations</title>
+		<meeting>International Conference for Learning Representations</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="volume">5</biblScope>
+			<biblScope unit="page">11</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Variational Graph Auto-Encoders</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Thomas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. NIPS Bayesian Deep Learning Workshop</title>
+		<meeting>NIPS Bayesian Deep Learning Workshop</meeting>
+		<imprint>
+			<date type="published" when="2016">2016. 2, 4, 5, 12</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Guardian: Evaluating Trust in Online Social Networks with Graph Convolutional Networks</title>
+		<author>
+			<persName><forename type="first">Wanyu</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhaolin</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Baochun</forename><surname>Li</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. IEEE International Conference on Computer Communications</title>
+		<meeting>IEEE International Conference on Computer Communications</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Shoestring: Graphbased Semi-Supervised Classification with Severely Limited Labeled Data</title>
+		<author>
+			<persName><forename type="first">Wanyu</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhaolin</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Baochun</forename><surname>Li</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition</title>
+		<meeting>the IEEE/CVF Conference on Computer Vision and Pattern Recognition</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="4174" to="4182" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Generative Causal Explanations for Graph Neural Networks</title>
+		<author>
+			<persName><forename type="first">Wanyu</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hao</forename><surname>Lan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Baochun</forename><surname>Li</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. International Conference on Machine Learning</title>
+		<meeting>International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2021">2021. 1, 2, 5, 6, 7, 8, 11</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Predicting Social Trust in Time-Varying Online Social Networks</title>
+		<author>
+			<persName><forename type="first">Wanyu</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Baochun</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Medley</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. IEEE International Conference on Computer Communications</title>
+		<meeting>IEEE International Conference on Computer Communications</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">A Unified Approach to Interpreting Model Predictions</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Scott</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Su-In</forename><surname>Lundberg</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Lee</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. Advances in Neural Information Processing Systems</title>
+		<meeting>Advances in Neural Information essing Systems</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="4765" to="4774" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Parameterized Explainer for Graph Neural Network</title>
+		<author>
+			<persName><forename type="first">Dongsheng</forename><surname>Luo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Cheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dongkuan</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wenchao</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bo</forename><surname>Zong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Haifeng</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiang</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. Advances in Neural Information Processing Systems</title>
+		<meeting>Advances in Neural Information essing Systems</meeting>
+		<imprint>
+			<date type="published" when="2020">2020. 1, 2, 5, 8, 15</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Generative Interventions for Causal Learning</title>
+		<author>
+			<persName><forename type="first">Chengzhi</forename><surname>Mao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amogh</forename><surname>Gupta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Augustine</forename><surname>Cha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hao</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junfeng</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Carl</forename><surname>Vondrick</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">CVPR</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<author>
+			<persName><forename type="first">Christoph</forename><surname>Molnar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Interpretable Machine Learning</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Geometric Deep Learning on Graphs and Manifolds using Mixture Model CNNs</title>
+		<author>
+			<persName><forename type="first">Federico</forename><surname>Monti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Davide</forename><surname>Boscaini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jonathan</forename><surname>Masci</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Emanuele</forename><surname>Rodola</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jan</forename><surname>Svoboda</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><forename type="middle">M</forename><surname>Bronstein</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. IEEE Conference on Computer Vision and Pattern Recognition</title>
+		<meeting>IEEE Conference on Computer Vision and Pattern Recognition</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="5115" to="5124" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Generative Causal Explanations of Black-Box Classifiers</title>
+		<author>
+			<persName><forename type="first">Gregory</forename><surname>Matthew O Shaughnessy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marissa</forename><surname>Canal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mark</forename><surname>Connor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Davenport</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Rozell</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. Advances in Neural Information Processing Systems</title>
+		<meeting>Advances in Neural Information essing Systems</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">6</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<monogr>
+		<author>
+			<persName><forename type="first">Judea</forename><surname>Pearl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Madelyn</forename><surname>Glymour</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicholas</forename><forename type="middle">P</forename><surname>Jewell</surname></persName>
+		</author>
+		<title level="m">Causal Inference in Statistics: A Primer</title>
+		<imprint>
+			<publisher>John Wiley &amp; Sons</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page">3</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Explainability Methods for Graph Convolutional Neural networks</title>
+		<author>
+			<persName><forename type="first">Soheil</forename><surname>Phillip E Pope</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mohammad</forename><surname>Kolouri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Charles</forename><forename type="middle">E</forename><surname>Rostami</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Heiko</forename><surname>Martin</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Hoffmann</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. IEEE Conference on Computer Vision and Pattern Recognition</title>
+		<meeting>IEEE Conference on Computer Vision and Pattern Recognition</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">8</biblScope>
+			<biblScope unit="page">15</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Why Should I Trust You?&quot;: Explaining the Predictions of Any Classifier</title>
+		<author>
+			<persName><forename type="first">Marco</forename><surname>Tulio Ribeiro</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sameer</forename><surname>Singh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Carlos</forename><surname>Guestrin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. SIGKDD. ACM</title>
+		<meeting>SIGKDD. ACM</meeting>
+		<imprint>
+			<date type="published" when="2016">2016. 1, 2</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Interpreting Graph Neural Networks for {NLP} With Differentiable Edge Masking</title>
+		<author>
+			<persName><forename type="first">Nicola</forename><forename type="middle">De</forename><surname>Michael Sejr Schlichtkrull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ivan</forename><surname>Cao</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Titov</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="volume">8</biblScope>
+			<biblScope unit="page">15</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">On the Privacy Risks of Model Explanations</title>
+		<author>
+			<persName><forename type="first">Reza</forename><surname>Shokri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>Strobel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yair</forename><surname>Zick</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. AAAI/ACM Conference on AI, Ethics, and Society</title>
+		<meeting>AAAI/ACM Conference on AI, Ethics, and Society</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="231" to="241" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">PGM-Explainer: Probabilistic Graphical Model Explanations for Graph Neural Networks</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Minh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">My</forename><forename type="middle">T</forename><surname>Vu</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Thai</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. Advances in Neural Information Processing Systems</title>
+		<meeting>Advances in Neural Information essing Systems</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">8</biblScope>
+			<biblScope unit="page">15</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Comparison of Descriptor Spaces for Chemical Compound Retrieval and Classification</title>
+		<author>
+			<persName><forename type="first">Nikil</forename><surname>Wale</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ian</forename><forename type="middle">A</forename><surname>Watson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">George</forename><surname>Karypis</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Knowledge and Information Systems</title>
+		<imprint>
+			<biblScope unit="volume">14</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page">11</biblScope>
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Online Egocentric Models for Citation Networks</title>
+		<author>
+			<persName><forename type="first">Hao</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wu-Jun</forename><surname>Li</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IJCAI</title>
+		<imprint>
+			<biblScope unit="issue">2</biblScope>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Relational Deep Learning: A Deep Latent Variable Model for Link Prediction</title>
+		<author>
+			<persName><forename type="first">Hao</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xingjian</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dit-Yan</forename><surname>Yeung</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="2688" to="2694" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<monogr>
+		<title level="m" type="main">Xin Du, and Mykola Pechenizkiy. Causal Discovery from Incomplete Data: A Deep Learning Approach</title>
+		<author>
+			<persName><forename type="first">Yuhao</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vlado</forename><surname>Menkovski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hao</forename><surname>Wang</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">How Powerful are Graph Neural Networks</title>
+		<author>
+			<persName><forename type="first">Keyulu</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Weihua</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stefanie</forename><surname>Jegelka</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="volume">5</biblScope>
+			<biblScope unit="page">6</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Graph-Relational Domain Adaptation</title>
+		<author>
+			<persName><forename type="first">Zihao</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guang-He</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuyang</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hao</forename><surname>Wang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ICLR</title>
+		<imprint>
+			<biblScope unit="issue">1</biblScope>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">GNNExplainer: Generating Explanations for Graph Neural Networks</title>
+		<author>
+			<persName><forename type="first">Zhitao</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dylan</forename><surname>Bourgeois</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiaxuan</forename><surname>You</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marinka</forename><surname>Zitnik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. Advances in Neural Information Processing Systems</title>
+		<meeting>Advances in Neural Information essing Systems</meeting>
+		<imprint>
+			<date type="published" when="2019">2019. 5, 8, 11</date>
+			<biblScope unit="page">15</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Graph Information Bottleneck for Subgraph Recognition</title>
+		<author>
+			<persName><forename type="first">Junchi</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tingyang</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yu</forename><surname>Rong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yatao</forename><surname>Bian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junzhou</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ran</forename><surname>He</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">XGNN: Towards Model-Level Explanations of Graph Neural Networks</title>
+		<author>
+			<persName><forename type="first">Jiliang</forename><surname>Hao Yuan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xia</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shuiwang</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Ji</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. SIGKDD. ACM</title>
+		<meeting>SIGKDD. ACM</meeting>
+		<imprint>
+			<date type="published" when="2020">2020. 1, 2, 8, 15</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">On Explainability of Graph Neural Networks via Subgraph Explorations</title>
+		<author>
+			<persName><forename type="first">Haiyang</forename><surname>Hao Yuan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jie</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kang</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shuiwang</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Ji</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. International Conference on Machine Learning</title>
+		<meeting>International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="volume">8</biblScope>
+			<biblScope unit="page">15</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Temporal Dynamic Graph LSTM for Action-driven Video Object Detection</title>
+		<author>
+			<persName><forename type="first">Yuan</forename><surname>Yuan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaodan</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaolong</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dit-Yan</forename><surname>Yeung</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abhinav</forename><surname>Gupta</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICCV</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

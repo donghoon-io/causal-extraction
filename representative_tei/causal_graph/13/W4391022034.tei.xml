@@ -1,0 +1,689 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Initial State Interventions for Deconfounded Imitation Learning</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability  status="unknown">
+					<licence/>
+				</availability>
+				<date type="published" when="2023-08-11">11 Aug 2023</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Samuel</forename><surname>Pfrommer</surname></persName>
+							<email>sam.pfrommer@berkeley.edu</email>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Electrical Engineering and Computer Sciences</orgName>
+								<orgName type="institution">University of California Berkeley</orgName>
+								<address>
+									<postCode>94720</postCode>
+									<settlement>Berkeley</settlement>
+									<region>CA</region>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Yatong</forename><surname>Bai</surname></persName>
+							<email>yatongbai@berkeley.edu</email>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Electrical Engineering and Computer Sciences</orgName>
+								<orgName type="institution">University of California Berkeley</orgName>
+								<address>
+									<postCode>94720</postCode>
+									<settlement>Berkeley</settlement>
+									<region>CA</region>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Hyunin</forename><surname>Lee</surname></persName>
+							<email>hyunin@berkeley.edu</email>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Electrical Engineering and Computer Sciences</orgName>
+								<orgName type="institution">University of California Berkeley</orgName>
+								<address>
+									<postCode>94720</postCode>
+									<settlement>Berkeley</settlement>
+									<region>CA</region>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Somayeh</forename><surname>Sojoudi</surname></persName>
+							<email>sojoudi@berkeley.edu</email>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Electrical Engineering and Computer Sciences</orgName>
+								<orgName type="institution">University of California Berkeley</orgName>
+								<address>
+									<postCode>94720</postCode>
+									<settlement>Berkeley</settlement>
+									<region>CA</region>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Initial State Interventions for Deconfounded Imitation Learning</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2023-08-11">11 Aug 2023</date>
+						</imprint>
+					</monogr>
+					<idno type="arXiv">arXiv:2307.15980v3[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-21T20:32+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Imitation learning suffers from causal confusion. This phenomenon occurs when learned policies attend to features that do not causally influence the expert actions but are instead spuriously correlated. Causally confused agents produce low open-loop supervised loss but poor closed-loop performance upon deployment. We consider the problem of masking observed confounders in a disentangled representation of the observation space. Our novel masking algorithm leverages the usual ability to intervene in the initial system state, avoiding any requirement involving expert querying, expert reward functions, or causal graph specification. Under certain assumptions, we theoretically prove that this algorithm is conservative in the sense that it does not incorrectly mask observations that causally influence the expert; furthermore, intervening on the initial state serves to strictly reduce excess conservatism. The masking algorithm is applied to behavior cloning for two illustrative control systems: CartPole and Reacher.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>I. INTRODUCTION</head><p>Imitation learning aims to train an intelligent agent to mimic expert demonstrations for a particular task. Various imitation learning instantiations, such as behavior cloning and inverse reinforcement learning, have been widely applied to fields including robotics <ref type="bibr" target="#b0">[1,</ref><ref type="bibr" target="#b1">2]</ref>, autonomous driving <ref type="bibr" target="#b2">[3,</ref><ref type="bibr" target="#b3">4]</ref>, and optimal navigation <ref type="bibr" target="#b4">[5,</ref><ref type="bibr" target="#b5">6]</ref>. Imitation learning enables agents to learn from high-quality samples instead of exploring from scratch, leading to significantly higher learning efficiency when compared with reinforcement learning methods <ref type="bibr" target="#b6">[7]</ref>. This is especially important in safety-critical settings where reinforcement learning are difficult to execute <ref type="bibr" target="#b7">[8,</ref><ref type="bibr" target="#b8">9]</ref>. Even when the flexibility of reinforcement learning is desired, imitation learning can be used to accelerate the learning process <ref type="bibr" target="#b9">[10]</ref>.</p><p>Despite its broad applicability, imitation learning exhibits an issue known as causal confusion <ref type="bibr" target="#b10">[11]</ref>: the learned policy misattributes features which are primarily correlated with expert actions as reflecting a causal relationship <ref type="bibr" target="#b11">[12]</ref>. This can manifest itself both through the observed features which are spuriously correlated with the expert actions ("nuisance variables") as well as confounders which are available to the expert but not the imitator ("unobserved confounders"). We restrict ourselves to the former, although for completeness we include approaches addressing the latter in our work.</p><p>Consider an illustrative example of causal confusion adapted from <ref type="bibr" target="#b10">[11]</ref>. The task at hand is learning to drive a car from expert demonstrations. A behavior cloning agent</p><p>The full technical report, including proofs, can be found on arXiv.</p><p>is provided video observations from the driver's perspective, including a brake light on the dashboard. Although the learned braking policy is excellent on the supervised dataset, deployment performance is poor: the agent has effectively learned to brake when the brake light is on, instead of attending to other pedestrians or vehicles. In this case, the brake light is a "nuisance variable," and we can dramatically improve the performance of the policy by covering the brake light and reducing information for the model.</p><p>Existing approaches for completely masking such nuisance variables generally require either a queryable expert or access to the expert reward function. The seminal work of <ref type="bibr" target="#b10">[11]</ref> introduced a β-Variational Auto Encoder (β-VAE) decomposition the observation space along with a joint policy parameterized by hypothetical causal structures. The space of causal structures can then be searched with two distinct algorithms, one leveraging expert queries and the other based on policy evaluations and reward feedback. The existence of nuisance variables was also noted <ref type="bibr" target="#b12">[13]</ref> as part of a broader issue with sequential models that can be addressed with Dagger-style expert queries <ref type="bibr" target="#b13">[14]</ref>. The work of <ref type="bibr" target="#b14">[15]</ref> partially addresses the nuisance variable problem by regularizing the learned policies to attend to multiple objects in the scene. While this approach does not require policy executions, it only weakens the learner's attention to a nuisance variable and does not eliminate it completely.</p><p>The complementary problem of unobserved confounders considers the setting where experts observe confounding variables that are inaccessible to the learner. In the car driving example, this might include a human driver listening to honking that is not detected with visual sensors. One exciting theoretical line of research in this area <ref type="bibr" target="#b15">[16,</ref><ref type="bibr" target="#b16">17]</ref> presents causal-model derived conditions for imitability and an algorithm for imitating the expert policy when possible. However, these works make the strong assumption that the causal graph is provided to the imitation learning agent. Other efforts to apply causal inference techniques to the unobserved confounder problem either require strong assumptions, such as the knowledge of the expert reward <ref type="bibr" target="#b17">[18]</ref> and purely additive temporally correlated noise <ref type="bibr" target="#b18">[19]</ref>, or only evaluate simple multi-armed bandit problems <ref type="bibr" target="#b19">[20]</ref>. This work focuses on the problem of observed nuisance variables. Our approach, presented in Section III leverages initial state interventions to identify and completely mask causally confusing features without relying on expert queries or policy interventions. We provide conservativeness guarantees for our method in Section IV and present illustrative experiments in Section V.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>II. NOTATION AND BACKGROUND</head><p>We denote the set of real numbers by R and the set of natural numbers by N. The set {1, . . . , a} ⊂ N is denoted by [a] for a ∈ N, and similarly a, . . . , b ⊂ N is denoted by [a .. b]. For a pair of boolean variables x and y, the notation ∧ denotes the "and" operator while ∨ denotes "or." For a set of boolean variables {x 1 , x 2 , . . . , x n }, the notations n i=1 x i and n i=1 x i denote x 1 ∧ x 2 ∧ . . . ∧ x n and x 1 ∨ x 2 ∨ . . . ∨ x n , respectively. The logical negation of a boolean variable or vector x is denoted by ¬x. We denote the identically zero function on a domain by 0, and we write f (•) ̸ ≡ 0 to mean that f (•) is not equivalent to the zero function over its argument-i.e., there exists an input where f is nonzero.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Measure theory and probability</head><p>For a random variable X, we introduce the notation P (x) ∈ M (X) to represent a probability measure over the values x in the domain of X, contained in the space of measures M (X). The uniform measure over an interval [a, b] ⊂ R is denoted by U(a, b). For two measures µ and ν, we say that ν is absolutely continuous with respect to µ if for every µ-measurable set A, µ(A) = 0 implies ν(A) = 0. If ν is absolutely continuous with respect to µ, we let dν/dµ denote the Radon-Nikodym derivative of ν with respect to µ. The standard Lebesgue measure on R is denoted λ. For a measure µ which is absolutely continuous with respect to λ, we define its L 1 norm in the typical manner</p><formula xml:id="formula_0">∥µ∥ 1 := dµ dλ dλ,</formula><p>which we take to be the default norm in the Banach space of measures on R. We denote independence between two random variables using ⊥ ⊥ and its negation by ̸⊥ ⊥.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Causal graphs and structural causal models</head><p>We denote a directed acyclic graph by G, with the presence of a direct edge between nodes X and Y denoted X → Y . For a given node X in G, we let G X denote the graph obtained by deleting outgoing edges from X. We denote sets of nodes in a graph using bold font (e.g., Z). The set of parents of a node X in a graph is denoted by pa X . A path between two nodes X and Y can consist of arbitrarily directed edges and is said to be blocked by a set of nodes Z if the path contains any of the following <ref type="bibr" target="#b20">[21]</ref>:</p><formula xml:id="formula_1">• A chain I → M → J with M ∈ Z. • A fork I ← M → J with M ∈ Z. • A collider I → M ← J such that M ̸ ∈ Z and no descendant of M is in Z.</formula><p>Two nodes X and Y are said to be d-separated by Z if Z blocks every path between X and Y . We call a path with all edges oriented the same direction a directed path.</p><p>We leverage Pearl's structural causal model (SCM) formalism <ref type="bibr" target="#b20">[21]</ref>. An SCM M = ⟨V, U, F⟩ consists of endogenous variables V, exogenous variables U, and structural equations F. Each V ∈ V is represented by a node in the causal graph G and associated with an independently distributed exogenous variable U V ∈ U. The structural equations f V ∈ F assign values of a particular node V ∈ V as a function V := f V (pa V , U V ) of its parents and associated exogenous variable. The SCM M induces a joint distribution P v over the endogenous variables V. We say that an SCM M is faithful to its causal graph G if the distribution P v induced by M contains only the pairwise conditional independencies implied by G; i.e. X ⊥ ⊥ Y | Z in the joint distribution from M iff X and Y are d-separated by Z in G <ref type="bibr" target="#b21">[22]</ref>. As a notable special case, if Z is empty and there exists a path from X to Y with no colliders then X ̸⊥ ⊥ Y .</p><p>We define an intervention on a particular node V to be a reassignment of the associated structural equation f V . This intervention can take the form of a constant intervention V := v, which we denote by do(V = v) for a constant v and may abbreviate to do(v). We also define a distributional intervention, denoted by do(V ∼ P (v)), where we assign V to be drawn from a specified distribution P (v). We denote the post-intervention SCM by M, with an associated causal graph G identical to G but with incoming edges to V removed. Note that reassigning the associated structural equation for any particular node V induces a new distribution generated by M over the set of all endogenous variables V, which we denote by</p><formula xml:id="formula_2">P (v | do(V = v)) or P (v | do(V ∼ P (v))).</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Behavior cloning</head><p>Behavior cloning uses expert trajectories to train an imitating policy. <ref type="bibr">For</ref>  to be an unobserved variable capturing uncontrolled and unknown initialization stochasticity (i.e. a random "seed").</p><p>The collection of states, observations, and actions, along with W , comprise endogenous variables in an SCM defining our system. We denote the system SCM by M s and denote the corresponding faithful causal graph by G s . Note that the SCM depends on the choice of policy. Since we aim to infer causalities regarding the expert policy, we generally let any causal relationships refer to the M s and G s induced by the expert policy unless otherwise stated. We pair the system SCM and causal graph with the tuple ⟨M s , G s ⟩. Although nodes in G s are individual elements in our vector-valued random variables (i.e., S s t is a node, not S t ), with some abuse of notation, we let the edge symbol S t → X signify that</p><formula xml:id="formula_3">S 1 1 S 2 1 S d S 1 . . . O 1 1 O 2 1 O d O 1 . . . A 1 1 A 2 1 A d A 1 . . . S 1 2 S 2 2 S d S 2 . . . O 1 2 O 2 2 O d O 2 . . . A 1 2 A 2 2 A d A 2 . . . W . . . t = 1 t = 2</formula><p>Fig. <ref type="figure" target="#fig_0">1</ref>: An example (unknown) system causal graph G s . We hope to mask O 1 (e.g. brake light observation), which has no causal edge to any expert action but is correlated with A 1 through the confounding random "seed" W and future spurious correlations. In G s , W also causally influences S 2 1 ; however, if we intervene on S 1 (blue) this edge is removed in G s (light shading). This enables our masking algorithm to more reliably leverage state initialization to detect potential causes between observations and actions (Section III-B).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>S s</head><p>t → X for some s ∈ [d S ]. Similarly, X → S t denotes that X → S s t for some s.</p><p>This work evaluates the importance of interventionally assigning the initial state to a particular distribution S 1 ∼ P (s 1 ). This intervention yields a modified SCM M s with a corresponding (not necessarily faithful) causal graph G s , which removes the edge W → S 1 in G s (Figure <ref type="figure" target="#fig_0">1</ref>). We collect N arbitrary-length expert trajectories from M s . The collection of all such trajectories is denoted (1..N ) τ . Among these N trajectories, the i th trajectory consists of the tuple</p><formula xml:id="formula_4">i τ = ⟨s 1 , . . . , s T ; I 1 , . . . , I T ; o 1 , . . . , o T ; a 1 , . . . , a T ⟩,</formula><p>where lowercase letters represent a concrete random variable value (to avoid confusion with indices, we use I t to denote a value of I t ). Implicit in this definition is the existence of an encoder ψ e : I → O mapping each image I t to a disentangled observation o t . We characterize trajectories as containing observations for simplicity; our environment only provides the images I t , and the extraction of disentangled observations o t is method-dependent.</p><p>When training agents on (1..N ) τ , we parameterize policies as a neural network f θ : I L → A. The neural policy maps some history of observations to an action a t via</p><formula xml:id="formula_5">a t = f θ (I t , I t-1 , . . . , I t-L+1 ).<label>(1)</label></formula><p>We then train f θ via standard behavior cloning by randomly sampling batches of images and expert actions from (1..N ) τ and performing supervised regression.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D. Statistical independence tests</head><p>Our method relies on identifying whether two random variables are statistically dependent. While this is a challenging problem with a rich literature <ref type="bibr" target="#b22">[23]</ref>, in this paper, we only briefly introduce a well-known independence test for continuous distributions based on Hoeffding's D statistic <ref type="bibr" target="#b23">[24,</ref><ref type="bibr" target="#b24">25]</ref>. Consider two real-valued random variables X and Y with a joint cumulative distribution function F (x, y) = P X ≤ x, Y ≤ y . Hoeffding's D statistic operates on N Hoeff independent pairs of observations {(X 1 , Y 1 ), . . . (X NHoeff , Y NHoeff )} and outputs a real number D in the range [-0.5, 1], with D &gt; 0 indicating dependence. The computational complexity of calculating this statistic is O(N Hoeff log N Hoeff ). For absolutely continuous joint distributions, the D statistic is unbiased and consistent as N Hoeff → ∞, meaning that the dependence is correctly represented with probability arbitrarily close to 1. Subsequent variations of the D statistic maintain consistency even for non-absolutely continuous joint distributions <ref type="bibr" target="#b25">[26]</ref>, although these complications are outside the scope of our work. We refer to the independence test based on the Hoeffding's D statistic as Hoeffding's independence test.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>III. PROBLEM STATEMENT AND METHOD</head><p>We address the causal confusion problem in imitation learning and aim to mask spuriously correlated observations. To this end, we investigate the following problem statement:</p><p>How can we identify and eliminate spuriously correlated observations without relying on online expert queries or knowledge of the expert reward function?</p><p>Our approach addresses this problem in a theoretically grounded way. Specifically, we make the following contributions:</p><p>1) We present an algorithm for identifying and masking causally confusing observations without relying on reward function knowledge, expert queries, or causal graph knowledge. 2) We prove that, under certain conditions, our procedure is conservative: if an observation causally affects the expert actions, it will not be masked. 3) We demonstrate the importance of initial state interventions by showing theoretically that the interventions reduce excess conservatism in the masking algorithm. Section III-A presents and analyzes the assumptions underlying our method. Section III-B motivates and derives our method, which is then presented formally in Section III-C.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Assumptions</head><p>Our proposed method relies on the following assumptions to ensure the theoretical guarantees in Section IV.</p><p>Assumption 1. The system causal graph G s is time invariant. Namely, consider two arbitrary time steps t, t ′ ∈ N with t ′ ≥ t and two arbitrary time-indexed variables X t and</p><formula xml:id="formula_6">Y t ′ in G s . Then if X t → Y t ′ is an edge in G s , then so is X t+∆ → Y t ′ +∆ for any ∆ ∈ Z such that min(t + ∆, t ′ + ∆) ≥ 1.</formula><p>Time-invariance of the expert policy allows for causal inference via interventions on the initial state S 1 . Otherwise we would require the ability to intervene at arbitrary time steps, which is unrealistic for most real-world systems. </p><formula xml:id="formula_7">O o t → A a t2 .</formula><p>Assumption 3 imposes a horizon within which the expert is assumed to react to a hypothetical intervention on a state or observation. For finite-length trajectories, H can be chosen to be the entire trajectory length, with the algorithm and theory still valid. As such, H introduces a hyperparameter that allows for more tractable computation under some assumptions on the expert. Our experiments show that H can be much smaller than the trajectory length for certain practical dynamic systems and experts.</p><p>Finally, we formalize a class of SCMs that behave nicely under interventions.</p><p>Assumption 4. The system SCM M s = ⟨V, U, F⟩ is interventionally absolutely continuous, meaning that for any disjoint sets of nodes X, Y, and Z, the interventional distribution P z | do(X = x), y is absolutely continuous with respect to the Lebesgue measure, has a bounded Radon-Nikodym derivative, and is continuous as a measure-valued function with respect to x and y. Assumption 4 stipulates that the probability distribution induced by our SCM on any set of non-intervened nodes is absolutely continuous with bounded density. This is a technical condition that facilitates analysis and allows us to assert that Hoeffding's test is consistent. We note that subsequent D-statistic variations allow for non-absolutely continuous joint distributions <ref type="bibr" target="#b25">[26]</ref> -we leave the theoretical and practical implications of more sophisticated testing to future work.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Derivation</head><p>Our aim is to mask a particular observation O o across all time steps if it has no causal effect on any expert action within the reaction horizon. As intervening on observations is impractical, this causality is challenging to deduce. We do, however, assume the ability to intervene on the system in one specific instance: setting the state variables S 1 at initialization. We manipulate S 1 to infer the possible existence of a true causal relationship.</p><p>We first motivate our approach from an arbitrary time step t ≥ 2 before specializing on the initialization. . Note that these are statistical statements which can be ascertained from the observational data. We define the boolean variable (t,t ′ ) D o s,a to check these independencies:</p><formula xml:id="formula_8">(t,t ′ ) D o s,a := (S s t ̸⊥ ⊥ O o t ) ∧ (S s t ̸⊥ ⊥ A a t ′ ),<label>(3)</label></formula><p>and introduce the "potential cause" notation</p><formula xml:id="formula_9">O o t A a t ′ := d S s=1 (t,t ′ ) D o s,a .<label>(4)</label></formula><p>The ] and t ′ in the reaction horizon, we want to "mask" the o th observation as it has no causal effect on the expert action but could be spuriously correlated in a way that undermines the imitation learning policy performance.</p><p>It is immediate from the above faithfulness argument that for t ≥ 2, we have the implication</p><formula xml:id="formula_10">O o t → A a t ′ =⇒ O o t A a t ′ .<label>(5)</label></formula><p>Note that (5) provides a conservativeness guarantee: if an observation causally influences an action, we will not mistakenly conclude from observational data that it does not, and hence incorrectly mask an observation that is actually used by the expert policy. However, this conservativeness is not apparent for t = 1 in the modified causal model ⟨ M s , G s ⟩, where we intervene to specify the initial state distribution, overriding the natural randomness resulting from W and potentially breaking faithfulness. As a simple counterexample, initializing S 1 to a constant vector would make S s 1 independent of every other random variable in the causal graph, and therefore no potential causes could be discovered as (3) would always be false. Nonetheless, when a sufficiently sensible initialization distribution is used, we prove that the conservativeness result still holds under intervention on S 1 in Section IV.</p><p>The reverse implication to (5) does not hold. It is possible that spurious statistical relationships exist while a causal edge O o t → A a t ′ does not. Indeed, for t ≥ 2, the abundance of chronologically antecedent variables virtually guarantees that all variables have share a common cause and hence a statistical dependence. The sole exception is the initial state S 1 . By intervening on S 1 , we eliminate the incoming edge from the only possible common ancestor W in the causal graph (Figure <ref type="figure" target="#fig_0">1</ref>). Therefore, we expect that this interventional ability should help eliminate potential causes</p><formula xml:id="formula_11">O o 1 A a t ′</formula><p>which do not exist in the true causal graph and reduce excessive conservativeness in the algorithm. We analyze this idea formally in Section IV.</p><p>The culmination of our efforts is described in Algorithm 1, which checks for potential causes at t = 1 using expert data (1..N ) τ collected from the interventional system ⟨ M s , G s ⟩. Note that Algorithm 1 invokes the HOEFFDING routine to compute Hoeffding's D statistic for independence between two variables. This test is computed over our dataset of trajectories (1..N ) τ , extracting exactly one pair of variables from each trajectory (N Hoeff = N ). For concreteness, consider the call HOEFFDING(S 2  1 ̸⊥ ⊥ A 4 3 in (1..N ) τ ). This extracts, from each trajectory, the second element of the t = 1 state and the fourth element of the t = 3 action. These N pairs are then supplied to Hoeffding's test, which returns a real number in the range [-0.5, 1], with a value greater than zero indicating dependence. Since perfect observational disentanglement is unrealistic, we introduce a small positive threshold hyperparameter γ.</p><p>Algorithm 1 is presented for readability and can be implemented more efficiently. The Hoeffding tests between S s t and O o t , A a t ′ can be precomputed, yielding the runtime</p><formula xml:id="formula_12">O (d S (d O + Hd A )N log N ) ,</formula><p>where N log N is the cost of evaluating Hoeffding's test for a specific pair of variables over N trajectories. In practice, Hoeffding's test executions are very fast-on the order of milliseconds for N = 10 3 -and incur a negligible overhead compared with the training time of imitation learning.</p><p>Remark 1. The reader may have noticed that our approach bears a resemblance to instrumental variable regression, a statistical technique for estimating causal relationships that has also received some attention in the causal imitation learning literature <ref type="bibr" target="#b18">[19]</ref>. We emphasize that S s t does not constitute a valid instrumental variable in the causal path (2) as there may be many other paths between S s t and A a </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Imitation Learning Workflow</head><p>Drawing on the masking approach developed in Section III-B, we summarize our overall deconfounded imitation learning workflow as the following four steps. • ψ e approximates the identity. We rely on β-VAEs' latent space regularization to produce disentangled observations. 2) Collect a sequence of N trajectories (1..N ) τ from the expert policy, with the starting state distribution P (s 1 ) over S having any density that is everywhere nonzero (e.g. uniform). 3) Execute Algorithm 1 on (1..N ) τ to obtain the observation mask m ∈ {0, 1} d O , where m o = 1 if the o th observation is to be masked. 4) Train the final policy g θ : I L → A on (1..N ) τ using standard supervised learning; g θ masks the disentangled observation space using m before executing a learnable policy network f θ :</p><formula xml:id="formula_13">g θ (I t , . . . , I t-L+1 ) = f θ ( ψ(I t ), . . . , ψ(I t-L+1 )),</formula><p>where the masked β-VAE ψ : I → I has its weights fixed and is defined as</p><formula xml:id="formula_14">ψ(I ) = ψ d (¬ m ⊙ ψ e (I )).</formula><p>Note that this overall structure generally follows the seminal work of <ref type="bibr" target="#b10">[11]</ref>. Our key contribution is Algorithm 1, which provides a mask for the disentangled observations without relying on expert queries, the expert reward function, or specification of the causal graph. A visualization of Algorithm 1 is provided in Figure <ref type="figure" target="#fig_2">2</ref> for the CartPole system considered in the experiments. We show in Section IV that Algorithm 1 enjoys notable theoretical guarantees.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Algorithm 1 Masking algorithm</head><p>Hyperparameter γ &gt; 0. procedure MASK( (1..N ) τ ) Initialize m ∈ {0, 1} d O to be an all-zero vector.</p><p>for o = 1, . . . , d O do Mask the o th observation according to</p><formula xml:id="formula_15">mo ← O o 1 ̸ A a t ′ ∀a ∈ [dA], ∀t ′ ∈ [H] ,<label>(6)</label></formula><p>computing</p><formula xml:id="formula_16">O o 1 ̸ A a t ′ using CHECK. return m procedure CHECK{O o t A a t ′ }( (1..N ) τ ) for s = 1, . . . , d S do a ← HOEFFDING(S s t ̸⊥ ⊥ O o t in (1..N ) τ ) &gt; γ b ← HOEFFDING(S s t ̸⊥ ⊥ A a t ′ in (1..N ) τ ) &gt; γ if a ∧ b then return True return False</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>IV. THEORETICAL GUARANTEES</head><p>In this section, we delve into the theoretical properties of Algorithm 1. Theorem 1 demonstrates that if we intervene on the initial state S 1 and meet certain conditions in the infinite-trajectory regime, the algorithm remains conservative, ensuring that no observation that causally influences the expert is mistakenly masked. Additionally, Theorem 2 and Proposition 3 highlight the effectiveness of intervening on S 1 in mitigating overconservativeness in the masking algorithm. Specifically, Theorem 2 asserts that the correctly masked observations under the original causal model ⟨M s , G s ⟩ will also be masked under the intervened causal model ⟨ M s , G s ⟩. Proposition 3 showcases a particular set of systems where the intervention only results in masks under ⟨ M s , G s ⟩, providing compelling evidence that the masking algorithm is more effective after intervening on S 1 .</p><p>All subsequent theory relies on Assumptions 1-4, and for brevity we defer proofs and auxiliary lemmas to the appendix. We now introduce the main conservativeness theorem and provide a short proof sketch.</p><p>Theorem 1. In the faithful system causal model ⟨M s , G s ⟩, assume that the measure-valued function w → P (v | do(Z = z), w) is continuous for any set of nodes Z and V ̸ ∈ Z.</p><p>Let there exist a causal edge </p><formula xml:id="formula_17">O o t → A a t ′ in G s for some t, t ′ ∈ N, t ′ ≥ t,</formula><formula xml:id="formula_18">P o o 1 | do(S s 1 = α) = b a P o o 1 | do(S s 1 = α), w p(w)dw,</formula><p>where we model w ∼ U(a, b). Note that the right-hand integral above in fact yields a measure over o o 1 . We now aim to show that the statement</p><formula xml:id="formula_19">∃α, α ′ s.t. b a P o o 1 | do(S s 1 = α), w - P o o 1 | do(S s 1 = α ′ ), w dw 1 &gt; 0 (7)</formula><p>holds Lebesgue-almost everywhere for (a, b) ∈ R 2 . By faithfulness of ⟨M s , G s ⟩ and the path from S s 1 to O o 1 , docalculus rules yield that for any random seed W = w there exist an α, α ′ such that</p><formula xml:id="formula_20">P o o 1 | do(S s 1 = α), w -P o o 1 | do(S s 1 = α ′ ), w 1 &gt; 0. (<label>8</label></formula><formula xml:id="formula_21">)</formula><p>We then analyze the sensitivity of ( <ref type="formula">7</ref>) with respect to the integration bounds a and b. Namely, for any (ā, b) where the left-hand side of (7) vanishes, <ref type="bibr" target="#b7">(8)</ref> yields that there exists an open ball around b in which <ref type="bibr" target="#b6">(7)</ref> holds everywhere except (ā, b). An argument from Fubini's theorem then shows that <ref type="bibr" target="#b6">(7)</ref> holds for almost all (a, b). Appealing to the consistency of Hoeffding's independence test concludes the proof. ■ Theorem 1 guarantees that Algorithm 1 maintains conservativeness by correctly preserving unmasked observations that causally impact expert actions. This outcome is consistent with the discussion in Section III-B, where we observed that the faithfulness of ⟨M s , G s ⟩ ensures the correctness of the algorithm when we do not intervene on S 1 and allow the initial state to be naturally generated from W . Theorem 1 establishes that this property also holds in the interventional system ⟨ M s , G s ⟩, where we assign S 1 ∼ P (s 1 ).</p><p>We now theoretically demonstrate the benefits of intervening with P (s 1 ). Specifically, we show that this intervention reduces the excess conservatism in the masking algorithm by removing income edges from W in the causal graph, thereby eliminating a potential avenue of confounding.</p><p>Theorem 2. Let m denote the potential-cause test evaluated by Algorithm 1 on the distribution induced by the noninterventional system ⟨M s , G s ⟩, and let m be the original test on the interventional system ⟨ M s , G s ⟩ where P (s 1 ) has everywhere-nonzero density on S. If m o correctly evaluates to true for a particular o ∈ [d O ], then m o also evaluates to true almost surely as the number of trajectories N → ∞.</p><p>Theorem 2 assures us that intervening with P (s 1 ) does not lead to more conservative masking than the original system. We now provide a specific class of SCMs for which the intervention strictly improves the mask. </p><formula xml:id="formula_22">O o 1 is W → O o 1 . Then if in G s there exists the fork S s 1 ← W → O o 1 for some s ∈ [d S ] and a directed path from S s 1 to some A a t , with t ∈ [H], a ∈ [d A ]</formula><p>, m o correctly masks the o th observation almost surely as the number of trajectories N → ∞ while m o does not.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>V. EXPERIMENTS</head><p>We evaluate our approach on two custom simulated environments: CartPole and Reacher. Each of these environments contains a nuisance feature which is likely to induce causal confusion. Our masking approach can successfully eliminate these spuriously correlated features. Precise experimental details are deferred to Appendix II.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Environments</head><p>Both considered environments are modified to include a nuisance feature corresponding to the previous action taken by the expert (analogous to the brake light example). For each environment, the expert is a standard constrained finitetime optimal control policy which minimizes cumulative trajectory loss. This expert reward function is not provided to the imitation learning agent.</p><formula xml:id="formula_23">S 1 1 x 1 S 2 1 ẋ1 S 3 1 θ 1 S 4 1 θ1 O 1 1 O 2 1 O 3 1 S s t ̸⊥ ⊥ O o t S 1 1 x 1 S 2 1 ẋ1 S 3 1 θ 1 S 4 1 θ1 A 1 1 A 1 2 A 1 3 10 -4 10 0 D Stat. S s t ̸⊥ ⊥ A a t High dependence Low dependence S 1 1 x 1 S 2 1 ẋ1 S 3 1 θ 1 S 4 1 θ1 O 1 1 O 2 1 O 3 1 (1,1) D o s,1 (≈ (1,t ′ ) D o s,a ∀a, t ′ ) Latent → No mask → No mask → Mask</formula><p>CartPole. This environment consists of a standard planar cart-pole system with a continuous scalar horizontal force applied to the cart. A quadratic cost is imposed for deviations from the vertical target state. The spuriously correlated feature is a colored square in the upper-left corner of each image, which interpolates between green and red depending on the most recently executed action.</p><p>Reacher. We consider a top-down version of a twodimensional two-joint Reacher environment <ref type="bibr" target="#b26">[27]</ref>. The environment penalizes squared distance of the end effector to a black target dot. The target location is included in the state vector, thus satisfying Assumption 2. Two torques, one per joint, are specified as the control inputs; the nuisance feature is a red dot in the upper-left corner whose horizontal position and vertical position encode the two control inputs from the previous time step. This "joystick" introduces a different kind of nuisance feature than in the CartPole environment.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Discussion</head><p>We compare the performance of our masked policy against vanilla behavior cloning. The baseline behavior cloning policy is denoted by BCVANILLA, and our masked policy is denoted by MASKED. For reference, we also measure the performance of the behavior cloning policy with the confounding signals manually removed by superimposing a white square on the upper-left corner, denoted BCMANUAL. We emphasize that BCMANUAL requires human judgement to manually eliminate spurious confounders; we show that we can approach this performance in a principled and automated way.</p><p>Figure <ref type="figure" target="#fig_1">3</ref> displays our experimental results. For CartPole, the policies were not able to consistently stabilize the pendulum at the beginning of training, leading to high loss variance. Across both environments, the MASKED policy substantially outperforms the vanilla behavior cloning policy BCVANILLA. It is worth noting that MASKED approaches the manually deconfounded baseline's performance without requiring expert queries, access to the expert reward function, or pre-specified information on the causal graph in the deconfounding procedure. However, there is a gap between the performance of our method and manual masking for the Reacher environment. This is likely attributable to imperfect disentanglement in the β-VAE, and we expect that our approach could benefit substantially from future research in disentangled representation learning.</p><p>Figure <ref type="figure" target="#fig_2">2</ref> provides a visualization of our masking procedure and the resulting mask for the CartPole environment. Note that our algorithm masks the third observation O 3 , corresponding precisely to the manually masked confounding square. While we use a latent space size of three (the precise number of independent factors of variation) for visualization purposes, our masking procedure is fully functional for larger choices of the latent size. For Reacher, although there are 6 factors of variation in each image, a larger latent space of size 12 yielded superior disentanglement and reconstruction performance.</p><p>The most significant limitation of our work, besides the explicitly stated assumptions, is the requirement that confounding factors are observable and can be neatly disentangled. While this holds for the environments considered in this work, more complex environments may introduce entanglement between causally confusing features and important features to which the expert policy actually attends. We introduce the Hoeffding threshold hyperparameter γ to mitigate this concern; however, investigating more principled methods for handling incomplete disentanglement would be an exciting area of future work.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>VI. CONCLUSION</head><p>This work introduces a novel method to address the causal confusion problem in imitation learning. The proposed method leverages the typical imitation learning ability to intervene in the initial system state. Unlike previous works, our method masks causally confusing observations without relying on online expert queries, knowledge of the expert reward function, or specification of the causal graph. Our theoretical results establish that our masking algorithm is conservative, with excess conservatism strictly reduced by interventions on the initial state. We illustrate the effectiveness of our method with experiments on CartPole and Reacher. Lines denote mean performance over 5 runs while shaded areas indicate standard deviation. To limit visual clutter, for standard deviations greater than 1 shading is omitted and the mean is drawn with a dashed line. Our MASKED policy approaches the performance of the manually-deconfounded BCMANUAL baseline, while BCVANILLA struggles due to causally confusing features.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>I PROOFS FOR SECTION IV</head><p>We first introduce a series of auxiliary lemmas. Lemma 4. Consider an interventionally absolutely continuous SCM M with a faithful causal graph G that contains a directed path from X to Y . Then provided a set Z contains all ancestors of X but none of its descendants, then for any assignment z to Z there exist values x, x ′ such that P y | do(x), z -P y | do(x ′ ), z 1 &gt; 0, viewed as induced measures over Y .</p><p>Proof: As Z contains no descendants of X, it cannot block the directed path between X and Y and hence the Causal Markov Condition does not declare X and Y independent. Faithfulness stipulates that X and Y are therefore dependent given z, so there exist x, x ′ such that</p><formula xml:id="formula_24">P y | x, z -P y | x ′ , z 1 &gt; 0.</formula><p>The second rule of do calculus states that we can exchange observation and intervention if X and Y are independent given z in the causal graph G X obtained by removing outgoing edges from X. If we remove outgoing edges from X, the only remaining paths between X and Y must contain an edge X ← Z for some variable Z. This makes Z an ancestor of X, and therefore Z is included in Z, and both paths of the form X ← Z ← J and X ← Z → J are blocked by Z. This means that X and Y are d-separated by Z in G X , and we can apply the second do-calculus rule to conclude that</p><formula xml:id="formula_25">P y | do(x), z = P y | x, z , P y | do(x ′ ), z = P y | x ′ , z , and hence P y | do(x), z -P y | do(x ′ ), z 1 &gt; 0.</formula><p>Lemma 5. Consider a set E ⊆ R where for each x ∈ E, there exists a ball B(x, ϵ x ) which contains no point in E. Then E has measure zero with respect to the standard Lebesgue measure on R.</p><p>Proof: As E is a subset of R, it is Lindelöf, and the cover of E by the collection of balls {B(x, ϵ x ) | x ∈ E} has a finite subcover. Enumerate this subcover as I i ; we then have</p><formula xml:id="formula_26">λ(E) = λ(E ∩ (∪ i I i )) ≤ i λ(E ∩ I i ) = 0, as each E ∩ I i contains only a singleton. Lemma 6. Let f (x) be a differentiable function of x ∈ R at some x ∈ R with f (x) = 0. Then d dx x+ |f (x)| = d dx xf (x) and d dx x- |f (x)| = - d dx xf (x) .</formula><p>Proof: We prove the first result as the second follows similarly. Expanding the derivative:</p><formula xml:id="formula_27">d dx x+ |f (x)| = lim δ→0 + |f (x + δ)| -|f (x)| δ = lim δ→0 + |f (x + δ) -f (x)| δ = lim δ→0 + f (x + δ) -f (x) δ = d dx xf (x) ,</formula><p>where moving the limit inside the absolute value is permissible by differentiability of f at x and continuity of absolute value. where µ is a probability measure on the unobserved variable w which we will instantiate shortly, and p(w) denotes the probability density of W , i.e. the Radon-Nikodym derivative of the measure P (w). Note that the result of this integral is still a signed measure over o o 1 . So we have that showing our desired inequality ( <ref type="formula">9</ref>) is equivalent to showing h(α, α ′ , w)p(w)dµ(w) 1 ̸ ≡ 0 as a function of α, α ′ for "almost all" measures µ-as there is no natural measure on the space of measures, we have formalized this assuming a uniform distribution W ∼ U(a, b). Note that the outer norm computes the L 1 norm of a signed measure over o o 1 . For notational convenience, we will now define the concatenation z = [α, α ′ ], with z ∈ R 2 . We can now concretely refine µ in the above statement, using our new z-notation, to showing that </p><p>as a function of z for almost every (a, b); i.e., the subset of (a, b) parameter space where g b a (z) ≡ 0 over z is measure zero with respect to the standard Lebesgue measure in R 2 . Note that we drop the p(w) factor since for the uniform distribution this is a constant which factors out.</p><p>This can be analyzed by taking sections were we fix a and consider the set of b's where g b a (z) ≡ 0; if this set has measure zero, then the overall set of Cartesian pairs (a, b) where g b a (z) ≡ 0 can be shown to have measure zero by the following argument. Observe that g b a (z) is continuous in a, b and z by Assumption 4 and integral properties; then the inverse image of {0} under g is a Borel subset of A ⊂ R 4 , recalling that z ∈ R 2 . The projection of this Borel subset on to the (a, b) plane is measurable (but not necessarily Borel). Then if each fixed-a slice is measure zero, the overall set is measure zero by Fubini's theorem.</p><p>Correspondingly, we fix any particular a and drop it from the subscript of g b a for simplicity. Consider a particular b where g b(z) ≡ 0 as a function of z. We expand the L 1 norm in <ref type="bibr" target="#b10">(11)</ref> as ) is differentiable with respect to b due to the assumed continuity of maps on w in the theorem statement. We now differentiate <ref type="bibr" target="#b11">(12)</ref> with respect to b at b. Due to the absolute value in <ref type="bibr" target="#b11">(12)</ref>, we must take care to differentiate from above and below and show both these cases are nonzero. As they follow similarly, we show the case for above: ) with respect to b, and (18) follows from <ref type="bibr" target="#b9">(10)</ref>.</p><formula xml:id="formula_29">g b (z) = d dλ b a h(z, w)dw dλ = f b z (o o 1 ) dλ,<label>(12)</label></formula><p>Proceeding similarly, we can show that both </p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>1 )</head><label>1</label><figDesc>Collect random-policy trajectories to learn a observation representation using a β-VAE, denoted by ψ d • ψ e : I → I, with an encoder ψ e : I → O and decoder ψ d : O → I. For a well-trained β-VAE, ψ d</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Proposition 3 .</head><label>3</label><figDesc>Let m and m be as in Theorem 2, and consider a particular observation index o ∈ [d O ] such that the only incoming edge to</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Fig. 2 :</head><label>2</label><figDesc>Fig. 2: Masking algorithm visualization for the CartPole environment with reaction horizon H = 3. Latent space interpolation of the β-VAE reveals that O 1 and O 2 capture some combined positional/angular information, while O 3 captures the disentangled confounder (color of the confounding square). This last observation shares virtually no dependence (Hoeffding's D statistic less than γ = 10 -3 ) with any state variable due to interventions on S 1 (note the log scale). This means that (1,t ′ ) D o s,a is false (no cross hatches) for o = 3 and all s ∈ [d S ], regardless of a and t ′ ; i.e. O 3 1 ̸ A a t ′ for all a ∈ [d A ]</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Fig. 3 :</head><label>3</label><figDesc>Fig.3: Evaluation rollout loss on CartPole (a) and Reacher (b) across training epochs. Lines denote mean performance over 5 runs while shaded areas indicate standard deviation. To limit visual clutter, for standard deviations greater than 1 shading is omitted and the mean is drawn with a dashed line. Our MASKED policy approaches the performance of the manually-deconfounded BCMANUAL baseline, while BCVANILLA struggles due to causally confusing features.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Lemma 7 .</head><label>7</label><figDesc>Let f (x) : R → M (Y ) continuously map real numbers x to a measure over the values assumed by a random variable Y . Then we have that d db b d dλ b a f (x)dx = d dλ f ( b) almost everywhere over the domain of Y . Here b a f (x)dx denotes Lebesgue integration against U(a, b), d dλ is the Radon-Nikodym derivative with respect to the standard Lebesgue measure on R, and d db b denotes the standard real analysis derivative evaluated at b. Proof: We can expand the definition of the outer derivative</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head></head><label></label><figDesc>using the interventional absolute continuity assumption to invoke the Radon-Nikodym derivative on our signed measure over o o 1 with respect to the standard Lebesgue measure λ. We denote the resulting density function by f b z (o o 1 ). Note that since g b(z) ≡ 0, we have that f b z (o o 1 ) = 0 for almost all z and o o 1 . Note that f b z (o o 1</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head>to f b z (o o 1 )</head><label>1</label><figDesc>follows from boundedness of the Radon-Nikodym derivative of h(z, b), (15) follows from applying Lemma 6 with respect to b, (16) follows from Lemma 7, (17) follows from differentiability of f b z (o o 1</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head></head><label></label><figDesc>d db b+ g b (z) ̸ ≡ 0 and d db b- g b (z) ̸ ≡ 0.It is then immediate that there exists a ball B( b, ϵb) such that g b (z) ̸ ≡ 0 for all b ∈ B( b, ϵb) \ b. Applying Lemma 5 concludes that for a fixed a, the set of b for which<ref type="bibr" target="#b10">(11)</ref> is violated is measure zero. Hence by the above Fubini argument, for almost every uniform measure U(a, b) on w, we have that (9) holds for some α, α ′ . Therefore S s 1 ̸⊥ ⊥ O o 1 in the interventional distribution on S s 1 .</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head></head><label></label><figDesc>the system of interest, we use d S , d I , d O , and d A to denote the dimensionality of the bounded state space S ⊆ R d S , raw image observation space I ⊆ R d I , disentangled observation space O ⊆ R d O , and action space A ⊆ R d A . Let S t , I t , O t , and A t be vector random variables taking on values in S, I, O, and A, respectively, for a discrete time step t ∈ N. States variables S t represent the intrinsic low-dimensional dynamics of the system (e.g. simulator variables) while observations O t are distilled using a VAEstyle framework from high-dimensional image measurements I t , with d I ≫ d O . The system dynamics assume that S t+1 is strictly a function of S t and A t . Lower-case script letters s ∈ [d S ], o ∈ [d O ], and a ∈ [d A ] denote specific indices in the state, observation, and action vectors. For example, S s</figDesc><table><row><cell>1</cell></row><row><cell>refers to the real-valued random variable corresponding to the</cell></row><row><cell>s th state variable at the first time step. We model W ∼ U(a, b)</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head></head><label></label><figDesc>Assumption 2. The expert policy attends only to observational information derived from the underlying state. Namely, if O o t → A a t ′ in G s for t, t ′ ∈ N with t ′ ≥ t, then there must exist an index s such that S s t → O o t . Assumption 2 reflects the intuition that the expert policy itself must not be fooled by spurious information in the observation space. This is a natural assumption in the considered case where the dynamics of the underlying system depend only on S t , not O t . Assumption 3. The expert policy reacts to observations within a reaction horizon H ∈ N. Specifically, if O o</figDesc><table /><note><p>t → A a t1 in G s for some t 1 &gt; t and particular t ∈ N, o ∈ [d O ], and a ∈ [d A ], then there exists a t 2 ∈ [t .. t + H -1] such that</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head></head><label></label><figDesc>Consider arbitrary observation and action indices o ∈ [d O ], a ∈ [d A ] and time steps t, t ′ ∈ N with t ′ ∈ [t .. t+H -1]. , for some state variable index s ∈ [d S ]. We now observe that by faithfulness of ⟨M s , G s ⟩ it must be that S s t ̸⊥ ⊥ O o ̸⊥ ⊥ A a t ′ ; i.e. the causal relationships in G s imply probabilistic dependencies in the induced distribution from M s</figDesc><table><row><cell></cell><cell>Assumption 2</cell></row><row><cell cols="2">states that a causal effect O o t → A a t ′ must arise from a larger</cell></row><row><cell>causal path</cell><cell></cell></row><row><cell>S s t → O o t → A a t ′</cell><cell>(2)</cell></row><row><cell>in G s</cell><cell></cell></row></table><note><p>t and S s t</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head></head><label></label><figDesc>boolean-valued statement O o</figDesc><table><row><cell>t</cell><cell>A a t ′ intuitively</cell></row><row><cell cols="2">captures that, based on observational data, there may (but</cell></row><row><cell cols="2">need not) exist a true causal edge O o t → A a t ′ generated by some S s t as in (2). We denote by O o t ̸ A a t ′ the logical negation of O o t A a t ′ . As we will elaborate in more detail shortly, if O o t ̸ A a t</cell></row></table><note><p>′ for all actions a ∈ [d A</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head></head><label></label><figDesc>and indices o ∈ [d O ] and a ∈ [d A ]. Then in the interventional causal model ⟨ M s , G s ⟩ where the initial state distribution P (s 1 ) has everywhere-nonzero density on S, O o is almost surely not masked by Algorithm 1 for almost every uniform parameterization of W as the number of trajectories N → ∞; i.e., (6) correctly evaluates to true.</figDesc><table><row><cell>Proof sketch (informal): By Assumptions 1 and 3, we</cell></row><row><cell>can WLOG consider t = 1 with t ′ ∈ [H]. If O o 1 → A a t ′ , by Assumption 2 there exists an edge S s 1 → O o 1 for some s. We</cell></row><row><cell>show that in the SCM M s where we intervene distributionally</cell></row><row><cell>on S 1 , we have that S s 1 ̸⊥ ⊥ O o 1 and S s 1 ̸⊥ ⊥ A a t ′ . The arguments</cell></row><row><cell>are similar, so we informally sketch the proof for the former.</cell></row><row><cell>To show that S s 1 and O o 1 are dependent, it suffices to find a particular pair of states S s 1 = α, α ′ which induce different probability measures P o o</cell></row></table><note><p><p>1 | do(S s 1 = α) (resp. α ′ ) over O o 1 .</p>We marginalize out the random seed w from our original measure of interest P o o 1 | do(S s 1 = α) via the integral</p></note></figure>
+		</body>
+		<back>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Take an arbitrary ϵ &gt; 0. We want to show ∃δ &gt; 0 such that for all b -δ &lt; b &lt; b + δ, we have that</p><p>where the Radon-Nikodym derivative d dλ is absorbed into the L 1 norm definition on measures. By continuity of f , we can always choose a δ small enough for this inequality to hold.</p><p>We now prove the main theoretical results.</p><p>Theorem 1. In the faithful system causal model ⟨M s , G s ⟩, assume that the measure-valued function w → P (v | do(Z = z), w) is continuous for any set of nodes Z and V ̸ ∈ Z.</p><p>Let there exist a causal edge </p><p>for some α, α ′ ∈ R with α ̸ = α ′ . Here, P o o 1 | • denotes a probability measure over o o 1 . The do statement captures our ability to intervene on the initial state, decoupling any potential correlational influence from W .</p><p>By Lemma 4, we have that for any particular value w of W ,</p><p>for some α, α ′ . This is equivalent to</p><p>where we define h(α, α ′ , w)  A a t by <ref type="bibr" target="#b3">(4)</ref>. Therefore m o is not masked <ref type="bibr" target="#b5">(6)</ref>.</p><p>We now show that m does mask o and take all causal and probabilistic statements to refer to the intervened causal model </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>II EXPERIMENTS</head><p>We include here essential environment, architecture, and hyperparameter details.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Environments</head><p>We consider two environments: CartPole and Reacher. Both systems are rendered to 64 × 64 RGB images, pictured in Figure <ref type="figure">4</ref>. 1) CartPole: The CartPole environment <ref type="bibr" target="#b27">[28]</ref> describes a nonlinear dynamic system consisting of four states: the cart position x, the cart velocity ẋ, the pole angle θ, and the pole angular velocity θ. The state vector at time t is S t := (x t , ẋt , θ t , θt ). The agent action is a continuous horizontal force acting on the cart, bounded symmetrically in the range <ref type="bibr">[-25, 25]</ref>. The length of the pole is 1 meter, with the masses of the cart and the pole set to 1 and 0.1 kilograms, respectively. We specify the gravitational acceleration constant as g = 9.8m/s 2 . The system is then discretized with ∆t = 0.05 for 100 time steps using the forward Euler method, with the standard CartPole dynamics equations adapted from OpenAI Gym <ref type="bibr" target="#b26">[27]</ref>. We minimize cumulative stepwise quadratic form loss to the upright target state S target = (0, 0, 0, 0), with an additional quadratic control cost.</p><p>To each frame, we add a 15 × 15 square nuisance feature at the top-left corner of each image. The color of the square interpolates linearly between green and red, depending on the action (cart force) from the previous time step. At the initial time step t = 1 there is no previous action, and thus we use a random number drawn from Unif(-25, 25) to generate the square.</p><p>We generate 5, 000 random-policy trajectories for training the β-VAE and 1, 000 expert trajectories for imitation learning. Random-policy trajectories are terminated when the states become out-of-bound, and are thus generally significantly shorter than the expert trajectories.</p><p>2) Reacher: Reacher is also implemented based on the classic OpenAI Gym environment <ref type="bibr" target="#b26">[27]</ref>. The system contains six states: target position x * , y * ; joint one angle and velocity θ 1 , θ1 ; and joint two angle and velocity θ 2 , θ2 . The target positions x * , y * is fixed over the course of one trajectory to a random point in the reachable area. Both links have mass 1 kilogram and length 0.5 meters. Agents specify torques at both joints, bounded in the range [-2, 2]. The objective penalizes squared distance of the end effector from (x * , y * )-visualized as a black dot-at each time step, along with a quadratic control cost. We simulate with a time step ∆t = 0.05 seconds for 200 time steps.</p><p>For Reacher, we demonstrate that our method can eliminate a visually different type of confounding than the colored square in the CartPole experiment. The considered confounder is a red dot in the upper-left corner of the image that moves translationally according to the agent action in the previous time step. Specifically, the horizontal position is linearly interpolated according to the first joint torque, and the vertical position is linearly interpolated according to the second joint torque. Similarly to CartPole, we choose a random previous action for the first time step.</p><p>We generate 2, 000 random-policy trajectories for training the β-VAE and 2, 000 expert trajectories for imitation learning.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. VAE training</head><p>We train a standard β-VAE <ref type="bibr" target="#b28">[29]</ref> as implemented by <ref type="bibr" target="#b29">[30]</ref>. We choose a latent space dimension of 3 for CartPole and 12 for Reacher, although we note that larger choices for the latent space dimension yield similar results. We train for 100 epochs at a learning rate of 0.0005 on Reacher and 0.005 on CartPole. Both use an exponential learning rate scheduler with decay factor 0.95. Our batch size is 256 for Reacher and 64 for CartPole. Finally, we choose the disentaglement factor β = 100 for CartPole and β = 1000 for Reacher.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Behavior cloning training</head><p>For all enviroments we use a standard pre-activation ResNet-18 <ref type="bibr" target="#b30">[31]</ref>. We train with the Adam optimizer <ref type="bibr" target="#b31">[32]</ref> at an initial learning rate of 0.001 and exponential learning rate decay with factor 0.96. We use a batch size of 256 and evaluate the performance of the agent with 25 validation rollouts every 10 epochs. As a single image of the environment cannot convey higher-order state information such as velocity, we input the previous two images into our policies-i.e., L = 2 in (1). Thus, we make the necessary architectural change to the underlying models of setting the number of input channels to 6. Since the first time step does not have an associated previous image, we use a blank image as a surrogate.</p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Incremental learning of gestures by imitation in a humanoid robot</title>
+		<author>
+			<persName><forename type="first">Sylvain</forename><surname>Calinon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aude</forename><surname>Billard</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ACM/IEEE International Conference on Human-Robot Interaction</title>
+		<imprint>
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">SWIRL: A sequential windowed inverse reinforcement learning algorithm for robot tasks with delayed rewards</title>
+		<author>
+			<persName><forename type="first">Sanjay</forename><surname>Krishnan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">The International Journal of Robotics Research</title>
+		<imprint>
+			<biblScope unit="volume">38</biblScope>
+			<biblScope unit="page" from="126" to="145" />
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<monogr>
+		<title level="m" type="main">Inverse reinforcement learning for autonomous navigation via differentiable semantic mapping and planning</title>
+		<author>
+			<persName><forename type="first">Tianyu</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vikas</forename><surname>Dhiman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nikolay</forename><forename type="middle">A</forename><surname>Atanasov</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2101.00186</idno>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Imitating driver behavior with generative adversarial networks</title>
+		<author>
+			<persName><forename type="first">Alex</forename><surname>Kuefler</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE Intelligent Vehicles Symposium</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Deep imitation learning for 3D navigation tasks</title>
+		<author>
+			<persName><forename type="first">Ahmed</forename><surname>Hussein</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Neural computing and applications</title>
+		<imprint>
+			<biblScope unit="volume">29</biblScope>
+			<biblScope unit="page" from="389" to="404" />
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Optimal passenger-seeking policies on E-hailing platforms using Markov decision process and imitation learning</title>
+		<author>
+			<persName><forename type="first">Zhenyu</forename><surname>Shou</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Transportation Research Part C: Emerging Technologies</title>
+		<imprint>
+			<biblScope unit="volume">111</biblScope>
+			<biblScope unit="page" from="91" to="113" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<monogr>
+		<title level="m" type="main">End to End Learning for Self-Driving Cars</title>
+		<author>
+			<persName><forename type="first">Mariusz</forename><surname>Bojarski</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1604.07316</idno>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Imitation learning with stability and safety guarantees</title>
+		<author>
+			<persName><forename type="first">He</forename><surname>Yin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Control Systems Letters</title>
+		<imprint>
+			<biblScope unit="volume">6</biblScope>
+			<biblScope unit="page" from="409" to="414" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Safe reinforcement learning with chanceconstrained model predictive control</title>
+		<author>
+			<persName><forename type="first">Samuel</forename><surname>Pfrommer</surname></persName>
+		</author>
+		<idno>PMLR. 2022</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Learning for Dynamics and Control Conference</title>
+		<imprint>
+			<biblScope unit="page" from="291" to="303" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Deep Q-learning From Demonstrations</title>
+		<author>
+			<persName><forename type="first">Todd</forename><surname>Hester</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI Conference on Artificial Intelligence</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Causal confusion in imitation learning</title>
+		<author>
+			<persName><forename type="first">Pim</forename><surname>De Haan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dinesh</forename><surname>Jayaraman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sergey</forename><surname>Levine</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<title level="m" type="main">Causal machine learning: A survey and open problems</title>
+		<author>
+			<persName><forename type="first">Jean</forename><surname>Kaddour</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2206.15475</idno>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<monogr>
+		<title level="m" type="main">Shaking the foundations: delusions in sequence models for interaction and control</title>
+		<author>
+			<persName><forename type="first">Pedro</forename><forename type="middle">A</forename><surname>Ortega</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2110.10819</idno>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">A reduction of imitation learning and structured prediction to no-regret online learning</title>
+		<author>
+			<persName><forename type="first">Stéphane</forename><surname>Ross</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Geoffrey</forename><surname>Gordon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Drew</forename><surname>Bagnell</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Artificial Intelligence and Statistics</title>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Object-aware regularization for addressing causal confusion in imitation learning</title>
+		<author>
+			<persName><forename type="first">Jongjin</forename><surname>Park</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="page" from="3029" to="3042" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Causal imitation learning with unobserved confounders</title>
+		<author>
+			<persName><forename type="first">Junzhe</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Kumor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Elias</forename><surname>Bareinboim</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Sequential causal imitation learning with unobserved confounders</title>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Kumor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junzhe</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Elias</forename><surname>Bareinboim</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Causal transfer for imitation learning and decision making under sensor-shift</title>
+		<author>
+			<persName><forename type="first">Jalal</forename><surname>Etesami</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Philipp</forename><surname>Geiger</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI Conference on Artificial Intelligence</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Causal Imitation Learning under Temporally Correlated Noise</title>
+		<author>
+			<persName><forename type="first">Gokul</forename><surname>Swamy</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<monogr>
+		<title level="m" type="main">Deconfounded Imitation Learning</title>
+		<author>
+			<persName><forename type="first">Risto</forename><surname>Vuorio</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2211.02667</idno>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<monogr>
+		<author>
+			<persName><forename type="first">Judea</forename><surname>Pearl</surname></persName>
+		</author>
+		<title level="m">Causality. Models, Reasoning, and Inference. 2nd ed</title>
+		<imprint>
+			<publisher>Cambridge University Press</publisher>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<monogr>
+		<author>
+			<persName><forename type="first">P</forename><surname>Spirtes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Glymour</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Scheines</surname></persName>
+		</author>
+		<title level="m">Causation, Prediction, and Search</title>
+		<imprint>
+			<publisher>MIT press</publisher>
+			<date type="published" when="2000">2000</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<monogr>
+		<title level="m" type="main">Handbook of parametric and nonparametric statistical procedures</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>David</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Sheskin</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<publisher>crc Press</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">A Non-Parametric Test of Independence</title>
+		<author>
+			<persName><forename type="first">Wassily</forename><surname>Hoeffding</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">The Annals of Mathematical Statistics</title>
+		<imprint>
+			<biblScope unit="volume">19</biblScope>
+			<biblScope unit="page" from="546" to="557" />
+			<date type="published" when="1948">1948</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<monogr>
+		<title level="m" type="main">independence: Fast rank tests</title>
+		<author>
+			<persName><forename type="first">Chaim</forename><surname>Even-Zohar</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2010.09712</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<monogr>
+		<title level="m" type="main">Distribution free tests of independence based on the sample distribution function</title>
+		<author>
+			<persName><forename type="first">Julius</forename><forename type="middle">R</forename><surname>Blum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jack</forename><surname>Kiefer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Murray</forename><surname>Rosenblatt</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1961">1961</date>
+			<publisher>Sandia Corporation</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<monogr>
+		<title level="m" type="main">OpenAI Gym</title>
+		<author>
+			<persName><forename type="first">Greg</forename><surname>Brockman</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1606.01540</idno>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Neuronlike adaptive elements that can solve difficult learning control problems</title>
+		<author>
+			<persName><forename type="first">Andrew</forename><forename type="middle">G</forename><surname>Barto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Richard</forename><forename type="middle">S</forename><surname>Sutton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Charles</forename><forename type="middle">W</forename><surname>Anderson</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Systems, Man, and Cybernetics SMC</title>
+		<imprint>
+			<biblScope unit="volume">13</biblScope>
+			<biblScope unit="page" from="834" to="846" />
+			<date type="published" when="1983">1983</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<monogr>
+		<title level="m" type="main">Understanding disentangling in β-VAE</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Christopher</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Burgess</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1804.03599</idno>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">K</forename><surname>Subramanian</surname></persName>
+		</author>
+		<ptr target="https://github.com/AntixK/PyTorch-VAE.2020" />
+		<imprint/>
+	</monogr>
+	<note>PyTorch-VAE</note>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Deep residual learning for image recognition</title>
+		<author>
+			<persName><forename type="first">Kaiming</forename><surname>He</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE conference on computer vision and pattern recognition</title>
+		<meeting>the IEEE conference on computer vision and pattern recognition</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="770" to="778" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<monogr>
+		<title level="m" type="main">Adam: A method for stochastic optimization</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Diederik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jimmy</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Ba</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1412.6980</idno>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

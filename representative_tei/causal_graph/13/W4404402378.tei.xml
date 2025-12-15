@@ -1,0 +1,2047 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">SPARTAN: A Sparse Transformer Learning Local Causation</title>
+				<funder ref="#_WUvpA5M">
+					<orgName type="full">University of Oxford Advanced Research Computing</orgName>
+					<orgName type="abbreviated">ARC</orgName>
+				</funder>
+				<funder>
+					<orgName type="full">Amazon</orgName>
+				</funder>
+				<funder ref="#_eUus4WJ">
+					<orgName type="full">EPSRC</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability  status="unknown">
+					<licence/>
+				</availability>
+				<date type="published" when="2024-11-12">12 Nov 2024</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Anson</forename><surname>Lei</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department">Applied AI</orgName>
+								<orgName type="institution">Lab University of Oxford</orgName>
+								<address>
+									<country key="GB">UK</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Bernhard</forename><surname>Schölkopf</surname></persName>
+							<affiliation key="aff1">
+								<orgName type="department">Applied AI</orgName>
+								<orgName type="institution">ELLIS Institute &amp; MPI for Intelligent Systems Tübingen</orgName>
+								<address>
+									<country key="DE">Germany</country>
+								</address>
+							</affiliation>
+						</author>
+						<author role="corresp">
+							<persName><forename type="first">Ingmar</forename><surname>Posner</surname></persName>
+							<email>ingmar@robots.ox.ac.uk</email>
+							<affiliation key="aff2">
+								<orgName type="institution">Lab University of Oxford</orgName>
+								<address>
+									<country key="GB">UK</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">SPARTAN: A Sparse Transformer Learning Local Causation</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2024-11-12">12 Nov 2024</date>
+						</imprint>
+					</monogr>
+					<idno type="arXiv">arXiv:2411.06890v2[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-21T20:32+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Causal structures play a central role in world models that flexibly adapt to changes in the environment. While recent works motivate the benefits of discovering local causal graphs for dynamics modelling, in this work we demonstrate that accurately capturing these relationships in complex settings remains challenging for the current state-of-the-art. To remedy this shortcoming, we postulate that sparsity is a critical ingredient for the discovery of such local causal structures. To this end we present the SPARse TrANsformer World model (SPARTAN), a Transformer-based world model that learns local causal structures between entities in a scene. By applying sparsity regularisation on the attention pattern between object-factored tokens, SPARTAN identifies sparse local causal models that accurately predict future object states. Furthermore, we extend our model to capture sparse interventions with unknown targets on the dynamics of the environment. This results in a highly interpretable world model that can efficiently adapt to changes. Empirically, we evaluate SPARTAN against the current state-of-the-art in object-centric world models on observation-based environments and demonstrate that our model can learn accurate local causal graphs and achieve significantly improved few-shot adaptation to changes in the dynamics of the environment as well as robustness against removing irrelevant distractors.</p><p>Preprint. Under review.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>World Models <ref type="bibr" target="#b16">[17]</ref> have emerged in recent years as a promising paradigm to enable a wide range of downstream tasks such as video prediction <ref type="bibr" target="#b57">[58,</ref><ref type="bibr" target="#b18">19]</ref>, physical reasoning <ref type="bibr" target="#b5">[6,</ref><ref type="bibr" target="#b8">9]</ref> and model-based RL <ref type="bibr" target="#b17">[18]</ref>. While recent advances in dynamics modelling have developed world models that are capable of performing accurate predictions over ever longer horizons in increasingly complex environments <ref type="bibr" target="#b37">[38,</ref><ref type="bibr" target="#b45">46]</ref>, the ability to adapt to changes in the environment in a data efficient manner remains a significant challenge. To this end, the intersection between causality and machine learning <ref type="bibr" target="#b47">[48,</ref><ref type="bibr" target="#b24">25]</ref> offers promising opportunities for building structured models that can reason about changes in the environment. In particular, causal graphical models <ref type="bibr" target="#b40">[41]</ref> afford the notion of interventions -local changes to a small part of the model that explain changes in the environment. In other words, learning a causal model amounts to learning how the world behaves as well as how the world can change.</p><p>Capturing the intuition that most knowledge about the world can be reused even in the face of environment changes, the Sparse Mechanism Shift hypothesis <ref type="bibr" target="#b38">[39,</ref><ref type="bibr" target="#b48">49,</ref><ref type="bibr" target="#b2">3]</ref> posits that natural changes in the data distribution can be explained by sparse changes in the causal mechanisms. This suggests that a world model reflecting the causal structure of the world can adapt efficiently to changes by updating only a small part of the model while most of the model remains invariant.</p><p>In this light, several recent works have explored the benefits of causally structured world models [e.g. <ref type="bibr" target="#b32">33,</ref><ref type="bibr" target="#b19">20]</ref>. These approaches aim to learn a causal graph that captures how entities in an environment influence each other. However, these causal discovery methods learn a fixed graph to explain the entire dataset, which suffer from two principle drawbacks in the context of modeling realistic physical systems. First, learning a fixed causal graph that explains the data requires the graph capture all possible interactions between entities in the scene. In most realistic settings, where all objects can potentially interact with each other, this often leads to uninformative, fully-connected graphs. Second, in many application domains, such as traffic motion prediction <ref type="bibr" target="#b51">[52]</ref>, the number of entities can change from scene to scene, which is incompatible with the standard structure learning approach. In reality, most physical interactions such as collisions between objects manifest in temporally sparse events. As such, we argue that local causal models <ref type="bibr" target="#b41">[42,</ref><ref type="bibr" target="#b42">43,</ref><ref type="bibr" target="#b49">50,</ref><ref type="bibr" target="#b20">21]</ref>, which capture only the relevant causal relationships at each timestep, provide a more natural and flexible framework for learning structured world models. To this end, <ref type="bibr" target="#b41">[42]</ref> propose that local causal graphs can be inferred by investigating the attention pattern that emerges in a Transformer-based dynamics model <ref type="bibr" target="#b55">[56]</ref>. While this is sufficient in simple, state-based settings, we argue and empirically show that attention alone is not able to reliably discover local causal relationships in environments with more complex dynamics or high-dimensional observations. To remedy this, we take inspiration from optimisation-based causal discovery methods <ref type="bibr" target="#b4">[5]</ref> which use sparsity to induce causal graphs, and use sparsity regularisation as an inductive bias to learn local causal models.</p><p>In this work, we develop a sparsity regularisation scheme that can be applied to the standard Transformer architecture, which enables the discovery of state-dependent and time-dependent local causal graphs. We present SPARTAN, a Transformer-based world model with learnable sparse local causal graph structure. Specifically, SPARTAN minimises the expected number of local causal edges between tokens, allowing the discovery of accurate and interpretable causal edges between objects. We evaluate our model on observation-based environments with physical interactions and a traffic motion prediction dataset <ref type="bibr" target="#b51">[52]</ref>, showing that SPARTAN is able to identify causal edges more accurately than prior approaches, resulting in significantly improved robustness against interventions on objects that are not causally related to the prediction. We further extend our model to explicitly represent causal interventions. In so doing, SPARTAN is able to efficiently adapt to changes in the environment in a few-shot manner. We demonstrate that due to the causal structure discovered, our model achieves better adaptation efficiency without compromising on overall prediction accuracy.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Background</head><p>We begin this section by introducing our problem setting and providing a brief outline of causal graphical models and causal discovery methods. These are then discussed in relation to our motivation in section 2.3, where we note in particular the role of causality in world models. The goal of our work is to learn a causal model that predicts future states from observation. In order to model interventions, we train our model on a set of intervened environments with unknown intervention targets. Specifically, the training data of our model consists of observation sequences sampled from different environments {x 0 , x 1 , ..., x T , I}, where x t is the observation at timestep t and I is the environment index. Here, each environment is obtained by altering the dynamics of the system such as changing the friction of an object. We assume access to a representation model that maps observations to latent states. We further assume that the latent state space, S can be factorised, S = S i × ... × S N , such that each S i represents the state of an entity such as an object in the scene. Examples of such representation models include object-centric models <ref type="bibr" target="#b36">[37,</ref><ref type="bibr" target="#b12">13,</ref><ref type="bibr" target="#b11">12,</ref><ref type="bibr" target="#b59">60]</ref> or disentangled causal representations <ref type="bibr" target="#b48">[49,</ref><ref type="bibr" target="#b35">36,</ref><ref type="bibr" target="#b28">29,</ref><ref type="bibr" target="#b31">32,</ref><ref type="bibr" target="#b9">10]</ref> where each S i is an object slot or a causal variable respectively. Our aim is to learn a transition function p(s t+1 |s t ) that captures the local causal structure.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.1">Causal Graphical Models</head><p>A causal graphical model (CGM) <ref type="bibr" target="#b40">[41]</ref> consists of a set of random variables V = {V 1 , ..., V N }, a directed acyclic graph G = (V, E) over the set of nodes V and a conditional distribution for each random variable</p><formula xml:id="formula_0">V i , P (V i |P a(V i ))</formula><p>, where P a(V i ) is the set of parents of V i . Each edge in the graph (i, j) means that V i is a cause of V j . The joint distribution over the variables can be factorised as</p><formula xml:id="formula_1">p(v 1 , ..., v N ) = N i=0 p(v i |P a(V i )).<label>(1)</label></formula><p>One important feature of CGMs is that they support interventions which are local changes to the distribution that correspond to external changes to the data generation process. Given the intervention I and its targets T I ⊂ V, the joint distribution is</p><formula xml:id="formula_2">p I (v 1 , ..., v N ) = vi̸ ∈T I p(v i |P a(V i )) vj ∈T I p ′ (v j |P a(V j )),<label>(2)</label></formula><p>where P ′ (•) is the intervened conditional distribution. In contrast to a probabilistic graphical model, given a set of interventions, a CGM defines a family of distributions instead of a single, fixed one.</p><p>In the context of modelling physical systems, since objects interactions are often temporally sparse, we further define local causal models <ref type="bibr" target="#b41">[42,</ref><ref type="bibr" target="#b49">50,</ref><ref type="bibr" target="#b20">21]</ref>. Suppose we observe the values of a subset of the variables, V obs ⊂ V, V obs = v obs . For some neighbourhood L containing v obs , the induced local causal graph G L is constructed by removing all edges (i, j) from the global causal graph G where V j ⊥ ⊥ V i |P a i (V j )\V i within the neighbourhood, i.e. the local graph is a subgraph of the global graph obtained by removing any "inactive" edges based on the observed state. Note that the structure of the local graph is now dependent on the observed variables. Concretely, in the context of transition functions, the set of observed variables are the states of the current timestep s t . As a simple example, consider two billiard balls. If it is observed that they are far apart, then there is no local edge between them since they cannot influence each other. However, when they are about to collide, their next states will depend on each other and hence there is an edge between them in the local graph.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.2">Causal Discovery</head><p>The goal of our work is to discover local causal structures from observations. We take as starting point causal discovery methods, which aim to identify causal structures with data. We take inspiration from the continuous optimisation formulation <ref type="bibr" target="#b61">[62,</ref><ref type="bibr" target="#b4">5]</ref>, which can be naturally incorporated into the framework of world models. Given a set of interventions with unknown targets I 1:K and their corresponding distributions X ∼ p (k)</p><p>X , causal discovery can be formulated as the following <ref type="bibr" target="#b4">[5]</ref>,</p><formula xml:id="formula_3">max θ K k=1 E X∼p (k) X log f (k) (X; θ) -λ|G(θ)| -λ R |I(θ)|,<label>(3)</label></formula><p>where θ are the learnable parameters, f (k)  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.3">Causality and World Models</head><p>Conceptually, we argue that in order to perform efficient adaptation, world models should be structured to reflect the underlying sparse causal structure of the observed dynamics, and that these structures should be local. To illustrate our point, consider the setting of traffic behaviours: changes in traffic rules arise when travelling to countries where vehicles drive on the other side of the road. Although the relative position of vehicles given the road boundaries may change, most traffic behaviours (e.g. stopping at a red light or lane keeping) would remain the same. A world model that can efficiently adapt in this setting should modularly update only a small subset of learnt dynamics (i.e. the relative position of vehicles with respect to the road boundary) while leaving other dynamics unchanged.</p><p>Our proposition is motivated by the sparse mechanism shift hypothesis <ref type="bibr" target="#b38">[39,</ref><ref type="bibr" target="#b48">49,</ref><ref type="bibr" target="#b2">3]</ref>, which states that naturally occurring distribution changes can be attributed to sparse interventions on causal mechanisms. Formally, this means that most reasonable changes in the environment can be modelled by changing a small subset of the conditional distributions in Eq. 1 while the rest stay invariant. Furthermore, in the special case where interventions act only on variables that are not causally related to model predictions, e.g. removing irrelevant objects in a scene <ref type="bibr" target="#b46">[47]</ref>, a model that reflects the correct causal structure would remain robust to changes.</p><p>While learning a global causal graph is sufficient in some settings, in the context of dynamics models, a global graph is often close to fully connected since any entities that interact with each other at any point are connected on the graph regardless of how unlikely the interaction is. Returning to the traffic example, a global causal graph would connect every vehicle in the scene as they can all influence each other when close together. However, events such as "vehicle A causes vehicle B to stop" can be more appropriately captured by a local causal graph with the edge A → B but not edges to other vehicles that are irrelevant at the time. Here we posit that a global graph containing many locally irrelevant edges prevents the model from fully exploiting the sparse structure of the problem at hand. In the following sections, we present SPARTAN. We demonstrate experimentally that learning a sparse, local causal world model improves robustness and adaptation efficiency, and that our model is capable of discovering causal structures accurately.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Sparse Transformer World Models</head><p>Our goal is to develop a world model that learns local causal models as transition functions. We build on the Transformer architecture <ref type="bibr" target="#b55">[56]</ref> as it achieves state-of-the-art prediction performance in object-factored world models <ref type="bibr" target="#b60">[61]</ref>. Moreover, its attention mechanism provides a natural way to control the flow of information between object tokens. While prior work <ref type="bibr" target="#b41">[42]</ref> argues that soft attention is a strong enough inductive bias for learning local causal graphs and proposes a thresholding heuristic to the attention patterns, we posit that this is insufficient beyond simple state-based scenarios and that appropriate sparsity regularisation and hard attention plays a crucial role in scaling this up to more complex, observation-based environments. To demonstrate with a simple example, consider a system with only one causal edge, s t i → s t+1 j and many other irrelevant nodes. A soft-attention model can to predict s t+1 j as long as the attention value for s t i is non-zero, i.e. information can flow from the i-th token to the j-th token. However, the model is free to have non-zero attention values over other tokens. In this case, there is no guarantee that the attention value on s t i is the highest amongst all tokens, and therefore applying a threshold on the attention values may 'catch' spurious edges or miss neccessary edges. Instead, a model that masks the information flow between the tokens and we penalise connections between tokens. Any model that contains spurious connections would have a high loss due to the sparsity penalty while models that do not contain the s t i → s t+1 j would suffer from low prediction accuracy. Under this scheme, the model that achieves the best training loss would be the one that only contains the correct causal edge. In the following section, we present SPARrse TrANsformer World models (SPARTAN), an instantiation of a masked transition model using a Transformer-based architecture with hard attention.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Learnable Sparse Connections</head><p>We start with the architecture of a single layer Transformer before extending it to the multi-layer case. Given object representations s t 1:N as input, we obtain the keys, queries and values, {k i , q i , v i } via linear projection as in the standard Transformer. Using these, we sample a binary adjacency matrix,</p><formula xml:id="formula_4">A ij ∼ Bern(σ(q T i k j )),<label>(4)</label></formula><p>where Bern(•) is the Bernoulli distribution and σ is the sigmoid function. The hidden features are then computed using the standard scaled dot-product attention with the the adjacency matrix as mask.</p><formula xml:id="formula_5">h i = j A ij exp(q T i k j / √ d k )v j i exp(q T i k j / √ d k ) , ŝt+1 i = M LP (h i + s i ),<label>(5)</label></formula><p>where ŝt+1 i is the prediction for the i-th object in the next timestep. Here, the adjacency matrix acts as mask that disallows information to flow from tokens that are not in the parent set of the querying token. Note that the adjacency matrix is dependent on the current state via the key-query pairs. The learnt adjacency matrix can therefore be interpreted as the local causal graph, i.e. A ij = 1 means s t j ∈ P a L (s t+1 i</p><p>). The sampling step is made differentiable via Gumbel softmax trick <ref type="bibr" target="#b22">[23]</ref>. Typically, multiple Transformer layers are stacked sequentially for expressivity. This presents a problem for the learnt adjacency matrix as information can flow between tokens in a multi-hop manner across different layers, e.g. token i can influence token j via i → k → j without the edge (i, j) being in any of the adjacency matrices associated with different layers. SPARTAN mitigates this problem by tracking the number of paths that leads from token i to j. Concretely, for a L-layer Transformer, we compute the path matrix <ref type="foot" target="#foot_0">1</ref> ,</p><formula xml:id="formula_6">Ā = (A L+1 + I)...(A 2 + I)(A 1 + I),<label>(6)</label></formula><p>where A l is the adjacency matrix at layer l and I is the identity matrix. Here the identity matrix is added because by default each token has a self edge due to residual connections in the Transformer architecture. The path matrix Ā has the property that Āij is the number of paths that leads from j to i. In this case, s t j is a local causal parent of s t+1 i iff Āij &gt;= 1.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Interventions</head><p>We can extend our model to represent interventions in the cases where the model is trained on a dataset with a set of environments with intervened dynamics. During training, the model has access to the environment index I for each transition but does not know which object is affected by the intervention. Conditioned on the current state s t 1:N and the environment index I, the model needs to identify a subset of s t+1 1:N as intervention targets and change the predictions (cf. Eq. 2). To do this, we keep a learnable codebook of intervention tokens, T 1:K ∈ R d×k , where d is the dimension of the state tokens and K is the number of interventions. We append the corresponding intervention token T I to the object tokens and proceed as described in the previous subsection. Here, Āi(N+1) = 0 indicates that there is no path from the intervention token to s t+1 i and therefore s t+1 i is not an intervention target, i.e. the prediction for s t+1 i is not affected to the changes in this environment.</p><p>At test time, the model adapts to unknown interventions by observing sequences without the environment index. We perform adaptation by finding an intervention token T adapt ∈ R d that best fits the observed data via gradient descent in the token space. Note that the adaptation intervention token need not be in the discrete set of intervention tokens from training and can therefore model unseen environments. In Sec. 4, we show that this approach can generalise to the composition of previously seen interventions and leads to efficient adaptation.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3">Training</head><p>As discussed in Sec. 2.2, our aim is to fit the data distribution with the sparsest possible model in terms of causal edges and intervention targets. The training objective is to minimise the expected model loss with sparsity regularisation,</p><formula xml:id="formula_7">min θ E s t ,s t+1 ,I L(ŝ t+1 ) + λ s | Ā| ,<label>(7)</label></formula><p>where θ are the model parameters, including the parameters for the Transformer and the intervention tokens, L is a loss function such as MSE, and λ s denotes the regularisation hyperparameter. Note that due to the intervention token being part of the input during training, | Ā| is the sum of the number of causal edges and the intervention targets. Hence this objective is analogous to Eq. 3 except we penalise the expected | Ā|.</p><p>In practice, the model is sensitive to the choice of λ since a high λ leads to mode collapse where the model has no connections. Since removing non-causal edges should not deteriorate the prediction accuracy, we formulate a constrained optimisation problem where we minimise | Ā| under the constraint that L ≤ τ where τ is the target loss. We set the target as the loss achieved by a fully connected model. Using Lagrangian relaxation <ref type="bibr" target="#b3">[4]</ref>, we can write the min-max objective,</p><formula xml:id="formula_8">max λ&gt;0 min θ E | Ā| + λ E L(ŝ t+1 ) -τ , (<label>8</label></formula><formula xml:id="formula_9">)</formula><p>where λ is the Lagrangian multiplier. We solve this by taking gradient steps on θ and λ alternatively. Intuitively, λ increases the weight of the error term when the error is higher than the target. By initialising λ to a high value, this acts as a schedule where the loss focuses on prediction accuracy when the error is high. Only once the error drops below the target are edges increasingly pruned. <ref type="foot" target="#foot_1">2</ref>The details of this optimisation setup and other training details are included in App. A.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Experiments</head><p>Our experiments are designed to investigate the following guiding questions:</p><p>1. Does sparsity enable local causal discovery from observations?</p><p>2. Can the sparse model match the prediction accuracy of fully-connected models?</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.">Does learning interventions lead to improved robustness and adaptation sample efficiency?</head><p>Datasets We evaluate our model on three domains: Interventional Pong, CREATE, and Traffic. The Interventional Pong dataset <ref type="bibr" target="#b35">[36]</ref>, a standard benchmark for causal representation learning, is based on the Pong game with interventions. The CREATE <ref type="bibr" target="#b21">[22]</ref> environment is a 2D physics simulation which consists of interacting objects such as ladders, walls, cannons and balls. This is similar to the PHYRE dataset <ref type="bibr" target="#b1">[2]</ref> on which SlotFormer <ref type="bibr" target="#b60">[61]</ref> is evaluated, but has more interaction types which allows for more interventions to better showcase the capabilities of SPARTAN. For these two domains, we obtain object slot representations by providing ground-truth masks for objects and encoding each object separately using a VAE <ref type="bibr" target="#b26">[27]</ref>. In order to evaluate our model on more realistic tasks, the Traffic domain uses the Waymo Open Dataset <ref type="bibr" target="#b51">[52]</ref> which are collected in real life. The task is to predict the motion of the ego vehicle conditioned on the observed vehicle trajectories (i.e. past positions) and map layout lines. For evaluating the accuracy of the learnt causal graphs, we compare against ground-truth causal graphs for the two simulated domains. For the Traffic domain, we compare against human-labeled<ref type="foot" target="#foot_2">foot_2</ref> causal graphs <ref type="bibr" target="#b46">[47]</ref>. In the simulated domains, we also train the models using interventional data as described in Sec.  Baselines In order to investigate whether SPARTAN can maintain the state-of-the-art prediction accuracy achieved by Transformer-based models, we compare against a Transformer baseline using a Transformer for learning dynamics. This can be seen as an instantiation of the SlotFormer <ref type="bibr" target="#b60">[61]</ref> architecture with one-step context length except the slots are learnt using ground-truth object masks.</p><p>For the Traffic domain, we use MTR <ref type="bibr" target="#b50">[51]</ref>, a state-of-the-art transformer-based model designed for traffic data, as the base architecture. In terms of causal discovery, <ref type="bibr" target="#b41">[42]</ref> argue that soft attention in Transformers alone is a strong inductive bias for learning local graphs and propose a thresholding heuristic. We compare against this approach and show that the sparsity regularisation in SPARTAN is crucial in local causal discovery. To corroborate that local causal graphs are more suitable for modelling physical interactions, we further compare against the Global Graph baseline, which is based on the transition function proposed in VCD <ref type="bibr" target="#b32">[33]</ref> and AdaRL <ref type="bibr" target="#b19">[20]</ref> which learn a fixed global causal graph using a masked MLP. The details of the baseline models in App. A.  Red lines indicates the prediction error if the environment index is provided, which serves as a lower bound. SPARTAN (blue) consistently achieves the lowest errors across environments. Remarkably, in seen environments, SPARTAN can often reach the lower bound with only 5 observed trajectories.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Causal Discovery</head><p>The prediction accuracy of the models are shown in table <ref type="table" target="#tab_2">1</ref>. Overall, SPARTAN is able to make predictions at a similar level of accuracy to, and often outperform, the Transformer baseline. We investigate whether casual discovery via sparsity regularisation is required to identify correct local causal graphs in the setting of dynamics modelling. While <ref type="bibr" target="#b41">[42]</ref> suggests that extracting causal graphs by thresholding attention patterns is sufficient in simple state-based environments, here we demonstrate that in more complex environments, learning hard attention patterns via sparsity regularisation is necessary for accurate local causal discovery. Fig. <ref type="figure">2</ref> visualises example rollouts with the local causal graphs. 4 Here, we observe that SPARTAN can reliably recover the relevant causal edges and intervention targets at each timestep. In the Interventional Pong environment, our method identifies that the paddles are constantly influenced by the ball as they follow it. In contrast, the Transformer baseline gives erroneous edges such as "Score → Ball" (frame 1). Similarly in the CREATE environment, where SPARTAN accurately discovers sparse interactions between objects.</p><p>In the Traffic domain, Fig. <ref type="figure">3</ref> shows that SPARTAN learns to attend to vehicles in neighbouring lanes, which is largely consistent with the human labels, whereas the Transformer baseline attends to many irrelevant vehicles. In this case, heuristics based on spatial proximity would also fail, since there are vehicles that are far ahead that are relevant while vehicles that are close by but are in the opposite lane, for example, should be ignored. This further highlights the importance of learning local causal graphs. Quantitatively, we evaluate the Structural Hamming Distance, a commonly used metric in graph structure learning, between the learned graphs and the ground-truth. Table <ref type="table" target="#tab_2">1</ref> shows that SPARTAN achieves significantly lower distance compared to the baselines across all domains. We do not apply the Global Graph baseline to the Traffic domain since the fixed graph approach cannot be extended to include different number of objects. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Robustness and Adaptation</head><p>[47] proposed to evaluate the robustness of models by considering the change of the prediction error when non-causal entities are removed from the scene. This can be seen as a special case of interventions which only targets variables that are not the cause of the predicted variable. Concretely, for each object in the scene, we remove any object that is not in the ground-truth parent set and compute the mean absolute value of the percentage change in the prediction error. Here, a model that correctly captures the causal structure would be robust whilst a model which learns spurious correlations would have large fluctuations. Table <ref type="table" target="#tab_3">2</ref> shows that compared to a non-regularised Transformer, SPARTAN is significantly more robust, suggesting that the Transformer overfits to spurious correlations between entities. In the Interventional Pong domain, the ground-truth causal graph is largely consistent across time steps. As such, the Global Graph baseline is sufficient in capturing the causal structure and hence remain robust. However, this degrades in the more complex CREATE domain where the local causal graph is more state-dependent, while SPARTAN achieves the best robustness. In the Traffic domain, we also implement a local attention variant of the Transformer baseline, proposed in MTR <ref type="bibr" target="#b50">[51]</ref>, which applies a spatial K-nearest neighbour mask on the attention pattern between the tokens. Whilst this heuristic improves the model, SPARTAN remains significantly more robust to non-causal changes. A wide range of other model architectures are evaluated on the traffic dataset in <ref type="bibr" target="#b46">[47]</ref>, with reported changes ranging from 25% to 38%, which is consistent with our findings. Remarkably, the authors in <ref type="bibr" target="#b46">[47]</ref> propose a data augmentation scheme aimed to improve model robustness resulting in a change of 22%, which is still significantly higher than what SPARTAN achieves. This further highlights the efficacy of our method.</p><p>To investigate adaptation efficiency, we adapt the models on a sample of five trajectories from an intervened environment. For SPARTAN, we perform adaptation as described in Sec. 3.2. We follow a similar procedure of optimising over intervention tokens for the Global Graph baseline. <ref type="foot" target="#foot_4">5</ref> For the Transformer baseline, adaptation is performed via gradient finetuning on the provided trajectories.</p><p>We also adapt the models to previously unseen environments where the interventions performed are not included in the training set. In the Interventional Pong dataset, the new environments are obtained by combining interventions from the training set, e.g. intervening on the ball and the motion of the paddle at the same time. In CREATE, we change the scene composition as well as the dynamics, i.e. we change the number of objects in the scene. In this scenario, the Global Graph baseline cannot be applied. We present the results in Fig. <ref type="figure" target="#fig_2">4</ref>, which shows that SPARTAN consistently outperform the baselines in this few-shot adaptation setting for both seen and unseen environments.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Related Works</head><p>Our work is motivated by recent advances in causal machine learning <ref type="bibr" target="#b47">[48,</ref><ref type="bibr" target="#b24">25]</ref>. In particular, <ref type="bibr" target="#b44">[45]</ref> provides a theoretical account for how identifying a causal world model leads to generalisable agents. Our work can be seen as an instantiation of the Independent Causal Mechanism (ICM) principle <ref type="bibr" target="#b47">[48]</ref>, which posits that dynamics can be factorised into causal mechanisms that can be independently intervened. Inspired by ICM, RIM <ref type="bibr" target="#b15">[16]</ref> mimics the independent causal mechanism structure by representing state dynamics as independent recurrent units. Using sparse communications between mechanisms as inductive bias, several works build on RIMs to model unitary <ref type="bibr" target="#b0">[1]</ref> or binary interactions <ref type="bibr" target="#b33">[34,</ref><ref type="bibr" target="#b14">15,</ref><ref type="bibr" target="#b13">14]</ref> between objects as a set of independent mechanisms. Our work takes an orthogonal approach of learning dynamics models using sparse regularisation. Specifically, we take inspiration from the DCDI framework <ref type="bibr" target="#b4">[5]</ref> which formulates causal discovery as continuous optimisation. To this end, VCD <ref type="bibr" target="#b32">[33]</ref> and AdaRL <ref type="bibr" target="#b19">[20]</ref> which also investigate adaptability by learning a fixed global causal graph using sparsity regularisation. In contrast, our model learns state-dependent local graphs which are better suited for modelling physical interactions. The notion of local causal model is discussed in <ref type="bibr" target="#b49">[50,</ref><ref type="bibr" target="#b41">42,</ref><ref type="bibr" target="#b20">21]</ref>. CAI <ref type="bibr" target="#b49">[50]</ref> considers estimating the local influence an agent has on the environment as an exploration signal. The CoDA family of works <ref type="bibr" target="#b41">[42,</ref><ref type="bibr" target="#b42">43]</ref> demonstrates that local causal graphs enable the generation of counterfactual data for data augmentation. However, estimating a local causal model from data remains challenging. <ref type="bibr" target="#b41">[42]</ref> proposes a thresholding heuristic for identifying causal edges from soft attention patterns. ELDEN <ref type="bibr" target="#b58">[59]</ref> uses the partial derivative between states to infer local causal graphs. However, this requires minimising the the magnitude of partial derivatives which is computationally expensive beyond simple state-based settings. Closest to our work is FCDL <ref type="bibr" target="#b20">[21]</ref> which also uses sparsity regularisation in the setting of learning a quantised codebook of state-dependent causal connections. In contrast to these approaches, which requires state observations, our method can operate on object-centric image embeddings. Moreover, due to the flexibility of the Transformer architecture, SPARTAN is able to learn in more realistic scenarios where the number and type of objects change between data samples.</p><p>Our work is situated within the context of learning world models [e.g. 17 <ref type="bibr">, 18]</ref>. In particular, we build on methods that learn dynamics models over object-centric representations <ref type="bibr" target="#b11">[12,</ref><ref type="bibr" target="#b12">13,</ref><ref type="bibr" target="#b36">37,</ref><ref type="bibr" target="#b59">60,</ref><ref type="bibr" target="#b10">11]</ref>.</p><p>In this space, various architectures have been proposed to model the interactions between object slots as message passing, including GNNs <ref type="bibr" target="#b27">[28,</ref><ref type="bibr" target="#b52">53]</ref>, RNN <ref type="bibr" target="#b54">[55,</ref><ref type="bibr" target="#b23">24]</ref> and pair-wise interactions <ref type="bibr" target="#b56">[57]</ref>. SlotFormer <ref type="bibr" target="#b60">[61]</ref> achieves state-of-the-art results by applying a Transformer-based dynamics model <ref type="bibr" target="#b55">[56,</ref><ref type="bibr" target="#b45">46,</ref><ref type="bibr" target="#b37">38]</ref> on pre-trained object-slots <ref type="bibr" target="#b36">[37]</ref>. We build on this approach by extending the Transformer architecture with learnable sparse masks and performing causal discovery on object tokens, resulting in improved interpretability and adaptability while maintaining the same level of prediction accuracy.</p><p>In a broader context, enforcing sparse connections between tokens in Transformers has also been explored in other settings such as NLP <ref type="bibr" target="#b7">[8,</ref><ref type="bibr" target="#b6">7,</ref><ref type="bibr" target="#b34">35]</ref> and computer vision <ref type="bibr" target="#b62">[63]</ref>. These methods requires pre-defined mask based on domain knowledge such as sentence structures or spatial proximity, and are primarily designed for computation efficiency. SPARTAN can be seen as a way to learn these masks from data by regularising the flow of information between tokens.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Conclusion</head><p>We tackle the problem of adaptation in world models through the lens of local causal models. To this end, we propose SPARTAN, a structured world model that jointly performs dynamics model learning and causal discovery. We show on image-based datasets that attention mechanisms alone are not sufficient for discovering causal relationships and develop a novel sparsity regularisation scheme that learns accurate causal graphs. As a result, SPARTAN significantly extend the state-of-the-art with improved interpretability and few-shot adaptation capabilities while maintain the same level of prediction accuracy.</p><p>Limitations and future work. There are several limitations to our approach, which serves as pointers for future investigations. 1) We empirically show that local causal graphs can be learnt from data. While we build on prior works in causal discovery that have theoretical guarantees <ref type="bibr" target="#b20">[21]</ref>, we do not make theoretical statements about the identifiability of local causal graphs in the setting where the scene composition can vary between each data sample. Future work should explore the conditions under which local graphs can be identified. 2) During adaptation, SPARTAN adapts by optimising over the learnt 'intervention space'. We have shown that this is sufficient to generalise to combinations of seen interventions or different number of objects. However, in more extreme cases where the test time environment contains completely new behaviours (e.g. ball teleporting), there might not be a corresponding intervention token in the space, while a finetuning approach would be able to converge to the right behaviour (given enough data). One avenue of exploration is to consider procedurally generating intervened environments, akin to domain randomisation <ref type="bibr" target="#b39">[40,</ref><ref type="bibr" target="#b53">54]</ref>, to cover the space of all meaningful interventions. 3) Our approach relies on pre-disentangled object representations. An interesting extension of our work is to investigate whether local sparsity can induce the emergence of disentangled causal representations <ref type="bibr" target="#b32">[33,</ref><ref type="bibr" target="#b29">30]</ref> by jointly training an encoder with the dynamics model. </p><p>Applying Lagrangian relaxation, we obtain the following min-max objective,</p><formula xml:id="formula_11">max λ&gt;0 min θ E | Ā| + λ E M SE(s t+1 , ŝt+1 ) -τ .<label>(10)</label></formula><p>We solve this by taking gradient steps on θ and λ in an alternating manner. To ensure λ is positive, we perform updates in the form of λ ← α * exp(M SE -τ ) * λ, where α is the step size. Intuitively, this has the effect of increasing λ when the error is higher than the target, i.e. weighting the error term when the error is high. In practice, we initialise λ to be high and set τ to be the error achieved by the fully connected model. We use a moving-average estimator for the M SE -τ term for stability. We also rewrite the training objective to (M SE -τ ) + | Ā|/λ so that the loss value is more stable. This acts as a scheduling scheme where the optimisation focuses on learning the dynamics and switch to pruning redundant edges once the error is below the target. Fig. <ref type="figure" target="#fig_3">5</ref> shows example training curves which demonstrate the training dynamics of SPARTAN. At the start of the training, log(λ) stays low as the model prediction error improves. This allows the increase of the number of active edges. As the prediction error become low enough, the sparsity penalty automatically increases and the number of edges gradually decreases while maintaining the prediction accuracy. [20] in the context of few-shot adaptation. The original Interventional Pong dataset is under the BSD 3-Clause Clear License.</p><p>The environment contains 4 objects, the left paddle, the right paddle, the ball and the score. Here, local causal edges include ball → left, right paddles as the paddles follow the ball; paddles → ball when the ball collides with the paddles; ball → score when the ball crosses the left or right boundary lines. Observations are provided as 32 × 32 × 3 RGB images with masks for each object. To capture velocity information for ball, the ball image shows the position of the ball over 2 consecutive timesteps in different colours. Each object is separately encoded into 32-dimensional latent object-slots using a VAE <ref type="bibr" target="#b26">[27]</ref>. The configurations of different intervened environments are shown in table <ref type="table">5</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B.2 CREATE</head><p>The CREATE environment is built using the CREATE simulator <ref type="bibr" target="#b21">[22]</ref> which consists of physical interactions between various objects. The simulator is under the MIT License. In our experiments, the environment objects include {blue, red, green} balls, wall, ladder and cannon. The balls collides elastically. All objects are initialised at random positions with random orientations. The wall remains static for each sequence. The ladder object allows the balls to climb up. The cannon object projects the balls at a fixed velocity in the direction it points at. Here, local edges captures when the objects collide or interact with each other. Observations are given as 84 × 84 × 3 images with masks for each object. To capture the velocities of the balls, for each ball, a trail of the past positions (up to two timesteps) is shown in the images. The intervened environments are shown in table 6. In the unseen environments, we test the models using different scene composition, i.e. different numbers of objects.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B.3 Traffic</head><p>We use the Waymo Open Dataset <ref type="bibr" target="#b51">[52]</ref> for our Traffic domain. The dataset consists of real world scenes which include map lines (such as lane markings) and vehicle trajectories. The map lines are provided as polylines (i.e. each line is represented as a set of positions). The history of the state of each vehicle is provided as a list of positions, headings and velocities. Up to one second of state is given for each vehicle and the task is to predict 9 seconds into the future for the centre vehicle.</p><p>The number of map lines and vehicle trajectories are different for each scene, with roughly 800 map lines and 50 vehicles per scene. This presents a major challenge for prior approaches in causal world model learning. Since the dataset is not generated by simulation, we do not apply interventions to the data.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: In the context of modelling physical interactions, a global causal graph is often uninformative and close to fully-connected. A time-dependent local causal graph better captures the sparse nature of interactions between entities. We present SPARTAN, a Transformer-based world model that discovers local causal structure using hard attention with sparsity regularisation.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 :Figure 3 :</head><label>23</label><figDesc>Figure 2: Example rollouts in the two simulated environments with the learnt local causal graph visualised. Blue and red arrows between the icons indicate the identified causal edges and intervention targets respectively. In the Interventional Pong example, the environment is intervened such that the ball slows down in the middle. SPARTAN correctly identifies the same causal dependencies as the ground-truth (e.g. ball causes the paddles to follow). In contrast, the Transformer baseline learns edges that do not correspond to the ground-truth. Similarly in the CREATE example, SPARTAN learns the correct causal edges (e.g. the green ball being influenced by the plank when it bounces) while Transformer learns many spurious interventions.</figDesc><graphic coords="7,141.82,186.02,56.59,56.59" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 4 :</head><label>4</label><figDesc>Figure 4: Adaptation errors on the two datasets. Each model has access to 5 trajectories with unknown environment index. "Unseen environments" refers to interventions that are not in the training set.Red lines indicates the prediction error if the environment index is provided, which serves as a lower bound. SPARTAN (blue) consistently achieves the lowest errors across environments. Remarkably, in seen environments, SPARTAN can often reach the lower bound with only 5 observed trajectories.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 5 :</head><label>5</label><figDesc>Figure 5: Example training curves.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head></head><label></label><figDesc>(•)  is the likelihood of the data under the model for the k-th intervention, |G(θ)| is the number of edges in the learnt causal graph, |I(θ)| is the number of intervention targets, and λ and λ R are hyperparameters for sparsity regularisation.Intuitively, solving this optimisation amounts to pruning out spurious edges and interventions, and finding a model that can explain the data with the sparsest causal graph and intervention targets.Analogously, we apply sparsity regularisation in the setting of learning local causal models. As discussed above, local causal graphs and intervention targets are induced by the state. Here, the goal is to infer the sparsest graph at each timestep such that the next observation can be explained. To this end, we modify the optimisation objective for local causal discovery: instead of minimising the size of a fixed global causal graph and intervention targets, we propose to minimise the expected number of edges and targets with respect to the data distribution where the causal edges and intervention targets are built dynamically at each timestep. In Sec. 3, we present our main model, SPARTAN, which is an instantiation of this idea using a Transformer-based architecture.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head></head><label></label><figDesc>3.2.  Interventions are defined as changes to the simulated dynamics such as changing the strength of gravity. See App. B for details.</figDesc><table><row><cell>Interventional Pong</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>Ground-truth</cell><cell>Intv.</cell><cell>Intv.</cell><cell>Intv.</cell><cell>Intv.</cell><cell>Intv.</cell><cell>Intv.</cell></row><row><cell>SPARTAN</cell><cell>Intv.</cell><cell>Intv.</cell><cell>Intv.</cell><cell>Intv.</cell><cell>Intv.</cell><cell>Intv.</cell></row><row><cell>Transformer</cell><cell>Intv.</cell><cell>Intv.</cell><cell>Intv.</cell><cell>Intv.</cell><cell>Intv.</cell><cell>Intv.</cell></row><row><cell>CREATE</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>Ground-truth</cell><cell>Intv.</cell><cell>Intv.</cell><cell>Intv.</cell><cell>Intv.</cell><cell>Intv.</cell><cell>Intv.</cell></row><row><cell>SPARTAN</cell><cell>Intv.</cell><cell>Intv.</cell><cell>Intv.</cell><cell>Intv.</cell><cell>Intv.</cell><cell>Intv.</cell></row><row><cell>Transformer</cell><cell>Intv.</cell><cell>Intv.</cell><cell>Intv.</cell><cell>Intv.</cell><cell>Intv.</cell><cell>Intv.</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 1 :</head><label>1</label><figDesc>Rollout prediction error and average SHD between the learned graphs and the ground-truth causal graphs. Prediction errors are based on L2 distance measured in the token space for Pong and CREATE. The average displacement error is reported for the Traffic domain. Lower is betters.</figDesc><table><row><cell></cell><cell></cell><cell cols="2">Method</cell><cell></cell><cell></cell><cell></cell><cell cols="4">Intv. Pong</cell><cell></cell><cell cols="3">CREATE</cell><cell></cell><cell></cell><cell>Traffic</cell><cell></cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="12">Pred. Err. SHD Pred. Err. SHD Pred. Err. SHD</cell></row><row><cell></cell><cell></cell><cell cols="6">SPARTAN (Ours) 8.60</cell><cell></cell><cell></cell><cell cols="3">1.51 246.6</cell><cell></cell><cell cols="3">1.17 0.52</cell><cell></cell><cell>6.84</cell></row><row><cell></cell><cell></cell><cell cols="3">Transformer</cell><cell></cell><cell></cell><cell>8.83</cell><cell></cell><cell></cell><cell cols="3">6.37 265.5</cell><cell></cell><cell cols="3">6.29 0.51</cell><cell></cell><cell>10.6</cell></row><row><cell></cell><cell></cell><cell cols="3">Global Graph</cell><cell></cell><cell></cell><cell cols="2">11.36</cell><cell></cell><cell cols="3">5.42 277.4</cell><cell></cell><cell cols="2">8.77 -</cell><cell></cell><cell></cell><cell>-</cell></row><row><cell>Token-space L2 Error</cell><cell>0.002 0.004 0.006 0.008 0.010</cell><cell></cell><cell></cell><cell cols="5">Interventional Pong</cell><cell></cell><cell></cell><cell>Token-space L2 Error</cell><cell>10 20 30 40 50 60 70 80</cell><cell></cell><cell></cell><cell cols="2">CREATE</cell><cell></cell><cell cols="2">STRAW Transformer Global Graph</cell></row><row><cell></cell><cell>0.000</cell><cell>1</cell><cell>2</cell><cell>3</cell><cell>4</cell><cell>5</cell><cell>6</cell><cell>7</cell><cell>8</cell><cell>9</cell><cell>10</cell><cell>0</cell><cell>1</cell><cell>2</cell><cell>3</cell><cell>4</cell><cell>5</cell><cell>6</cell><cell>7</cell></row><row><cell></cell><cell></cell><cell></cell><cell cols="4">Seen Environments</cell><cell cols="5">Unseen Environments</cell><cell></cell><cell></cell><cell cols="2">Seen Environments</cell><cell></cell><cell cols="3">Unseen Environments</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 2 :</head><label>2</label><figDesc>Percentage change of error when non-causal entities are removed. Lower is better.</figDesc><table><row><cell></cell><cell cols="3">SPARTAN Transformer Local Attn. Global Graph</cell></row><row><cell cols="3">Intervention Pong 24.5 ± 4.4 1140.2 ± 15 -</cell><cell>22.2 ± 1.3</cell></row><row><cell>CREATE</cell><cell cols="2">28.6 ± 1.7 138.2 ± 5.6 -</cell><cell>73.6 ± 1.3</cell></row><row><cell>Traffic</cell><cell>13.9 ± 0.2 32.8 ± 0.4</cell><cell cols="2">25.5 ± 0.3 -</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 3 :</head><label>3</label><figDesc>Hyperparameters for SPARTAN and the Transformer Baseline.</figDesc><table><row><cell>Hyperparameter</cell><cell cols="2">Interventional Pong CREATE</cell></row><row><cell>Token Dimension</cell><cell>32</cell><cell>64</cell></row><row><cell>Embedding Dimension</cell><cell>512</cell><cell>512</cell></row><row><cell>n. transformer layers</cell><cell>3</cell><cell>3</cell></row><row><cell>MLP hidden dimension</cell><cell>512</cell><cell>1024</cell></row><row><cell cols="2">n. MLP layers per transformer layer 3</cell><cell>3</cell></row><row><cell>lr</cell><cell>5e-5</cell><cell>5e-5</cell></row><row><cell>Optimiser</cell><cell>Adam[26]</cell><cell>Adam</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Table 4 :</head><label>4</label><figDesc>Hyperparameters for the Global Graph Baseline.</figDesc><table><row><cell>Hyperparameter</cell><cell cols="2">Interventional Pong CREATE</cell></row><row><cell>Token Dimension</cell><cell>32</cell><cell>64</cell></row><row><cell cols="2">MLP hidden dimension 1024</cell><cell>1024</cell></row><row><cell>n. MLP layers</cell><cell>5</cell><cell>5</cell></row><row><cell>lr</cell><cell>5e-5</cell><cell>5e-5</cell></row><row><cell>Optimiser</cell><cell>Adam</cell><cell>Adam</cell></row><row><cell>be lower than a target value,</cell><cell></cell><cell></cell></row><row><cell>min</cell><cell></cell><cell></cell></row></table><note><p>θ E | Ā| s.t. E M SE(s t+1 , ŝt+1 ) ≤ τ.</p></note></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p><ref type="bibr" target="#b30">[31,</ref><ref type="bibr" target="#b41">42]</ref> use a similar formulation of path matrices for bounding the Jacobian between the tokens.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_1"><p>This is analogous to the GECO<ref type="bibr" target="#b43">[44]</ref> framework for tuning the KL loss in a VAE.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="3" xml:id="foot_2"><p>We note that these labels are subjective and only act as a qualitative reference for investigating whether the models learn meaningful edges.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="4" xml:id="foot_3"><p>When evaluating the Transformer baseline, we pick a threshold that achieves the best structural hamming distance. Note that this is not possible in practice without access to ground-truth information.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="5" xml:id="foot_4"><p>This is similar to the adaptation algorithm in<ref type="bibr" target="#b19">[20]</ref>, on which the Global Graph baseline is based.</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>Acknowledgments and Disclosure of Funding</head><p>This research was supported by an <rs type="funder">EPSRC</rs> <rs type="grantName">Programme Grant</rs> (<rs type="grantNumber">EP/V000748/1</rs>). The authors would like to acknowledge the use of the <rs type="funder">University of Oxford Advanced Research Computing (ARC)</rs> facility (<ref type="url" target="http://dx.doi.org/10.5281/zenodo.22558">http://dx.doi.org/10.5281/zenodo.22558</ref>) and SCAN computing cluster in carrying out this work. <rs type="person">Ingmar Posner</rs> holds concurrent appointments as a Professor of Applied AI at the <rs type="institution">University of Oxford</rs> and as an <rs type="grantName">Amazon Scholar</rs>. This paper describes work performed at the <rs type="institution">University of Oxford</rs> and is not associated with <rs type="funder">Amazon</rs>."</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funding" xml:id="_eUus4WJ">
+					<idno type="grant-number">EP/V000748/1</idno>
+					<orgName type="grant-name">Programme Grant</orgName>
+				</org>
+				<org type="funding" xml:id="_WUvpA5M">
+					<orgName type="grant-name">Amazon Scholar</orgName>
+				</org>
+			</listOrg>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A Model Details</head><p>A.1 Hyperparameters SPARTAN and Transformer baseline are implemented as stacked transformer encoder layers with residual connections. The Global Graph baseline is implemented as an ensemble of MLPs with learnable adjacency matrix masks. This is similar <ref type="bibr" target="#b32">[33,</ref><ref type="bibr" target="#b19">20]</ref> with the modification that our baseline work on object embeddings rather than scalar states. Each MLP predicts a separate object embedding. For each MLP, the inputs object tokens are masked according to a learnable adjacency matrix before passing through the model. A sparse regularisation is applied to the adjacency matrix. The hyperparameters for SPARTAN and the baselines are shown in table <ref type="table">3</ref> and<ref type="table">4</ref>. For the experiments on the simulated datasets, all models are trained on single GPUs (mixture of Nvidia V100 and RTX 6000) and converge within 3 days.</p><p>For the Traffic domain, predictions need to be multimodal since each vehicle has multiple possible trajectories. This is common for the dataset we consider. To overcome this, we use MTR <ref type="bibr" target="#b50">[51]</ref> as the base architecture. MTR has two stages: first, it uses self-attention between tokenised map lines and vehicle trajectories; second, it applies cross attention using multiple queries, each representing one possible mode of motion. The output for each query is then used as a Gaussian mixture to predict multimodal motion patterns. We adapt SPARTAN to this architecture by swapping all attention layers with the sparsified version proposed in this paper. The original work also proposes a local attention masking scheme for each layer which only allow each token to attend to the k-nearest neighbour based on the position of each object. We refer to this as Local Attn in table 2. In the traffic domain, the models are trained in parallel on 4 GPUs due to the size of each scene (roughly 1000 tokens).</p><p>Training takes less than one week for the baseline MTR model and under two weeks for SPARTAN.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.2 Lagrangian Relaxation</head><p>As discussed in Sec. 3.3, we formulate our training as a constrained optimisation problem. Specifically, we aim to minimise the expected number of edges and interventions while constraining the error to   The Interventional Pong environment is based on the Pong game and is originally developed in <ref type="bibr" target="#b35">[36]</ref> for investigating causal representation learning. In the original work, the set of interventions included randomly perturbing the positions of the balls and the paddles. We modify the interventions to model dynamics changes, such as adding gravity or changing the way the ball bounces off the paddles, as these are more appropriate in the context of world model learning. A similar setup is also used in </p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">VIM: Variational independent modules for video prediction</title>
+		<author>
+			<persName><forename type="first">Rim</forename><surname>Assouel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lluis</forename><surname>Castrejon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aaron</forename><surname>Courville</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicolas</forename><surname>Ballas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+		<ptr target="https://proceedings.mlr.press/v177/assouel22a.html" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the First Conference on Causal Learning and Reasoning</title>
+		<editor>
+			<persName><forename type="first">Bernhard</forename><surname>Schölkopf</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Caroline</forename><surname>Uhler</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Kun</forename><surname>Zhang</surname></persName>
+		</editor>
+		<meeting>the First Conference on Causal Learning and Reasoning</meeting>
+		<imprint>
+			<date type="published" when="2022-04">Apr 2022</date>
+			<biblScope unit="volume">177</biblScope>
+			<biblScope unit="page" from="11" to="13" />
+		</imprint>
+	</monogr>
+	<note>PMLR</note>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<title level="m" type="main">Phyre: A new benchmark for physical reasoning</title>
+		<author>
+			<persName><forename type="first">Anton</forename><surname>Bakhtin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Laurens</forename><surname>Van Der Maaten</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Justin</forename><surname>Johnson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Laura</forename><surname>Gustafson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ross</forename><surname>Girshick</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1908.05656</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">A meta-transfer objective for learning to disentangle causal mechanisms</title>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tristan</forename><surname>Deleu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nasim</forename><surname>Rahaman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nan</forename><forename type="middle">Rosemary</forename><surname>Ke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastien</forename><surname>Lachapelle</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Olexa</forename><surname>Bilaniuk</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anirudh</forename><surname>Goyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Pal</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=ryxWIgBFPS" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<title level="m" type="main">Constrained optimization and Lagrange multiplier methods</title>
+		<author>
+			<persName><forename type="first">Dimitri</forename><forename type="middle">P</forename><surname>Bertsekas</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<publisher>Academic press</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Differentiable causal discovery from interventional data</title>
+		<author>
+			<persName><forename type="first">Philippe</forename><surname>Brouillard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sébastien</forename><surname>Lachapelle</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexandre</forename><surname>Lacoste</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Simon</forename><surname>Lacoste-Julien</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexandre</forename><surname>Drouin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="21865" to="21877" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Grounding physical concepts of objects and events through dynamic visual reasoning</title>
+		<author>
+			<persName><forename type="first">Zhenfang</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiayuan</forename><surname>Mao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiajun</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kwan-Yee K</forename><surname>Wong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joshua</forename><forename type="middle">B</forename><surname>Tenenbaum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chuang</forename><surname>Gan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<monogr>
+		<title level="m" type="main">Generating long sequences with sparse transformers</title>
+		<author>
+			<persName><forename type="first">Rewon</forename><surname>Child</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Scott</forename><surname>Gray</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alec</forename><surname>Radford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ilya</forename><surname>Sutskever</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1904.10509</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Adaptively sparse transformers</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Gonçalo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vlad</forename><surname>Correia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">André Ft</forename><surname>Niculae</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Martins</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)</title>
+		<meeting>the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="2174" to="2184" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Dynamic visual reasoning by learning differentiable physics models from video and language</title>
+		<author>
+			<persName><forename type="first">Mingyu</forename><surname>Ding</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhenfang</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tao</forename><surname>Du</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ping</forename><surname>Luo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joshua</forename><forename type="middle">B</forename><surname>Tenenbaum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chuang</forename><surname>Gan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances In Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">DCI-ES: An extended disentanglement framework with connections to identifiability</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Eastwood</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">*</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">L</forename><surname>Nicolicioiu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">*</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Von Kügelgen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">*</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Kekić</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Träuble</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Dittadi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Schölkopf</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/pdf?id=462z-gLgSht.*equalcontribution" />
+	</analytic>
+	<monogr>
+		<title level="m">Eleventh International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">SAVi++: Towards end-to-end object-centric learning from real-world videos</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Gamaleldin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aravindh</forename><surname>Elsayed</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Mahendran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Klaus</forename><surname>Sjoerd Van Steenkiste</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><forename type="middle">C</forename><surname>Greff</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Mozer</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Kipf</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Genesis: Generative scene inference and sampling with object-centric latent representations</title>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>Engelcke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adam</forename><forename type="middle">R</forename><surname>Kosiorek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oiwi</forename><forename type="middle">Parker</forename><surname>Jones</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ingmar</forename><surname>Posner</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=BkxfaTVFwH" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<monogr>
+		<title level="m" type="main">GENESIS-V2: Inferring Unordered Object Representations without Iterative Refinement</title>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>Engelcke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oiwi</forename><forename type="middle">Parker</forename><surname>Jones</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ingmar</forename><surname>Posner</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2104.09958</idno>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Neural production systems</title>
+		<author>
+			<persName><forename type="first">Anirudh</forename><surname>Goyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aniket</forename><surname>Didolkar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nan</forename><forename type="middle">Rosemary</forename><surname>Ke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Charles</forename><surname>Blundell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Philippe</forename><surname>Beaudoin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicolas</forename><surname>Heess</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Michael C Mozer</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Bengio</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="page" from="25673" to="25687" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Factorizing declarative and procedural knowledge in structured, dynamical environments</title>
+		<author>
+			<persName><forename type="first">Anirudh</forename><surname>Goyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alex</forename><surname>Lamb</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Phanideep</forename><surname>Gampa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Philippe</forename><surname>Beaudoin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Charles</forename><surname>Blundell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sergey</forename><surname>Levine</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><forename type="middle">Curtis</forename><surname>Mozer</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=VVdmjgu7pKM" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Recurrent independent mechanisms</title>
+		<author>
+			<persName><forename type="first">Anirudh</forename><surname>Goyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alex</forename><surname>Lamb</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jordan</forename><surname>Hoffmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shagun</forename><surname>Sodhani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sergey</forename><surname>Levine</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bernhard</forename><surname>Schölkopf</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=mLcmdlEUxy" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<monogr>
+		<title level="m" type="main">Recurrent world models facilitate policy evolution. Advances in neural information processing systems</title>
+		<author>
+			<persName><forename type="first">David</forename><surname>Ha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jürgen</forename><surname>Schmidhuber</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page">31</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<monogr>
+		<title level="m" type="main">Mastering atari with discrete world models</title>
+		<author>
+			<persName><forename type="first">Danijar</forename><surname>Hafner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Timothy</forename><surname>Lillicrap</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mohammad</forename><surname>Norouzi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jimmy</forename><surname>Ba</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2010.02193</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<monogr>
+		<author>
+			<persName><forename type="first">Anthony</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lloyd</forename><surname>Russell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hudson</forename><surname>Yeo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zak</forename><surname>Murez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">George</forename><surname>Fedoseev</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alex</forename><surname>Kendall</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jamie</forename><surname>Shotton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gianluca</forename><surname>Corrado</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2309.17080" />
+		<title level="m">Gaia-1: A generative world model for autonomous driving</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">AdaRL: What, where, and how to adapt in transfer reinforcement learning</title>
+		<author>
+			<persName><forename type="first">Biwei</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fan</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chaochao</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sara</forename><surname>Magliacane</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kun</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations (ICLR)</title>
+		<imprint>
+			<biblScope unit="page">2022</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Finegrained causal dynamics learning with quantization for improving robustness in reinforcement learning</title>
+		<author>
+			<persName><forename type="first">Inwoo</forename><surname>Hwang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yunhyeok</forename><surname>Kwak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Suhyung</forename><surname>Choi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Byoung-Tak</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sanghack</forename><surname>Lee</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 41th International Conference on Machine Learning</title>
+		<meeting>the 41th International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Generalization to new actions in reinforcement learning</title>
+		<author>
+			<persName><forename type="first">Ayush</forename><surname>Jain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Szot</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joseph</forename><surname>Lim</surname></persName>
+		</author>
+		<ptr target="https://proceedings.mlr.press/v119/jain20b.html" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 37th International Conference on Machine Learning</title>
+		<editor>
+			<persName><forename type="first">Hal</forename><surname>Daumé</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Iii</forename></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Aarti</forename><surname>Singh</surname></persName>
+		</editor>
+		<meeting>the 37th International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2020-07">Jul 2020</date>
+			<biblScope unit="volume">119</biblScope>
+			<biblScope unit="page" from="13" to="18" />
+		</imprint>
+	</monogr>
+	<note>Proceedings of Machine Learning Research</note>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Categorical reparameterization with gumbel-softmax</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>Jang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Gu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Poole</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum" />
+	</analytic>
+	<monogr>
+		<title level="m">5th International Conference on Learning Representations</title>
+		<meeting><address><addrLine>Toulon, France</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2017-04-24">2017. April 24-26, 2017. 2017</date>
+		</imprint>
+	</monogr>
+	<note>Conference Track Proceedings. id= rkE3y85ee</note>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Scalor: Generative world models with scalable object representations</title>
+		<author>
+			<persName><forename type="first">Jindong</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sepehr</forename><surname>Janghorbani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gerard</forename><surname>De Melo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sungjin</forename><surname>Ahn</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/pdf?id=SJxrKgStDH" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of ICLR 2020. OpenReview.net</title>
+		<meeting>ICLR 2020. OpenReview.net</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<monogr>
+		<title level="m" type="main">Causal machine learning: A survey and open problems</title>
+		<author>
+			<persName><forename type="first">Jean</forename><surname>Kaddour</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aengus</forename><surname>Lynch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qi</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matt</forename><forename type="middle">J</forename><surname>Kusner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ricardo</forename><surname>Silva</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Adam: A method for stochastic optimization</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Diederik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jimmy</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Ba</surname></persName>
+		</author>
+		<ptr target="http://arxiv.org/abs/1412.6980" />
+	</analytic>
+	<monogr>
+		<title level="m">3rd International Conference on Learning Representations, ICLR 2015</title>
+		<meeting><address><addrLine>San Diego, CA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2015">May 7-9, 2015. 2015</date>
+		</imprint>
+	</monogr>
+	<note>Conference Track Proceedings</note>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<monogr>
+		<title level="m" type="main">Auto-encoding variational bayes</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Diederik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<monogr>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Elise</forename><surname>Van Der Pol</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Welling</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1911.12247</idno>
+		<title level="m">Contrastive learning of structured world models</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Disentanglement via mechanism sparsity regularization: A new principle for nonlinear ica</title>
+		<author>
+			<persName><forename type="first">Sébastien</forename><surname>Lachapelle</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pau</forename><surname>Rodr'iguez L'opez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yash</forename><surname>Sharma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Katie</forename><forename type="middle">Elizabeth</forename><surname>Everett</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rémi</forename><surname>Le Priol</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexandre</forename><surname>Lacoste</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Simon</forename><surname>Lacoste-Julien</surname></persName>
+		</author>
+		<ptr target="https://api.semanticscholar.org/CorpusID" />
+	</analytic>
+	<monogr>
+		<title level="m">CLEaR</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page">244400763</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Disentanglement via mechanism sparsity regularization: A new principle for nonlinear ica</title>
+		<author>
+			<persName><forename type="first">Sébastien</forename><surname>Lachapelle</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pau</forename><surname>Rodriguez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yash</forename><surname>Sharma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Katie</forename><forename type="middle">E</forename><surname>Everett</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rémi</forename><surname>Le Priol</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexandre</forename><surname>Lacoste</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Simon</forename><surname>Lacoste-Julien</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Conference on Causal Learning and Reasoning</title>
+		<imprint>
+			<publisher>PMLR</publisher>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="428" to="484" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Gradientbased neural dag learning</title>
+		<author>
+			<persName><forename type="first">Sébastien</forename><surname>Lachapelle</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Philippe</forename><surname>Brouillard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tristan</forename><surname>Deleu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Simon</forename><surname>Lacoste-Julien</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=rklbKA4YDS" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Structure by architecture: Structured representations without regularization</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Leeb</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Lanzillotta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Annadani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Besserve</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Bauer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Schölkopf</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/pdf?id=O_lFCPaF48t" />
+	</analytic>
+	<monogr>
+		<title level="m">Eleventh International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Variational causal dynamics: Discovering modular world models from interventions</title>
+		<author>
+			<persName><forename type="first">Anson</forename><surname>Lei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bernhard</forename><surname>Schölkopf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ingmar</forename><surname>Posner</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=V9tQKYYNK1" />
+	</analytic>
+	<monogr>
+		<title level="j">Transactions on Machine Learning Research</title>
+		<idno type="ISSN">2835-8856</idno>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<monogr>
+		<title level="m" type="main">Compete and compose: Learning independent mechanisms for modular world models</title>
+		<author>
+			<persName><forename type="first">Anson</forename><surname>Lei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Frederik</forename><surname>Nolte</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bernhard</forename><surname>Schölkopf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ingmar</forename><surname>Posner</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2404.15109</idno>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<monogr>
+		<title level="m" type="main">Selective attention improves transformer</title>
+		<author>
+			<persName><forename type="first">Yaniv</forename><surname>Leviathan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matan</forename><surname>Kalman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yossi</forename><surname>Matias</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2410.02703" />
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">CITRIS: Causal identifiability from temporal intervened sequences</title>
+		<author>
+			<persName><forename type="first">Phillip</forename><surname>Lippe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sara</forename><surname>Magliacane</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sindy</forename><surname>Löwe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuki</forename><forename type="middle">M</forename><surname>Asano</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Taco</forename><surname>Cohen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stratis</forename><surname>Gavves</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+		<ptr target="https://proceedings.mlr.press/v162/lippe22a.html" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 39th International Conference on Machine Learning</title>
+		<editor>
+			<persName><forename type="first">Kamalika</forename><surname>Chaudhuri</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Stefanie</forename><surname>Jegelka</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Le</forename><surname>Song</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Csaba</forename><surname>Szepesvari</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Gang</forename><surname>Niu</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Sivan</forename><surname>Sabato</surname></persName>
+		</editor>
+		<meeting>the 39th International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2022-07">Jul 2022</date>
+			<biblScope unit="volume">162</biblScope>
+			<biblScope unit="page" from="17" to="23" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Object-centric learning with slot attention</title>
+		<author>
+			<persName><forename type="first">Francesco</forename><surname>Locatello</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dirk</forename><surname>Weissenborn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Unterthiner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aravindh</forename><surname>Mahendran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Georg</forename><surname>Heigold</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jakob</forename><surname>Uszkoreit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexey</forename><surname>Dosovitskiy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Kipf</surname></persName>
+		</author>
+		<ptr target="https://proceedings.neurips.cc/paper_files/paper/2020/file/8511" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">H</forename><surname>Larochelle</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">M</forename><surname>Ranzato</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">R</forename><surname>Hadsell</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">M</forename><forename type="middle">F</forename><surname>Balcan</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">H</forename><surname>Lin</surname></persName>
+		</editor>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="11525" to="11538" />
+		</imprint>
+	</monogr>
+	<note>df98c02ab60aea1b2356c013bc0f-Paper.pdf</note>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Transformers are sample-efficient world models</title>
+		<author>
+			<persName><forename type="first">Vincent</forename><surname>Micheli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eloi</forename><surname>Alonso</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">François</forename><surname>Fleuret</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=vhFu1Acb0xb" />
+	</analytic>
+	<monogr>
+		<title level="m">The Eleventh International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Learning independent causal mechanisms</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Parascandolo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Kilbertus</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Rojas-Carulla</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Schölkopf</surname></persName>
+		</author>
+		<ptr target="http://proceedings.mlr.press/v80/parascandolo18a.html" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 35th International Conference on Machine Learning (ICML)</title>
+		<meeting>the 35th International Conference on Machine Learning (ICML)</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="volume">80</biblScope>
+			<biblScope unit="page" from="4033" to="4041" />
+		</imprint>
+	</monogr>
+	<note>PMLR</note>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Sim-to-real transfer of robotic control with dynamics randomization</title>
+		<author>
+			<persName><forename type="first">Xue Bin</forename><surname>Peng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marcin</forename><surname>Andrychowicz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wojciech</forename><surname>Zaremba</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pieter</forename><surname>Abbeel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2018 IEEE international conference on robotics and automation (ICRA)</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="3803" to="3810" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<monogr>
+		<title level="m" type="main">Elements of Causal Inference -Foundations and Learning Algorithms</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Peters</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Janzing</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Schölkopf</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<publisher>MIT Press</publisher>
+			<pubPlace>Cambridge, MA, USA</pubPlace>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Counterfactual data augmentation using locally factored dynamics</title>
+		<author>
+			<persName><forename type="first">Silviu</forename><surname>Pitis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Elliot</forename><surname>Creager</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Animesh</forename><surname>Garg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">;</forename><forename type="middle">H</forename><surname>Larochelle</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Ranzato</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Hadsell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">F</forename><surname>Balcan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Lin</surname></persName>
+		</author>
+		<ptr target="https://proceedings.neurips.cc/paper_files/paper/2020/file/294" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="3976" to="3990" />
+		</imprint>
+	</monogr>
+	<note>e09f267683c7ddc6cc5134a7e68a8-Paper.pdf</note>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">MocoDA: Model-based counterfactual data augmentation</title>
+		<author>
+			<persName><forename type="first">Silviu</forename><surname>Pitis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Elliot</forename><surname>Creager</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ajay</forename><surname>Mandlekar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Animesh</forename><surname>Garg</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=w6tBOjPCrIO" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">Alice</forename><forename type="middle">H</forename><surname>Oh</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Alekh</forename><surname>Agarwal</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Danielle</forename><surname>Belgrave</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Kyunghyun</forename><surname>Cho</surname></persName>
+		</editor>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title/>
+		<author>
+			<persName><forename type="first">Danilo</forename><surname>Jimenez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rezende</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fabio</forename><surname>Viola</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Taming vaes</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">Robust agents learn causal world models</title>
+		<author>
+			<persName><forename type="first">Jonathan</forename><surname>Richens</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tom</forename><surname>Everitt</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=pOoKI3ouv1" />
+	</analytic>
+	<monogr>
+		<title level="m">The Twelfth International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<title level="a" type="main">Transformer-based world models are happy with 100k interactions</title>
+		<author>
+			<persName><forename type="first">Jan</forename><surname>Robine</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marc</forename><surname>Höftmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tobias</forename><surname>Uelwer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stefan</forename><surname>Harmeling</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=TdBaDGCpjly" />
+	</analytic>
+	<monogr>
+		<title level="m">The Eleventh International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<monogr>
+		<title level="m" type="main">Causalagents: A robustness benchmark for motion forecasting using causal relationships</title>
+		<author>
+			<persName><forename type="first">Rebecca</forename><surname>Roelofs</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Liting</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ben</forename><surname>Caine</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Khaled</forename><forename type="middle">S</forename><surname>Refaat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ben</forename><surname>Sapp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Scott</forename><surname>Ettinger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Chai</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2207.03586" />
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<analytic>
+		<title level="a" type="main">Toward causal representation learning</title>
+		<author>
+			<persName><forename type="first">Bernhard</forename><surname>Schölkopf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Francesco</forename><surname>Locatello</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stefan</forename><surname>Bauer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nan</forename><forename type="middle">Rosemary</forename><surname>Ke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nal</forename><surname>Kalchbrenner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anirudh</forename><surname>Goyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Proceedings of the IEEE</title>
+		<imprint>
+			<biblScope unit="volume">109</biblScope>
+			<biblScope unit="issue">5</biblScope>
+			<biblScope unit="page" from="612" to="634" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<monogr>
+		<title level="m" type="main">Causality for machine learning</title>
+		<author>
+			<persName><forename type="first">Bernhard</forename><surname>Schölkopf</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3501714.3501755</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<analytic>
+		<title level="a" type="main">Causal influence detection for improving efficiency in reinforcement learning</title>
+		<author>
+			<persName><forename type="first">Maximilian</forename><surname>Seitzer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bernhard</forename><surname>Schölkopf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Georg</forename><surname>Martius</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="page" from="22905" to="22918" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<analytic>
+		<title level="a" type="main">Motion transformer with global intention localization and local movement refinement</title>
+		<author>
+			<persName><forename type="first">Shaoshuai</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Li</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dengxin</forename><surname>Dai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bernt</forename><surname>Schiele</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b51">
+	<analytic>
+		<title level="a" type="main">Scalability in perception for autonomous driving: Waymo open dataset</title>
+		<author>
+			<persName><forename type="first">Pei</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Henrik</forename><surname>Kretzschmar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xerxes</forename><surname>Dotiwalla</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aurelien</forename><surname>Chouard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vijaysai</forename><surname>Patnaik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Paul</forename><surname>Tsui</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yin</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuning</forename><surname>Chai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Benjamin</forename><surname>Caine</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vijay</forename><surname>Vasudevan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Han</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiquan</forename><surname>Ngiam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hang</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aleksei</forename><surname>Timofeev</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Scott</forename><surname>Ettinger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maxim</forename><surname>Krivokon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amy</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aditya</forename><surname>Joshi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yu</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jonathon</forename><surname>Shlens</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhifeng</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dragomir</forename><surname>Anguelov</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)</title>
+		<meeting>the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)</meeting>
+		<imprint>
+			<date type="published" when="2020-06">June 2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b52">
+	<analytic>
+		<title level="a" type="main">Relational Forward Models for Multi-Agent Learning</title>
+		<author>
+			<persName><forename type="first">Andrea</forename><surname>Tacchetti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><forename type="middle">Francis</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pedro</forename><forename type="middle">A M</forename><surname>Mediano</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vinicius</forename><surname>Zambaldi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">János</forename><surname>Kramár</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Neil</forename><forename type="middle">C</forename><surname>Rabinowitz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thore</forename><surname>Graepel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthew</forename><surname>Botvinick</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><forename type="middle">W</forename><surname>Battaglia</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2018-12">December 2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b53">
+	<analytic>
+		<title level="a" type="main">Domain randomization for transferring deep neural networks from simulation to the real world</title>
+		<author>
+			<persName><forename type="first">Josh</forename><surname>Tobin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rachel</forename><surname>Fong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alex</forename><surname>Ray</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jonas</forename><surname>Schneider</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wojciech</forename><surname>Zaremba</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pieter</forename><surname>Abbeel</surname></persName>
+		</author>
+		<idno type="DOI">10.1109/IROS.2017.8202133</idno>
+	</analytic>
+	<monogr>
+		<title level="m">2017 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="23" to="30" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b54">
+	<analytic>
+		<title level="a" type="main">Relational neural expectation maximization: Unsupervised discovery of objects and their interactions</title>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Sjoerd Van Steenkiste</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Klaus</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jürgen</forename><surname>Greff</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Schmidhuber</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=ryH20GbRW" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b55">
+	<analytic>
+		<title level="a" type="main">Attention is all you need</title>
+		<author>
+			<persName><forename type="first">Ashish</forename><surname>Vaswani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noam</forename><surname>Shazeer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Niki</forename><surname>Parmar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jakob</forename><surname>Uszkoreit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Llion</forename><surname>Jones</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aidan</forename><forename type="middle">N</forename><surname>Gomez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ł Ukasz</forename><surname>Kaiser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Illia</forename><surname>Polosukhin</surname></persName>
+		</author>
+		<ptr target="https://proceedings.neurips.cc/paper_files/paper/2017/file/3" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">I</forename><surname>Guyon</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">U</forename><surname>Von Luxburg</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">S</forename><surname>Bengio</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">H</forename><surname>Wallach</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">R</forename><surname>Fergus</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">S</forename><surname>Vishwanathan</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">R</forename><surname>Garnett</surname></persName>
+		</editor>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="volume">30</biblScope>
+		</imprint>
+	</monogr>
+	<note>f5ee243547dee91fbd053c1c4a845aa-Paper.pdf</note>
+</biblStruct>
+
+<biblStruct xml:id="b56">
+	<analytic>
+		<title level="a" type="main">Entity abstraction in visual model-based reinforcement learning</title>
+		<author>
+			<persName><forename type="first">Rishi</forename><surname>Veerapaneni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">John</forename><forename type="middle">D</forename><surname>Co-Reyes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Janner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chelsea</forename><surname>Finn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiajun</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joshua</forename><surname>Tenenbaum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sergey</forename><surname>Levine</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Conference on Robot Learning</title>
+		<imprint>
+			<publisher>PMLR</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="1439" to="1456" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b57">
+	<analytic>
+		<title level="a" type="main">High fidelity video prediction with large stochastic recurrent neural networks</title>
+		<author>
+			<persName><forename type="first">Ruben</forename><surname>Villegas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arkanath</forename><surname>Pathak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Harini</forename><surname>Kannan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dumitru</forename><surname>Erhan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Honglak</forename><surname>Quoc V Le</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Lee</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">32</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b58">
+	<analytic>
+		<title level="a" type="main">Exploration via local dependencies</title>
+		<author>
+			<persName><forename type="first">Zizhao</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiaheng</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Stone</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Roberto Martín-Martín</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Elden</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">A</forename><surname>Oh</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">T</forename><surname>Naumann</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">A</forename><surname>Globerson</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">K</forename><surname>Saenko</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">M</forename><surname>Hardt</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">S</forename><surname>Levine</surname></persName>
+		</editor>
+		<imprint>
+			<biblScope unit="volume">36</biblScope>
+			<biblScope unit="page" from="15456" to="15474" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b59">
+	<monogr>
+		<title level="m" type="main">Obpose: Leveraging pose for object-centric scene inference and generation</title>
+		<author>
+			<persName><forename type="first">Yizhe</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oiwi</forename><forename type="middle">Parker</forename><surname>Jones</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ingmar</forename><surname>Posner</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2023">in 3d, 2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b60">
+	<analytic>
+		<title level="a" type="main">Slotformer: Unsupervised visual dynamics simulation with object-centric models</title>
+		<author>
+			<persName><forename type="first">Ziyi</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nikita</forename><surname>Dvornik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Klaus</forename><surname>Greff</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Animesh</forename><surname>Garg</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=TFbwV6I0VLg" />
+	</analytic>
+	<monogr>
+		<title level="m">The Eleventh International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b61">
+	<analytic>
+		<title level="a" type="main">DAGs with NO TEARS: Continuous Optimization for Structure Learning</title>
+		<author>
+			<persName><forename type="first">Xun</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bryon</forename><surname>Aragam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pradeep</forename><surname>Ravikumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eric</forename><forename type="middle">P</forename><surname>Xing</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b62">
+	<analytic>
+		<title level="a" type="main">Adapt or perish: Adaptive sparse transformer with attentive feature refinement for image restoration</title>
+		<author>
+			<persName><forename type="first">Shihao</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Duosheng</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jinshan</forename><surname>Pan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jinglei</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jufeng</forename><surname>Yang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition</title>
+		<meeting>the IEEE/CVF Conference on Computer Vision and Pattern Recognition</meeting>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+			<biblScope unit="page" from="2952" to="2963" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

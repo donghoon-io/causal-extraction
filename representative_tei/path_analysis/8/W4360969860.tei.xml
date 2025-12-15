@@ -1,0 +1,1386 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">podft: On Accelerating Dynamic Taint Analysis with Precise Path Optimization</title>
+				<funder ref="#_b3rqgmx">
+					<orgName type="full">National Natural Science Foundation of China</orgName>
+				</funder>
+				<funder ref="#_8pb8qB4">
+					<orgName type="full">Key Research and Development Program of Shaanxi</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Zhiyou</forename><surname>Tian</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department">School of Cyber Engineering</orgName>
+								<orgName type="laboratory">State Key Lab of ISN</orgName>
+								<orgName type="institution">Xidian University</orgName>
+								<address>
+									<country key="CN">China</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Cong</forename><surname>Sun</surname></persName>
+							<email>suncong@xidian.edu.cn</email>
+							<affiliation key="aff0">
+								<orgName type="department">School of Cyber Engineering</orgName>
+								<orgName type="laboratory">State Key Lab of ISN</orgName>
+								<orgName type="institution">Xidian University</orgName>
+								<address>
+									<country key="CN">China</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Zeng</forename><surname>Dongrui</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Gang</forename><surname>†+</surname></persName>
+							<affiliation key="aff1">
+								<orgName type="institution">Palo Alto Networks, Inc</orgName>
+								<address>
+									<settlement>Santa Clara</settlement>
+									<region>CA</region>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><surname>Tan</surname></persName>
+							<email>gtan@psu.edu</email>
+							<affiliation key="aff2">
+								<orgName type="institution">The Pennsylvania State University</orgName>
+								<address>
+									<settlement>University Park</settlement>
+									<region>PA</region>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">podft: On Accelerating Dynamic Taint Analysis with Precise Path Optimization</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+					<idno type="DOI">10.14722/bar.2023.23010</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-14T19:16+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Dynamic taint analysis (DTA) has been widely used in security applications, including exploit detection, data provenance, fuzzing improvement, and information flow control. Meanwhile, the usability of DTA is argued on its high runtime overhead, causing a slowdown of more than one magnitude on large binaries. Various approaches have used preliminary static analysis and introduced parallelization or higher-granularity abstractions to raise the scalability of DTA. In this paper, we present a dynamic taint analysis framework podft that defines and enforces different fast paths to improve the efficiency of DBI-based dynamic taint analysis. podft uses a value-set analysis (VSA) to differentiate the instructions that must not be tainted from those potentially tainted. Combining the VSA-based analysis results with proper library function abstractions, we develop taint tracking policies for fast and slow paths and implement the tracking policy enforcement as a Pin-based taint tracker. The experimental results show that podft is more efficient than the state-of-the-art fast path-based DTA approach and competitive with the static binary rewriting approach. podft has a high potential to integrate basic block-level deep neural networks to simplify fast path enforcement and raise tracking efficiency.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>I. INTRODUCTION</head><p>Dynamic taint analysis (DTA), also known as dynamic data-flow tracking (DDFT) or dynamic information-flow tracking (DIFT), is a program analysis technique that tracks selected data at runtime and checks specific tainted data for reaching sinks. Dynamic taint analysis can track system-wide or application-level taints. The system-wide DTA approaches are general but heavy-weighted tainting solutions that usually depend on virtual machine monitors <ref type="bibr" target="#b21">[23]</ref>, whole-system or hardware emulators <ref type="bibr" target="#b10">[12]</ref>, <ref type="bibr" target="#b18">[20]</ref>, <ref type="bibr" target="#b39">[41]</ref>, <ref type="bibr" target="#b47">[49]</ref>- <ref type="bibr" target="#b49">[51]</ref>, or FPGA <ref type="bibr" target="#b17">[19]</ref>, <ref type="bibr" target="#b26">[28]</ref>, <ref type="bibr" target="#b50">[52]</ref>. Compared with the complicated hardware extensions and the system-level monitors or emulators, applicationlevel DTA is more flexible and pervasively used to investigate the vulnerabilities of an independent program. In this scenario, the tracking code can be instrumented during compilation <ref type="bibr" target="#b8">[10]</ref>, <ref type="bibr" target="#b12">[14]</ref>, <ref type="bibr" target="#b31">[33]</ref>, <ref type="bibr" target="#b34">[36]</ref>, <ref type="bibr" target="#b43">[45]</ref> when source code is available, or + Corresponding author instrumented on bytecode <ref type="bibr" target="#b19">[21]</ref> or binaries <ref type="bibr" target="#b14">[16]</ref>, <ref type="bibr" target="#b16">[18]</ref>, <ref type="bibr" target="#b25">[27]</ref>, <ref type="bibr" target="#b27">[29]</ref>, <ref type="bibr" target="#b38">[40]</ref>, <ref type="bibr" target="#b40">[42]</ref>, <ref type="bibr" target="#b52">[54]</ref>.</p><p>Dynamic binary instrumentation (DBI) is promising in tracking the runtime taint propagation across a process's memory space. Such approaches hold the tainting status of suspicious data within tagging memory and virtual registers and check at particular program execution points to decide if specific runtime policies are enforced or violated. TaintCheck <ref type="bibr" target="#b38">[40]</ref> uses Valgrind <ref type="bibr" target="#b37">[39]</ref>, and TaintTrace <ref type="bibr" target="#b14">[16]</ref> uses DynamoRIO <ref type="bibr" target="#b11">[13]</ref> to rewrite binaries for detecting various attacks. LIFT <ref type="bibr" target="#b40">[42]</ref> instruments binary with StarDBT <ref type="bibr" target="#b9">[11]</ref> on Windows. It first proposes to reduce the runtime overhead by the fast paths and merged checks to simplify the instrumented taint operations. libdft [5], <ref type="bibr" target="#b27">[29]</ref> and its descendant reimplementation <ref type="bibr" target="#b6">[8]</ref> are popular DBI-based taint tracking tools with a moderate slowdown to the native execution. On generalizing the DBIbased taint tracking, efforts are made to model the implicit flows <ref type="bibr" target="#b16">[18]</ref>, <ref type="bibr" target="#b25">[27]</ref>, the flows among distributed processes <ref type="bibr" target="#b29">[31]</ref>, or the taint propagations for different target ISAs <ref type="bibr" target="#b15">[17]</ref>.</p><p>Performance overhead is the prominent obstacle in using dynamic taint analysis. At the software level, the potential improvements come from two mostly orthogonal aspects. First, the parallelization-based overhead mitigation offloads the taint-tracking operations from the original program execution, introducing parallelization over different CPU cores <ref type="bibr" target="#b22">[24]</ref>, <ref type="bibr" target="#b35">[37]</ref>, <ref type="bibr" target="#b36">[38]</ref>, <ref type="bibr" target="#b42">[44]</ref> or hosts <ref type="bibr" target="#b41">[43]</ref>. Second, hybrid analyses may use static analysis to abstract the inlined taint propagation operations from per instruction to a higher granularity <ref type="bibr" target="#b8">[10]</ref>, <ref type="bibr" target="#b20">[22]</ref>, <ref type="bibr" target="#b23">[25]</ref>, <ref type="bibr" target="#b24">[26]</ref>, <ref type="bibr" target="#b40">[42]</ref>, <ref type="bibr" target="#b45">[47]</ref>, <ref type="bibr" target="#b51">[53]</ref>. The function-level summaries <ref type="bibr" target="#b24">[26]</ref>, <ref type="bibr" target="#b51">[53]</ref> can abstract the taint computations and reduce the overhead of instruction-level taint tracking. The library function abstractions <ref type="bibr" target="#b24">[26]</ref> can be derived automatically with reachability analysis on the LLVM-PDG <ref type="bibr" target="#b5">[7]</ref>, <ref type="bibr" target="#b32">[34]</ref> of the target library and integrated into libdft. Jee et al. <ref type="bibr" target="#b23">[25]</ref> use perbasic-block analysis to express the tainting behavior with an algebra. The optimized operations are aggregated into maximized instrumentation units to minimize interference with the target program. Fast path <ref type="bibr" target="#b8">[10]</ref>, <ref type="bibr" target="#b20">[22]</ref>, <ref type="bibr" target="#b40">[42]</ref>, <ref type="bibr" target="#b45">[47]</ref> generally instruments check-and-switch mechanisms at specific program locations to ensure a switch to an efficient sub-trace execution whose live variables are untainted. The original fast paths <ref type="bibr" target="#b40">[42]</ref> are the code segments whose live-in and live-out states are determined safe at their entry point. Saxena et al. <ref type="bibr" target="#b45">[47]</ref> analyze the untainted local variables and registers using a modular stack analysis. Their fast path requires no tainting for registers and only a write to clear the memory taint for memory stores. Only memory loads are checked for a potential switch to the slow path when the tainted data are loaded. Iodine <ref type="bibr" target="#b8">[10]</ref> profiles representative executions to develop an efficient predicated static taint analysis for the frequently-executed fast path, but it will introduce high recovery cost at invariant failures. Compared with the static fast paths, Taint Rabbit <ref type="bibr" target="#b20">[22]</ref> generates the fast paths just-in-time even when the taints are presented at inand out-states of basic blocks. The efficiency of their approach assumes the executions of a basic block are frequently over the same taint state.</p><p>Value-set analysis (VSA) <ref type="bibr" target="#b7">[9]</ref> is a general-purpose static analysis that over-approximates the values for each variable at different program locations. Saxena et al. <ref type="bibr" target="#b45">[47]</ref> first mentioned using value-set analysis to optimize dynamic dataflow tracking. However, they use a modular stack analysis on a simple abstract domain instead of the high-cost VSA on global and heap memory. TaintPipe <ref type="bibr" target="#b36">[38]</ref> only uses VSA to resolve the memory access scope specified by the path predicate of straight-line code. SELECTIVETAINT <ref type="bibr" target="#b13">[15]</ref> uses value-set analysis to ensure a must-not-tainted instruction set and taints only the instructions outside this set with static binary rewriting. Although SELECTIVETAINT is very effective in eliding uninvolved instructions, their static binary rewriting technique may bloat the attack surface of binaries and confront more scalability issues than DBI. This paper presents podft, a dynamic taint analysis framework that combines the VSA-based must-not-tainted (MNT for short) instructions identification with a flexible fast-pathguided dynamic binary instrumentation approach for efficient taint tracking. The runtime fast paths of podft are either on the basic block level or the function level. These fast paths can be divided into three categories. The function fast path summarizes the tainting behavior of frequently-used library functions. The naive fast path is on the basic blocks holding only MNT instructions. The complex fast path is directed by a runtime tag memory checking at the entry of the hot and potentially-tainted basic blocks. In contrast to these fast paths, the rest basic blocks are decided on slow paths by podft.</p><p>For high efficiency, podft uses static analysis to build the tracking policies used by the fast paths. We first derive the function-level policy by modeling the taint computation of library functions with taint rules <ref type="bibr" target="#b24">[26]</ref>. Then, for the usercode basic blocks, we use the value-set analysis <ref type="bibr" target="#b13">[15]</ref> to divide the instructions into MNT-or potentially-tainted instructions. We derive the policy for naive fast paths on the basic blocks of only MNT instructions. Considering the potentially-tainted basic block as the one containing some potentially-tainted instructions, the policy of complex fast path is enforced on the hot potentially-tainted basic block when the tainted memory at the block's entry has no intersection with the static analyzed memory locations used by the basic block. Such memory locations are obtained by a static analysis similar to the Merged Check of <ref type="bibr" target="#b40">[42]</ref>. The runtime of podft takes these policies to instrument only a limited number of potentially-tainted instructions to track taints. Even if a slow path instead of a complex fast path is taken for a potentially-tainted basic block, the instruction-level VSA results can still ignore tracking specific MNT instructions in that basic block for efficiency. The contributions of this paper are summarized as follows:</p><p>1) We propose an efficient dynamic taint analysis framework podft. We design a novel approach using the instructionlevel VSA results to build basic block-level tracking policies for our framework's naive and complex fast paths. 2) By enforcing the function-and basic block-level tracking policies with a Pin-based taint tracker and a prior static data-dependency analysis, our implementation outperforms the state-of-the-art DTA approach based on fast paths <ref type="bibr" target="#b20">[22]</ref> and is competitive with the static binary rewriting approach <ref type="bibr" target="#b13">[15]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>II. DESIGN OF PODFT</head><p>This section depicts the framework of podft, including the interprocedural control-flow graph construction, the static analyses for the tracking policy construction and fast-slow path differentiation, and the dynamic Pin-based taint tracking.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. System Overview</head><p>podft is a hybrid taint tracking framework, as presented in Fig. <ref type="figure" target="#fig_0">1</ref>. Its static analysis uses the results of several existing analyses to build the tracking policies for the later runtime taint tracking. With the tracking policies, the Pin-based tracker takes fast paths on demand to track the taints' propagation at runtime efficiently.</p><p>First, podft uses BPA <ref type="bibr" target="#b30">[32]</ref> to derive the indirect call targets for the binary-level interprocedural control-flow graph (ICFG). The ICFG is delivered to a value-set analysis <ref type="bibr" target="#b13">[15]</ref> to derive the must-not-tainted instruction set I u . In this procedure, the instruction operands' value set is compared with the mustnot-tainted (MNT) value set. If some of the operand's value is potentially tainted, the unknown value propagates, and the destination operand's value set is removed from the MNT value set. If all the operands' value sets are MNT value sets, the instruction is labeled as must-not-tainted instructions, and the MNT value set gets enlarged if the destination is concrete.</p><p>Then, podft's tracking policy construction module traverses the basic blocks of the ICFG to build the tracking policies for the runtime Pin-based taint tracker (Section II-B). We build the basic block-level fast path policy for the naive and complex fast paths and hold the instruction-level policy for the instructions on slow paths. Besides, we use the offline phase of <ref type="bibr" target="#b24">[26]</ref> to generate the taint rules from the C standard library functions'   The basic block-level policies are enabled on the traces of user code to take the naive fast path on MNT basic blocks and the complex fast path when the hot potentially-tainted basic blocks are decided untainted by a check on the tag memory state at the block entry. For the basic blocks decided tainted at runtime or potentially tainted but not frequently used, the addresses of taint-involved instructions are used to guide the tag operations along the slow paths.</p><formula xml:id="formula_0">= {bbl | bbl ∈ B -B l ∧ ∀ins ∈ bbl.ins ∈ Iu} complex fast path {bbl | (bbl ∈ Bc ∪ B lo ) ∧ (TaintedMem(entry(bbl)) ∩ MergedDep(bbl) = ∅)}, s.t. Bc = {bbl | bbl ∈ B -B l ∧ (It ∩ bbl ̸ = ∅) ∧ Hot(bbl)} and B lo = {bbl | bbl ∈ B l -{libc.so}} slow path Is = {bbl | bbl ∈ B -B l ∧ (It ∩ bbl ̸ = ∅) ∧ ¬Hot(bbl)} -Iu; or instructions in {bbl | (bbl ∈ Bc ∪ B lo ) ∧ (TaintedMem(entry(bbl)) ∩ MergedDep(bbl) ̸ = ∅)} -</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. VSA-based Tracking Policy Construction</head><p>The strategy of policy construction is based on the VSAbased instruction-level identification of the must-not-tainted and potentially-tainted instructions, i.e., I u and I t in <ref type="bibr" target="#b13">[15]</ref>, respectively. Let B be the basic blocks of the program's loaded code and B l be the basic blocks of the library functions. Because our function-level tracking policy only applies to the C standard library, we distinguish the basic blocks of libc.so from the basic blocks of other libraries (B lo ).</p><p>The basic block-level tracking policies for fast paths and instruction-level tracking policies for slow paths are presented in Table <ref type="table" target="#tab_0">I</ref>. The tracking policies of naive fast paths are on basic blocks B n . If a basic block is identified as in B n , we ignore instrumenting tag operations on all its instructions. The Fig. <ref type="figure">3</ref>. Binary ICFG of the program in Fig. <ref type="figure" target="#fig_1">2</ref> tracking policies of complex fast paths are on B c ∪ B lo . B c stands for the user-code basic blocks hot in execution and have some potentially-tainted instructions. To generate B c , in our implementation, we determine a basic block as being hot if executed more than once and all its instructions are in I t . The library's basic blocks in B lo fall in the complex fast path policy because the VSA-based analysis <ref type="bibr" target="#b13">[15]</ref> cannot work on the libraries. We can only assume the instructions in these library basic blocks are potentially tainted. The applicability of complex fast-path policy is also decided by a runtime condition. Specifically, for a basic block bbl, we use static analysis to identify the entry-state memory and registers of bbl that are data-depended by the memory or registers of bbl, i.e., MergedDep(bbl). Such entry-state memory and registers should not intersect with the runtime tainted memory and registers at bbl's entry state, i.e., TaintedMem(entry(bbl)). If this runtime condition is satisfied, we also ignore instrumenting the tag operations for this basic block. Otherwise, the basic blocks in B c ∪ B lo are enforced with the slow path tracking policy that instruments the instructions not in I u . Besides, the slow path policy applies to the potentially-tainted instructions in basic blocks of (B -B l ∪ B n ∪ B c ), i.e., I s .</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Input: loaded imanges</head><p>1: for all image∈ loaded images do 2:</p><p>if image is libc.so then 3:</p><p>libc scope ← record scope(image);</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>4:</head><p>for all f unc ∈image do 5:</p><p>Instrument func (entry(f unc), exit(f unc));  Taking the program in Fig. <ref type="figure" target="#fig_1">2</ref> for example, read is a taint source that reads file fd's input as taints to buf. The function toy_test prints buf, modifies the tainted buf[0] and buf <ref type="bibr" target="#b0">[1]</ref> with constants in the for-loop, and delivers the untainted buf[0..1] to the taint sink write to modify the file. Thus, the data delivered to the sink are irrelevant to the tainted data from the source. This secure program helps illustrate the complex fast path decision. The binary ICFG of the program is presented in Fig. <ref type="figure">3</ref>. The red code locations in Fig. <ref type="figure">3</ref> stand for the potentially-tainted instructions, and the rest are the MNT instructions identified by the VSAbased analysis. The PLT instructions (e.g., at 0x80483a0 for printf) are not tainted. The basic blocks with no potentiallytainted instruction, e.g., the one at 0x804857f, are in B n for the naive fast paths. The basic block at 0x8048541 is executed twice and is in B c to indicate a tentative complex fast path. Whether the basic block at 0x8048541 can take a complex fast path or a slow one is decided by the runtime checking on TaintedMem(0x8048541) ∩ MergedDep(bbl 0x8048541 ). Besides, the potentially-tainted instructions in the basic blocks like 0x80484fd are in I s to take the slow-path policy.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Pin-based Taint Tracking</head><p>The Pin-based tracker of podft is developed by extending libdft to skip instrumenting specific traces, basic blocks, or instructions according to the tracking policies in Table <ref type="table" target="#tab_0">I</ref>. The DBI algorithm is presented in Fig. <ref type="figure" target="#fig_2">4</ref>. For all the loaded images of the program, we record and differentiate the virtual address scopes of libc.so, other libraries, and user code. For the glibc functions, podft instruments tag memory operations at the function's entry and exit points based on the taint rules of <ref type="bibr" target="#b24">[26]</ref> (Instrument func in Line 5). If the current trace is in libc.so or the current basic block is in B n , we skip instrumenting all instructions of this basic block. Otherwise, if the current basic block is in other libraries or B c , we decide if the basic block is on a complex fast path or a slow one. Suppose the registers and memory locations used in the basic block do not depend on the tainted memory and registers at the entry state of this basic block. In that case, we confirm the complex fast path and skip instrumenting all its instructions. Otherwise, we instrument all the potentially-tainted instructions with libdft's instruction-level instrumentation (Instrument libdft in Lines 22 and 27).</p><p>For the example in Fig. <ref type="figure">3</ref>, the C standard library function printf is instrumented at the function level. The basic blocks of printf need no instrumentation at the instruction level. open, read, and write are system calls modeled by the I/O interface of libdft. The memory involved in the basic block 0x8048541, i.e., buf[0] and buf <ref type="bibr" target="#b0">[1]</ref> pointed by * [ebp+0xc], are sanitized with the constant of i held in [ebp-0x10]. Therefore MergedDep(bbl 0x8048541 ) = ∅ at the entry of basic block 0x8048541. We have MergedDep(bbl 0x8048541 ) ∩ TaintedMem(0x8048541) = ∅ at runtime when reaching 0x8048541. The memory locations used in this basic block have no data dependence with the tainted memory buf at the entry state of this basic block. Thus, the basic block 0x8048541 is decided to be a complex fast path, and all its instructions are not instrumented.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>III. IMPLEMENTATION AND EVALUATION</head><p>This section presents several important issues in our implementation and evaluates podft's efficiency and effectiveness.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Implementation Issues</head><p>Finding the hot potentially-tainted basic blocks is critical to the decision of B c and I s . In our implementation, a basic block is hot when executed more than once under the standard inputs, and all its instructions are potentially tainted. Therefore, we use another DBI execution over the standard inputs to identify the basic blocks executed more than once. After all, specifying a hot basic block is configurable and standalone prior to the DTA procedure. This instrumented execution also helps us to profile the related inputs and outputs of the hot basic blocks used in training the neural hot basic block model, as depicted in Section IV. podft holds a hashmap to facilitate efficient inclusion decisions in Fig. <ref type="figure" target="#fig_2">4</ref>. The hashmap is generated using the results of VSA-based analysis identifying MNT-and potentially-tainted instructions. Each key of the hashmap is the address of a potentially-tainted basic block. Each value of the hashmap points to an instruction-address array of potentially-tainted instructions in the basic block. Queries on this structure can efficiently decide B c , I s , and B n for tracking policy enforcement. Another issue is deciding the complex fast path using static analysis to find the data dependencies between the memory/registers used by the basic block and the memory/register at the block's entry. By reimplementing the Merged Check of <ref type="bibr" target="#b40">[42]</ref>, we scan the traces of instructions and build the data dependencies for each memory reference. We use a fix-depth backward data-dependency graph traversal from the in-block memory references to find all the data dependencies to the basic block's entry memory locations. Then at runtime, a basic block entry check can decide if such entry memory locations have been tainted in the tag memory of podft.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Dataset and Experimental Settings</head><p>Our experiments are conducted on a Desktop with a 2.8GHz×4 Intel Core(TM) i7-7700HQ CPU, 8GB RAM, and Linux 3.16.0 kernel (Ubuntu 14.04 32-bit). The DBI framework is Pin v2.14, and libdft we used is <ref type="bibr">[5]</ref>. Because the VSA-based MNT instructions identification <ref type="bibr" target="#b13">[15]</ref> can only work on 32-bit binaries, we adapt the function-level taint rule generation <ref type="bibr" target="#b24">[26]</ref>, developed on libdft64 <ref type="bibr" target="#b6">[8]</ref> for 64-bit binaries, to the 32-bit libdft [5]. The main adaption work is to reimplement the tag operations used by each taint rule.</p><p>The benchmarks we use to evaluate podft are presented in Table <ref type="table" target="#tab_3">II</ref>. We compile the binaries of these benchmarks on their default compiler optimization level. For the performance evaluation, we use the standard working task in the DBI execution of each benchmark program of dataset S1 and S2. Specifically, for the SPEC2k6 benchmarks of dataset S1, we use the standard SPEC2k6 workload test in the instrumented execution. For httpd and Nginx in dataset S2, we use the benchmarking tool ab <ref type="bibr" target="#b0">[1]</ref> to randomly select and deliver 10,000 and 100,000 requests to the servers. For MySQL, we use the load emulation tool mysqlslap <ref type="bibr" target="#b1">[2]</ref> to connect the MyISAM <ref type="bibr" target="#b3">[4]</ref> and InnoDB <ref type="bibr" target="#b2">[3]</ref> storage engines of MySQL, automatically generate a complicated table, and issue 1,000 related SQL queries with 10 parallel clients. The dataset S3 is mostly collected from the related work <ref type="bibr" target="#b13">[15]</ref>. We ensure that the vulnerabilities of these CVEs are reproduced in our experimental environment.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Efficiency of podft</head><p>We first compare podft's efficiency with other dynamic taint analysis approaches, including Taint Rabbit <ref type="bibr" target="#b20">[22]</ref>, Dytan <ref type="bibr" target="#b4">[6]</ref>, <ref type="bibr" target="#b16">[18]</ref>, Triton <ref type="bibr" target="#b44">[46]</ref>, and Taintgrind <ref type="bibr" target="#b28">[30]</ref>. Taint Rabbit is developed on DynamoRIO <ref type="bibr" target="#b11">[13]</ref>, and Taintgrind is on Valgrind <ref type="bibr" target="#b37">[39]</ref>. Dytan and Triton use Pin as used by podft. For deploying the related tools, we deploy Taint Rabbit with the taint policy TaintRabbit-ID (TR-ID) and TaintRabbit-BV (TR-BV). For a fair comparison, we set the same taint sources and sinks for each tool.</p><p>The results are presented in Table <ref type="table" target="#tab_4">III</ref>. Besides the execution time of the instrumented benchmark programs tracked by different tools, the slowdown metric of each tool (SD in Table <ref type="table" target="#tab_4">III</ref>) measures the magnification of each tool's instrumentation cost compared with the original execution. For the dataset S1 and S2, podft achieves slowdowns of 1.6x to 27.9x with an average slowdown of 10.6x. In contrast, the state-of-the-art fast-pathbased tool, i.e., Taint Rabbit, has a 30x average slowdown for its TR-ID policy configuration and a 120x average slowdown for the TR-BV policy configuration. We can see that on each benchmark in Table <ref type="table" target="#tab_4">III</ref>, podft outperforms other DTA tools. According to the average slowdowns, podft is more efficient than the other DTA tools. More specifically, TaintRabbit-BV reaches a timeout when tracking 429.mcf. Dytan cannot finish the instrumented execution of 458.sjeng properly. Triton is relatively inefficient, reaching timeouts on dataset S1 and four benchmarks of S2.</p><p>Then, because podft uses the VSA-based static analysis of SELECTIVETAINT <ref type="bibr" target="#b13">[15]</ref>, we compare the efficiency of podft with this static binary rewriting approach. To deploy the tools provided by SELECTIVETAINT, we deploy both the STATICTAINTALL and the SELECTIVETAINT system. STAT-ICTAINTALL system instruments all the instructions with static taint analysis. First, we confront difficulties using SELEC-TIVETAINT's static rewriting on the server binaries of dataset S2. Therefore we only use the benchmarks in S1 for this evaluation. On dataset S1, podft has an average slowdown of 12.5x, while STATICTAINTALL and SELECTIVETAINT report average slowdowns of 39.1x and 27.1x, respectively. SELEC-TIVETAINT reduces the slowdowns of STATICTAINTALL in all the S1 benchmarks. Although podft is generally more efficient than SELECTIVETAINT on S1, we observe that in several cases, e.g., 400.perlbench and 429.mcf, SELECTIVETAINT can outperform podft.</p><p>We also compare the basic block-level instrumentation coverage of podft's DBI and SELECTIVETAINT's static binary rewriting on dataset S1 and the standard workload. We observed that podft has an average instrumentation coverage of 40.38%, while SELECTIVETAINT's average instrumentation coverage is 53.73%. SELECTIVETAINT statically instruments many basic blocks that are unreachable by the benchmark executions. We cannot compare the runtime reachable basic blocks of SELECTIVETAINT-rewritten binaries with the podftinstrumented basic blocks because the static rewriting has introduced additional code structures into the binary.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D. Effectiveness of podft's Dynamic Taint Analysis</head><p>We validate the effectiveness of podft by tracking the realworld vulnerabilities of CVEs triggered by public exploits. The CVEs and the tracking time of podft are presented in Table V. podft's taint tracking can successfully detect the sensitiveflow-related exploits of all these CVEs. For each CVE, we develop a specific Pintool over podft to track the vulnerability. To retrieve the taint sources, we identify the target binary's specific syscalls, functions, or program arguments. We also treat the user input as taint sources in the cases where the taint source is unspecified by the CVE. We identify the taint sink by manually analyzing the assembly code and investigating the vulnerable functions reported by the CVEs. We analyze the suspicious variables and the instructions that operate on these variables in these functions. Consequently, the instrumented check decides if such a variable holds a taint tag at these instructions' locations. We observed that the tracking procedure of podft tainted all the vulnerable sinks.   </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>IV. WORK-IN-PROGRESS</head><p>podft is a dynamic taint analysis framework that enforces multiple fast-path tracking policies for efficient taint tracking. podft uses a VSA-based analysis and function-level tainting abstraction to generate these tracking policies. We use a basic block-level static data-dependency analysis to decide whether a hot potentially-tainted basic block takes a complex fast path or a slow path. Such analyses benefit the taint tracking efficiency but still have several limitations:</p><p>1) The VSA-based analysis <ref type="bibr" target="#b13">[15]</ref> cannot work on library code. The function-level summaries <ref type="bibr" target="#b24">[26]</ref> work only for popular library functions. Thus, we must overapproximate most library basic blocks as all-instructiontainted slow paths to enforce instruction-level slow-path tracking policy.</p><p>2) In several cases, the data-dependency analysis may need to be more precise in identifying the block-used memory references. In such cases, the hot basic blocks must be overly approximated as slow paths.</p><p>The above limitations motivate us to develop a more scalable complex fast path policy enforcement approach. Our solution is to use deep neural networks to track taints at the basic-block level. Since we can identify the hot potentiallytainted basic blocks, these basic blocks are more frequently executed and have more inputs and outputs. We can use the fuzzing technique to profile the runtime tag memory relations between the inputs and outputs. Because these hot basic blocks only use a limited number of memory and registers, such relations can be properly abstracted and are not expected over complicated.</p><p>Taking the principle of Neutaint <ref type="bibr" target="#b46">[48]</ref>, we are trying to train neural hot basic block embeddings using these tag memory relations. Unlike Neutaint, which uses only dynamic program embedding, our neural hot basic block embedding will also consider several instruction-level static features to merge the taint-tracking prediction of different hot basic blocks into one deep model for each binary program. Integrating our design into podft can avoid differentiating complex fast paths from slow paths on hot basic blocks, thus avoiding the static datadependency analysis. Moreover, compared with Neutaint's program-level embeddings, our basic block-level embeddings are more flexible to be used in traditional DTA infrastructures. We also plan to develop more dynamic neural library-function embeddings to optimize the tainting abstraction of <ref type="bibr" target="#b24">[26]</ref> and the function-level policy enforcement of podft. Another subsistent issue we need to resolve is that several static code features are used in our neural basic block embeddings, making our deep model correlate more with the compiler options of the binary than Nuetaint's model.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Fig. 1 .</head><label>1</label><figDesc>Fig. 1. Framework of podft (dashed block = usage of existing tools)</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Fig. 2 .</head><label>2</label><figDesc>Fig. 2. Motivating Example</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Fig. 4 .</head><label>4</label><figDesc>Fig. 4. Algorithm for Tracker's Dynamic Binary Instrumentation</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>TABLE I .</head><label>I</label><figDesc>TRACKING POLICIES AND RELATED PREDICATES FOR INSTRUMENTATION</figDesc><table><row><cell>Policy Type</cell><cell>Policy applicable on</cell></row><row><cell>naive fast path</cell><cell>Bn</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>TABLE II .</head><label>II</label><figDesc></figDesc><table><row><cell></cell><cell>BENCHMARK PROGRAMS</cell></row><row><cell>Dataset ID</cell><cell>Description</cell></row><row><cell>S1</cell><cell>10 SPEC CPU 2k6 benchmarks</cell></row><row><cell>S2</cell><cell>3 server programs, i.e., Nginx (1.22.0), Apache httpd (2.4.7),</cell></row><row><cell></cell><cell>and MySQL (5.5.62)</cell></row><row><cell>S3</cell><cell>9 CVE programs, as presented in Table V</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>TABLE III .</head><label>III</label><figDesc>PERFORMANCE IMPROVEMENT OF PODFT COMPARED WITH OTHER DTA APPROACHES ON DATASET S1 AND S2. SLOWDOWN SDTOOL =TTOOL/TORIG , S.T. TOOL=PODFT, TAINTRABBIT-ID, TAINTRABBIT-BV, TAINTGRIND, DYTAN, TRITON</figDesc><table><row><cell></cell><cell>Torig</cell><cell cols="2">podft</cell><cell cols="2">TaintRabbit-ID</cell><cell cols="2">TaintRabbit-BV</cell><cell cols="2">Taintgrind</cell><cell cols="2">Dytan</cell><cell cols="2">Triton</cell></row><row><cell>Benchmark</cell><cell>(s)</cell><cell>T podft (s)</cell><cell>SD podft</cell><cell>TID(s)</cell><cell>SDID</cell><cell>TBV(s)</cell><cell>SDBV</cell><cell>TTaintgrind(s)</cell><cell>SDTaintgrind</cell><cell>TDytan(s)</cell><cell>SDDytan</cell><cell>TTriton(s)</cell><cell>SDTriton</cell></row><row><cell>400.perlbench</cell><cell>4.3</cell><cell>120.1</cell><cell>27.9</cell><cell>126.6</cell><cell>29.4</cell><cell>204.9</cell><cell>47.7</cell><cell>346.7</cell><cell>80.6</cell><cell>3,208.6</cell><cell>746.2</cell><cell>Timeout</cell><cell>N/A</cell></row><row><cell>401.bzip2</cell><cell>5.4</cell><cell>46.4</cell><cell>8.6</cell><cell>85.7</cell><cell>15.9</cell><cell>91.3</cell><cell>16.9</cell><cell>1,634.9</cell><cell>302.8</cell><cell>20,812.6</cell><cell>3,854.2</cell><cell>Timeout</cell><cell>N/A</cell></row><row><cell>429.mcf</cell><cell>2.5</cell><cell>5.2</cell><cell>2.1</cell><cell>34.2</cell><cell>13.7</cell><cell>Timeout</cell><cell>N/A</cell><cell>193.6</cell><cell>77.4</cell><cell>2,845.4</cell><cell>1,138.2</cell><cell>Timeout</cell><cell>N/A</cell></row><row><cell>445.gobmk</cell><cell>15.3</cell><cell>128.2</cell><cell>8.4</cell><cell>219.2</cell><cell>14.3</cell><cell>204.7</cell><cell>13.4</cell><cell>6,039.4</cell><cell>394.7</cell><cell>45,147.5</cell><cell>2,950.8</cell><cell>Timeout</cell><cell>N/A</cell></row><row><cell>456.hmmer</cell><cell>2.2</cell><cell>55.6</cell><cell>25.3</cell><cell>74.8</cell><cell>34.0</cell><cell>78.5</cell><cell>35.7</cell><cell>998.6</cell><cell>453.9</cell><cell>11,531.6</cell><cell>5,241.6</cell><cell>Timeout</cell><cell>N/A</cell></row><row><cell>458.sjeng</cell><cell>4.6</cell><cell>28.3</cell><cell>6.2</cell><cell>34.9</cell><cell>7.6</cell><cell>39.2</cell><cell>8.5</cell><cell>1,355.8</cell><cell>294.7</cell><cell>Failed</cell><cell>N/A</cell><cell>Timeout</cell><cell>N/A</cell></row><row><cell>462.libquantum</cell><cell>0.5</cell><cell>3.6</cell><cell>7.2</cell><cell>6.8</cell><cell>13.6</cell><cell>8.2</cell><cell>16.4</cell><cell>22.9</cell><cell>45.8</cell><cell>333.2</cell><cell>666.4</cell><cell>Timeout</cell><cell>N/A</cell></row><row><cell>464.h264ref</cell><cell>12.6</cell><cell>191.8</cell><cell>15.2</cell><cell>762.3</cell><cell>60.5</cell><cell>2,588.7</cell><cell>205.5</cell><cell>5,057.7</cell><cell>401.4</cell><cell>81,798.6</cell><cell>6,492.0</cell><cell>Timeout</cell><cell>N/A</cell></row><row><cell>471.omnetpp</cell><cell>0.4</cell><cell>9.1</cell><cell>22.8</cell><cell>54.6</cell><cell>136.5</cell><cell>54.1</cell><cell>135.3</cell><cell>259.6</cell><cell>649.0</cell><cell>1,401.5</cell><cell>3,503.8</cell><cell>Timeout</cell><cell>N/A</cell></row><row><cell>473.astar</cell><cell>9.1</cell><cell>14.5</cell><cell>1.6</cell><cell>129.6</cell><cell>14.2</cell><cell>129.2</cell><cell>14.2</cell><cell>1,467.4</cell><cell>161.3</cell><cell>19,525.1</cell><cell>2,145.6</cell><cell>Timeout</cell><cell>N/A</cell></row><row><cell>mysqlslap myisam</cell><cell>0.6</cell><cell>4.5</cell><cell>7.5</cell><cell>27.5</cell><cell>45.8</cell><cell>404.2</cell><cell>673.7</cell><cell>77.5</cell><cell>129.2</cell><cell>951.9</cell><cell>1,586.5</cell><cell>Timeout</cell><cell>N/A</cell></row><row><cell>mysqlslap innodb</cell><cell>0.7</cell><cell>4.9</cell><cell>7.0</cell><cell>28.8</cell><cell>41.1</cell><cell>392.3</cell><cell>560.4</cell><cell>73.8</cell><cell>105.4</cell><cell>999.1</cell><cell>1,427.3</cell><cell>Timeout</cell><cell>N/A</cell></row><row><cell>httpd req 10k</cell><cell>0.6</cell><cell>5.3</cell><cell>8.8</cell><cell>11.7</cell><cell>19.5</cell><cell>15.9</cell><cell>26.5</cell><cell>26.7</cell><cell>44.5</cell><cell>227.6</cell><cell>379.3</cell><cell>40,509.2</cell><cell>67,515.3</cell></row><row><cell>httpd req 100k</cell><cell>4.9</cell><cell>27.4</cell><cell>5.6</cell><cell>39.8</cell><cell>8.1</cell><cell>74.4</cell><cell>15.2</cell><cell>219.3</cell><cell>44.8</cell><cell>2,386.9</cell><cell>487.1</cell><cell>Timeout</cell><cell>N/A</cell></row><row><cell>Nginx req 10k</cell><cell>0.5</cell><cell>5.5</cell><cell>11.0</cell><cell>9.8</cell><cell>19.6</cell><cell>11.7</cell><cell>23.4</cell><cell>23.9</cell><cell>47.8</cell><cell>201.1</cell><cell>402.2</cell><cell>33,671.6</cell><cell>67,343.2</cell></row><row><cell>Nginx req 100k</cell><cell>4.2</cell><cell>20.1</cell><cell>4.8</cell><cell>24.7</cell><cell>5.9</cell><cell>32.8</cell><cell>7.8</cell><cell>196.4</cell><cell>46.8</cell><cell>2,062.3</cell><cell>491.0</cell><cell>Timeout</cell><cell>N/A</cell></row><row><cell>Avg. slowdown</cell><cell></cell><cell>-</cell><cell>10.6</cell><cell>-</cell><cell>30.0</cell><cell>-</cell><cell>120.0</cell><cell>-</cell><cell>205.0</cell><cell>-</cell><cell>2,100.8</cell><cell>-</cell><cell>67,429.3</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>TABLE IV</head><label>IV</label><figDesc></figDesc><table><row><cell>.</cell><cell cols="5">PERFORMANCE COMPARISON OF PODFT WITH</cell></row><row><cell></cell><cell cols="3">SELECTIVETAINT</cell><cell></cell><cell></cell></row><row><cell></cell><cell>podft</cell><cell cols="2">STATICTAINTALL</cell><cell cols="2">SELECTIVETAINT</cell></row><row><cell>Benchmark</cell><cell>SD podft</cell><cell>TAll(s)</cell><cell>SDAll</cell><cell>TSelect(s)</cell><cell>SDSelect</cell></row><row><cell>400.perlbench</cell><cell>27.9</cell><cell>26.8</cell><cell>6.2</cell><cell>24.2</cell><cell>5.6</cell></row><row><cell>401.bzip2</cell><cell>8.6</cell><cell>263.1</cell><cell>48.7</cell><cell>174.1</cell><cell>32.2</cell></row><row><cell>429.mcf</cell><cell>2.1</cell><cell>39.1</cell><cell>15.6</cell><cell>3.8</cell><cell>1.5</cell></row><row><cell>445.gobmk</cell><cell>8.4</cell><cell>543.4</cell><cell>35.5</cell><cell>538.5</cell><cell>35.2</cell></row><row><cell>456.hmmer</cell><cell>25.3</cell><cell>161.4</cell><cell>73.4</cell><cell>129.2</cell><cell>58.7</cell></row><row><cell>458.sjeng</cell><cell>6.2</cell><cell>126.8</cell><cell>27.6</cell><cell>94.8</cell><cell>20.6</cell></row><row><cell>462.libquantum</cell><cell>7.2</cell><cell>6.3</cell><cell>12.6</cell><cell>4.5</cell><cell>9.0</cell></row><row><cell>464.h264ref</cell><cell>15.2</cell><cell>1,255.9</cell><cell>99.7</cell><cell>801.2</cell><cell>63.6</cell></row><row><cell>471.omnetpp</cell><cell>22.8</cell><cell>16.4</cell><cell>41.0</cell><cell>14.9</cell><cell>37.3</cell></row><row><cell>473.astar</cell><cell>1.6</cell><cell>277.4</cell><cell>30.5</cell><cell>61.7</cell><cell>6.8</cell></row><row><cell>Avg. slowdown</cell><cell>12.5</cell><cell>-</cell><cell>39.1</cell><cell>-</cell><cell>27.1</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>TABLE V</head><label>V</label><figDesc></figDesc><table><row><cell>.</cell><cell cols="4">EFFECT OF PODFT ON TRACKING VULNERABILITIES OF</cell></row><row><cell cols="5">CVES (S-OF=STACK OVERFLOW, H-OF=HEAP OVERFLOW)</cell></row><row><cell></cell><cell>ID</cell><cell>Program</cell><cell>Type</cell><cell>T podft (s)</cell></row><row><cell cols="2">CVE-2021-41253</cell><cell>Zydis v3.2.0</cell><cell>H-OF</cell><cell>1.4</cell></row><row><cell cols="2">CVE-2019-8354</cell><cell>SoX v14.4.2</cell><cell>H-OF</cell><cell>2.8</cell></row><row><cell cols="2">CVE-2018-19655</cell><cell>dcraw v9.28</cell><cell>S-OF</cell><cell>1.7</cell></row><row><cell cols="2">CVE-2018-11575</cell><cell>ngiflib v0.4</cell><cell>S-OF</cell><cell>1.4</cell></row><row><cell cols="2">CVE-2018-6612</cell><cell>jhead v3.00</cell><cell>H-OF</cell><cell>1.2</cell></row><row><cell cols="2">CVE-2017-1000437</cell><cell>Gravity v0.3.5</cell><cell>S-OF</cell><cell>9.8</cell></row><row><cell cols="2">CVE-2017-14411</cell><cell>MP3Gain v1.5.2</cell><cell>S-OF</cell><cell>2.2</cell></row><row><cell cols="2">CVE-2013-2028</cell><cell>Nginx v1.4.0</cell><cell>S-OF</cell><cell>1.1</cell></row></table></figure>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>ACKNOWLEDGMENT</head><p><rs type="person">Zhiyou Tian</rs> and <rs type="person">Cong Sun</rs> were supported by the <rs type="funder">National Natural Science Foundation of China</rs> (<rs type="grantNumber">62272366</rs>) and the <rs type="funder">Key Research and Development Program of Shaanxi</rs> (<rs type="grantNumber">2023-YBGY-371</rs>).</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funding" xml:id="_b3rqgmx">
+					<idno type="grant-number">62272366</idno>
+				</org>
+				<org type="funding" xml:id="_8pb8qB4">
+					<idno type="grant-number">2023-YBGY-371</idno>
+				</org>
+			</listOrg>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<title level="m" type="main">ab -Apache HTTP server benchmarking tool</title>
+		<ptr target="https://httpd.apache.org/docs/2.4/programs/ab.html" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<title level="m" type="main">mysqlslap -A Load Emulation Client</title>
+		<ptr target="https://dev.mysql.com/doc/refman/8.0/en/mysqlslap.html" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<monogr>
+		<title level="m" type="main">The InnoDB Storage Engine</title>
+		<ptr target="https://dev.mysql.com/doc/refman/5.7/en/innodb-storage-engine.html" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<title level="m" type="main">The MyISAM Storage Engine</title>
+		<ptr target="https://dev.mysql.com/doc/refman/8.0/en/myisam-storage-engine.html" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<monogr>
+		<title level="m" type="main">Dytan Taint Analysis Framework on Linux 64-bit</title>
+		<ptr target="https://github.com/behzad-a/Dytan" />
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<monogr>
+		<title level="m" type="main">Program Dependence Graph in LLVM</title>
+		<ptr target="https://bitbucket.org/psusoslab/program-dependence-graph-in-llvm" />
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<monogr>
+		<title level="m" type="main">libdft64</title>
+		<ptr target="https://github.com/AngoraFuzzer/libdft64" />
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Analyzing memory accesses in x86 executables</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Balakrishnan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">W</forename><surname>Reps</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">CC&apos;04, ser</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2004">2004</date>
+			<biblScope unit="volume">2985</biblScope>
+			<biblScope unit="page" from="5" to="23" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Iodine: Fast dynamic taint tracking using rollback-free optimistic hybrid analysis</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Banerjee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Devecsery</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">M</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Narayanasamy</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">SP&apos;19</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="490" to="504" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Software-based transparent and comprehensive control-flow error detection</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>Borin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Araujo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">CGO&apos;06</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2006">2006</date>
+			<biblScope unit="page" from="333" to="345" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Minemu: The world&apos;s fastest taint tracker,&quot; in RAID&apos;11, ser</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>Bosman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Slowinska</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Bos</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">LNCS</title>
+		<imprint>
+			<biblScope unit="volume">6961</biblScope>
+			<biblScope unit="page" from="1" to="20" />
+			<date type="published" when="2011">2011</date>
+			<publisher>Springer</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<title level="m" type="main">Efficient, transparent, and comprehensive runtime code manipulation</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Bruening</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2004">2004</date>
+		</imprint>
+		<respStmt>
+			<orgName>Massachusetts Institute of Technology</orgName>
+		</respStmt>
+	</monogr>
+	<note type="report_type">Ph.D. dissertation</note>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Efficient and extensible security enforcement using dynamic data flow analysis</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Streiff</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Lin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">CCS&apos;08</title>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2008">2008</date>
+			<biblScope unit="page" from="39" to="50" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">SelectiveTaint: Efficient data flow tracking with static binary rewriting</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">30th USENIX Security Symposium. USENIX Association</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="1665" to="1682" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">TaintTrace: Efficient flow tracing with dynamic binary rewriting</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Cheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Hiroshige</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ISCC&apos;06</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2006">2006</date>
+			<biblScope unit="page" from="749" to="754" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">One engine to serve &apos;em all: Inferring taint rules without architectural semantics</title>
+		<author>
+			<persName><forename type="first">Z</forename><forename type="middle">L</forename><surname>Chua</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Baluta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Saxena</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Su</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NDSS&apos;19</title>
+		<imprint>
+			<publisher>The Internet Society</publisher>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Dytan: a generic dynamic taint analysis framework</title>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">A</forename><surname>Clause</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Orso</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ISSTA&apos;07</title>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2007">2007</date>
+			<biblScope unit="page" from="196" to="206" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Raksha: a flexible information flow architecture for software security</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Dalton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Kannan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Kozyrakis</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ISCA&apos;07</title>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2007">2007</date>
+			<biblScope unit="page" from="482" to="493" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Towards practical taint tracking</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Ermolinskiy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Katti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Shenker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Fowler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Mccauley</surname></persName>
+		</author>
+		<idno>UCB/EECS-2010-92</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Tech. Rep</title>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+			<publisher>UC Berkeley</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">FlowDist: Multi-staged refinement-based dynamic information flow analysis for distributed software systems</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Fu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Cai</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">30th USENIX Security Symposium. USENIX Association</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="2093" to="2110" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">The Taint Rabbit: Optimizing generic taint analysis with dynamic fast path generation</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Galea</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Kroening</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ASIA CCS &apos;20</title>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="622" to="636" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Practical taint-based protection using demand emulation</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Ho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">A</forename><surname>Fetterman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Clark</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Warfield</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Hand</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">EuroSys&apos;06</title>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2006">2006</date>
+			<biblScope unit="page" from="29" to="41" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Shad-owReplica: efficient parallelization of dynamic data flow tracking</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Jee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">P</forename><surname>Kemerlis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">D</forename><surname>Keromytis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Portokalidis</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">CCS&apos;13</title>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page" from="235" to="246" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<monogr>
+		<title level="m" type="main">A general approach for efficiently accelerating software-based dynamic data flow tracking on commodity hardware</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Jee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Portokalidis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">P</forename><surname>Kemerlis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ghosh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">I</forename><surname>August</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">D</forename><surname>Keromytis</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2012">2012</date>
+			<publisher>The Internet Society</publisher>
+		</imprint>
+	</monogr>
+	<note>in NDSS&apos;12</note>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<monogr>
+		<title level="m" type="main">Sdft: A PDG-based summarization for efficient dynamic data flow tracking</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Kan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Tan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhang</surname></persName>
+		</author>
+		<imprint>
+			<biblScope unit="page" from="702" to="713" />
+		</imprint>
+	</monogr>
+	<note>in QRS&apos;21. IEEE, 2021</note>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">DTA++: dynamic taint analysis with targeted control-flow propagation</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">G</forename><surname>Kang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Mccamant</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Poosankam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Song</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NDSS&apos;11</title>
+		<imprint>
+			<publisher>The Internet Society</publisher>
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Decoupling dynamic information flow tracking with a dedicated coprocessor</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Kannan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Dalton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Kozyrakis</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">DSN&apos;09</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2009">2009</date>
+			<biblScope unit="page" from="105" to="114" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">libdft: practical dynamic data flow tracking for commodity systems</title>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">P</forename><surname>Kemerlis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Portokalidis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Jee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">D</forename><surname>Keromytis</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">VEE&apos;12</title>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2012">2012</date>
+			<biblScope unit="page" from="121" to="132" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<monogr>
+		<title level="m" type="main">Taintgrind: a Valgrind taint analysis tool</title>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">M</forename><surname>Khoo</surname></persName>
+		</author>
+		<ptr target="https://github.com/wmkhoo/taintgrind" />
+		<imprint>
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<monogr>
+		<title level="m" type="main">Capturing information flow with concatenated dynamic taint analysis</title>
+		<author>
+			<persName><forename type="first">H</forename><forename type="middle">C</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">D</forename><surname>Keromytis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Covington</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Sahita</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+			<publisher>IEEE</publisher>
+			<biblScope unit="page" from="355" to="362" />
+		</imprint>
+	</monogr>
+	<note>in ARES&apos;09</note>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Refining indirect call targets at the binary level</title>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">H</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Zeng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Tan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NDSS&apos;21</title>
+		<imprint>
+			<publisher>The Internet Society</publisher>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">A general dynamic information flow tracking framework for security applications</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Lam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Chiueh</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ACSAC&apos;06</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2006">2006</date>
+			<biblScope unit="page" from="463" to="472" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">PtrSplit: Supporting general pointers in automatic program partitioning</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Tan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Jaeger</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">CCS&apos;17</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="2359" to="2371" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Pin: building customized program analysis tools with dynamic instrumentation</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Luk</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">S</forename><surname>Cohn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Muth</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Patil</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Klauser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">G</forename><surname>Lowney</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Wallace</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">J</forename><surname>Reddi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">M</forename><surname>Hazelwood</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">PLDI&apos;05</title>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2005">2005</date>
+			<biblScope unit="page" from="190" to="200" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Identification of data propagation paths for efficient dynamic information flow tracking</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Mallissery</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Hsieh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Bau</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">SAC&apos;20</title>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="92" to="99" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">StraightTaint: decoupled offline symbolic taint analysis</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ming</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Xiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Liu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ASE&apos;16</title>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="308" to="319" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">TaintPipe: pipelined symbolic taint analysis</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ming</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Xiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Liu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">24th USENIX Security Symposium. USENIX Association</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="65" to="80" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Valgrind: A program supervision framework</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Nethercote</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Seward</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Electron. Notes Theor. Comput. Sci</title>
+		<imprint>
+			<biblScope unit="volume">89</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="44" to="66" />
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Dynamic taint analysis for automatic detection, analysis, and signature generation of exploits on commodity software</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Newsome</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">X</forename><surname>Song</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NDSS&apos;05</title>
+		<imprint>
+			<publisher>The Internet Society</publisher>
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Argos: an emulator for fingerprinting zero-day attacks for advertised honeypots with automatic signature generation</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Portokalidis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Slowinska</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Bos</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">EuroSys&apos;06</title>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2006">2006</date>
+			<biblScope unit="page" from="15" to="27" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">LIFT: A low-overhead practical information flow tracking system for detecting security attacks</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Qin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">MICRO-39</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2006">2006</date>
+			<biblScope unit="page" from="135" to="148" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">JetStream: cluster-scale parallelization of information flow queries</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Quinn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Devecsery</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">M</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Flinn</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">OSDI&apos;16. USENIX Association</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="451" to="466" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">Parallelizing dynamic information flow tracking</title>
+		<author>
+			<persName><forename type="first">O</forename><surname>Ruwase</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">B</forename><surname>Gibbons</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">C</forename><surname>Mowry</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Ramachandran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Kozuch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">P</forename><surname>Ryan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">SPAA&apos;08</title>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2008">2008</date>
+			<biblScope unit="page" from="35" to="45" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">Fine grained dataflow tracking with proximal gradients</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Ryan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Shah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>She</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Bhat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Jana</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">30th USENIX Security Symposium. USENIX Association</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="1611" to="1628" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">Triton: A dynamic symbolic execution framework</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Saudel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Salwan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Symposium sur la sécurité des technologies de l&apos;information et des communications</title>
+		<meeting><address><addrLine>Rennes, France</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2015-06">Jun. 2015</date>
+			<biblScope unit="page" from="31" to="54" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<title level="a" type="main">Efficient fine-grained binary instrumentationwith applications to taint-tracking</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Saxena</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Sekar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Puranik</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">CGO&apos;08</title>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2008">2008</date>
+			<biblScope unit="page" from="74" to="83" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<monogr>
+		<title level="m" type="main">Neutaint: Efficient dynamic taint analysis with neural networks,&quot; in SP&apos;20</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>She</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Shah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Ray</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Jana</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<publisher>IEEE</publisher>
+			<biblScope unit="page" from="1527" to="1543" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<analytic>
+		<title level="a" type="main">Secure program execution via dynamic information flow tracking</title>
+		<author>
+			<persName><forename type="first">G</forename><forename type="middle">E</forename><surname>Suh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">W</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Devadas</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ASPLOS&apos;04</title>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2004">2004</date>
+			<biblScope unit="page" from="85" to="96" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<monogr>
+		<title level="m" type="main">RIFLE: an architectural framework for user-centric information-flow security</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Vachharajani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">J</forename><surname>Bridges</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Rangan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Ottoni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">A</forename><surname>Blome</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><forename type="middle">A</forename><surname>Reis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Vachharajani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">I</forename><surname>August</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2004">2004</date>
+			<publisher>IEEE</publisher>
+			<biblScope unit="page" from="243" to="254" />
+		</imprint>
+	</monogr>
+	<note>in MICRO-37</note>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<analytic>
+		<title level="a" type="main">Panorama: capturing system-wide information flow for malware detection and analysis</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Yin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">X</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Egele</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Kruegel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Kirda</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">CCS&apos;07</title>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2007">2007</date>
+			<biblScope unit="page" from="116" to="127" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<analytic>
+		<title level="a" type="main">Hardware enforcement of application security policies using tagged memory</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Zeldovich</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Kannan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Dalton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Kozyrakis</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">OSDI&apos;08. USENIX Association</title>
+		<imprint>
+			<date type="published" when="2008">2008</date>
+			<biblScope unit="page" from="225" to="240" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b51">
+	<analytic>
+		<title level="a" type="main">TaintEraser: protecting sensitive data leaks using application-level taint tracking</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">Y</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Jung</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Kohno</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wetherall</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM SIGOPS Oper. Syst. Rev</title>
+		<imprint>
+			<biblScope unit="volume">45</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="142" to="154" />
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b52">
+	<analytic>
+		<title level="a" type="main">Dytaint: The implementation of a novel lightweight 3-state dynamic taint analysis framework for x86 binary programs</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Li</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Comput. Secur</title>
+		<imprint>
+			<biblScope unit="volume">52</biblScope>
+			<biblScope unit="page" from="51" to="69" />
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

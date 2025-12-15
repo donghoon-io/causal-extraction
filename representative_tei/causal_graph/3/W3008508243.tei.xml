@@ -1,0 +1,1696 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">OmegaLog: High-Fidelity Attack Investigation via Transparent Multi-layer Log Analysis</title>
+				<funder ref="#_RqyTJr5 #_4yDnZCx">
+					<orgName type="full">National Science Foundation</orgName>
+				</funder>
+				<funder ref="#_rD6teTA">
+					<orgName type="full">Sohaib &amp; Sara Abbasi Fellowship</orgName>
+				</funder>
+				<funder ref="#_eezhJzp">
+					<orgName type="full">unknown</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Wajih</forename><forename type="middle">Ul</forename><surname>Hassan</surname></persName>
+							<email>whassan3@illinois.edu</email>
+							<affiliation key="aff0">
+								<orgName type="institution">University of Illinois at Urbana-Champaign</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Mohammad</forename><forename type="middle">A</forename><surname>Noureddine</surname></persName>
+							<email>nouredd2@illinois.edu</email>
+							<affiliation key="aff0">
+								<orgName type="institution">University of Illinois at Urbana-Champaign</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Pubali</forename><surname>Datta</surname></persName>
+							<email>pdatta2@illinois.edu</email>
+							<affiliation key="aff0">
+								<orgName type="institution">University of Illinois at Urbana-Champaign</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Adam</forename><surname>Bates</surname></persName>
+							<email>batesa@illinois.edu</email>
+							<affiliation key="aff0">
+								<orgName type="institution">University of Illinois at Urbana-Champaign</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">OmegaLog: High-Fidelity Attack Investigation via Transparent Multi-layer Log Analysis</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+					<idno type="DOI">10.14722/ndss.2020.24270</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-14T18:20+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Recent advances in causality analysis have enabled investigators to trace multi-stage attacks using provenance graphs. Based on system-layer audit logs (e.g., syscalls), these approaches omit vital sources of application context (e.g., email addresses, HTTP response codes) that can be found in higher layers of the system. Although such information is often essential to understanding attack behaviors, it is difficult to incorporate this evidence into causal analysis engines because of the semantic gap that exists between system layers. To address that shortcoming, we propose the notion of universal provenance, which encodes all forensically relevant causal dependencies regardless of their layer of origin. To transparently realize that vision on commodity systems, we present OmegaLog, a provenance tracker that bridges the semantic gap between system and application logging contexts. OmegaLog analyzes program binaries to identify and model application-layer logging behaviors, enabling accurate reconciliation of application events with system-layer accesses. OmegaLog then intercepts applications' runtime logging activities and grafts those events onto the system-layer provenance graph, allowing investigators to reason more precisely about the nature of attacks. We demonstrate that our system is widely applicable to existing software projects and can transparently facilitate execution partitioning of provenance graphs without any training or developer intervention. Evaluation on real-world attack scenarios shows that our technique generates concise provenance graphs with rich semantic information relative to the state-of-the-art, with an average runtime overhead of 4%.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>I. INTRODUCTION</head><p>System intrusions are becoming progressively more subtle and complex. Using an approach exemplified by the "low and slow" attack strategy of Advanced Persistent Threats, attackers now lurk in target systems for extended periods to extend their reach before initiating devastating attacks. By avoiding actions that would immediately arouse suspicion, attackers can achieve dwell times that range from weeks to months, as was the case in numerous high-profile data breaches including Target <ref type="bibr" target="#b12">[14]</ref>, Equifax <ref type="bibr" target="#b10">[12]</ref>, and the Office of Personnel Management <ref type="bibr" target="#b11">[13]</ref>.</p><p>Against such odds, advancements in system auditing have proven invaluable in detecting, investigating, and ultimately responding to threats. The notion of data provenance has been applied to great effect on traditional system audit logs, parsing individual system events into provenance graphs that encode the history of a system's execution <ref type="bibr" target="#b15">[17]</ref>, <ref type="bibr" target="#b24">[26]</ref>, <ref type="bibr" target="#b49">[51]</ref>, <ref type="bibr" target="#b30">[32]</ref>, <ref type="bibr" target="#b34">[36]</ref>, <ref type="bibr" target="#b38">[40]</ref>, <ref type="bibr" target="#b29">[31]</ref>. Such provenance graphs allow investigators to trace the root causes and ramifications of an attack by using causality analysis. Leveraging this principal capability, causality analysis has matured from a costly offline investigation tool to a highlyefficient method of tracing attackers in real-time <ref type="bibr" target="#b29">[31]</ref>, <ref type="bibr" target="#b14">[16]</ref>.</p><p>Given the importance of threat investigation to system defense, it is perhaps surprising that prior work on causality analysis has been oblivious to application-layer semantics. As an example, consider the execution of the web service shown in Fig. <ref type="figure" target="#fig_6">1</ref>. Fig. <ref type="figure" target="#fig_6">1</ref>(a) describes the event sequence of the example, in which the server responds to two HTTP requests for index.html and form.html, respectively, yielding the system log shown in Fig. <ref type="figure" target="#fig_6">1(b</ref>). As a normal part of its execution, the server also maintains its own event logs that contain additional information (e.g., user-agent strings) shown in Fig. <ref type="figure" target="#fig_6">1</ref>(c), that is opaque to the system layer. State-of-the-art causality analysis engines, using system audit logs, produce a provenance graph similar to Fig. <ref type="figure" target="#fig_6">1(d)</ref>; however, the forensic evidence disclosed by the application itself is not encoded in this graph. That is unfortunate, as recent studies <ref type="bibr" target="#b23">[25]</ref>, <ref type="bibr" target="#b19">[21]</ref>, <ref type="bibr" target="#b47">[49]</ref> have shown that developers explicitly disclose the occurrence of important events through application logging. Further, we observe that the well-studied problem of dependency explosion <ref type="bibr" target="#b37">[39]</ref>, <ref type="bibr" target="#b40">[42]</ref>, <ref type="bibr" target="#b39">[41]</ref>, which considers the difficulty of tracing dependencies through high-fanout processes, is itself a result of unknown application semantics. For example, the dependency graph in Fig. <ref type="figure" target="#fig_6">1 (d</ref>) is not aware that the NGINX vertex can be subdivided into two autonomous units of work, marked by the two HTTP requests found in the application event log.</p><p>Prior work on log analysis has not provided a generic and reliable (i.e., causality-based) solution to cross-layer attack investigation. Techniques for execution partitioning mitigate dependency explosion by identifying limited and coarsegrained application states, e.g., when a program starts its main event-handling loop <ref type="bibr" target="#b37">[39]</ref>, but require invasive instrumentation <ref type="bibr" target="#b37">[39]</ref>, <ref type="bibr" target="#b39">[41]</ref> or error-prone training <ref type="bibr" target="#b37">[39]</ref>, <ref type="bibr" target="#b38">[40]</ref>, <ref type="bibr" target="#b40">[42]</ref>. Past frameworks for layered provenance tracking <ref type="bibr" target="#b55">[57]</ref>, <ref type="bibr" target="#b26">[28]</ref>, <ref type="bibr" target="#b15">[17]</ref>, <ref type="bibr" target="#b45">[47]</ref> technically support application semantics, but rather than harness the developer's original event logs, instead call for costly (and redundant!) instrumentation efforts. Elsewhere in the literature, application event logs have been leveraged for program debugging <ref type="bibr" target="#b22">[24]</ref>, <ref type="bibr" target="#b57">[59]</ref>, <ref type="bibr" target="#b58">[60]</ref>, profiling <ref type="bibr" target="#b63">[65]</ref>, <ref type="bibr" target="#b62">[64]</ref>, and runtime monitoring <ref type="bibr" target="#b46">[48]</ref>; however, these approaches are application-centric, considering only one application's siloed event logs at a time, and thus cannot reconstruct complex workflows between multiple processes. Attempts to "stitch" application logs together to trace multi-application workflows <ref type="bibr" target="#b48">[50]</ref>, <ref type="bibr" target="#b63">[65]</ref>, <ref type="bibr" target="#b62">[64]</ref> commonly ignore the system layer, but also use ad hoc rules and co-occurrence of log events to assume a causal relationship; this assumption introduces error and could potentially undermine threat investigations.</p><p>In this work, we argue that attack investigation capabilities can be dramatically improved through the unification of all forensically relevant events on the system in a single holistic log. To achieve that vision transparently and effortlessly on today's commodity systems, we present OmegaLog, an endto-end provenance tracker that merges application event logs with the system log to generate a universal provenance graph (UPG). This graph combines the causal reasoning strengths of whole-system logging with the rich semantic context of application event logs. To construct the UPG, OmegaLog automatically parses dispersed, intertwined, and heterogeneous application event log messages at runtime and associates each record with the appropriate abstractions in the whole-system provenance graph. Generating UPG allows OmegaLog to transparently solve both the dependency explosion problem (by identifying event-handling loops through the application event sequences) and the semantic gap problem (by grafting application event logs onto the whole-system provenance graph). Most excitingly, OmegaLog does not require any instrumentation on the applications or underlying system. Several challenges exist in the design of a universal provenance collection system. First, the ecosystem of software logging frameworks is heterogeneous, and event logging is fundamentally similar to any other file I/O, making it difficult to automatically identify application logging activity. Second, event logs are regularly multiplexed across multiple threads in an application, making it difficult to differentiate concurrent units of work. Finally, each unit of work in an application will generate log events whose occurrence and ordering vary based on the dynamic control flow, requiring a deep understanding of the application's logging behavior to identify meaningful boundaries for execution unit partitioning.</p><p>To solve those challenges, OmegaLog performs static analysis on application binaries to automatically identify log message writing procedures, using symbolic execution and emulation to extract descriptive Log Message Strings (LMS) for each of the call sites. Then, OmegaLog performs control flow analysis on the binary to identify the temporal relationships between LMSes, generating a set of all valid LMS control flow paths that may occur during execution. At runtime, OmegaLog then uses a kernel module that intercepts write syscall and catches all log events emitted by the application, associating each event with the correct PID/TID and timestamp to detangle concurrent logging activity. Finally, those augmented application event logs are merged with system-level logs into a unified universal provenance log. Upon attack investigation, OmegaLog is able to use the LMS control flow paths to parse the flattened stream of application events in the universal log, partition them into execution units, and finally add them as vertices within the whole-system provenance graph in causally correct manner.</p><p>The main contributions of this paper are as follows:</p><p>We propose the concept of the universal provenance that combines the advantages of whole-system provenance with applications' innate event-logging activity, providing a transparent and generic solution for the semantic gap problem in threat investigations. We develop robust binary analysis techniques to automatically extract logging behaviors from an application. Our proof-of-concept implementation, OmegaLog, nonintrusively collects and integrates applications' event logs with the Linux audit logs <ref type="bibr" target="#b4">[5]</ref>. We evaluate OmegaLog for performance, accuracy, and efficacy. Our results indicate that OmegaLog exhibits low runtime overheads (4%), is broadly deployable to existing software projects, and enables semantically rich attack reconstructions in real-world attack scenarios.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>II. MOTIVATION</head><p>In this section, we explain the motivation for our approach by considering a data exfiltration and defacement attack on an online shopping website. We use this example to illustrate the limitations of existing provenance tracking systems <ref type="bibr" target="#b15">[17]</ref>, <ref type="bibr" target="#b40">[42]</ref>, <ref type="bibr" target="#b39">[41]</ref>, <ref type="bibr" target="#b14">[16]</ref>, <ref type="bibr" target="#b34">[36]</ref>, <ref type="bibr" target="#b35">[37]</ref>, <ref type="bibr" target="#b36">[38]</ref>. Consider a simple WordPress website hosted on a web server. Requests to the website are first received by an HAProxy, which balances load across different Apache instances running on the web server, while customer transactions are recorded in a PostgreSQL database. The administrator has turned on application event logging for Apache httpd, HAProxy, and PostgreSQL. In addition, the server is performing system-level logging, e.g., through Linux Audit (auditd) <ref type="bibr" target="#b4">[5]</ref> or Linux Provenance Modules (LPM) <ref type="bibr" target="#b15">[17]</ref>, which continuously collect system logs. One day, the administrator discovers that the online store has been defaced and that some of the sensitive customer information has been posted to a public Pastebin website. On average, the shopping website receives tens of thousands of requests per day; among those, one request was malicious.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Investigating with Application Event Logs</head><p>To attribute the attack and prepare an appropriate response, the administrator initiates a forensic inquiry by first inspecting the application event logs. The administrator finds that the accounts database table must have been accessed and uses this as a symptom to initiate attack investigations. The admin then runs a grep query on PostgreSQL event logs, which returns the following query log message:</p><formula xml:id="formula_0">SELECT * FROM users WHERE user_id=123 UNION SELECT password FROM accounts;</formula><p>This log message strongly indicates that an attacker exploited a SQL injection vulnerability in the website, and also suggests that the attacker was able to retrieve the login credentials for admin.php which gave attacker privileged site access.</p><p>Limitations of Application Event Logs. At this point, the administrator is unable to proceed in the investigation using application event logs alone. It is clear that the HAProxy and Apache httpd logs contain important evidence such as the HTTP requests associated with the SQL injection attack, but re-running of the same grep query on Apache's logs did not return any result. The reason is that the attacker used a POST command to send the SQL query and that command was not contained in the URL captured in the Apache httpd event log messages. The investigation has stalled with important questions left unanswered: 1) What was the IP address associated with the malicious HTTP request? 2) How were the login credentials used to deface the website, and what additional damage was caused? 3) Which PHP file on the site is not properly sanitizing user inputs, exposing the SQL injection vulnerability? Those questions reflect an inherent limitation of application event logs: they cannot causally relate events across applications and thus cannot trace workflow dependencies.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Investigating with System Logs</head><p>To proceed, the administrator attempts to perform causality analysis using a whole-system provenance graph. At this layer, it is easy to trace dependencies across multiple coordinated processes in a workflow. Because the malicious query shown above resulted in a read to the PostgreSQL database, the administrator uses /usr/local/db/datafile.db as a symptom event and issues a backtrace query, yielding the Limitation of System Logs #1: Dependency Explosion. The administrator's backtrace identifies thousands of "root causes" for the SQL injection attack because of the dependency explosion problem. The reason is that system-layer provenance trackers must conservatively assume that the output of a process is causally dependent on all preceding process inputs <ref type="bibr" target="#b37">[39]</ref>, <ref type="bibr" target="#b40">[42]</ref>, <ref type="bibr" target="#b39">[41]</ref>, <ref type="bibr" target="#b36">[38]</ref>. Although the malicious query string is known, causal analysis does not allow the administrator to associate the query with a particular outbound edge of /usr/local/db/datafile.db in the provenance graph. Even if the administrator restricted most of the dependencies between Apache httpd and PostgreSQL (e.g., though timing bounds), admin would again face the same problem when identifying which input request from HAProxy to Apache httpd lies on the attack path.</p><p>Recent work <ref type="bibr" target="#b37">[39]</ref>, <ref type="bibr" target="#b40">[42]</ref>, <ref type="bibr" target="#b38">[40]</ref> has introduced execution partitioning as a viable solution to the dependency explosion problem. These systems decompose long-running processes into autonomous "units", each representing an iteration of event-handling loop, such that input-output dependencies are traced only through their corresponding unit. Where event handling loops do not encode work units, Kwon et al. propose an inference-based technique for identifying units from system log traces <ref type="bibr" target="#b36">[38]</ref> while Ma et al. propose a framework for manually annotating source code to disclose meaningful unit boundaries <ref type="bibr" target="#b39">[41]</ref>.</p><p>Unfortunately, prior approaches suffer from noteworthy limitations, which we summarize in Table <ref type="table" target="#tab_1">I</ref>. Most execution partitioning systems rely on instrumentation to identify unit boundaries, requiring either domain knowledge or manual effort and assuming the right to modify program binaries, which is not always available <ref type="bibr" target="#b38">[40]</ref>. The common requirement of training runs exposes systems like BEEP and Protracer to the classic code-coverage problem present in any dynamic analysis, and inference-based techniques (MCI) may also struggle with out-of-order events due to the presence of concurrent or cooperating applications during training runs. All past approaches introduce additional space overhead in order to track unit boundaries; fully automated identification of event loops (BEEP, Protracer) can generate excessive units that can waste space and CPU cycles <ref type="bibr" target="#b39">[41]</ref>. Most notably, prior approaches do not consider the broader value of application semantics as forensic evidence outside of the bare minimum required for the identification of work units.</p><p>Limitation of System Logs #2: Semantic Gap. Existing system-level provenance logs are beneficial in that they offer a broad view of system activity, but unfortunately they lack knowledge of application-specific behaviors that are pivotal for attack reconstruction. In our motivating example, information such as failed login attempts, HTTP headers, WordPress plugin behavior, and SQL queries cannot be extracted from system logs. Such information is present in the siloed event logs of each application; PostgreSQL maintained a record of all SQL queries, and HAProxy recorded the headers for all HTTP requests. However, it is not possible to associate those event descriptions with the system records reliably in a post-hoc manner, because of multi-threaded activity and ambiguous or incomplete information within the application event logs.</p><p>Prior work has sought to address the semantic gap problem through instrumentation-based techniques <ref type="bibr" target="#b55">[57]</ref>, <ref type="bibr" target="#b26">[28]</ref>, <ref type="bibr" target="#b53">[55]</ref>. Those approaches either statically or dynamically instrument function calls in the application to disclose function names, arguments, and return values. However, such instrumentationbased systems suffer from several limitations: (1) developers need to specify which functions to instrument, imposing a domain knowledge requirement; (2) the logging information is captured on a per-application basis and thus cannot be used to connect information flow between different applications; and</p><p>(3) high-level semantic events may not always be effectively captured at the function call level.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Our Approach</head><p>Recent work in application logging <ref type="bibr" target="#b23">[25]</ref>, <ref type="bibr" target="#b63">[65]</ref>, <ref type="bibr" target="#b62">[64]</ref>, <ref type="bibr" target="#b19">[21]</ref>, <ref type="bibr" target="#b47">[49]</ref> has shown the efficacy of application logs in program understanding, debugging, and profiling. OmegaLog takes inspiration from those efforts, with the goal of better leveraging event logs during attack investigation. The key insight behind OmegaLog is that developers have already done the hard work of encoding high-level application semantics in the form of event logging statements; these statements not only contain the relevant forensic information that we require, but also mark the boundaries of execution units in the program. The insertion of event logging statements is an organic byproduct of sound software engineering practices, permitting developers and users to better understand programs' runtime behavior. Thus, it is possible to enrich system logs with application semantics without further instrumentation or profiling. Moreover, these applications logs can be used to identify execution units.</p><p>Applying that intuition to our motivating example yields the provenance graph in Fig. <ref type="figure" target="#fig_3">3a</ref>, which was generated using OmegaLog. The administrator can associate the malicious SQL   query with a specific system call event (read). By performing execution partitioning on PostgreSQL using OmegaLog's logging behavior analysis, the administrator is then able to trace back to system calls issued and received by Apache httpd, which are also annotated with application events describing the vulnerable web form. Iteratively, OmegaLog uses execution partitioning again to trace back to the correct unit of work within HAProxy to identify the IP address of the attacker. After finding out how the user data and login credentials were stolen using SQL injection, the investigator tries to figure out how the website was defaced by issuing a backward-tracing query on the index.html file. Using the OmegaLog provenance graph shown in Fig. <ref type="figure" target="#fig_3">3b</ref>, the investigator deduces that the attacker used a WordPress file manager plugin to change index.html.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>III. THREAT MODEL &amp; ASSUMPTIONS</head><p>This work considers an attacker whose primary goal is to exploit a security vulnerability in an application running on a system and exfiltrate or manipulate sensitive information present in the system. We make the typical assumptions of work in this space about the integrity of the operating system, kernel-layer auditing framework, audit logs and application event logs, all of which is in our trusted computing base (TCB) (cf., <ref type="bibr" target="#b37">[39]</ref>, <ref type="bibr" target="#b40">[42]</ref>, <ref type="bibr" target="#b39">[41]</ref>, <ref type="bibr" target="#b34">[36]</ref>, <ref type="bibr" target="#b28">[30]</ref>, <ref type="bibr" target="#b36">[38]</ref>, <ref type="bibr" target="#b56">[58]</ref>, <ref type="bibr" target="#b14">[16]</ref>).</p><p>That assumption is made more reasonable through systemhardening techniques, e.g., <ref type="bibr" target="#b15">[17]</ref>, <ref type="bibr" target="#b18">[20]</ref>, designed to mitigate threats to system logs. Like all prior work on execution partitioning <ref type="bibr" target="#b37">[39]</ref>, <ref type="bibr" target="#b40">[42]</ref>, <ref type="bibr" target="#b39">[41]</ref>, <ref type="bibr" target="#b36">[38]</ref>, <ref type="bibr" target="#b27">[29]</ref>, <ref type="bibr" target="#b30">[32]</ref>, we also assume the integrity of applications' control flows (further discussed in §X). We consider hardware-layer trojans, side channel attacks, and backdoors to be out of scope of this paper.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>IV. APPLICATION LOGGING BEHAVIOUR</head><p>Our approach to partition long-running program into execution units and overcome the dependence explosion problem depends on the pervasiveness of event-logging behavior in those applications. Fortunately, the importance of logging in applications has been widely established <ref type="bibr" target="#b31">[33]</ref>. Practically, all open-source applications print event log messages, offering four levels of verbosity: FATAL is for an error that is forcing a shutdown, ERROR is for any error that is fatal to the operation, INFO is for generally useful information, and DEBUG is for information that is diagnostically helpful. Note that logging levels are inclusive; higher levels also print messages that belong to lower levels (i.e. FATAL ⊆ ERROR ⊆ INFO ⊆ DEBUG).</p><p>However, to partition successful executions of an application into its units, we require log messages with verbosity level of INFO or DEBUG to be present inside event-handling loops. Unfortunately, such behavior in applications has not been investigated. In that regard, we studied a large number of popular open-source applications.</p><p>We collected a list of 79 long-running Linux applications which belong to different categories. Those applications are written in the C/C++, Java, Python, and Erlang programming languages. We investigated the source code and man pages of those applications to identify the event-handling loops and understand if they print log messages for each meaningful event. Lee et al. <ref type="bibr" target="#b37">[39]</ref> conducted a similar study in 2013 but they only analyzed the design patterns of open-source applications and the pervasiveness of event-handling loops as drivers for execution. They did not however study the logging behavior of those applications and the presence of log messages inside event-handling loops.</p><p>We summarize our results in Table <ref type="table" target="#tab_2">II</ref>. In the column "Apps with Log Verbosity of", we show how many of 79 profiled applications include log statements in their event-handling loop at verbosity of INFO and DEBUG, and how many of 79 applications do not print meaningful log messages for new events. We observe that 39 applications print log with both INFO and DEBUG verbosity levels (IN+DE) inside the eventhandling loops. While 8 applications only log at INFO level and 17 applications only log at DEBUG level. <ref type="foot" target="#foot_0">1</ref> We show the intraevent-handling loop logging behavior of some of the wellknow applications in Figure <ref type="figure" target="#fig_4">4</ref>.</p><p>During our study, we found 15 applications that do not have any information about event logs in their source code or in man pages. We categorized those applications as follows:</p><p>• Light-weight Applications: Certain client-server applications are designed to be light-weight to keep a minimal resource footprint. Those applications -including thttpd (Web server) and skod (FTP client) -do not print log messages for new events. • GUI Applications: We observe that 12 out of 17 GUI applications either (1) do not print log messages, or (2) they print log messages that do not match the expectations of the forensic investigator. In other words, those log messages were not meaningful to partition the execution. Ma et al. <ref type="bibr" target="#b39">[41]</ref> also observed similar behavior for GUI applications where event-handling loops do not correspond to the highlevel logic tasks. For example, we found that none of the PDF readers in our study printed log messages whenever a new PDF file was opened. Such PDF file open event is forensically important event for threat investigations <ref type="bibr" target="#b39">[41]</ref>.</p><p>Our study suggests that sufficient logging information is present inside the event-handling loops of long-running applications. This behavior allows us to automatically identify the unit boundaries of those programs. For further evaluation, we only consider the applications shown in Table <ref type="table" target="#tab_4">III</ref>. We picked those applications based on their popularity and category. Note that we did not pick any subjects from the category of applications that do not print meaningful log messages for new events. Moreover, GUI applications usually use asynchronous I/O with call backs and such programming model is not currently handled by OmegaLog (described more in §X).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>V. DESIGN OVERVIEW</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Definitions</head><p>Whole-System Provenance Graph. A graph generated from system-level audit logs, in which the vertices, represent the system subject (processes) and system objects (files and socket connection), while the edges represent a causal dependency event. The edges are usually annotated with a timestamp of the event and the type of event, such as read or execute. Properties of Causality Analysis. The provenance graph should preserve the following three properties of causality analysis. Validity means that the provenance graph describes the correct execution of the system ,i.e., the provenance graph does not add an edge between entities that are not causally related. Soundness means that the provenance graph respects the happens-before relationship during backward and forward tracing queries. Completeness means that the provenance graph is self-contained and fully explains the relevant event.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Design Goals</head><p>The limitations mentioned in §II on prior work motivated our identification of the following high-level goals:</p><p>• Semantics-Aware. Our threat investigation solution must be cognizant of the high-level semantic events that occurred within the contexts of each attack-related application. • Widely Applicable. Our solution must be immediately deployable on a broad set of applications commonly found in enterprise environments. Therefore, the solution must not depend on instrumentation or developer annotations. Moreover, our techniques should be agnostic to applications' system architecture and should apply to proprietary software, for which source code is usually not available. • Forensically Correct. Any modifications made to the whole-system provenance graph by our solution must support existing causal analysis queries and preserve the properties of validity, soundness, and completeness.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. OmegaLog</head><p>Fig. <ref type="figure" target="#fig_5">5</ref> presents a high-level overview of the OmegaLog system, which requires that both system-level logging and application event logging be enabled. OmegaLog's functionality is divided into three phases: static binary analysis ( §VI), runtime ( §VII), and investigation ( §VIII). In the static analysis phase, ( 1 ) OmegaLog first analyzes all application binaries to extract all log message strings (LMSes) that describe eventlogging statements in the code, and then uses control flow analysis to identify all possible temporal paths of LMS in different executions of the program. ( 2 ) All those LMS control flow paths are stored in a database that is input to a log parser to bootstrap interpretation of application events. At runtime, ( 3 ) OmegaLog captures all the application events and augments them with the application's PID/TID and a timestamp of log event through kernel module that intercepts write syscalls. Simultaneously, ( 4 ) OmegaLog collects system logs from the underlying whole-system provenance tracker and associates them with the appropriate application events by using the PID/TID as a disambiguator; and store them into a unified log. Upon attack investigation, ( 5 ) OmegaLog passes that universal log and the LMS control flow paths database to a log parser that partitions associated processes in the wholesystem graph by inserting a new app log vertex. This vertex is connected to the corresponding partitioned process and annotated with log messages in that particular execution unit of the process. The semantic-aware and execution-partitioned graph is called universal provenance graph (UPG), which is presented to the investigator.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>VI. OMEGALOG: STATIC BINARY ANALYSIS PHASE</head><p>The static analysis routine profiles application binaries before their execution. During static analysis, OmegaLog performs several passes over the binary's control flow graph (CFG) to identify logging behaviors and generate all possible LMS paths that are possible during execution of that binary. Specifically, we leverage the Angr <ref type="bibr" target="#b51">[53]</ref> toolchain to build the CFG, and then introduce new methods to automatically identify logging procedures in the binary ( §VI-A). Next, we concretize LMS ( §VI-B) using the identified logging procedure, and finally we generate all possible LMS control flow paths that can occur during execution of the binary ( §VI-D). Those steps are also shown in Fig. <ref type="figure" target="#fig_5">5</ref>.</p><p>As highlighted in earlier work <ref type="bibr" target="#b17">[19]</ref>, binary analysis imposes high costs, especially when symbolic execution and emulation are necessary. In what follows, we describe how OmegaLog avoids prohibitive analysis costs while profiling applicationlogging behaviors. Although, OmegaLog works on application binaries, for convenience, we explain static analysis procedures by using source code snippets. Algorithm 1 offers a high-level overview of our static analysis routines.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Identifying Logging Procedures</head><p>The ecosystem of event-logging frameworks is diverse and heterogeneous; to overcome the resulting issues, OmegaLog identifies logging procedures in a binary by using two heuristics. 1) Applications use either well-known libraries (e.g., syslog <ref type="bibr" target="#b25">[27]</ref>, log4c <ref type="bibr" target="#b5">[6]</ref>) or functionally-similar custom routines to produce, store, and flush log messages to a log</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Log Parser &amp; Graph Generator</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1.">Identifying Logging Procedures</head><p>Log1: "Opened file "%fname"" Log8: "Accepted certificate ID "%s" signed by %s CA" file. The libraries leverage the I/O procedures of Libc, such as fprintf or snprintf, to write the log messages to disk. OmegaLog can thus identify candidate logging procedures through a backward traversal of the CFG from these procedures call sites. 2) Most applications that create event logs store messages in the /var/log/ directory by default. Thus, OmegaLog can differentiate log I/O from other I/O based on the file path and consider all the procedures that write to /var/log/ directory as logging procedures. Combining these two heuristics was sufficient to identify logging behaviors for applications in our evaluation dataset. Nevertheless, Omega-Log also provides an interface that sysadmins can use to add the names of their logging procedures, if the binary does not follow the aforementioned conventions.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.">Building LMS Regular Expressions 2. Extracting Log Message Strings (LMS</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Extracting Log Message Strings (LMS)</head><p>Once we have identified all the logging procedure names in the previous step, we assign a unique identifier for each logging procedure callsite. We need to generate an LMS that describes the format specifier arguments (template) of the log message. This step requires OmegaLog to extract the binary's full control flow graph and perform symbolic execution <ref type="bibr" target="#b33">[35]</ref> to extract the values of such arguments. We henceforth refer to this process as concretization. However, performing a complete symbolic execution over the binary is a computationally expensive operation that leads to the path explosion problem, especially for applications with complex compile-time optimizations. In fact, while experimenting with the applications listed in Table <ref type="table" target="#tab_4">III</ref>, we realized that most applications are compiled with at least the -O2 compiler optimization level, which greatly complicated the task of CFG extraction and symbolic execution. For example, when we used the Angr toolset, extracting the CFG and performing symbolic execution on the openssh server binary quickly exhausted 64 GB of memory on our experimental machine and did not return a conclusive result, even after running for several hours.</p><p>To overcome that problem, we first note that our exclusive purpose is to obtain the format specifier arguments for logging function calls; any symbolic execution operation that does not serve this purpose is unnecessary. Therefore, OmegaLog first references the CFG built without symbolic execution (referred to as a FastCFG in Angr toolset), which is generated by traversing the binary and using several heuristics to resolve indirect jumps; that approach greatly reduces the CFG computational and memory requirements <ref type="bibr" target="#b51">[53]</ref>. Using the FastCFG, we identify the basic blocks that contain function calls or jumps to logging procedures, and thus we can focus our attention solely on such blocks. Nevertheless, unlike the full CFG, the FastCFG does not retain any state about the binary that would allow OmegaLog to concretize the values of the logging procedures' arguments.</p><p>To complete our analysis, we introduce an optimized concretization we refer to as peephole concretization. While studying the code of the open-source programs shown in Table <ref type="table" target="#tab_4">III</ref>, we observed that for the most part, format specifier arguments to logging procedures are passed either (1) as direct constant strings or (2) through constant variables defined near the procedure call. For example, consider the call to the debug logging procedure in the OpenSSH application shown in Fig. <ref type="figure" target="#fig_4">4</ref>. The LMS we are interested in extracting is the message ''PAM: password authentication accepted for %.100s'' passed directly as a constant to the function call. At the machine instructions level, that observation reflects the fact that LMSes are typically defined within the same basic block that ends with the call or jump instruction to the address of a logging function, or in a nearby preceding block.</p><p>Using peephole concretization, we only need to perform local symbolic execution starting from the basic blocks identified in the previous step, stopping directly after executing the call instruction to the target logging procedure. We show the pseudocode for our peephole concretization step in Algorithm 1. If the symbolic execution task of a given basic block b fails to concretize LMS values, OmegaLog then launches new symbolic execution tasks from each of b's predecessors (referred to as b.predecessors() in Algorithm 1). We refer to the operation of restarting symbolic execution from a basic block's predecessors as backtracing. OmegaLog bounds the computational resources employed for the concretization step by halting symbolic execution after performing maxBackTrace backtrace operations from a given block b. If symbolic execution fails to produce concretized LMS values after maxBackTrace operations, OmegaLog marks the function as unresolved and thus produces incomplete LMS paths. Func PEEPHOLECONCRETIZATION(cfg, call sites, maxBackTrace)</p><formula xml:id="formula_1">V ← Φ V ← {(b, 0) for b ∈ call sites} while V = Φ do (b, backtrace) ← V.pop() /* L is of the form {(LMS , call stack cs)} */ L ← SYMBOLICEXECUTION(g, v) if L = Φ then foreach ( , cs) ∈ L do /* Taking care of context sensitivity */ topBlock ← cs.top() if ( , topBlock) / ∈ V then V ← V ∪ {( , topBlock)} end end end else if backtrace ≤ maxBackTrace then V ← V ∪ {(v, backtrace + 1) for v ∈ b.predecessors()} end end return V Func BUILDLMSPATHS(cf g, V, F ) /* E is the set of paths between LMS */ E ← Φ foreach f ∈ cf g.f unctions()\{F } do</formula><p>/* Extract the entry points and external returns */ entries ← f .entry points() returns ← f .jumps()</p><formula xml:id="formula_2">E ← E ∪ GETLOCALPATHS(V, f ) end</formula><p>Our algorithm may yield ambiguous LMS paths in the rare cases in which the function call can have different format specifiers based on the sequence of basic blocks that lead to it (i.e., context sensitivity). We address that challenge during the peephole concretization step by recording the call stack that produced each LMS. If two different call stacks produce different LMS for the logging function call, we create a new LMS for each call and then associate it with the topmost basic block on each corresponding function call. That process will guarantee that we do not miss any LMS and that we do not over-approximate the reachability between LMSes when constructing the LMS control flow paths. We note, however, that making format specifiers to logging procedures contextdependent is not a frequently observed programming practice; in fact, we encountered this issue only when processing the transmission and CUPSD applications.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Building LMS Regular Expressions</head><p>Finally, once an LMS has been concretized, we can extract a regex that can be used to match event messages at runtime. The resulting regex describes the format specifiers in the LMS that depend on runtime context (e.g., %s, %d, %%s). Each format specifier is replaced with a suitable regex, e.g., "%d" with "[0-9]+" and "%s" with ".". For example, one LMS we encounter in OpenSSH is PAM: password from user %.12s accepted.</p><p>After extraction, that yields the regex PAM: password from user . * accepted.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D. Generating LMS Control Flow Paths</head><p>After concretizing LMS with selective symbolic execution, OmegaLog can continue to use the FastCFG to enumerate the valid sequences of LMS that can appear in a typical lifecycle of the application. Extraction of all the possible paths is not a direct application of depth-first traversal (DFS); DFS renders an under-approximation of the possible paths for the following reasons. (1) The same basic blocks can be called from different callees and thus must be traversed multiple times. (2) Function calls (i.e., call instructions) must be matched with their appropriate return or jump instructions. Finally, (3) the applications we study use an abundance of loops and recursive functions that must be traversed multiple times in order to avoid skipping over loop paths. Instead, our approach addresses (1) and ( <ref type="formula">2</ref>) by using caching and temporary nodes, and (3) by using fixed-point iterations. Pseudocode for OmegaLog's control flow path building algorithm (BUILDLMSPATHS) is given in Algorithm 1.</p><p>Instead of traversing the full binary's CFG, OmegaLog subdivides the path identification task into several functionlocal traversals that generate subgraphs for each function in the binary. It then links these subgraphs by following call and return/jump instructions to build the full LMS paths. For each function f in the binary's functions (referred to as cf g.f unctions() in Algorithm 1), OmegaLog identifies f 's entry points, in which control flow passes into the function, and its exit points, in which control flow crosses the f 's local body, creating dummy LMS nodes for these points. Then, OmegaLog performs a local traversal of f 's subgraph; starting from f 's entry points, we traverse the control flow edges between the basic blocks that do not leave f 's address space.</p><p>Every time OmegaLog encounters a basic block containing an LMS, that block is added to the path, and its outgoing edges are traversed. To accurately capture looping behavior, we perform a fixed-point iteration over the loop edges until no further changes occur to the LMS path being built. In other words, we keep traversing the same loop edge until no further LMS paths are detected; we then consider the loop edge to be exhausted and move to the next control flow edge. Finally, to speed up the traversal, OmegaLog caches processed basic blocks so that it needs to only traverse them once if multiple paths coincide. Note that we do not consider any loops that do not contain any syscalls because such loops do not produce audit logs and thus cannot be used for execution partitioning. After building the function-local subgraphs, OmegaLog resolves the call and jump instructions in each of them to complete the full LMS paths. For each function call that is on an LMS path, OmegaLog injects the callee's subgraph into the path by creating links between the caller's basic block and the callee's entry points and between the callee's exit points (return blocks and jump instructions targeting the caller) and the callee's return basic block. Using that approach, OmegaLog completes the full LMS paths while also handling recursive functions by creating self-cycles. Subsequently, OmegaLog compresses the graph by removing the dummy nodes created by the BUILDLMSPATHS function and merging their fan-in and fan-out edges. The resulting compressed graph will then contain all the detected LMS paths. Fig. <ref type="figure" target="#fig_7">6</ref> shows an example of LMS control flow paths from a code snippet. The code is shown on the left, and the corresponding LMS paths are shown on the right. The backedge from log3 to log2 just shows that these logs are inside a loop and can appear more than one time.</p><p>LMS control flow paths guide OmegaLog to partition universal provenance log into execution units; however, in some applications printed LMSes in the event-handling loop are not precise enough to partition the loop. For example, Redis event-handling loop shown in Figure <ref type="figure" target="#fig_4">4</ref> prints two LMSes in each iteration of the event-handling loop. The first LMS is printed after the accept syscall and if we partition the eventhandling loop based on the both first and second LMSes, then we will miss that accept syscall in the execution unit and only capture syscalls that happened in between two LMSes. However, if we partition the event-handling loop only on the second LMS then we will generate correct execution units because there is no syscall after second LMS in the eventhandling loop. Thus, during LMS control flow paths construction Omega-Log marks all the LMSes present inside the loops that do not have any syscalls before or after in that loop. Such marking helps OmegaLog to make correct execution partitioning of universal provenance log during investigation phase. If there is no such LMS inside the loop then OmegaLog keeps track of either all the syscalls present after the last LMS (loopending LMS) in the loop or all the syscalls present before the first LMS (loop-starting LMS) in the loop whichever has least number of syscalls. OmegaLog uses such syscall mappings during investigation phase to make correct execution units.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E. Discussion of Static Analysis Limitations</head><p>Our approach is agnostic to the underlying binary analysis tool, but in this work, we used Angr tool, which came with its own set of limitations. Below we discuss these limitations and, in some cases, how we handled them to recover LMS paths.</p><p>False Positives &amp; False Negatives. For more information on accuracy and completeness of Angr's recovered CFG, we refer the reader to <ref type="bibr" target="#b51">[53]</ref>. In brief, if Angr mistakenly adds an edge that should not be in the CFG of an application, OmegaLog will generate an erroneous LMS path in the LMS path database. However, since that execution path will never happen during runtime, OmegaLog will just ignore this false positive LMS path during UPG construction. In case Angr misses an edge in a CFG, we have implemented Lookahead and Lookback matching (described in §VIII), which handle this case.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Runtime Performance.</head><p>OmegaLog's static analysis runtime performance was significantly impacted by Angr's performance of symbolic execution. We introduced PeepholeConcretization to improve runtime while preserving the accuracy of LMS path recovery. Note that static analysis is a one-time, offline cost: once a binary has been profiled, there is no need to re-analyze it unless it has been changed. On modestly provisioned workstations, that task could even be outsourced to more powerful machines.</p><p>Binary Restrictions. First, Angr tool can only work on binaries compiled from C/C++ code. Second, the format modifier argument to a logging procedure should not be built dynamically at runtime as an element of a struct, i.e., it should be a constant string. Third, our binary analysis can only recover logging functions that are not inlined. However, we did not encounter inlined logging functions during our evaluation.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>VII. OMEGALOG: RUNTIME PHASE</head><p>At runtime, OmegaLog performs minimal maintenance of application and whole-system logs; the LMS control flow path models are stored in a database ( 2 in Fig. <ref type="figure" target="#fig_5">5</ref>) and are not consulted until an investigation is initiated. The primary runtime challenge for OmegaLog is that of reconciling logs from different layers, which is difficult when considering a flattened event log of concurrent activities in multi-threaded applications. To address that, OmegaLog intercepts all write syscalls on the host using a kernel module and identifies which write syscalls belong to application event logging using heuristics discussed in §VI. After that it only appends the PID/TID of the process/thread that emitted the event and along with the timestamp of the event's occurrence to the identified log messages, generating enhanced event log messages. <ref type="foot" target="#foot_2">2</ref> Finally, OmegaLog uses Linux Audit API to add the enhanced event log message to the whole-system provenance log file, which provides an ordering for both application-and system-level events.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>VIII. OMEGALOG: INVESTIGATION PHASE</head><p>Following an attack, an administrator can query Omega-Log's log parser and graph generator modules ( 5 in Fig. <ref type="figure" target="#fig_5">5</ref>) to construct a UPG chronicling the system-and applicationlayer events related to the intrusion. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Universal Provenance</head><p>Given application binaries, whole-system provenance logs, and application event logs, during the investigation phase, we aim to generate a UPG while preserving the three properties of causality analysis. Algorithm 2 describes how to construct the backward-tracing UPG from the universal log file, specifically a backtrace query from an observable attack symptom event; the approach to building forward-trace graph follows naturally from this algorithm and is therefore omitted. When an application event log (an augmented LMS) is encountered while parsing the universal log (Function ISAPPENTRY in Algorithm 2), it is necessary to match the event to a known LMS for the application in our LMS paths. That matching is performed by the MATCHLMS function as described below.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. LMS State Matching</head><p>This procedure entails matching of a given runtime application log entry to its associated LMS in the LMS control flow paths DB. For each log entry in the universal log, the matcher identifies all LMS regexes that are candidate matches. For example, if the event message is 02/15/19 sshd [PID]: PAM: password from user root accepted the matcher will look for substring matches, and this will solve the issue of identifying the actual application log entry from the preamble metadata, e.g., "02/15/19 sshd[PID]:".</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Ranking LMS.</head><p>An application log entry may match to multiple LMS regexes in the LMS path DB; this happens because of the prevalence of the %s format specifier in LMS, which can match anything. Therefore, OmegaLog performs a ranking of all the possible candidate matches. We use regex matching to identify the number of non-regex expressions (i.e. constants) in each match. Going back to the example, "PAM: password from user root accepted" will match "PAM: password from user . * accepted" with a ranking of 5, which is equal to the number of non-regex word matches. Finally, the matcher will return the LMS that has the highest rank or the highest number of non-regex word matches that reflects the true state among the candidate LMSes.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>State Machine Matching.</head><p>Once the candidate LMS (LM S cand ) has been identified for an application log entry, OmegaLog attempts to match the LM S cand to a valid LMS path in the database. If this is the first event message, we use a set of heuristics to figure out where we should start from. However, since the matching process can start anywhere in the applications lifetime, usually we have to resort to an exhaustive search over all nodes in the LMS control flow paths. Once we identified the starting node, we keep state in the parser that points to the possible transitions in the LMS paths graph. Upon the next log entry, we search the neighbors of the previous LMS for possible candidate matches. We rank those and return the one with the highest rank, and then advance the parser's state pointer. If OmegaLog cannot find a match in the neighboring LMS states, it advances to the lookahead and lookback matching steps.</p><p>Lookahead Matching. When the previous state in the LMS path is known, we may not find a match in a neighboring LMS state because for example (1) the application is running at a different log level, (2) OmegaLog missed the LMS corresponding to the log message in the static analysis phase (for example, the function might be inlined, or we could not concretize its values), or (3) the log message is coming from a third-party library. We therefore start looking deeper into the reachable states from the current parser state. If we find multiple candidates, we again rank them and return the one with the highest rank. If we do not find one, we then keep increasing the lookahead up until we hit a certain threshold that can be set at runtime. If we find a match, we move the parser to that state and repeat until we match a candidate LMS at the end of LMS control flow path. At that point, we set the endU nit flag to true.</p><p>As described in §VI, in certain cases LMS may not be able to correctly partition the execution because there are syscalls after the loop-ending LMS or syscalls before loop-starting LMS. During offline analysis, OmegaLog marks such LMS and keep track of any syscalls that we should expect during runtime. If we observe such case during state matching process, we match those syscalls besides matching LMS and add those syscalls into the execution unit. Function MATCHLMS in Algorithm 2 also handles such cases and appropriately sets the endU nit flag to true. Lookback Matching. If the above lookahead step fails because we cannot find the end state in the LMS path, then we first try to search the heads of loops that are of the form (while(1), for(;;)) in the LMS control flow path. The intuition behind loop head identification step is that we might have hit the start of a new execution unit and thus we would need to restart from a new stage. If this fails, then we perform an exhaustive search of LMS that can happen before the current state in the LMS paths using the same intuition mentioned before. If in either case, we get a match we set the endU nit flag to true. Note that fallback matching allows us to generate execution units even if we have only one log message at start or end of the loop, because we use the next execution unit's log message to partition the current execution unit.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>IX. EVALUATION</head><p>In this section, we evaluate OmegaLog to answer the following research questions (RQs):</p><p>RQ1: What is the cost of OmegaLog's static analysis routines when extracting logging information from binaries? RQ2: How complete is our binary analysis in terms of finding all the LMSes in an application? RQ3: What time and space overheads does OmegaLog impose at runtime, relative to a typical logging baseline? RQ4: Is the universal provenance graph causally correct? RQ5: How effective is OmegaLog at reconstructing attacks, relative to a typical causal analysis baseline?</p><p>Experimental Setup. We evaluated our approach against 18 real-world applications. We selected these applications from our pool of applications discussed in §IV based on popularity and category. Moreover, most of these applications were used in the evaluation of prior work on provenance tracking <ref type="bibr" target="#b40">[42]</ref>, <ref type="bibr" target="#b39">[41]</ref>, <ref type="bibr" target="#b36">[38]</ref>, <ref type="bibr" target="#b37">[39]</ref>. For each program, we profile two verbosity levels, INFO and DEBUG, when considering the above research questions. Workloads were generated for the applications in our dataset using the standard benchmarking tools such as Apache Benchmark ab <ref type="bibr" target="#b0">[1]</ref> and FTPbench <ref type="bibr" target="#b1">[2]</ref>.</p><p>All tests were conducted on a server-class machine with an Intel Core(TM) i7-6700 CPU @ 3.40 GHz and 32 GB of memory, running Ubuntu 16.04. To collect whole-system provenance logs we used Linux Audit Module<ref type="foot" target="#foot_3">foot_3</ref> with the following syscall ruleset: clone, close, creat, dup, dup2, dup3, execve, exit, exit group, fork, open, openat, rename, renameat, unlink, unlinkat, vfork, connect, accept, accept4, bind. OmegaLog's offline algorithm accepts a single configuration parameter, maxBackTrace, that sets the maximum depth of symbolic execution operations. After experimenting with that parameter, we found that a value of 5 was enough to guarantee &gt;95% coverage for 12 of the 18 applications we analyzed, as we discuss in the following section. In fact, our experiments have shown that we did not need to increase the symbolic execution depth beyond 3 basic blocks.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Static Analysis Performance</head><p>Table <ref type="table" target="#tab_4">III</ref> shows how much time it takes to identify and concretize LMS from application binaries and subsequently generate LMS path models (Algorithm 1). We first note that the overhead of building the LMS paths (LMSPs) is reasonable for a one-time cost, taking 1-8 seconds for most applications, with a maximum of 3 minutes for PostgreSQL; the increase for PostgreSQL is due to the larger number of LMS paths captured by OmegaLog. On the other hand, average time to generate an LMS column shows the time to generate the FastCFG and concretize the LMS dominates OmegaLog's static analysis tasks, ranging from a minimum of a minute and a half (Transmission) to a maximum of 1.2 hours (PostgreSQL). Those two tasks are in fact highly dependent on Angr's raw performance. As acknowledged by the Angr tool developers <ref type="bibr" target="#b9">[11]</ref>, the static analyzer's performance is handicapped because it is written in the Python language with no official support for parallel execution.</p><p>Our results show no direct relationship between the size of the binary of the application being analyzed and the overall analysis time. By inspecting the applications' source code, we found that OmegaLog's performance is more informed by the structure of the code and the logging procedures. We can see intuitively that as the number of found callsites increases, the number of peephole symbolic execution steps needed also increases, thus increasing the total concretization time. However, that does not generalize to all the applications; for example, the analysis of NGINX (2044 KB binary) completed in 13 minutes concretizing 925 LMS while Lighttpd (1212 KB, almost half of NGINX's binary size) required 32 minutes concretizing only 358 LMSes.</p><p>Upon closer investigation of Lighttpd's source code, we found that format specifiers (and thus LMS) were often passed as structure members rather than as constant strings (which form the majority of LMS in the case of NGINX). That will trigger the backtracing behavior of the PEEPHOLECONCRETIZATION algorithm in an attempt to concretize the values of the struct members, thus increasing the cost of the symbolic execution operations performed by Angr. Below we show sample code snippets from Lighttpd that trigger such behavior: / * log function signature: /src/log.c * / int log error write(server * srv, const char * filename, unsigned int line , const char * fmt / * our tool looks for fmt * / , ...) / * format specifier passed as struct member: /src/config-glue.c * / if (con-&gt;conf.log condition handling) { log error write(srv, FILE , LINE , "dss", dc-&gt;context ndx, / * the fmt argument * / " (cached) result: " , cond result to string(caches[dc-&gt;context ndx].result)); }</p><p>The cases of Lighttpd and NGINX highlight the unpredictability of runtime of OmegaLog's static analysis when only the binary size or the number of identified callsites is considered. Rather, the runtime depends on the structure of the code and the anatomy of the calls to the log functions.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Static Analysis Completeness</head><p>We report on OmegaLog's coverage ratio, which represents the percent of concretized LMS relative to the count of identified callsites to logging procedures. As shown in the last column of Table III, OmegaLog's coverage is &gt; 95% for all the applications except PostgreSQL, Transmission, and wget. We disregard thttpd since it presents a small sample size in terms of LMS where OmegaLog only missed 1 LMS during concretization. That speaks to OmegaLog's ability to consistently obtain most of the required LMSes and build their corresponding LMS control flow paths. We show in our experiments, this coverage ratio is sufficient to enable OmegaLog to perform execution partitioning and aid the investigation process without loss of precision. In addition, when LMSes are missing, OmegaLog's runtime parser can handle missing log messages through lookahead and lookback techniques. If OmegaLog fails to concretize an LMS, it is a reflection of the symbolic execution task's ability to resolve a format specifier for a logging procedure. To better understand the conditions of OmegaLog's performance, we analyzed the source code of PostgreSQL, Transmission, and wget (64%, 78%, and 31% coverage, respectively). Our analysis revealed that in all three cases, symbolic execution was failing for logging procedures that use GNU's gettext for internalization (called using the "_" operator), as shown below:</p><p>/ * Below code from Transmission: /libtransmission/rpc-server.c * / tr logAddNamedError(MY NAME, ("Couldn't find settings key \"%s\""), str); / * Below code from wget: /src/convert.c * / logprintf (LOG VERBOSE, ("Converting links in %s... "), file); / * Below code from PostGreSQL: /src/backend/commands/tablecmds.c * / default : / * shouldn't get here, add all necessary cases above * / msg = ("\"%s\" is of the wrong type"); break; } Since gettext is loaded dynamically as a shared library, Angr is not able to handle it appropriately during symbolic execution and cannot extract its return value, thus causing the failure of LMS extraction during the peephole concretization step. To confirm our findings, we reran the static analysis for wget and Transmission with the calls to gettext removed and were able to achieve coverage of 98.18% and 96.03%, respectively. One approach to addressing that issue using Angr would be to add hooks for all of gettext's methods and return the arguments without changes. That would in turn provide Angr's symbolic execution engine with the arguments for concretization. We plan to address the issue in future work.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Runtime &amp; Space Overhead</head><p>We measured the runtime overhead of OmegaLog compared to a baseline of application event log collection at the INFO and DEBUG verbosity with Linux Audit running. We turn on INFO and DEBUG level based on the application's logging behaviour required for execution partitioning. As shown in Fig. <ref type="figure" target="#fig_8">7</ref>, OmegaLog's average runtime overhead was 4% for all the applications that had logging inside the event-handling loop. Some applications, such as Memcached and Proftpd,  exhibit high overhead because they are write-intensive applications; since OmegaLog intercepts every write syscall to disambiguate PID/TID, we expect to see higher runtime costs here. However, we argue that the benefits of OmegaLog for forensic analysis already justify the cost, and will consider alternative methods for process disambiguation in future work.</p><p>OmegaLog incurs space overhead because it records the PID/TID and timestamp for each application event message so that it can match the event to the appropriate system-layer task. At most, that addition requires 12 bytes per LMS entry. Our experiments confirm that the cost is negligible during typical use. For example, each unenhanced event message in NGINX is approximately 8.6 kB. If an NGINX server received 1 million requests per day and each request generated one event, the original event log would be 860 MB and OmegaLog would add just 12 MB to that total, around 1% space overhead.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D. Correctness of Universal Provenance Graph</head><p>OmegaLog modifies the whole-system provenance graph by adding app log vertices to generate semantic-aware and execution-partitioned universal provenance graphs. We describe three causal graph properties in §V that the universal provenance graph needs to preserve for correct forensic analysis. To ensure the Validity property, we augment LMS with PID/TID information along with timestamps during the runtime phase so that we can causally associate application log vertices with process vertices in the whole-system provenance graph. To ensure the Soundness property, OmegaLog augments LMS with timestamps from the same system clock as the whole-system provenance graph and uses this timestamp as an annotation from process vertices to application log vertices. That edge annotation allows OmegaLog to respect the happensbefore relationships while doing backward and forward tracing on the graph. Finally, since universal provenance graphs do not remove any causally connected vertices (besides false provenance introduced by dependency explosion in a manner consistent with previous work <ref type="bibr" target="#b37">[39]</ref>, <ref type="bibr" target="#b40">[42]</ref>) we achieve the property of Completeness.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E. Attack Investigation</head><p>We now evaluate OmegaLog's ability to aid in a typical attack investigation. To do so, we consider two additional scenarios as case studies. For each attack scenario, we manually verified its UPG to check that it preserved the three causality analysis properties that we discussed in §V. We note that the result that we presented in the motivating scenario ( §II) was also procedurally generated using OmegaLog.</p><p>1) Information Theft Attack: An administrator made a mistake when configuring an FTP server, allowing users to read and transfer sensitive files from the server's directories. The issue was identified after several days, but the administrator now needs to identify which files were leaked, if any, to ensure that company secrets are safe. Using the sensitive files as a symptom, the administrator runs a backtrace query. Fig. <ref type="figure" target="#fig_9">8(a)</ref> shows the attack investigation results using a traditional causal analysis solution, which confirms that the sensitive file was accessed. However, because of dependency explosion, it is impossible to determine who accessed the file and where it was transferred to. In contrast, Fig. <ref type="figure" target="#fig_9">8(b)</ref> shows the universal provenance graph produced by OmegaLog. OmegaLog was able to partition the server into individual units of work based on event log analysis, removing the dependency explosion and identifying an IP address to which the sensitive file was downloaded. However, that information may not prove precise enough to attribute the attack to a particular employee or remote agent; fortunately, because OmegaLog was able to associate the causal graph with event messages from the FTP server, the administrator is able to attribute the theft to a specific set of user credentials. Note that while existing execution-partitioning systems such as ProTracer <ref type="bibr" target="#b40">[42]</ref> and BEEP <ref type="bibr" target="#b37">[39]</ref> could eliminate dependency explosion in this scenario, they would not enable user-level attribution of the attack.</p><p>2) Phishing Email: An employee uses the Mutt email client to send and receive personal emails on a BYOD workstation. One day, the employee receives a phishing email that offers a torrent for downloading a blockbuster movie. Employee opens the email, downloads the attached .torrent file. After that employee, used Transmission application to download the purported movie torrent file. Finally, employee opens the downloaded movie file but the file is actually malware that establishes a backdoor on the machine.</p><p>An administrator later notices that a suspicious program is running on the workstation and initiates forensic analysis to identify its origin. Fig. <ref type="figure" target="#fig_10">9</ref>(a) shows the causal graph that the investigation would yield based on simple auditd. As can be seen in the graph, the employee has actually opened three .torrent files with transmission-daemon. It is impossible to determine which .torrent input file led to the malware download. Even if out-of-band knowledge is used to identify the malicious torrent, the administrator will still be unable to trace back to the phishing email. Fig. <ref type="figure" target="#fig_10">9</ref>(b) shows the UPG produced by OmegaLog. Because OmegaLog successfully partitioned the Postfix and Transmission processes, the graph does not exhibit dependency explosion, making it easy to trace from the suspicious process back to the phishing email. Further, the OmegaLog graph provides additional documentation of application semantics, such as the email address of the sender, which may help the administrator correlate this attack with other intrusions. Such evidence cannot be provided by existing provenance trackers.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>X. DISCUSSION &amp; LIMITATIONS</head><p>Control flow integrity (CFI) assumption is a limitation of OmegaLog; in fact, this is a big problem for almost the entirety of recent work in provenance-based forensic analysis space <ref type="bibr" target="#b14">[16]</ref>, <ref type="bibr" target="#b15">[17]</ref>, <ref type="bibr" target="#b24">[26]</ref>, <ref type="bibr" target="#b28">[30]</ref>, <ref type="bibr" target="#b29">[31]</ref>, <ref type="bibr" target="#b30">[32]</ref>, <ref type="bibr" target="#b35">[37]</ref>, <ref type="bibr" target="#b38">[40]</ref>, <ref type="bibr" target="#b37">[39]</ref>, <ref type="bibr" target="#b39">[41]</ref>, <ref type="bibr" target="#b36">[38]</ref>, <ref type="bibr" target="#b40">[42]</ref>, <ref type="bibr" target="#b26">[28]</ref>, <ref type="bibr" target="#b43">[45]</ref>. OmegaLog assumes CFI of program execution because violation of CFI makes it impossible to give assertions about the trace logs of program execution. For example, execution units emitted from BEEP system <ref type="bibr" target="#b37">[39]</ref> can not be trusted because an attacker can hijack control flow of the running application to emit misleading boundaries, confusing the investigator. Moreover, violations of CFI assumption enables post-mortem tampering of audit logs or even runtime control flow bending that causes misleading application event records to be emitted. Even though the main focus of our study is improving forensic analysis and solving CFI problem is ultimately an orthogonal problem to our study but we envision that future work on provenance will cater CFI violation problem for accurate forensic analysis.</p><p>Provided that an underlying binary analysis tool has generated a reasonably accurate CFG, there are two considerations when one is evaluating the generality of OmegaLog. The first is whether or not the application being profiled includes logging events at key positions in the CFG such as the event handling loop. Our survey in §IV demonstrates that this is the case for mature open source client-server applications. The second consideration is whether the event logging statements are correctly identified and extracted by OmegaLog. Our evaluation ( §IX) demonstrated that we are able to identify log statements in all the profiled applications based on our heuristics for event-logging extraction.</p><p>OmegaLog assumes at least one log message printed in the event-handling loop to partition execution. OmegaLog uses ordered log messages in the universal provenance logs as a way to partition syscalls and make unit boundaries. Such an assumption only works for the applications that use synchronous I/O programming model. For instance, if an application is using asynchronous I/O and only prints one log message at the end of the event-handling loop then concurrent requests will generate multiple syscalls without immediately printing log message at the end of each request. In such case, OmegaLog will not be able to correctly partition each request. One approach to solve this problem is to generate complete syscall mapping along with LMS paths model inside the eventhandling loop during offline analysis and use this mapping to divide execution. We leave that as our future work.</p><p>Malware binaries may not produce any of the application logs that are required for execution partitioning. In that case, OmegaLog treats the whole malware execution as one unit and does not provide execution partitioning. That is acceptable since every output and input event from malware execution is important in forensic analysis.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>XI. RELATED WORK</head><p>In §II, we described several shortcomings of existing provenance-tracking systems that OmegaLog addresses. Here we provide additional discussion of related work.</p><p>Application Log Analysis. Application logs contain a wealth of information that can be useful in aiding software system maintenance, and thus become an important data source for postmortem analysis <ref type="bibr" target="#b46">[48]</ref>, anomaly detection <ref type="bibr" target="#b22">[24]</ref>, <ref type="bibr" target="#b57">[59]</ref>, <ref type="bibr" target="#b58">[60]</ref>, program verification <ref type="bibr" target="#b50">[52]</ref>, and security monitoring <ref type="bibr" target="#b44">[46]</ref>. Existing guidelines and practices <ref type="bibr" target="#b64">[66]</ref>, <ref type="bibr" target="#b32">[34]</ref>, <ref type="bibr" target="#b23">[25]</ref>, <ref type="bibr" target="#b19">[21]</ref>, <ref type="bibr" target="#b47">[49]</ref> indicate the importance of well-designed log messages in failure diagnosis. Xu et al. <ref type="bibr" target="#b57">[59]</ref> analyzed console logs to learn common patterns by using machine learning and to detect abnormal log patterns at runtime. SherLog <ref type="bibr" target="#b59">[61]</ref> used application source code and runtime error log to infer what must or may have happened during a failed run and provide detailed post mortem analysis of the error. Similarly, LogEnhancer <ref type="bibr" target="#b60">[62]</ref> and LogAdvisor <ref type="bibr" target="#b64">[66]</ref> automatically improves existing log messages and provides suggestions on where to log in the code in order to aid in future post-failure debugging. HERCULE <ref type="bibr" target="#b48">[50]</ref> uses expert-written log parsers and rules to first extract log fields such as IP addresses and then correlate log entries across application logs based on these fields. Unlike OmegaLog, HERCULE's rule-based approach does not accurately capture causality across applications that use th whole-system layer and that can ultimately undermine forensic investigations.</p><p>Several log analysis systems <ref type="bibr" target="#b54">[56]</ref>, <ref type="bibr" target="#b61">[63]</ref>, <ref type="bibr" target="#b42">[44]</ref> have been proposed to reconstruct behaviour of applications running on Android OS. Unlike OmegaLog, these existing systems are not transparent as they either require code instrumentation or an emulator to collect logs for analysis. DroidHolmes <ref type="bibr" target="#b42">[44]</ref> and CopperDroid <ref type="bibr" target="#b54">[56]</ref> are single-layer log analysis systems while OmegaLog is a multi-layer log analysis system. DroidForensic <ref type="bibr" target="#b61">[63]</ref> collects logs from different layers for forensic analysis; however, in its case, the onus is on the user to correlate and combine logs from different layers. On the other hand, OmegaLog integrates logs from different layers without userinvolvement using program-analysis techniques.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Application Log Parsing.</head><p>Automated log parsing allows developers and support engineers to extract structured data from unstructured log messages for subsequent analysis. Many open source tools, such as Logstash <ref type="bibr" target="#b6">[7]</ref> and Rsyslog <ref type="bibr">[8]</ref> and commercial tools such as, VMWare LogInsight <ref type="bibr" target="#b8">[10]</ref> and Splunk <ref type="bibr" target="#b7">[9]</ref> provide built-in log-parsing modules/recipes for popular applications such as MySQL and Apache httpd; that allows users to automatically extract useful information, such as PID, hostname, and filenames from log messages. For custom parsing of log messages, those tools provide easy-touse, regex-based languages to define parsers.</p><p>Distributed System Tracing. End-to-end tracing is required in distributed systems to enable comprehensive profiling. Existing tools, such as Dtrace <ref type="bibr" target="#b16">[18]</ref>, Dapper <ref type="bibr" target="#b52">[54]</ref>, X-trace <ref type="bibr" target="#b21">[23]</ref>, MagPie <ref type="bibr" target="#b13">[15]</ref>, Fay <ref type="bibr" target="#b20">[22]</ref>, and PivotTracing <ref type="bibr" target="#b41">[43]</ref> instrument the underlying application to log key metrics at run time. On the other hand, lprof <ref type="bibr" target="#b63">[65]</ref> and Stitch <ref type="bibr" target="#b62">[64]</ref> allow users to profile a single request without instrumenting any distributed application. lprof uses static analysis to find identifiers that can distinguish output logs of different requests. However, lprof only correlate logs from the same distributed application. On the other hand, Stitch requires certain identifiers in the log messages in order to correlate log messages across different distributed applications. Finally, both systems capture mere correlations instead of true causality between application logs and that can reduce the accuracy of attack reconstruction.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>XII. CONCLUSION</head><p>In this work, we introduce OmegaLog an end-to-end provenance-tracking system that uses the notion of universal provenance to solve the semantic gap and dependency explosion problem that currently exist in causality analysis frameworks. Universal provenance combines whole-system audit logs and application event logs while preserving the correctness of causality analysis. OmegaLog leverages static binary analysis to parse and interpret the application event logs and generates semantic-aware and execution-partitioned provenance graphs. We implemented our prototype using the Angr binary analysis framework and the Linux Audit Module. Evaluation on real-world attack scenarios shows that Omega-Log's generated graphs are concise and rich with semantic information, compared to the state-of-the-art.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>1 .Fig. 1 :</head><label>11</label><figDesc>Fig. 1: NGINX application execution while two different HTTP requests are being served. (a) Actual execution behavior of NGINX. (b) System logs generated by whole-system provenance tracker. (c) Application event logs generated by NGINX. (d) Provenance graph generated using system logs by traditional solutions.</figDesc><graphic coords="2,54.18,54.00,120.02,107.52" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head></head><label></label><figDesc>]: x.x.x.x:45292 [TIME REMOVED] app-http-in~app-bd/nginx-2 10/0/30/69/109 200 2750 ----1/1/1/1/0 0/0 {} {} "POST /user.php HTTP/1.0" y.y.y.y POST /wordpress/user.php 200 -HTTP/1.1 200 1568 "-" Statement: SELECT * FROM users WHERE user_id=123 UNION SELECT password FROM accounts;(a) Investigating SQL injection attack using SQL query that reads the accounts table.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head></head><label></label><figDesc>Bash y.y.y.y POST /wordpress/wp-admin/admin-ajax.php 200 -http://shopping.com/wordpress/wp-admin/ admin.php?page=file-manager_settings haproxy[30291]: x.x.x.x:45292 [TIME REMOVED] app-http-in~app-bd/httpd-2 10/0/30/69/109 200 2750 POST /wordpress/ wp-admin/admin-ajax.php 200 … (b) Investigating website defacement using a file write event to index.html as a symptom.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Fig. 3 :</head><label>3</label><figDesc>Fig. 3: Graphs generated by OmegaLog for the SQL injection attack. The parallelograms represent the app log vertices. App log vertex is annotated with log messages which belong to the corresponding execution unit of attached process vertex.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>/Fig. 4 :</head><label>4</label><figDesc>Fig. 4: Logging behavior of different applications inside the event-handling loop. Underlined code represent log printing statements.</figDesc><graphic coords="6,80.29,116.76,253.28,91.90" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Fig. 5 :</head><label>5</label><figDesc>Fig. 5: OmegaLog architecture overview. During the offline phase, OmegaLog first generates control flow graph and extracts log message strings (LMSes) from application's binary and then contructs LMS control flow paths. During the runtime phase, OmegaLog combines application event logs and audit logs together into universal provenance logs. Finally, during the investigation phase, OmegaLog uses LMS control flow paths to parse universal provenance log into universal provenance graphs.</figDesc><graphic coords="7,98.56,54.00,233.93,148.75" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>Algorithm 1 :</head><label>1</label><figDesc>Static Binary Analysis Func GETLMS(Binary B, Log functions F ) /* Overall process to build the LMS paths */ g ← ANGRGETFASTCFG(B) C ← EXTRACTCALLSITES(g, F ) /* Concretization step */ V ← PEEPHOLECONCRETIZATION(g, C) /* Building the LMS paths step */ G ← BUILDLMSPATHS(g, V, F ) Func EXTRACTCALLSITES(cfg, F ) C ← Φ foreach basic block b ∈ cfg do /* Check if the basic block jumps into a logging function */ if b.jump target address ∈ F .addresses then C ← C ∪ {b} end end return C</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head>Fig. 6 :</head><label>6</label><figDesc>Fig. 6: On the right, LMS control flow paths representation is shown for the code snippet on the left.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head>Fig. 7 :</head><label>7</label><figDesc>Fig.7: Runtime overhead for each applications in our dataset that has logging statement in the event-handling loop.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_9"><head>Fig. 8 :</head><label>8</label><figDesc>Fig. 8: Information theft attack scenario. (a) Provenance graph generated using a traditional solution, which led to a dependency explosion problem with no semantic information. (b) Concise provenance graph generated using OmegaLog with semantic information.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_10"><head>Fig. 9 :</head><label>9</label><figDesc>Fig. 9: Phishing email attack scenario. (a) Attack provenance graph generated by traditional solutions. (b) Semantic-aware and executionpartitioned provenance graph generated by OmegaLog.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>TABLE I :</head><label>I</label><figDesc>Comparison of execution partitioning techniques to solve the dependency explosion problem.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>TABLE II :</head><label>II</label><figDesc>Logging behavior of long-running applications.</figDesc><table><row><cell></cell><cell>Category</cell><cell cols="5">Total Apps with Log Verbosity of Apps IN+DE INFO DEBUG None</cell></row><row><cell></cell><cell>Web server</cell><cell>9</cell><cell>7</cell><cell>1</cell><cell>0</cell><cell>1</cell></row><row><cell></cell><cell>Database server</cell><cell>9</cell><cell>7</cell><cell>1</cell><cell>1</cell><cell>0</cell></row><row><cell></cell><cell>SSH server</cell><cell>5</cell><cell>5</cell><cell>0</cell><cell>0</cell><cell>0</cell></row><row><cell></cell><cell>FTP server</cell><cell>5</cell><cell>4</cell><cell>0</cell><cell>1</cell><cell>0</cell></row><row><cell>Client-Server</cell><cell>Mail server Proxy server DNS server Version control server Message broker Print server</cell><cell>4 4 3 2 3 2</cell><cell>3 3 2 0 2 1</cell><cell>1 1 0 1 0 0</cell><cell>0 0 1 1 1 1</cell><cell>0 0 0 0 0 0</cell></row><row><cell></cell><cell>FTP client</cell><cell>6</cell><cell>0</cell><cell>1</cell><cell>4</cell><cell>1</cell></row><row><cell></cell><cell>Email client</cell><cell>3</cell><cell>1</cell><cell>0</cell><cell>1</cell><cell>1</cell></row><row><cell></cell><cell>Bittorrent client</cell><cell>4</cell><cell>3</cell><cell>1</cell><cell>0</cell><cell>0</cell></row><row><cell></cell><cell>NTP client</cell><cell>3</cell><cell>0</cell><cell>1</cell><cell>2</cell><cell>0</cell></row><row><cell>GUI</cell><cell>Audio/Video player PDF reader Image tool</cell><cell>8 4 5</cell><cell>1 0 0</cell><cell>0 0 0</cell><cell>3 0 1</cell><cell>4 4 4</cell></row><row><cell></cell><cell>Total</cell><cell>79</cell><cell>39</cell><cell>8</cell><cell>17</cell><cell>15</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head></head><label></label><figDesc>Algorithm 2: UPG Construction Inputs : Universal log file L uni ; Symptom event es; LMS control flow paths P aths lms ; Output : Backward universal provenance graph G Variables: LM Sstate ← Current state of LMS; eventU nit[P id] ← events in current unit related to P id; endU nit ← flag to partition execution into unit;</figDesc><table><row><cell cols="2">endU nit ← f alse</cell></row><row><cell cols="2">foreach event e ∈ L uni happened before es do</cell></row><row><cell cols="2">if ISAPPENTRY(e) then</cell></row><row><cell cols="2">LM S cand = GETLMSREGEX(e)</cell></row><row><cell cols="2">endU nit = MATCHLMS(LM S cand , P aths lms ,</cell></row><row><cell>end</cell><cell>LM Sstate, eventUnit[P ide], L uni )</cell></row><row><cell cols="2">if endU nit then</cell></row><row><cell cols="2">eventUnit[P ide].add(e)</cell></row><row><cell cols="2">Add all events from eventUnit[P ide] to G</cell></row><row><cell cols="2">endU nit ← f alse</cell></row><row><cell cols="2">eventUnit[P ide] ← null</cell></row><row><cell>end</cell><cell></cell></row><row><cell>else</cell><cell></cell></row><row><cell cols="2">eventUnit[P ide].add(e)</cell></row><row><cell>end</cell><cell></cell></row><row><cell>end</cell><cell></cell></row><row><cell>return G</cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>TABLE III :</head><label>III</label><figDesc>Application logging behavior and performance results of OmegaLog's static analysis phase. EHL stands for event handling loop; IN+DE means that both INFO and DEBUG verbosity levels are present in the loop; LMSPs: Log message string paths; Callsites are identified log statements; and "Cov. %" denotes coverage percentage which is the percentage of concretized LMS to callsites.</figDesc><table><row><cell>Program</cell><cell>Binary</cell><cell>Log Level</cell><cell cols="2">Avg. Time (sec)</cell><cell cols="2">Number of</cell><cell cols="2">Completeness</cell></row><row><cell></cell><cell cols="2">Size (kB) inside EHL</cell><cell cols="2">LMS LMSPs</cell><cell>LMS</cell><cell cols="3">LMSPs Callsites Cov. %</cell></row><row><cell>Squid</cell><cell>64,250</cell><cell>IN+DE</cell><cell>831</cell><cell>46</cell><cell>64</cell><cell>157,829</cell><cell>70</cell><cell>91</cell></row><row><cell>PostgreSQL</cell><cell>22,299</cell><cell>IN+DE</cell><cell>3,880</cell><cell>258</cell><cell cols="2">3,530 4,713,072</cell><cell>5,529</cell><cell>64</cell></row><row><cell>Redis</cell><cell>8,296</cell><cell>INFO</cell><cell>495</cell><cell>7</cell><cell>375</cell><cell>34,690</cell><cell>394</cell><cell>95</cell></row><row><cell>HAProxy</cell><cell>4,095</cell><cell>IN+DE</cell><cell>144</cell><cell>4</cell><cell>53</cell><cell>13,113</cell><cell>56</cell><cell>95</cell></row><row><cell>ntpd</cell><cell>3,503</cell><cell>INFO</cell><cell>2,602</cell><cell>4</cell><cell>490</cell><cell>10,314</cell><cell>518</cell><cell>95</cell></row><row><cell>OpenSSH</cell><cell>2,959</cell><cell>IN+DE</cell><cell>734</cell><cell>4</cell><cell>845</cell><cell>11,422</cell><cell>869</cell><cell>97</cell></row><row><cell>NGINX</cell><cell>2,044</cell><cell>IN+DE</cell><cell>775</cell><cell>11</cell><cell>923</cell><cell>8,463</cell><cell>925</cell><cell>100</cell></row><row><cell>Httpd</cell><cell>1,473</cell><cell>IN+DE</cell><cell>99</cell><cell>2</cell><cell>211</cell><cell>3,910</cell><cell>211</cell><cell>100</cell></row><row><cell>Proftpd</cell><cell>1,392</cell><cell>IN+DE</cell><cell>201</cell><cell>4</cell><cell>717</cell><cell>9,899</cell><cell>718</cell><cell>100</cell></row><row><cell>Lighttpd</cell><cell>1,212</cell><cell>INFO</cell><cell>1,906</cell><cell>2</cell><cell>349</cell><cell>5,304</cell><cell>358</cell><cell>97</cell></row><row><cell>CUPSD</cell><cell>1,210</cell><cell>DEBUG</cell><cell>1,426</cell><cell>3</cell><cell>531</cell><cell>4,927</cell><cell>531</cell><cell>100</cell></row><row><cell>yafc</cell><cell>1,007</cell><cell>IN+DE</cell><cell>88</cell><cell>2</cell><cell>57</cell><cell>3,183</cell><cell>60</cell><cell>95</cell></row><row><cell>Transmission</cell><cell>930</cell><cell>IN+DE</cell><cell>102</cell><cell>2</cell><cell>178</cell><cell>5,560</cell><cell>227</cell><cell>78</cell></row><row><cell>Postfix</cell><cell>900</cell><cell>INFO</cell><cell>97</cell><cell>3</cell><cell>96</cell><cell>2,636</cell><cell>98</cell><cell>98</cell></row><row><cell>memcached</cell><cell>673</cell><cell>IN+DE</cell><cell>193</cell><cell>7</cell><cell>64</cell><cell>19,510</cell><cell>69</cell><cell>93</cell></row><row><cell>wget</cell><cell>559</cell><cell>INFO</cell><cell>200</cell><cell>3</cell><cell>84</cell><cell>3,923</cell><cell>275</cell><cell>31</cell></row><row><cell>thttpd</cell><cell>105</cell><cell>N/A</cell><cell>157</cell><cell>8</cell><cell>4</cell><cell>14,847</cell><cell>5</cell><cell>80</cell></row><row><cell>skod</cell><cell>47</cell><cell>N/A</cell><cell>12</cell><cell>0</cell><cell>25</cell><cell>115</cell><cell>25</cell><cell>100</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>For web servers such as lighttpd and NGINX, we treat the Access Log as INFO level log. Moreover, for certain applications that do not have DEBUG log level, we categorize the Trace Log as DEBUG level log.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" xml:id="foot_1"><p>Causality Analysis. Forensic investigators use the wholesystem provenance graph to find the root causes and ramifications of an attack by performing backward and forward causality analysis on the graph, respectively. Given a symptom of an attack, an investigator can issue a backward-tracing query on the graph; it will find root cause of the attack by traversing the ancestry of the symptom event. The investigator can also issue a forward-tracing query that starts from the root cause identified in the previous query and returns all the causally connected events in the progeny of the root cause, explaining the ramifications of the attack.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_2"><p>Applications that make use of rsyslog facility [8] to write LMS is the one exception to the rule where LMS writing process's PID is not equal to the original application process that produced the LMS. However, in such case we can easily extract the PID/TID of original application process because rsyslog use well-defined message format<ref type="bibr" target="#b25">[27]</ref> with PID added by default.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="3" xml:id="foot_3"><p>We make use of the Linux Audit framework in our implementation. However, our results are generalizable to other system logs, such as Windows ETW<ref type="bibr" target="#b3">[4]</ref> and FreeBSD DTrace<ref type="bibr" target="#b2">[3]</ref>.</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>ACKNOWLEDGMENT</head><p>We thank our shepherd, <rs type="person">Yonghwi Kwon</rs>, and the anonymous reviewers for their comments and suggestions. We also thank <rs type="person">Akul Goyal</rs> and <rs type="person">Riccardo Paccagnella</rs> for feedback on early drafts of this paper. <rs type="person">Wajih Ul Hassan</rs> was partially supported by the <rs type="funder">Sohaib &amp; Sara Abbasi Fellowship</rs> and the <rs type="grantName">Symantec Graduate Fellowship</rs>. This work was supported in part by the <rs type="funder">National Science Foundation</rs> under contracts <rs type="grantNumber">CNS-16-57534</rs> and <rs type="grantNumber">CNS-17-50024</rs>. Any opinions, findings, conclusions, or recommendations expressed in this material are those of the authors and do not necessarily reflect the views of their employers or the sponsors.</p></div>
+			</div>
+			<div type="funding">
+<div><p>www.ndss-symposium.org -Receives HTTP request -Reads index.html -Sends HTTP -Logs event in access.log -Receives HTTP request -Reads form.html -Sends HTTP -Logs event in access.log <rs type="projectName">BEEP [39] MPI MCI WinLog OmegaLog ProTracer [42] [41] [38] [40] Instrumentation Yes Yes No No No Training Run Yes No Yes No No w/ Workloads Space Overhead Yes Yes Yes Yes No Granularity Coarse Fine Coarse Coarse Fine App. Semantics No No No No Yes</rs></p><p>provenance graph shown in Fig. <ref type="figure">2</ref>. Unfortunately, the administrator discovers that this technique does not advance the investigation because of the inherent limitations of system logs.</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funding" xml:id="_rD6teTA">
+					<orgName type="grant-name">Symantec Graduate Fellowship</orgName>
+				</org>
+				<org type="funding" xml:id="_RqyTJr5">
+					<idno type="grant-number">CNS-16-57534</idno>
+				</org>
+				<org type="funding" xml:id="_4yDnZCx">
+					<idno type="grant-number">CNS-17-50024</idno>
+				</org>
+				<org type="funded-project" xml:id="_eezhJzp">
+					<orgName type="project" subtype="full">BEEP [39] MPI MCI WinLog OmegaLog ProTracer [42] [41] [38] [40] Instrumentation Yes Yes No No No Training Run Yes No Yes No No w/ Workloads Space Overhead Yes Yes Yes Yes No Granularity Coarse Fine Coarse Coarse Fine App. Semantics No No No No Yes</orgName>
+				</org>
+			</listOrg>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<title level="m" type="main">Apache HTTP server benchmarking tool</title>
+		<ptr target="https://httpd.apache.org/docs/2.4/programs/ab.html" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<title level="m" type="main">Benchmark for ftp servers</title>
+		<ptr target="https://pypi.python.org/pypi/ftpbench" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<monogr>
+		<title level="m" type="main">DTrace</title>
+		<ptr target="https://www.freebsd.org/doc/handbook/dtrace.html" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<title level="m" type="main">Event tracing</title>
+		<ptr target="https://docs.microsoft.com/en-us/windows/desktop/ETW/event-tracing-portal" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<monogr>
+		<title level="m" type="main">The Linux audit daemon</title>
+		<ptr target="https://linux.die.net/man/8/auditd" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<monogr>
+		<title level="m" type="main">Log4c : Logging for C library</title>
+		<ptr target="http://log4c.sourceforge.net/" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<monogr>
+		<title level="m" type="main">Logstash: Collect, Parse, Transform Logs</title>
+		<ptr target="https://www.elastic.co/products/logstash" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<title level="m" type="main">Splunk Log Management</title>
+		<ptr target="https://www.splunk.com/enus/central-log-management.html" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<monogr>
+		<title level="m" type="main">VMware vCenter Log Insight</title>
+		<ptr target="http://www.vmware.com/ca/en/products/vcenter-log-insight" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<monogr>
+		<title level="m" type="main">Speed considerations</title>
+		<ptr target="https://github.com/angr/angr-doc/blob/master/docs/speed.md" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<title level="m" type="main">Equifax says cyberattack may have affected 143 million in the U.S</title>
+		<ptr target="https://www.nytimes.com/2017/09/07/business/equifax-cyberattack.html" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<title level="m" type="main">Inside the cyberattack that shocked the US government</title>
+		<ptr target="ttps://www.wired.com/2016/10/inside-cyberattack-shocked-us-government/" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<monogr>
+		<title level="m" type="main">Target Missed Warnings in Epic Hack of Credit Card Data</title>
+		<ptr target="https://bloom.bg/2KjElxM" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Using magpie for request extraction and workload modelling</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Barham</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Donnelly</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Isaacs</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Mortier</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">OSDI</title>
+		<imprint>
+			<date type="published" when="2004">2004</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<title level="m" type="main">Transparent web service auditing via network provenance functions</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bates</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">U</forename><surname>Hassan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Butler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Dobra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Reaves</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Cable</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Moyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Schear</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<publisher>WWW</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<monogr>
+		<title level="m" type="main">Trustworthy wholesystem provenance for the Linux kernel</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bates</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Tian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">R B</forename><surname>Butler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Moyer</surname></persName>
+		</author>
+		<editor>USENIX Security</editor>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Dynamic instrumentation of production systems</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Cantrill</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">W</forename><surname>Shapiro</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">H</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">USENIX ATC</title>
+		<imprint>
+			<date type="published" when="2004">2004</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<monogr>
+		<title level="m" type="main">A large-scale analysis of the security of embedded firmwares</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Costin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zaddach</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Francillon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Balzarotti</surname></persName>
+		</author>
+		<editor>USENIX Security</editor>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Efficient data structures for tamperevident logging</title>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">A</forename><surname>Crosby</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">S</forename><surname>Wallach</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">USENIX Security Symposium</title>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Log2: A cost-aware logging mechanism for performance diagnosis</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Ding</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J.-G</forename><surname>Lou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Fu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Xie</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">USENIX ATC</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Fay: Extensible distributed tracing from kernels to clusters</title>
+		<author>
+			<persName><forename type="first">U</forename><surname>Erlingsson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Peinado</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Peter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Budiu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Mainar-Ruiz</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Trans. Comput. Syst</title>
+		<imprint>
+			<biblScope unit="volume">30</biblScope>
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">X-trace: A pervasive network tracing framework</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Fonseca</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Porter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">H</forename><surname>Katz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Shenker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Stoica</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NSDI. USENIX</title>
+		<imprint>
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Execution anomaly detection in distributed systems through unstructured log analysis</title>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Fu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J.-G</forename><surname>Lou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Li</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICDM</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Where do developers log? an empirical study on logging practices in industry</title>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Fu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J.-G</forename><surname>Lou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Ding</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Xie</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICSE Companion</title>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<monogr>
+		<title level="m" type="main">SPADE: Support for provenance auditing in distributed environments</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Gehani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Tariq</surname></persName>
+		</author>
+		<editor>Middleware</editor>
+		<imprint>
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<monogr>
+		<title level="m" type="main">Internet Requests for Comments</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Gerhards</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+			<biblScope unit="volume">5424</biblScope>
+		</imprint>
+	</monogr>
+	<note>The syslog protocol</note>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Towards a universal data provenance framework using dynamic instrumentation</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>Gessiou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Pappas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Athanasopoulos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">D</forename><surname>Keromytis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ioannidis</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Information Security and Privacy Research</title>
+		<editor>
+			<persName><forename type="first">D</forename><surname>Gritzalis</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">S</forename><surname>Furnell</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">M</forename><surname>Theoharidou</surname></persName>
+		</editor>
+		<meeting><address><addrLine>Berlin Heidelberg</addrLine></address></meeting>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">NoDoze: Combatting threat alert fatigue with automated provenance triage</title>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">U</forename><surname>Hassan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Jee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bates</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NDSS</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Towards scalable cluster auditing through grammatical inference over provenance graphs</title>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">U</forename><surname>Hassan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Lemay</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Aguse</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bates</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Moyer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NDSS</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<monogr>
+		<title level="m" type="main">SLEUTH: Realtime attack scenario reconstruction from COTS audit data</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">N</forename><surname>Hossain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">M</forename><surname>Milajerdi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Eshete</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Gjomemo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Sekar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">D</forename><surname>Stoller</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Venkatakrishnan</surname></persName>
+		</author>
+		<editor>USENIX Security</editor>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Rain: Refinable attack investigation with on-demand interprocess information flow tracking</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Ji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Downing</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Fazzini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Orso</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Lee</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">CCS</title>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<monogr>
+		<title level="m" type="main">The C Programming Language</title>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">W</forename><surname>Kernighan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">M</forename><surname>Ritchie</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1978">1978</date>
+			<publisher>Prentice-Hall, Inc</publisher>
+			<pubPlace>Upper Saddle River, NJ, USA</pubPlace>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<monogr>
+		<title level="m" type="main">The practice of programming</title>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">W</forename><surname>Kernighan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Pike</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1999">1999</date>
+			<publisher>Addison-Wesley Professional</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Symbolic execution and program testing</title>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">C</forename><surname>King</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Commun. ACM</title>
+		<imprint>
+			<biblScope unit="volume">19</biblScope>
+			<biblScope unit="issue">7</biblScope>
+			<date type="published" when="1976">1976</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Backtracking intrusions</title>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">T</forename><surname>King</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">M</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">SOSP</title>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Enriching intrusion alerts through multi-host causality</title>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">T</forename><surname>King</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><forename type="middle">M</forename><surname>Mao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">G</forename><surname>Lucchetti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">M</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NDSS</title>
+		<imprint>
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">MCI: Modeling-based causality inference in audit logging for attack investigation</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Kwon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">H</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W.-C</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Jha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Ciocarlie</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NDSS</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">High accuracy attack provenance via binary-based execution partition</title>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">H</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Xu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">NDSS</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Accurate, low cost and instrumentation-free security audit logging for Windows</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">H</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">H</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Rhee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Xu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACSAC</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<publisher>ACM</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<monogr>
+		<title level="m" type="main">MPI: Multiple perspective attack investigation with semantic aware execution partitioning</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">H</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Xu</surname></persName>
+		</author>
+		<editor>USENIX Security</editor>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Protracer: Towards practical provenance tracing by alternating between logging and tainting</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Xu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">NDSS</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Pivot tracing: Dynamic causal monitoring for distributed systems</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Mace</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Roelke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Fonseca</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">SOSP</title>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">Divide and conquer: recovering contextual information of behaviors in android apps around limited-quantity audit logs</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Meng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Miao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Jung</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Huang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICSE: Companion Proceedings</title>
+		<imprint>
+			<publisher>IEEE Press</publisher>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">HOLMES: Real-time APT detection through correlation of suspicious information flows</title>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">M</forename><surname>Milajerdi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Gjomemo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Eshete</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Sekar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Venkatakrishnan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Symposium on Security and Privacy</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">Evidence of log integrity in policy-based security monitoring</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Montanari</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">H</forename><surname>Huh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Dagit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">B</forename><surname>Bobba</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">H</forename><surname>Campbell</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">DSN</title>
+		<imprint>
+			<date type="published" when="2012">2012</date>
+			<publisher>IEEE</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<title level="a" type="main">Layering in provenance systems</title>
+		<author>
+			<persName><forename type="first">K.-K</forename><surname>Muniswamy-Reddy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">U</forename><surname>Braun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">A</forename><surname>Holland</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Macko</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Maclean</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Margo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Seltzer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Smogor</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ATC</title>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<analytic>
+		<title level="a" type="main">Advances and challenges in log analysis</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Oliner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Ganapathi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Xu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Communications of the ACM</title>
+		<imprint>
+			<biblScope unit="volume">55</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<analytic>
+		<title level="a" type="main">Industry practices and event logging: Assessment of a critical software development process</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Pecchia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Cinque</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Carrozza</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Cotroneo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ICSE</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<publisher>IEEE</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<analytic>
+		<title level="a" type="main">HERCULE: Attack story reconstruction via community discovery on correlated log graph</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Pei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Gu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Saltaformaggio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Si</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Xu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACSAC</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<publisher>ACM</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<analytic>
+		<title level="a" type="main">Hi-Fi: Collecting high-fidelity whole-system provenance</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Pohly</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Mclaughlin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Mcdaniel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Butler</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACSAC</title>
+		<imprint>
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<analytic>
+		<title level="a" type="main">Assisting developers of big data analytics applications when deploying on hadoop clouds</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Shang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><forename type="middle">M</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Hemmati</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Adams</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">E</forename><surname>Hassan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Martin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICSE</title>
+		<imprint>
+			<publisher>IEEE Press</publisher>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b51">
+	<analytic>
+		<title level="a" type="main">SoK: (State of) The Art of War: Offensive techniques in binary analysis</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Shoshitaishvili</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Salls</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Stephens</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Polino</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Dutcher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Grosen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Hauser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Kruegel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Vigna</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE Symposium on Security and Privacy</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b52">
+	<monogr>
+		<title level="m" type="main">Dapper, a large-scale distributed systems tracing infrastructure</title>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">H</forename><surname>Sigelman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">A</forename><surname>Barroso</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Burrows</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Stephenson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Plakal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Beaver</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Jaspan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Shanbhag</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+			<publisher>Google, Inc, Tech. Rep</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b53">
+	<monogr>
+		<title level="m" type="main">Looking inside the blackbox: Capturing data provenance using dynamic instrumentation</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Stamatogiannakis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Groth</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Bos</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<publisher>Springer-Verlag New York, Inc</publisher>
+		</imprint>
+	</monogr>
+	<note>in IPAW</note>
+</biblStruct>
+
+<biblStruct xml:id="b54">
+	<analytic>
+		<title level="a" type="main">CopperDroid: Automatic reconstruction of android malware behaviors</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Tam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">J</forename><surname>Khan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Fattori</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Cavallaro</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">NDSS</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b55">
+	<monogr>
+		<title level="m" type="main">Towards automated collection of application-level data provenance</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Tariq</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Ali</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Gehani</surname></persName>
+		</author>
+		<editor>TaPP. USENIX</editor>
+		<imprint>
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b56">
+	<analytic>
+		<title level="a" type="main">Fear and logging in the internet of things</title>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">U</forename><surname>Hassan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bates</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Gunter</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">NDSS</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b57">
+	<analytic>
+		<title level="a" type="main">Detecting large-scale system problems by mining console logs</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Fox</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Patterson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">I</forename><surname>Jordan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">SOSP</title>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+			<publisher>ACM</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b58">
+	<analytic>
+		<title level="a" type="main">Cloudseer: Workflow monitoring of cloud infrastructures via interleaved logs</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Joshi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Jin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Jiang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM SIGOPS Operating Systems Review</title>
+		<imprint>
+			<biblScope unit="volume">50</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b59">
+	<analytic>
+		<title level="a" type="main">SherLog: Error diagnosis by connecting clues from run-time logs</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Yuan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Mai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Tan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Pasupathy</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ASPLOS</title>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+			<publisher>ACM</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b60">
+	<analytic>
+		<title level="a" type="main">Improving software diagnosability via log enhancement</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Yuan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Park</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Savage</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM TOCS</title>
+		<imprint>
+			<biblScope unit="volume">30</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b61">
+	<analytic>
+		<title level="a" type="main">Droidforensics: Accurate reconstruction of android attacks via multilayer forensic logging</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Yuan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Setayeshfar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Yan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Panage</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">H</forename><surname>Lee</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">AsiaCCS</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<publisher>ACM</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b62">
+	<analytic>
+		<title level="a" type="main">Non-intrusive performance profiling for entire software stacks based on the flow reconstruction principle</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Rodrigues</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Luo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Yuan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Stumm</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">OSDI</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b63">
+	<analytic>
+		<title level="a" type="main">lprof: A non-intrusive request flow profiler for distributed systems</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Lion</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">F</forename><surname>Ullah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Luo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Yuan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Stumm</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">OSDI</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b64">
+	<analytic>
+		<title level="a" type="main">Learning to Log: Helping developers make informed logging decisions</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Fu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">R</forename><surname>Lyu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ICSE</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

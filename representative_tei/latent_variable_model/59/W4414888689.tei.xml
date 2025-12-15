@@ -1,0 +1,1797 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">On Designing Diffusion Autoencoders for Efficient Generation and Representation Learning</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability  status="unknown">
+					<licence/>
+				</availability>
+				<date type="published" when="2025-05-30">30 May 2025</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Magdalena</forename><surname>Proszewska</surname></persName>
+							<email>m.proszewska@ed.ac.uk</email>
+							<affiliation key="aff0">
+								<orgName type="department">School of Informatics</orgName>
+								<orgName type="institution">University of Edinburgh</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Nikolay</forename><surname>Malkin</surname></persName>
+							<email>nmalkin@ed.ac.uk</email>
+							<affiliation key="aff0">
+								<orgName type="department">School of Informatics</orgName>
+								<orgName type="institution">University of Edinburgh</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">N</forename><surname>Siddharth</surname></persName>
+							<email>n.siddharth@ed.ac.uk</email>
+							<affiliation key="aff0">
+								<orgName type="department">School of Informatics</orgName>
+								<orgName type="institution">University of Edinburgh</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">On Designing Diffusion Autoencoders for Efficient Generation and Representation Learning</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2025-05-30">30 May 2025</date>
+						</imprint>
+					</monogr>
+					<idno type="arXiv">arXiv:2506.00136v1[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-28T22:29+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Diffusion autoencoders (DAs) are variants of diffusion generative models that use an input-dependent latent variable to capture representations alongside the diffusion process. These representations, to varying extents, can be used for tasks such as downstream classification, controllable generation, and interpolation. However, the generative performance of DAs relies heavily on how well the latent variables can be modelled and subsequently sampled from. Better generative modelling is also the primary goal of another class of diffusion models-those that learn their forward (noising) process. While effective at adjusting the noise process in an input-dependent manner, they must satisfy additional constraints derived from the terminal conditions of the diffusion process. Here, we draw a connection between these two classes of models and show that certain design decisions (latent variable choice, conditioning method, etc.) in the DA framework-leading to a model we term DMZ-allow us to obtain the best of both worlds: effective representations as evaluated on downstream tasks, including domain transfer, as well as more efficient modelling and generation with fewer denoising steps compared to standard DMs.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Learning effective and efficient latent-variable deep generative models has been an open problem in machine learning (ML) for some time <ref type="bibr" target="#b9">[9,</ref><ref type="bibr" target="#b2">3]</ref>. This requires encapsulating three interrelated characteristics: generating data that matches the observed data distribution well, capturing relevant information in the latent variables that facilitates interventions or downstream use, and doing both in a computationally efficient manner.</p><p>Diffusion models (DMs) are a powerful class of deep generative models that excel at generation, with Denoising Diffusion Probabilistic Models (DDPMs) <ref type="bibr" target="#b5">[6]</ref> and score-based models <ref type="bibr" target="#b33">[33]</ref> serving as foundations. However, these models are also computationally expensive and are not setup to capture effective latent representations. Approaches to address efficiency have largely focussed on making generation faster or more robust, for example with DDIM <ref type="bibr" target="#b32">[32]</ref>, I-DDPM <ref type="bibr" target="#b22">[22]</ref>, DDPM-IP <ref type="bibr" target="#b24">[24]</ref>, and SS-DDPM <ref type="bibr" target="#b25">[25]</ref>. And approaches to capturing representations have largely focussed on extracting such from pre-trained models whether through latent codes <ref type="bibr" target="#b45">[45]</ref>, internal activations <ref type="bibr" target="#b42">[42,</ref><ref type="bibr" target="#b40">40]</ref>, by analysing degradation patterns <ref type="bibr" target="#b43">[43]</ref>, or aiming to disentangle interpretable structures <ref type="bibr" target="#b41">[41,</ref><ref type="bibr" target="#b46">46]</ref>.</p><p>While most DMs assume a fixed forward noising process and focus on learning the reverse denoising process, recent work has explored additionally learning the forward noising process itself <ref type="bibr" target="#b10">[10,</ref><ref type="bibr" target="#b0">1,</ref><ref type="bibr" target="#b23">23]</ref>, leading to more efficient learning and better models. Independent of this, a recently-developed variant of DMs called diffusion autoencoders (DAs) incorporate input-dependent latent variables to capture representations alongside the diffusion process to enable reconstruction, controllable generation and interpolations. Their effectiveness at capturing such information, the ability to subsequently generate data well, and to potentially do so with fewer denoising steps all depend strongly on how well the latent variable is fit and can be sampled from during inference.</p><p>Here, we draw a connection between DMs that learn their forward process for better and more efficient models and DAs that capture latent representations. We show that certain design decisions with the DA framework, including the choice and dimensionality of latent variable, method of conditioning the denoising process, and setup for the learning the latent distribution allow us to obtain the best of both worlds. This includes learning effective representations as evaluated on downstream tasks, including a novel domain transfer setting for DAs, as well as more efficient learning, modelling, and generation with fewer denoising steps compared to standard DMs. Our contributions are as follows:</p><p>1. We propose DMZ, an efficient generator inspired by the connection between diffusion autoencoders and diffusion models with a learnable forward process. 2. We demonstrate that DMZ generates high-quality samples with fewer denoising steps and learns meaningful representations, without the need for additional loss terms, constraints on the latent variable, or auxiliary samplers-unlike existing diffusion autoencoders. 3. We adapt DMZ to a multimodal setting and evaluate it on an image-to-image translation task.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Background and related work</head><p>Diffusion models (DMs) gradually corrupt data into noise through a forward process and learn to reverse this corruption. Denoising Diffusion Probabilistic Models (DDPMs) <ref type="bibr" target="#b5">[6]</ref> and score-based models <ref type="bibr" target="#b33">[33]</ref> established this foundational setup with a Markovian noising process.</p><p>Given sample x 0 from the data distribution q(x 0 ) and a predefined noise schedule (β 1 , . . . , β T ), the forward process simulates a Markov chain starting from data x 0 ∼ q(x 0 ), iteratively adding Gaussian noise over T diffusion steps until obtaining a completely noisy image x T ∼ N (0, I):</p><formula xml:id="formula_0">q(x 1:T |x 0 ) = T t=1 q(x t |x t-1 ), q(x t |x t-1 ) = N x t ; 1 -β t x t-1 , β t I .<label>(1)</label></formula><p>Given observation x 0 , the noised sample at t is derived as</p><formula xml:id="formula_1">x t = √ ᾱt x 0 + √ 1 -ᾱt ϵ</formula><p>, where ϵ ∼ N (0, I), α i = 1β i , and ᾱt = t i=1 α i . The reverse process (denoising) is parametrised by θ:</p><formula xml:id="formula_2">p θ (x t-1 |x t ) = N (x t-1 ; µ θ (x t , t), σ t I) , σ t = 1 -ᾱt-1 1 -ᾱt β t .<label>(2)</label></formula><p>Instead of directly predicting the mean of the forward process posterior µ θ (x t , t), Ho et al. <ref type="bibr" target="#b5">[6]</ref> propose training a neural network ϵ θ (•) to predict the noise vector ϵ by optimising:</p><formula xml:id="formula_3">L(θ) = E x0∼q(x0), ϵ∼N (0,I), t∼U ({1,...,T }) ∥ϵ -ϵ θ (x t , t)∥ 2 .<label>(3)</label></formula><p>For inference, the reverse process is defined as</p><formula xml:id="formula_4">p θ (x t-1 |x t ) = N x t-1 ; µ θ (x t , t), σ 2 t I , where µ θ (x t , t) = 1 √ α t x t - 1 -α t √ 1 -ᾱt ϵ θ (x t , t) and σ 2 t = 1 -α t-1 1 -α t β t .<label>(4)</label></formula><p>Markovian DMs were later extended to non-Markovian variants <ref type="bibr" target="#b32">[32,</ref><ref type="bibr" target="#b25">25]</ref>, where the input x 0 influences the denoising process, resulting in fewer steps required for inference. These models assume a fixed forward process and focus solely on learning the reverse denoising process.</p><p>Diffusion models with learned forward process: Recent work explores parametrising and learning the forward process (noising) as well as the denoising process. VDMs <ref type="bibr" target="#b10">[10]</ref>, NFDMs <ref type="bibr" target="#b0">[1]</ref> and DiffEnc <ref type="bibr" target="#b23">[23]</ref> learn both the forward process q ϕ (x t |x 0 , t) and the reverse process p θ (x 0 |x t ), and have been shown to achieve better log-likelihood, potentially requiring fewer steps for inference.</p><p>Other work explores conditional diffusion and use of data-dependent priors <ref type="bibr" target="#b13">[13]</ref> or shifts <ref type="bibr" target="#b47">[47]</ref>. This direction parallels the motivations behind hierarchical variational autoencoders (VAEs) <ref type="bibr" target="#b35">[35,</ref><ref type="bibr" target="#b12">12]</ref>, which introduce multi-level latent structures to better capture data distributions.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Diffusion autoencoders (DAs):</head><p>This class of models combine the benefits of autoencoders and diffusion modeling by introducing a latent variable that guides denoising, enabling tasks such as retrieval and editing through learned representations <ref type="bibr" target="#b28">[28,</ref><ref type="bibr" target="#b38">38,</ref><ref type="bibr" target="#b26">26,</ref><ref type="bibr" target="#b6">7]</ref>. All but Hudson et al. <ref type="bibr" target="#b6">[7]</ref> tackle unconditional generation, which aligns with the focus of our work. DiffAE <ref type="bibr" target="#b28">[28]</ref> employs an encoder z = Enc ϕ (x 0 ) whose output is used at each step of denoising alongside x t and t. InfoDiffusion <ref type="bibr" target="#b38">[38]</ref>, based on InfoVAE <ref type="bibr" target="#b48">[48]</ref>, further introduces a probabilistic encoder to maximise MI and align the posterior with a discrete prior of z. DiffuseVAE <ref type="bibr" target="#b26">[26]</ref> combines VAE and DDPM in a two-stage training process. First, a VAE learns latent codes and reconstructions; then, a DDPM denoises p(x 0 |x t , x 0 ), with x 0 as the VAE reconstruction of x 0 . While these three DAs demonstrate the ability to control the denoising process via a learned latent variable, they share a key limitation in terms of their generative performance. At inference time, they all rely on auxiliary samplers-such as DDIMs <ref type="bibr" target="#b28">[28,</ref><ref type="bibr" target="#b38">38]</ref> or GMMs <ref type="bibr" target="#b26">[26]</ref>-to produce valid latent codes, introducing unnecessary overhead.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Design of DMZ</head><p>A DA with a stochastic encoder q ϕ (z | x 0 ) can be trained with a loss that generalises Equation (3):</p><formula xml:id="formula_5">L(θ) = E x0∼q(x0), ϵ∼N (0,I), t∼U ({1,...,T }),z∼q ϕ (z|x0) ∥ϵ -ϵ θ (x t , t, z)∥ 2 ,<label>(5)</label></formula><p>optimised both with respect to the denoiser ϵ θ (now conditioned on z) and the encoder q ϕ . Diffusion model</p><formula xml:id="formula_6">x0 xt-1 xt xT • • • • • • q(xt | xt-1) x0 pθ(xt-1 | xt)</formula><p>Diffusion model with learned noising</p><formula xml:id="formula_7">x0 xt-1 xt xT • • • • • • qϕ(xt | x0, xt-1) x0 pθ(xt-1 | xt) DMZ x0 xt-1 xt xT • • • • • • q(xt | xt-1) x0 pθ(xt-1 | xt, z) z qϕ(z | x0)</formula><p>Figure <ref type="figure">1</ref>: Top: Basic diffusion reverses a Markovian noising process from x T (possibly via predicted x 0 at each step). Middle: A generalisation where generation reverses a non-Markovian learned noising process, marginalising out unknown x 0 . Bottom: DMZ, where generation conditions on latent z. Solid and dashed arrows denote noising and generation respectively. Red arrows denote learned parametric models. Blue objects denote data necessary for generation: initial noise, transition kernel, and z.</p><p>In this section, we describe a specific subclass of such diffusion autoencoders (DAs), following a set of judicious design choices, that allow for efficient generative modelling, simultaneously capturing effective latent representations.</p><p>To begin with, we draw attention to the key distinctions between standard DMs, DMs with a learned forward (noising) process, and a particular type of DA, in Fig. <ref type="figure">1</ref>.</p><p>As can be seen, diffusion models with a learnable forward process (middle) construct a noised observation x t by additionally incorporating side-information from the observation x 0 , through a learnable parametric function.</p><p>The result is that the source for the denoiser x t can carry additional information to help denoise better to x t-1 . But this is also a fundamental feature of DAs (bottom)-they incorporate side-information through z into the denoising process by additionally conditioning the denoiser on z. In effect, denoising in DAs can be seen as {x t , z} → x t-1 , with x t derived through a standard fixed noising process, just that the information from this x t and z are not explicitly combined and required to additionally satisfy the constraints of the noising process. Of course, this means that one needs to also be able to sample from the latent z in order to function as a proper generative model; this is what the rest of our design choices seek to address.</p><p>Choice of latent z: In choosing the type of latent variables, we note the importance of discrete latent variables for representation learning. They offer a more interpretable and more space-efficient way to represent data compared to continuous latent variables, and can also capture structured relationships and details, leading to simpler and more effective models <ref type="bibr" target="#b30">[30,</ref><ref type="bibr" target="#b36">36,</ref><ref type="bibr" target="#b37">37,</ref><ref type="bibr" target="#b29">29,</ref><ref type="bibr" target="#b50">50,</ref><ref type="bibr" target="#b19">19]</ref>. There are two main aspects to consider here-the type of latent variable and its dimensionality-that have an effect on the kind of model we learn. These then form the basis of the experiments( §4) and ablations ( §4.5) we perform.</p><p>For type, we explore the choice of binary latent variables following recent evidence showcasing their effectiveness in the diffusion and reinforcement learning settings <ref type="bibr" target="#b20">[20,</ref><ref type="bibr" target="#b39">39]</ref>, as compared to continuous latent variables more common with deep generative modelling. With regard to the dimensionality of the latent variable, generally speaking, a smaller number of dimensions is likely to help with making better sense of what the latent variable captures. Conversely, a larger number of dimensions, is likely to capture more information, helping with use in downstream tasks. This is a trade-off we also encounter, with an additional consideration coming from how the size of the latent variable affects our ability to define and sample a prior over the latent z to allow sampling at inference time. Conditioning on latent z: Given a latent z, another key design decision for effective modelling is what form conditioning the denoiser takes. In the standard case, the denoiser simply takes the noisy observation x t along with indication of time step t to predict the denoised data x t-1 , possibly via predicting the target x 0 itself. This is shown in Fig. <ref type="figure" target="#fig_5">2</ref>(top), with the denoising UNet comprising of multiple blocks, with some of them including self attention.</p><p>A natural way to extend this to condition on z would be to include it along with x t and t as shown in Fig. <ref type="figure" target="#fig_5">2</ref>(mid); this is in fact how some prior DAs condition <ref type="bibr" target="#b28">[28,</ref><ref type="bibr" target="#b38">38]</ref>. As an alternative, we suggest that z can be more effective with just modulating attention, and so use cross-attention for some blocks with attention layers-with keys K and values V coming from z, and queries Q coming from the original inputs to the denoiser. As we will see in the experiments, this turns out to be a useful inductive bias and can have a marked effect on learning effective and useful representations.</p><p>Learning with latent z: A particularly interesting feature of DAs is the fact that the latent variable z is in fact largely redundant in terms of captured information from the data. That is, there is no specific pressure for the model to capture any information in z given that the standard noising and denoising processes are sufficiently flexible to faithfully model and generate observed data. This lies in direct contrast to typical deep generative models that employ their latent variables as a bottleneck, forcing the flow of all information through them. This feature effectively means that independent constraints placed on z, such as regularising it against a typical non-informative prior, as one would in a variational autoencoder, such as the standard normal (N (0, I)), is likely to be quite easily satisfiable and result in the latent becoming non-informative too. This is seen in some prior work (e.g., <ref type="bibr" target="#b38">[38]</ref>), where the resulting non-informativity needs further additional regularisation using mutual information with the input. Other approaches avoid this issue by using pretrained probabilistic models with well-defined priors <ref type="bibr" target="#b26">[26]</ref>. This points us to models where the prior is flexible enough to capture the data distribution with the generative model, and simple enough to allow relatively easy definition and capturing of useful latent representations. The choice of latent then can have a direct effect on being able to circumvent this apparent redundancy of the latent z in DAs. As we will show with experiments, we construct DMZ to encapsulate useful inductive biases via binary latent variables, and with a small enough latent dimensionality that obviates the need for learning, either jointly with the model or post-hoc, to act as a useful prior for generation-with uniform sampling working surprisingly well.</p><p>Put together, we find that judicious design choices from above allow us to construct a model that (a) does not need auxiliary losses, (b) does not need additional learning of the prior, (c) captures effective representations, and (d) can do all this while being faster to learn than standard diffusion models.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Experiments</head><p>We show that DMZ is an efficient and competitive generative model, learns high-quality representations useful for downstream tasks, and extends naturally to a multimodal image-to-image translation framework-all within a unified architecture, for which we provide an ablation study.</p><p>All our models are trained following the setup of Nichol and Dhariwal <ref type="bibr" target="#b22">[22]</ref>, using their architecture and training hyperparameters. More details can be found in the Appendix and the code. We train until no further improvement in FID scores is observed for T = 100 denoising steps. We denote DMZ-n as an instance of DMZ with a latent dimensionality of |z| = n. The dimensionality of z was deliberately kept small, guided by the number of available labels in each dataset and the requirements of downstream tasks; this choice is further examined in the ablation study. Additional results and samples are provided in the Appendix. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Impact of z</head><p>On training and efficiency: We begin by evaluating the impact of the latent variable z on training efficiency by comparing DMZ to its unconditional counterpart-a standard DDPM. This baseline shares the same architecture and training procedure as DMZ, differing solely in the absence of z-specific components. Following prior work, we perform our experiments on CIFAR-10 <ref type="bibr" target="#b11">[11]</ref> and CelebA-64 <ref type="bibr" target="#b16">[16]</ref>. We report FID scores calculated using 10K generated samples and the entire dataset <ref type="bibr" target="#b31">[31]</ref>, along with negative log-likelihood (NLL) in bits per dimension.</p><p>As shown in Fig. <ref type="figure" target="#fig_0">3</ref>, DMZ converges in fewer training iterations and achieves better generation efficiency. Notably, for T = 10, it achieves much lower FID scores, demonstrating improved performance when using fewer denoising steps. Moreover, we observe that a lower NLL does not necessarily correspond to better FID scores, highlighting the often-misaligned objectives of likelihood maximisation and perceptual sample quality. We note that our work aligns with prior efforts to improve sampling quality and efficiency in DDPMs, rather than focusing on optimising NLL.  On the denoising process: Next, we examine the role of z during different stages of the denoising process (generation). We quantify this by measuring the mutual information (MI) between the learned representations z ∼ q ϕ (z | x 0 ) and: (a) the noised input x t ∼ q(x t | x 0 , t), and (b) the generated sample x t ∼ p θ (x t | z, x T ), x T ∼ N (0, I).</p><p>For DMZ-16 trained on CIFAR-10, we extract the learned representations z, fix T = 100, and compute MI between z and x t for each t = 0, 1, 2, . . . , 10, 20, 30, . . . , 100 using MINE <ref type="bibr" target="#b1">[2]</ref>. The results are shown in Fig. <ref type="figure" target="#fig_2">4</ref>.</p><p>We find that while z is theoretically redundant when paired with x t during training, there is non-negligible MI between them, indicating that the network learns to extract meaningful information from z. Furthermore, z is most informative during the early stages of denoising and provides a performance boost. After the initial 8 steps, the MI begins to increase approximately linearly, suggesting a progressive reliance on z as the model generates finer details.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Generation quality and efficiency</head><p>We demonstrate that DMZ is an efficient and competitive generative model, outperforming existing diffusion autoencoders (DAs) and diffusion models (DMs) designed exclusively for generation.</p><p>Following prior work, we evaluate DMZ-16 and DMZ-64 on CIFAR-10 and CelebA-64 respectively, using FID scores (FID@10K) across various inference step counts (T = 10, 20, 50, 100). Results are presented in Table <ref type="table" target="#tab_1">1</ref>, and include scores obtained by an unconditional counterpart to DMZ-a DDPM-which serves as a natural baseline and a reference point, as discussed in §4.1.</p><p>First, we observe that DMZ achieves excellent FID scores on both datasets. Thess scores, even with fewer inference steps, highlight efficiency at generation. By comparing DMZ with the DDPM, we again demonstrate, as shown in Section 4.1, the benefit provided by the addition of z.</p><p>In the context of DAs, it is important to note that, unlike the baseline DAs which rely on auxiliary samplers for z, our model samples z directly from a Bernoulli prior without additional overhead. We see that DiffAE achieves better FID on the CelebA-64 dataset, which we attribute to its use of DDIM as the base generative model. Overall, we argue that DMZ demonstrates stronger performance and greater simplicity compared to previous DAs. We find that DMZ achieves performance comparable to state-of-the-art diffusion models (DMs), particularly when accounting for the number of denoising steps required.</p><p>It is important to note that FID scores typically improve with a larger number of evaluation samples. For reference, DMZ achieves an FID of 2.83 on CIFAR-10 with T = 100 when evaluated on 50K samples, instead of our default of 10K. Additionally, our framework imposes minimal architectural constraints, in contrast to NDFM <ref type="bibr" target="#b0">[1]</ref>, which introduces limitations that hinder scalability and flexibility.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">Representations</head><p>Quantitative evaluation: We assess the quality of the learned representations z following Wang et al. <ref type="bibr" target="#b38">[38]</ref>, by measuring classification accuracy of a logistic classifier trained on the extracted codes. For each dataset, we extract encodings z for the entire dataseset, apply an 8:1:1 train-validation-test random split, and report classification performance averaged over five random splits. For CIFAR-10, we report classification accuracy. For CelebA-64, due to the presence of class imbalance, we report the average AUROC across all 40 binary attributes.</p><p>In Table <ref type="table" target="#tab_2">2</ref>, we present how varying the dimensionality of z impacts downstream classification performance. Our results, alongside those of Wang et al. <ref type="bibr" target="#b38">[38]</ref>, show that DMZ, despite applying no explicit constraints or regularization to z during training, achieves performance equal to or better than InfoDiffusion, while both outperform DiffAE.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Qualitative evaluation:</head><p>We analyse examples of images generated using representations from DMZ with varying latent dimensionalities |z|. For each model, we sample an image from the dataset, x 0 ∼ D, and extract its corresponding latent representation. We then generate multiple images by sampling different noise vectors x T ∼ N (0, I) and generating samples via p θ (x T , z). Fig. <ref type="figure" target="#fig_3">5</ref> presents representative examples illustrating the impact of the size of z on representations. We observe that for smaller |z|, less information about the image is retained. Low-level attributes, such as the presence of a smile, are preserved, while higher-level features, such as race, are not consistently captured. We attribute this to the fact that high-level features remain present in the intermediate representations x t that are passed to the network alongside z. As |z| increases, the model is able to encode more information, including higher-level semantic attributes, resulting in generated images that remain consistent across different samples of x T .  images from the dataset and extract their corresponding encodings, z source and z target . We then perform discrete interpolations by sequentially flipping bits in z source to match those in z target . Fig. <ref type="figure" target="#fig_4">6a</ref> presents examples for DMZ-256 trained on CelebA-64.</p><p>Additionally, via the latent variable z, we can perform targeted edits on the generated samples-such as altering attributes like hair or facial expression-using classifiers trained on the latent representations. Specifically, we leverage the same classifiers used in the quantitative evaluation and apply edits by moving z along the decision boundary of each classifier. Examples of images generated by using translations of z with x T ∼ N (0, I), are shown in Fig. <ref type="figure" target="#fig_4">6b</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.4">Multimodal framework</head><p>We demonstrate how the DMZ framework can be extended to handle multimodal tasks, specifically focusing on image-to-image translation. Inspired by Denoising Diffusion Bridge Models <ref type="bibr" target="#b49">[49]</ref>, we apply DMZ to the sketch-to-photo translation task -edges2handbags <ref type="bibr" target="#b8">[8]</ref>.</p><p>Model overview: To effectively reconstruct target (x 0 ) during translation, the model requires a sufficiently large |z|. We train two separate DMZ-512 models: one each for edge images (sketches) and handbags (photos). Training terminates when the mean squared error (MSE) between inputs and samples generated using z shows no further improvement (120K training iterations). The two models learn independent latent spaces-Z sketch for edges and Z photo for handbags. We then learn the mapping between these two latent spaces: γ : Z sketch → Z photo , where γ is a mapping function parametrised by a multilayer perceptron (MLP). Image translation process: For sketch-tophoto translation, we follow this pipeline:</p><p>(1) Latent sampling: We sample a latent variable z sketch ∼ q ϕ (z|x sketch ) from the model trained on sketches, where x sketch is the input sketch image.  Results: Following the evaluation framework of Zhou et al. <ref type="bibr" target="#b49">[49]</ref>, we set T = 40 and perform sketch-to-photo translations on the training set using our model and baselines. We report FID scores, Inception Scores (IS), LPIPS <ref type="bibr" target="#b44">[44]</ref>, and Mean Squared Error (MSE). Results are shown in Table <ref type="table" target="#tab_3">3</ref>. We achieve competitive performance in comparison to existing approaches, demonstrating effectiveness of the DMZ framework for multimodal image translation. Crucially, DMZ reduces the reliance on expensive joint training across domains. Additionally, our framework supports unconditional generation of images in both domains (photos and sketches), reverse photo-to-sketch translation, and representation learning. Fig. <ref type="figure" target="#fig_6">7</ref> provides examples of the edge-to-handbag translations.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.5">Ablations</head><p>We perform an ablation study to analyse the impact of various design choices on the model's abilities and performance. Specifically, we examine the use of a discrete latent space, incorporating the latent variable z into the denoising network, and the size of the latent variable z. Each of these choices plays a critical role in shaping the model's overall performance and capabilities.</p><p>Additionally, we demonstrate that DMZ can be trained via finetuning a pretrained DDPM. While finetuning leads to some loss in efficiency compared to training from scratch, it offers a faster training process, making it an attractive option when time or memory is a limiting factor. Evaluation details and metrics used are as discussed in previous experiments. Discrete z: First, we explore the use of an alternative to discrete z, in the form of a Normal prior.</p><p>We train DMZ-16 on CIFAR-10 using two variants of the prior: discrete (Bernoulli prior) and continuous (Normal prior). In Table <ref type="table" target="#tab_4">4</ref>, we highlight the necessity of using discrete latents. The use of a continuous latent variable makes it infeasible to sample directly from the prior without auxiliary samplers that model the distribution of z. This is evidenced by the poor FID scores obtained when sampling directly from the prior, which, in the continuous version, we determine using the mean and standard deviation of the training data. Furthermore, the quality of the learned representations declines, as reflected in the lower accuracy on downstream tasks. We attribute this to the latent space becoming more convoluted, making it more difficult for simple logistic classifiers to perform well.  <ref type="bibr" target="#b28">[28,</ref><ref type="bibr" target="#b38">38]</ref>, e.g., by concatenating their embeddings and using the result in place of the standard timestep embedding <ref type="bibr" target="#b28">[28]</ref>. However, we find that incorporating z through cross-attention results in better performance. Fig. <ref type="figure" target="#fig_5">2</ref> highlights the architectural differences between the two approaches.</p><p>To implement this, we replace selected self-attention blocks in the U-Net with cross-attention, enabling better attention over z. This improves robustness to z values not seen during training and leads to better learned representations-reflected in both lower FID scores when sampling from the Bernoulli prior and higher accuracy on downstream tasks, as shown in Table <ref type="table" target="#tab_5">5</ref>.</p><p>Small size of z: Here, we discuss how the size of z affects the generative capabilities of DMZ.</p><p>Clearly, for an autoencoder to accurately reconstruct x 0 from z, the latent variable z must be sufficiently large. However, when it comes to effective generation, the opposite holds true: a smaller latent space tends to yield better generative performance. Furthermore, a small |z| is sufficient for nearly all use cases. The only exception occurs when reconstruction from z is required, such as in image-to-image translation tasks where Mean Squared Error (MSE) is of concern. Even for image manipulation, a small |z| suffices, as the additional information that a larger |z| could provide is already encoded in the intermediate x t , which is accessible (unlike in image-to-image translation).</p><p>We observe that for larger |z|, sampling from the Bernoulli prior becomes less effective. To address this, we explore several strategies for sampling z during inference-a critical component for highquality generation, as evidenced in prior work on DAs. We consider the following three methods:</p><p>(1) Sampling z from data: For reference, we compute FID scores for z ∼ q ϕ (z | x 0 ), where x 0 ∼ D is taken from data. We denote this strategy as z ∼ q ϕ (z|x 0 ). (2) Bernoulli Prior: We sample each latent component independently as z i ∼ Bernoulli(p = 0.5).</p><p>(3) Autoregressive Prior (PixelSNAIL): Inspired by prior work on discrete latent models <ref type="bibr" target="#b37">[37,</ref><ref type="bibr" target="#b29">29]</ref>,</p><p>we fit a PixelSNAIL model <ref type="bibr" target="#b3">[4]</ref> over latent codes to enable sampling. We refer to this sampling method as z ∼ PixelSNAIL. Larger PixelSNAIL models closely match the posterior, or even memorise the dataset, achieving FID scores near those for latents from data. To ensure fair comparison, our models are limited to &lt;600K parameters, based on a grid search that found hyperparameters which provide an optimal balance between performance and model size.</p><p>FID scores for all strategies are shown in Table <ref type="table" target="#tab_6">6</ref>. Sampling from PixelSNAIL generally yields better results, particularly in higher-dimensional settings.</p><p>In lower-dimensional latent spaces, the model better leverages the prior, and sampling directly from it yields strong performance without auxiliary samplers. Therefore, we adopt low-dimensional z, optimising for direct sampling.</p><p>Finetuning: All models presented thus far were trained from scratch. In this section, we investigate the impact of finetuning strategies on the final model performance. Specifically, when time or computational resources are limited, one might opt to finetune a pretrained DM to accelerate training. We explore how this choice affects the capabilities discussed in previous experiments. We consider three different training strategies: 1) training from scratch, 2) finetuning all parameters, 3) finetuning only the newly added parameters (specifically, those related to the cross-attention mechanism) using a pretrained DDPM. Note that the pretrained DDPM used here is an unconditional DDPM, trained for our previous experiments. Results are presented in Table <ref type="table" target="#tab_7">7</ref>.</p><p>All models were able to learn effective representations, as demonstrated by their performance on downstream tasks (AUROC). However, the finetuned models did not perform as well in generation tasks with fewer denoising steps, as evidenced by the FID scores for T = 10. Overall, all models perform well and are suitable for different use cases, depending on the specific trade-offs between training time, resource requirements, and generation efficiency.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Conclusion</head><p>We presented DMZ, a diffusion model inspired by the connection between diffusion autoencoders and diffusion models with a learnable forward process and designed to both learn efficiently and capture effective representations. Through targetted experimentation, we demonstrate that DMZ is capable of generating high-quality samples with fewer denoising steps, while simultaneously learning meaningful representations. Importantly, DMZ achieves these results without the need for additional loss terms, constraints on the latent variable, or auxiliary samplers. Finally, we extend DMZ to a multimodal framework and successfully apply it to an image-to-image translation task, showcasing its versatility and effectiveness. Our findings suggest that the use of additional, input-dependent priors provides a compelling and efficient alternative to traditional diffusion modelling.</p><p>Limitations </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A Technical Appendices and Supplementary Material</head><p>A.1 DMZ in relation to prior work</p><p>Table <ref type="table" target="#tab_9">8</ref> shows how DMZ relates to prior work on diffusion autoencoders. Algorithm 1 and Algorithm 2 outline the training and sampling procedures of DMZ, detailing how the latent variable z is incorporated and highlighting differences from the original DDPM approach <ref type="bibr" target="#b5">[6]</ref>. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Multimodal</head><p>Finetuning</p><formula xml:id="formula_8">DiffAE [28] ✓ ✓ ✗ ✗ ✓ ✓ ✓ ✗ ✗ InfoDiff [38] ✓ ✗ ✓ ✗ ✓ ✓ ✓ ✗ ✗ DiffuseVAE [26] ✗ ✗ ✗ ✗ ✓ ✓ ✗ ✗ ✗ DMZ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ Algorithm 1: DMZ training 1 repeat 2 Sample x 0 ∼ q(x 0 ), t ∼ U({1, . . . , T }), ϵ ∼ N (0, I) 3 Compute noisy input x t ← √ ᾱt x 0 + √ 1 -ᾱt ϵ ϵ ϵ<label>4</label></formula><p>Extract relaxed code z from x 0 via encoder parametrized by φ 5 Take a gradient step on ∇ θ,φ ∥ϵϵ θ (x t , t, z)∥ Set v ← 0</p><formula xml:id="formula_9">7 xt-1 ← 1 √ αt xt -1-αt √ 1-ᾱt ϵ θ (x t , t, z) + σ t v 8 return x0 A.</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Interpolation formulation and examples</head><p>Algorithm 3 describes how discrete interpolations between two latent vectors are performed by flipping the disagreeing bits one at a time in random order. For visualisations, we take latent codes equally spaced along the interpolation trajectory. Algorithm 4 details translations across the classifier's decision boundary. Examples of both are shown in Figure <ref type="figure">8</ref> and Figure <ref type="figure" target="#fig_9">9</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.3 Multimodal DMZ details</head><p>To build the multimodal framework-specifically the image-to-image model composed of DMZ modules-we train each component independently and evaluate its performance in isolation. This modular approach allows us to assess the effectiveness of each part before assembling the full model, ensuring that all components function reliably. Below, we describe this process for the multimodal DMZ trained for Edges2Handbags sketch-to-photo task.    We train our models for 40K training iterations by finetuning all parameters. Quantitative results are presented in Table <ref type="table" target="#tab_10">9</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.5 Representations quality over training</head><p>Fig. <ref type="figure" target="#fig_12">12</ref> shows how the quality of learned representations-measured by performance on downstream tasks-evolves during training. We observe that high-quality representations emerge early and remain stable throughout.  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.6 Reproducibility Details</head><p>We adopt the hyperparameter settings from Ning et al. <ref type="bibr" target="#b24">[24]</ref>, which are based on the configurations by Dhariwal and Nichol <ref type="bibr" target="#b4">[5]</ref>. The specific values are listed in Table <ref type="table" target="#tab_1">10</ref>. All models are trained using the AdamW optimizer <ref type="bibr" target="#b17">[17]</ref> with 16-bit mixed precision training with loss scaling <ref type="bibr" target="#b21">[21,</ref><ref type="bibr" target="#b4">5]</ref>, while keeping the model weights, EMA, and optimizer states in 32-bit precision. An EMA decay rate of 0.9999 is used in all experiments, following the setup from Ning et al. <ref type="bibr" target="#b24">[24]</ref>.</p><p>The encoder used to extract codes z from input images consists of repeated blocks of a convolutional layer, batch normalization, and LeakyReLU activation, followed by a final projection layer. We use 4 blocks for 32 × 32 images, 5 blocks for 64 × 64, and 7 blocks for 256 × 256.</p><p>We use PyTorch <ref type="bibr" target="#b27">[27]</ref>, and train all models with Python 3.10 and PyTorch version 2.6. For CIFAR-10, we use a single NVIDIA A40 GPU and train for approximately 2 days. For CelebA-64, we use two A40 GPUs and train for about 10 days. Models trained on Edges2Handbags-handled separately as Edges and Handbags-are also trained using two A40 GPUs, with a training time of around 3 days. Finetuning of CelebA-HQ DDPM <ref type="bibr" target="#b5">[6]</ref> takes slightly less than 2 days on 4 A40 GPUs. For T=100, sampling a batch of 64 images using a single A40 GPU takes 12s, 264.5s, 79.3s, 79.3s, and 222.5s, for CIFAR-10, CelebA, Edges, Handbags, and CelebA-HQ, respectively.</p><p>Our implementation and instructions for reproducing the experiments are available at <ref type="url" target="https://github.com/exlab-research/dmz">https:// github.com/exlab-research/dmz</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.7 Additional samples</head><p>Additional examples are provided in Figure <ref type="figure" target="#fig_13">14</ref>, Figure <ref type="figure" target="#fig_0">13</ref> and Figure <ref type="figure" target="#fig_3">15</ref>. </p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: Comparison of training curves for DMZ and the baseline DDPM. Dashed lines correspond to results for T = 10, while solid lines indicate T = 100.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 4 :</head><label>4</label><figDesc>Figure4: Mutual information between the representations z learned by DMZ-16 on CIFAR-10 and x t from the noising process (blue) or from the denoising process (orange; starting from {x T , z}, x T ∼ N (0, I)).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 5 :</head><label>5</label><figDesc>Figure 5: Examplar generations from z of a single image by DMZ, with rows corresponding to |z| = 64, 128, 256. Next, we illustrate the properties of the learned representations z through interpolation examples, where transitions between latent vectors lead to gradual changes in attributes such as identity and pose. Specifically, we select pairs of</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 6 :</head><label>6</label><figDesc>Figure 6: Qualitative evaluation on CelebA-64.</figDesc><graphic coords="7,108.00,72.00,201.16,58.10" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>( 2 )</head><label>2</label><figDesc>Mapping: We map sampled sketch latent z sketch into the photo latent space using the learned function γ, resulting in latent z photo = γ(z sketch ).(3) Denoising: Finally, we use a denoising process to generate the final photo image by sampling p θ (x T , z photo ) from the photo model, where x T ∼ N (0, I).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>Figure 7 :</head><label>7</label><figDesc>Figure 7: Examples of sketch-to-photo translations using DMZ.</figDesc><graphic coords="7,306.00,567.50,198.00,68.78" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head>1 3 if t &gt; 1 then 4</head><label>34</label><figDesc>Sample xT ∼ N (0, I) and z such that z i ∼ Bernoulli(p = 0.5) 2 for t ← T to 1 do Sample v ∼ N (0, I)</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head></head><label></label><figDesc>(a) Input images x0 ∼ D (b) z ∼ qφ(z|x0) with xT ∼ N (0, I) (c) z ∼ qφ(z|x0) with xt ∼ q(xt|x0) and t = 90</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_9"><head>Figure 9 :</head><label>9</label><figDesc>Figure 9: Examples of classifier-based edits for T = 100 on CelebA-64 using DMZ-256.For the first image x 0 , we change following CelebA attributes: glasses, male, hat; for the second: gray hair, bald, smile; the third: bangs, blond hair, hat; the fourth: bangs, male, earrings; the fifth: blond hair, male, smile.</figDesc><graphic coords="17,325.80,127.05,178.20,107.35" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_10"><head></head><label></label><figDesc>(a) Photo-to-sketch translations (b) Unconditional generation</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_11"><head>Figure 11 :</head><label>11</label><figDesc>Figure 11: Qualitative results showing additional capabilities of the DMZ image-to-image framework.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_12"><head>Figure 12 :</head><label>12</label><figDesc>Figure 12: Evolution of representation quality throughout training.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_13"><head>Figure 14 :</head><label>14</label><figDesc>Figure 14: Images generated with varying numbers of denoising steps T . Each column shows samples generated from a fixed latent code z ∼ Bernoulli. Rows correspond to T = 1000, 500, 200, 100, 50, 20, 10, 5 steps, from top to bottom.</figDesc><graphic coords="20,108.00,292.04,190.08,152.29" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0"><head></head><label></label><figDesc></figDesc><graphic coords="21,108.00,386.24,396.01,198.39" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 1 :</head><label>1</label><figDesc>FID scores comparison. All DAs except DiffAE use DDPMs, since DiffAE results are only available for DDIM setting. Models marked * used 50K samples; all others used 10K.</figDesc><table><row><cell>Model</cell><cell cols="3">T CIFAR-10 CelebA-64</cell></row><row><cell></cell><cell>10</cell><cell>11.88</cell><cell>15.98</cell></row><row><cell>DMZ</cell><cell>20 50</cell><cell>6.92 5.18</cell><cell>9.17 5.13</cell></row><row><cell></cell><cell>100</cell><cell>4.79</cell><cell>3.96</cell></row><row><cell></cell><cell>10</cell><cell>23.04</cell><cell>26.44</cell></row><row><cell>DDPM [6, 5, 24]</cell><cell>20</cell><cell>9.11</cell><cell>13.95</cell></row><row><cell>(reproduced)</cell><cell>50</cell><cell>5.09</cell><cell>6.76</cell></row><row><cell></cell><cell>100</cell><cell>4.46</cell><cell>4.51</cell></row><row><cell></cell><cell>10</cell><cell>-</cell><cell>12.92</cell></row><row><cell>DiffAE  *  [28]</cell><cell>20 50</cell><cell>--</cell><cell>10.18 7.05</cell></row><row><cell></cell><cell>100</cell><cell>-</cell><cell>5.30</cell></row><row><cell cols="2">InfoDiffusion [38] 1000</cell><cell>31.5</cell><cell>21.2</cell></row><row><cell></cell><cell>10</cell><cell>34.22</cell><cell>25.79</cell></row><row><cell>DiffuseVAE [26]</cell><cell>25 50</cell><cell>17.36 11.00</cell><cell>13.89 9.09</cell></row><row><cell></cell><cell>100</cell><cell>8.28</cell><cell>7.15</cell></row><row><cell>VDM  *  [10]</cell><cell>1000</cell><cell>4.0</cell><cell>-</cell></row><row><cell>DiffEnc [23]</cell><cell>1000</cell><cell>14.6</cell><cell>-</cell></row><row><cell></cell><cell>2</cell><cell>12.44</cell><cell>-</cell></row><row><cell>NDFM  *  [1]</cell><cell>4</cell><cell>7.76</cell><cell>-</cell></row><row><cell></cell><cell>12</cell><cell>5.2</cell><cell>-</cell></row><row><cell></cell><cell>10</cell><cell>13.36</cell><cell>17.33</cell></row><row><cell></cell><cell>20</cell><cell>6.84</cell><cell>13.73</cell></row><row><cell>DDIM  *  [32]</cell><cell>50</cell><cell>4.67</cell><cell>9.17</cell></row><row><cell></cell><cell>100</cell><cell>4.16</cell><cell>6.53</cell></row><row><cell></cell><cell>1000</cell><cell>4.04</cell><cell>3.51</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 2 :</head><label>2</label><figDesc>Assessment of learned representation quality based on performance in downstream classification tasks.</figDesc><table><row><cell>Dataset → Model ↓</cell><cell>CIFAR-10 |z| Acc</cell><cell cols="2">CelebA-64 |z| AUROC</cell></row><row><cell>DiffAE</cell><cell>32 39.5</cell><cell>32</cell><cell>79.9</cell></row><row><cell cols="2">InfoDiffusion 32 41.2</cell><cell>32</cell><cell>84.8</cell></row><row><cell></cell><cell>16 39.5</cell><cell>64</cell><cell>79.4</cell></row><row><cell>DMZ</cell><cell cols="2">32 41.5 128</cell><cell>80.6</cell></row><row><cell></cell><cell cols="2">64 45.6 256</cell><cell>81.0</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 3 :</head><label>3</label><figDesc>Evaluation of sketch-to-photo translation task -edges2handbags.</figDesc><table><row><cell>Pix2Pix [8]</cell><cell>74.8</cell><cell>4.24</cell><cell>0.356</cell><cell>0.209</cell></row><row><cell>DDIB [34]</cell><cell cols="2">186.84 2.04</cell><cell>0.869</cell><cell>1.05</cell></row><row><cell>SDEdit [18]</cell><cell>26.5</cell><cell>3.58</cell><cell>0.271</cell><cell>0.510</cell></row><row><cell>Rectified Flow [15]</cell><cell>25.3</cell><cell>2.80</cell><cell>0.241</cell><cell>0.088</cell></row><row><cell>I 2 SB [14]</cell><cell>7.43</cell><cell>3.40</cell><cell>0.244</cell><cell>0.191</cell></row><row><cell>DDBM (VE) [49]</cell><cell>2.93</cell><cell>3.58</cell><cell>0.131</cell><cell>0.013</cell></row><row><cell>DDBM (VP) [49]</cell><cell>1.83</cell><cell>3.73</cell><cell>0.142</cell><cell>0.040</cell></row><row><cell>DMZ</cell><cell>3.28</cell><cell>3.59</cell><cell>0.359</cell><cell>0.209</cell></row></table><note><p><p>Model</p>FID ↓ IS ↑ LPIPS ↓ MSE ↓</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 4 :</head><label>4</label><figDesc>Comparison of performance for discrete vs. continuous latents variables. Normal prior is fit over training data parameters. Comparison uses same number of training steps on CIFAR-10</figDesc><table><row><cell>prior of z</cell><cell>train iter.</cell><cell cols="2">NLL (BPD) Acc</cell><cell cols="2">FID@10K prior qϕ(z|x0)</cell></row><row><cell>Normal</cell><cell>250K</cell><cell>3.20</cell><cell cols="2">34.0 34.32</cell><cell>5.63</cell></row><row><cell cols="2">Bernoulli 250K</cell><cell>3.18</cell><cell cols="2">39.5 4.79</cell><cell>4.56</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Table 5 :</head><label>5</label><figDesc>Comparison of conditioning methods for z with DMZ-16 on CIFAR-10.</figDesc><table><row><cell>method</cell><cell>train iter.</cell><cell cols="2">NLL (BPD) Acc</cell><cell cols="2">FID@10K Bernoulli q ϕ (z|x 0 )</cell></row><row><cell>Along with t</cell><cell>400K</cell><cell>3.18</cell><cell>33.4</cell><cell>6.25</cell><cell>4.44</cell></row><row><cell cols="2">Cross-attention 250K</cell><cell>3.18</cell><cell>39.5</cell><cell>4.79</cell><cell>4.56</cell></row></table><note><p>Conditioning via cross-attention: We investigate different strategies for incorporating z into the denoising network. The denoising, unconditional UNets consist of ResNet blocks, up/downsampling blocks, and self-attention blocks. These UNets are conditioned on the timestep t by passing t to each ResNet block. A straightforward way to incorporate z is to provide it alongside the timestep t to each ResNet block</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>Table 6 :</head><label>6</label><figDesc>FID score comparison of sampling strategies for DMZ-16 trained on CIFAR-10.</figDesc><table><row><cell>T</cell><cell>z ∼ •</cell><cell>16</cell><cell>32</cell><cell>|z|</cell><cell>64</cell><cell>128</cell></row><row><cell></cell><cell>q ϕ (z|x 0 )</cell><cell cols="2">11.85 10.34</cell><cell></cell><cell>9.16</cell><cell>9.16</cell></row><row><cell>10</cell><cell>Bernoulli</cell><cell cols="5">11.88 10.48 15.55 22.20</cell></row><row><cell></cell><cell cols="6">PixelSNAIL 11.70 10.97 11.33 14.98</cell></row><row><cell></cell><cell>q ϕ (z|x 0 )</cell><cell>4.56</cell><cell>4.96</cell><cell></cell><cell>4.61</cell><cell>4.46</cell></row><row><cell>100</cell><cell>Bernoulli</cell><cell>4.79</cell><cell>5.33</cell><cell></cell><cell cols="2">9.33 17.23</cell></row><row><cell></cell><cell>PixelSNAIL</cell><cell>4.53</cell><cell>5.21</cell><cell></cell><cell>6.04</cell><cell>9.54</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head>Table 7 :</head><label>7</label><figDesc>Comparison of DMZ-64 performance on CelebA-64 for different finetuning strategies.</figDesc><table><row><cell>Finetuning</cell><cell>train iter.</cell><cell cols="2">NLL (BPD) AUROC</cell><cell cols="2">FID@10K T=10 T=100</cell></row><row><cell>None</cell><cell>300K</cell><cell>2.61</cell><cell>79.4</cell><cell>15.96</cell><cell>3.96</cell></row><row><cell>All params</cell><cell>100K</cell><cell>2.65</cell><cell>76.4</cell><cell>20.11</cell><cell>3.53</cell></row><row><cell cols="2">New params 100K</cell><cell>2.66</cell><cell>79.5</cell><cell>19.07</cell><cell>4.05</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_8"><head>:</head><label></label><figDesc>Our experiments are limited to three datasets, with reported results based on single training runs due to compute constraints, though we evaluate multiple model variants. While trends are consistent, repeated runs would improve statistical confidence. We use one A40 GPU for CIFAR-10 (32 × 32) and two A40s for CelebA-64 and Edges2Handbags (64 × 64). Additional details, including training and evaluation costs, are provided in the Appendix.</figDesc><table><row><cell>Impact statement: This work introduces a generative model that enables controllable image</cell></row><row><cell>synthesis. By improving efficiency and flexibility in generation, it contributes to advancements in</cell></row><row><cell>creative AI applications, while raising considerations around responsible use in content creation and</cell></row><row><cell>editing.</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_9"><head>Table 8 :</head><label>8</label><figDesc>Overview of model features related to training, representations, and evaluation. Diff. loss only -the model is optimised solely using the diffusion loss. Repr. qual. -authors perform quantitative evaluation of representations quality, e.g., via downstream task performance metrics.</figDesc><table><row><cell cols="2">Training</cell><cell cols="2">Representations</cell><cell></cell><cell cols="2">Evaluation</cell></row><row><cell>E2E</cell><cell>Diff. loss only</cell><cell>Discrete</cell><cell>No aux sampler</cell><cell>HQ samples</cell><cell>Edits</cell><cell>Repr. qual.</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_10"><head>Table 9 :</head><label>9</label><figDesc>Comparison of negative log-likelihood (BPD) and FID scores for varying T on CelebA-HQ for DDPM and DMZ finetuned from it.</figDesc><table><row><cell cols="2">Model</cell><cell></cell><cell cols="2">NLL (BPD) AUROC</cell><cell>FID@10K</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>T=10 T=20 T=50 T=100</cell></row><row><cell cols="2">DDPM</cell><cell></cell><cell>6.25</cell><cell>-</cell><cell>71.43 53.55 36.86</cell><cell>29.81</cell></row><row><cell cols="3">DMZ-64</cell><cell>3.01</cell><cell>69.3</cell><cell>39.91 28.16 19.60</cell><cell>15.15</cell></row><row><cell cols="3">DMZ-256</cell><cell>3.00</cell><cell>81.1</cell><cell>49.53 42.31 33.25</cell><cell>27.54</cell></row><row><cell></cell><cell>0.6</cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell>DMZ-16</cell></row><row><cell>Accuracy</cell><cell>0.2 0.4</cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell>0.0</cell><cell>0</cell><cell>100K</cell><cell>200K</cell></row><row><cell></cell><cell></cell><cell></cell><cell cols="2">Train iterations</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" xml:id="foot_0"><p>Preprint. Under review.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_1"><p>https://huggingface.co/google/ddpm-ema-celebahq-256/</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" xml:id="foot_2"><p>(a) DMZ-16 for CIFAR-10 (b) DMZ-64 for CelebA-64</p></note>
+		</body>
+		<back>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Algorithm 3: Discrete interpolation between z source and z target Input: z source , z target ∈ {0, 1} n Output: Interpolation sequence {z (i) } k i=0 , where z (i) ∈ {0, 1} n , z (0) = z source , z (k) = z target 1 Let I = {j | z sourcej ̸ = z target j };</p><p>// Indices where source and target disagree 2 Let k = |I| and j 1 , . . . , j k be a random ordering of</p><p>// Flip bit</p><p>Algorithm 4: Translations of z across the decision boundary of a binary classifier</p><p>// Class weights 2 n ← w 1w 2 ;</p><p>// Normal vector to decision boundary</p><p>• n ; // Translation vector  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>DMZ modules</head><p>We use two instances of DMZ-512: one trained on Edges-64 and the other on Handbags-64. In the sketch-to-photo task, only the model trained on photos is used to generate images, while the model trained on sketches is used to encode their representations. The mean squared error (MSE), defined as ∥ x photox photo ∥, where x photo ∼ p θ (x photo |z photo ) and z photo ∼ q φ (z|x photo ), serves as an upper bound of the MSE for the sketch-to-photo generation task. We monitor this metric during training and stop once it no longer improves. Additionally, the latent dimensionality |z| = 512 was selected based on that MSE performance. Figure <ref type="figure">10</ref> shows the reconstruction error over the course of training.</p><p>Mapping γ We train an MLP to learn a mapping γ : Z sketch → Z photo using latent codes from the DMZ models. To determine the optimal architecture, we experiment      </p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Neural flow diffusion models: Learnable forward process for improved diffusion modelling</title>
+		<author>
+			<persName><forename type="first">Grigory</forename><surname>Bartosh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Dmitry</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christian</forename><surname>Vetrov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Naesseth</forename><surname>Andersson</surname></persName>
+		</author>
+		<ptr target="http://papers.nips.cc/paper_files/paper/2024/hash/871" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems 38: Annual Conference on Neural Information Processing Systems 2024, NeurIPS 2024</title>
+		<editor>
+			<persName><forename type="first">Amir</forename><surname>Globersons</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Lester</forename><surname>Mackey</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Danielle</forename><surname>Belgrave</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Angela</forename><surname>Fan</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Ulrich</forename><surname>Paquet</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">M</forename><surname>Jakub</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Cheng</forename><surname>Tomczak</surname></persName>
+		</editor>
+		<editor>
+			<persName><surname>Zhang</surname></persName>
+		</editor>
+		<meeting><address><addrLine>Vancouver, BC, Canada</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2024">December 10 -15, 2024. 2024</date>
+		</imprint>
+	</monogr>
+	<note>a8ccb9232487366feb5e2d9069915-Abstract-Conference.html</note>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<author>
+			<persName><forename type="first">Mohamed</forename><surname>Ishmael Belghazi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aristide</forename><surname>Baratin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sai</forename><surname>Rajeswar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sherjil</forename><surname>Ozair</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aaron</forename><surname>Courville</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Devon</forename><surname>Hjelm</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/1801.04062" />
+		<title level="m">Mine: Mutual information neural estimation</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<monogr>
+		<title level="m" type="main">Representation learning: A review and new perspectives</title>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aaron</forename><surname>Courville</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pascal</forename><surname>Vincent</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/1206.5538" />
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Pixelsnail: An improved autoregressive generative model</title>
+		<author>
+			<persName><forename type="first">Xi</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nikhil</forename><surname>Mishra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mostafa</forename><surname>Rohaninejad</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pieter</forename><surname>Abbeel</surname></persName>
+		</author>
+		<ptr target="http://proceedings.mlr.press/v80/chen18h.html" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 35th International Conference on Machine Learning, ICML 2018, Stockholmsmässan</title>
+		<editor>
+			<persName><forename type="first">Jennifer</forename><forename type="middle">G</forename><surname>Dy</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Andreas</forename><surname>Krause</surname></persName>
+		</editor>
+		<meeting>the 35th International Conference on Machine Learning, ICML 2018, Stockholmsmässan<address><addrLine>Stockholm, Sweden</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2018">July 10-15, 2018. 2018</date>
+			<biblScope unit="volume">80</biblScope>
+			<biblScope unit="page" from="863" to="871" />
+		</imprint>
+	</monogr>
+	<note>of Proceedings of Machine Learning Research</note>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Diffusion models beat gans on image synthesis</title>
+		<author>
+			<persName><forename type="first">Prafulla</forename><surname>Dhariwal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexander</forename><surname>Quinn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nichol</forename></persName>
+		</author>
+		<ptr target="https://proceedings.neurips.cc/paper/2021/hash/49" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems 34: Annual Conference on Neural Information Processing Systems 2021, NeurIPS 2021</title>
+		<editor>
+			<persName><forename type="first">Aurelio</forename><surname>Marc</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Alina</forename><surname>Ranzato</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Yann</forename><forename type="middle">N</forename><surname>Beygelzimer</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Percy</forename><surname>Dauphin</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Jennifer</forename><forename type="middle">Wortman</forename><surname>Liang</surname></persName>
+		</editor>
+		<editor>
+			<persName><surname>Vaughan</surname></persName>
+		</editor>
+		<imprint>
+			<date type="published" when="2021">December 6-14, 2021. 2021</date>
+			<biblScope unit="page" from="8780" to="8794" />
+		</imprint>
+	</monogr>
+	<note>ad23d1ec9fa4bd8d77d02681df5cfa-Abstract.html</note>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Denoising diffusion probabilistic models</title>
+		<author>
+			<persName><forename type="first">Jonathan</forename><surname>Ho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ajay</forename><surname>Jain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pieter</forename><surname>Abbeel</surname></persName>
+		</author>
+		<ptr target="https://proceedings.neurips.cc/paper/2020/" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems 33: Annual Conference on Neural Information Processing Systems 2020, NeurIPS 2020</title>
+		<editor>
+			<persName><forename type="first">Hugo</forename><surname>Larochelle</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Marc'aurelio</forename><surname>Ranzato</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Raia</forename><surname>Hadsell</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Maria-Florina</forename><surname>Balcan</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Hsuan-Tien</forename><surname>Lin</surname></persName>
+		</editor>
+		<imprint>
+			<date type="published" when="2020">December 6-12, 2020, virtual, 2020</date>
+		</imprint>
+	</monogr>
+	<note>d967f1ab10179ca4b-Abstract.html</note>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">SODA: bottleneck diffusion models for representation learning</title>
+		<author>
+			<persName><forename type="first">Drew</forename><forename type="middle">A</forename><surname>Hudson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Zoran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mateusz</forename><surname>Malinowski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><forename type="middle">K</forename><surname>Lampinen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Jaegle</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><forename type="middle">L</forename><surname>Mcclelland</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Loic</forename><surname>Matthey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Felix</forename><surname>Hill</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexander</forename><surname>Lerchner</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE/CVF Conference on Computer Vision and Pattern Recognition, CVPR 2024</title>
+		<meeting><address><addrLine>Seattle, WA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2024">June 16-22, 2024</date>
+			<biblScope unit="page" from="23115" to="23127" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<title/>
+		<author>
+			<persName><surname>Ieee</surname></persName>
+		</author>
+		<idno type="DOI">10.1109/CVPR52733.2024.02181</idno>
+		<ptr target="https://doi.org/10.1109/CVPR52733.2024.02181" />
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Image-to-image translation with conditional adversarial networks</title>
+		<author>
+			<persName><forename type="first">Phillip</forename><surname>Isola</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jun-Yan</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tinghui</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexei</forename><forename type="middle">A</forename><surname>Efros</surname></persName>
+		</author>
+		<idno type="DOI">10.1109/CVPR.2017.632</idno>
+		<ptr target="https://doi.org/10.1109/CVPR.2017.632" />
+	</analytic>
+	<monogr>
+		<title level="m">2017 IEEE Conference on Computer Vision and Pattern Recognition</title>
+		<meeting><address><addrLine>Honolulu, HI, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>IEEE Computer Society</publisher>
+			<date type="published" when="2017-07-21">2017. July 21-26, 2017. 2017</date>
+			<biblScope unit="page" from="5967" to="5976" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Auto-encoding variational bayes</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Diederik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+		<ptr target="http://arxiv.org/abs/1312.6114" />
+	</analytic>
+	<monogr>
+		<title level="m">2nd International Conference on Learning Representations, ICLR 2014</title>
+		<meeting><address><addrLine>Banff, AB, Canada</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2014">April 14-16, 2014. 2014</date>
+		</imprint>
+	</monogr>
+	<note>Conference Track Proceedings</note>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<title level="m" type="main">Variational diffusion models</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Diederik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ben</forename><surname>Salimans</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jonathan</forename><surname>Poole</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Ho</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2107.00630" />
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<title level="m" type="main">Learning multiple layers of features from tiny images</title>
+		<author>
+			<persName><forename type="first">Alex</forename><surname>Krizhevsky</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+		<respStmt>
+			<orgName>University of Toronto</orgName>
+		</respStmt>
+	</monogr>
+	<note type="report_type">Technical report</note>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<monogr>
+		<title level="m" type="main">Hierarchical vae with a diffusion-based vampprior</title>
+		<author>
+			<persName><forename type="first">Anna</forename><surname>Kuzina</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jakub</forename><forename type="middle">M</forename><surname>Tomczak</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2412.01373" />
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Priorgrad: Improving conditional denoising diffusion models with data-dependent adaptive prior</title>
+		<author>
+			<persName><forename type="first">Sang-Gil</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Heeseung</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chaehun</forename><surname>Shin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xu</forename><surname>Tan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chang</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qi</forename><surname>Meng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tao</forename><surname>Qin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sungroh</forename><surname>Yoon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tie-Yan</forename><surname>Liu</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=_BNiN4IjC5" />
+	</analytic>
+	<monogr>
+		<title level="m">The Tenth International Conference on Learning Representations, ICLR 2022, Virtual Event</title>
+		<imprint>
+			<date type="published" when="2022">April 25-29, 2022. 2022</date>
+		</imprint>
+	</monogr>
+	<note>OpenReview.net</note>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<title level="m" type="main">I 2 sb: Image-to-image schrödinger bridge</title>
+		<author>
+			<persName><forename type="first">Guan-Horng</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arash</forename><surname>Vahdat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">De-An</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Evangelos</forename><forename type="middle">A</forename><surname>Theodorou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Weili</forename><surname>Nie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anima</forename><surname>Anandkumar</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2302.05872" />
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Flow straight and fast: Learning to generate and transfer data with rectified flow</title>
+		<author>
+			<persName><forename type="first">Xingchao</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chengyue</forename><surname>Gong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qiang</forename><surname>Liu</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/pdf?id=XVjTT1nw5z" />
+	</analytic>
+	<monogr>
+		<title level="m">The Eleventh International Conference on Learning Representations, ICLR 2023</title>
+		<meeting><address><addrLine>Kigali, Rwanda</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2023">May 1-5, 2023. 2023</date>
+		</imprint>
+	</monogr>
+	<note>OpenReview.net</note>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Deep learning face attributes in the wild</title>
+		<author>
+			<persName><forename type="first">Ziwei</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ping</forename><surname>Luo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaogang</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaoou</forename><surname>Tang</surname></persName>
+		</author>
+		<idno type="DOI">10.1109/ICCV.2015.425</idno>
+		<ptr target="https://doi.org/10.1109/ICCV.2015.425" />
+	</analytic>
+	<monogr>
+		<title level="m">2015 IEEE International Conference on Computer Vision, ICCV 2015</title>
+		<meeting><address><addrLine>Santiago, Chile</addrLine></address></meeting>
+		<imprint>
+			<publisher>IEEE Computer Society</publisher>
+			<date type="published" when="2015">December 7-13, 2015. 2015</date>
+			<biblScope unit="page" from="3730" to="3738" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Decoupled weight decay regularization</title>
+		<author>
+			<persName><forename type="first">Ilya</forename><surname>Loshchilov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Frank</forename><surname>Hutter</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=Bkg6RiCqY7" />
+	</analytic>
+	<monogr>
+		<title level="m">7th International Conference on Learning Representations</title>
+		<meeting><address><addrLine>New Orleans, LA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2019-05-06">2019. May 6-9, 2019. OpenReview.net, 2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Sdedit: Guided image synthesis and editing with stochastic differential equations</title>
+		<author>
+			<persName><forename type="first">Chenlin</forename><surname>Meng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yutong</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yang</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiaming</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiajun</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jun-Yan</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stefano</forename><surname>Ermon</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=aBsCjcPu_tE" />
+	</analytic>
+	<monogr>
+		<title level="m">The Tenth International Conference on Learning Representations, ICLR 2022, Virtual Event</title>
+		<imprint>
+			<date type="published" when="2022">April 25-29, 2022. 2022</date>
+		</imprint>
+	</monogr>
+	<note>OpenReview.net</note>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<monogr>
+		<title level="m" type="main">Discrete sequential prediction of continuous actions for deep rl</title>
+		<author>
+			<persName><forename type="first">Luke</forename><surname>Metz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Julian</forename><surname>Ibarz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Navdeep</forename><surname>Jaitly</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><surname>Davidson</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/1705.05035" />
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Harnessing discrete representations for continual reinforcement learning</title>
+		<author>
+			<persName><forename type="first">Jacob</forename><surname>Edan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Meyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marlos</forename><forename type="middle">C</forename><surname>White</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Machado</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Reinforcement Learning Journal</title>
+		<imprint>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page" from="606" to="628" />
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Mixed precision training</title>
+		<author>
+			<persName><forename type="first">Paulius</forename><surname>Micikevicius</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sharan</forename><surname>Narang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jonah</forename><surname>Alben</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gregory</forename><forename type="middle">F</forename><surname>Diamos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Erich</forename><surname>Elsen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>García</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Boris</forename><surname>Ginsburg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Houston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oleksii</forename><surname>Kuchaiev</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ganesh</forename><surname>Venkatesh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hao</forename><surname>Wu</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=r1gs9JgRZ" />
+	</analytic>
+	<monogr>
+		<title level="m">6th International Conference on Learning Representations, ICLR 2018</title>
+		<meeting><address><addrLine>Vancouver, BC, Canada</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2018-05-03">April 30 -May 3, 2018. 2018</date>
+		</imprint>
+	</monogr>
+	<note>Conference Track Proceedings. OpenReview.net</note>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Improved denoising diffusion probabilistic models</title>
+		<author>
+			<persName><forename type="first">Alexander</forename><surname>Quinn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nichol</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Prafulla</forename><surname>Dhariwal</surname></persName>
+		</author>
+		<ptr target="http://proceedings.mlr.press/v139/nichol21a.html" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 38th International Conference on Machine Learning, ICML 2021</title>
+		<editor>
+			<persName><forename type="first">Marina</forename><surname>Meila</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Tong</forename><surname>Zhang</surname></persName>
+		</editor>
+		<meeting>the 38th International Conference on Machine Learning, ICML 2021</meeting>
+		<imprint>
+			<date type="published" when="2021-07-24">18-24 July 2021. 2021</date>
+			<biblScope unit="volume">139</biblScope>
+			<biblScope unit="page" from="8162" to="8171" />
+		</imprint>
+	</monogr>
+	<note>PMLR</note>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Diffenc: Variational diffusion with a learned encoder</title>
+		<author>
+			<persName><forename type="first">Beatrix</forename><surname>Miranda Ginn Nielsen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anders</forename><surname>Christensen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrea</forename><surname>Dittadi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ole</forename><surname>Winther</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=8nxy1bQWTG" />
+	</analytic>
+	<monogr>
+		<title level="m">The Twelfth International Conference on Learning Representations, ICLR 2024</title>
+		<meeting><address><addrLine>Vienna, Austria</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2024">May 7-11, 2024. 2024</date>
+		</imprint>
+	</monogr>
+	<note>OpenReview.net</note>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Input perturbation reduces exposure bias in diffusion models</title>
+		<author>
+			<persName><forename type="first">Mang</forename><surname>Ning</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Enver</forename><surname>Sangineto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Angelo</forename><surname>Porrello</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Simone</forename><surname>Calderara</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rita</forename><surname>Cucchiara</surname></persName>
+		</author>
+		<ptr target="https://proceedings.mlr.press/v202/ning23a.html" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning, ICML 2023</title>
+		<editor>
+			<persName><forename type="first">Andreas</forename><surname>Krause</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Emma</forename><surname>Brunskill</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Kyunghyun</forename><surname>Cho</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Barbara</forename><surname>Engelhardt</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Sivan</forename><surname>Sabato</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Jonathan</forename><surname>Scarlett</surname></persName>
+		</editor>
+		<meeting><address><addrLine>Honolulu, Hawaii, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2023-07">July 2023. 2023</date>
+			<biblScope unit="volume">202</biblScope>
+			<biblScope unit="page" from="26245" to="26265" />
+		</imprint>
+	</monogr>
+	<note>PMLR</note>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Star-shaped denoising diffusion probabilistic models</title>
+		<author>
+			<persName><forename type="first">Andrey</forename><surname>Okhotin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dmitry</forename><surname>Molchanov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vladimir</forename><surname>Arkhipkin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Grigory</forename><surname>Bartosh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Viktor</forename><surname>Ohanesian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aibek</forename><surname>Alanov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dmitry</forename><forename type="middle">P</forename><surname>Vetrov</surname></persName>
+		</author>
+		<ptr target="http://papers.nips.cc/paper_files/paper/2023/hash/1" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems 36: Annual Conference on Neural Information Processing Systems 2023, NeurIPS 2023</title>
+		<editor>
+			<persName><forename type="first">Alice</forename><surname>Oh</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Tristan</forename><surname>Naumann</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Amir</forename><surname>Globerson</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Kate</forename><surname>Saenko</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Moritz</forename><surname>Hardt</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Sergey</forename><surname>Levine</surname></persName>
+		</editor>
+		<meeting><address><addrLine>New Orleans, LA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2023">December 10 -16, 2023. 2023</date>
+		</imprint>
+	</monogr>
+	<note>fcefa894924bb1688041b7a26fb8aea-Abstract-Conference.html</note>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<monogr>
+		<title level="m" type="main">Diffusevae: Efficient, controllable and high-fidelity generation from low-dimensional latents</title>
+		<author>
+			<persName><forename type="first">Kushagra</forename><surname>Pandey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Avideep</forename><surname>Mukherjee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Piyush</forename><surname>Rai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abhishek</forename><surname>Kumar</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2201.00308" />
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Pytorch: An imperative style, high-performance deep learning library</title>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Paszke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sam</forename><surname>Gross</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Francisco</forename><surname>Massa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Lerer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><surname>Bradbury</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gregory</forename><surname>Chanan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Trevor</forename><surname>Killeen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zeming</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Natalia</forename><surname>Gimelshein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luca</forename><surname>Antiga</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alban</forename><surname>Desmaison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andreas</forename><surname>Köpf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Edward</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zachary</forename><surname>Devito</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>Raison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alykhan</forename><surname>Tejani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sasank</forename><surname>Chilamkurthy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Benoit</forename><surname>Steiner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lu</forename><surname>Fang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junjie</forename><surname>Bai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Soumith</forename><surname>Chintala</surname></persName>
+		</author>
+		<ptr target="https://proceedings.neurips.cc/paper/2019/hash/bdbca" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems 32: Annual Conference on Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">M</forename><surname>Hanna</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Hugo</forename><surname>Wallach</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Alina</forename><surname>Larochelle</surname></persName>
+		</editor>
+		<editor>
+			<persName><surname>Beygelzimer</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Emily</forename><forename type="middle">B</forename><surname>Florence D'alché-Buc</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Roman</forename><surname>Fox</surname></persName>
+		</editor>
+		<editor>
+			<persName><surname>Garnett</surname></persName>
+		</editor>
+		<meeting><address><addrLine>NeurIPS; Vancouver, BC, Canada</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2019-12-08">2019. 2019. December 8-14, 2019. 2019</date>
+			<biblScope unit="page" from="8024" to="8035" />
+		</imprint>
+	</monogr>
+	<note>288fee7f92f2bfa9f7012727740-Abstract.html</note>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Diffusion autoencoders: Toward a meaningful and decodable representation</title>
+		<author>
+			<persName><forename type="first">Konpat</forename><surname>Preechakul</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nattanat</forename><surname>Chatthee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Suttisak</forename><surname>Wizadwongsa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Supasorn</forename><surname>Suwajanakorn</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)</title>
+		<meeting>the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)</meeting>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="10619" to="10629" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Generating diverse high-fidelity images with VQ-VAE-2</title>
+		<author>
+			<persName><forename type="first">Ali</forename><surname>Razavi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aäron</forename><surname>Van Den Oord</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oriol</forename><surname>Vinyals</surname></persName>
+		</author>
+		<ptr target="https://proceedings.neurips.cc/paper/2019/hash/5" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems 32: Annual Conference on Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">M</forename><surname>Hanna</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Hugo</forename><surname>Wallach</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Alina</forename><surname>Larochelle</surname></persName>
+		</editor>
+		<editor>
+			<persName><surname>Beygelzimer</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Emily</forename><forename type="middle">B</forename><surname>Florence D'alché-Buc</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Roman</forename><surname>Fox</surname></persName>
+		</editor>
+		<editor>
+			<persName><surname>Garnett</surname></persName>
+		</editor>
+		<meeting><address><addrLine>NeurIPS; Vancouver, BC, Canada</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2019-12-08">2019. 2019. December 8-14, 2019. 2019</date>
+			<biblScope unit="page" from="14837" to="14847" />
+		</imprint>
+	</monogr>
+	<note>f8e2fa1718d1bbcadf1cd9c7a54fb8c-Abstract.html</note>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Discrete variational autoencoders</title>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Tyler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rolfe</forename></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=ryMxXPFex" />
+	</analytic>
+	<monogr>
+		<title level="m">5th International Conference on Learning Representations</title>
+		<title level="s">Conference Track Proceedings. OpenReview.net</title>
+		<meeting><address><addrLine>Toulon, France</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2017-04-24">2017. April 24-26, 2017. 2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<monogr>
+		<author>
+			<persName><forename type="first">Maximilian</forename><surname>Seitzer</surname></persName>
+		</author>
+		<ptr target="https://github.com/mseitzer/pytorch-fid" />
+		<title level="m">pytorch-fid: FID Score for PyTorch</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note>Version 0.3.0</note>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Denoising diffusion implicit models</title>
+		<author>
+			<persName><forename type="first">Jiaming</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chenlin</forename><surname>Meng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stefano</forename><surname>Ermon</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=St1giarCHLP" />
+	</analytic>
+	<monogr>
+		<title level="m">9th International Conference on Learning Representations, ICLR 2021, Virtual Event, Austria</title>
+		<imprint>
+			<date type="published" when="2021">May 3-7, 2021. OpenReview.net, 2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Score-based generative modeling through stochastic differential equations</title>
+		<author>
+			<persName><forename type="first">Yang</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jascha</forename><surname>Sohl-Dickstein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Diederik</forename><forename type="middle">P</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abhishek</forename><surname>Kumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stefano</forename><surname>Ermon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ben</forename><surname>Poole</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=PxTIG12RRHS" />
+	</analytic>
+	<monogr>
+		<title level="m">9th International Conference on Learning Representations, ICLR 2021, Virtual Event</title>
+		<meeting><address><addrLine>Austria</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2021">May 3-7, 2021</date>
+		</imprint>
+	</monogr>
+	<note>OpenReview.net, 2021</note>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Dual diffusion implicit bridges for image-to-image translation</title>
+		<author>
+			<persName><forename type="first">Xuan</forename><surname>Su</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiaming</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chenlin</forename><surname>Meng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stefano</forename><surname>Ermon</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/pdf?id=5HLoTvVGDe" />
+	</analytic>
+	<monogr>
+		<title level="m">The Eleventh International Conference on Learning Representations, ICLR 2023</title>
+		<meeting><address><addrLine>Kigali, Rwanda</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2023">May 1-5, 2023. 2023</date>
+		</imprint>
+	</monogr>
+	<note>OpenReview.net</note>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">NVAE: A deep hierarchical variational autoencoder</title>
+		<author>
+			<persName><forename type="first">Arash</forename><surname>Vahdat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jan</forename><surname>Kautz</surname></persName>
+		</author>
+		<ptr target="https://proceedings.neurips.cc/paper/2020/hash/" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems 33: Annual Conference on Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">Hugo</forename><surname>Larochelle</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Marc'aurelio</forename><surname>Ranzato</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Raia</forename><surname>Hadsell</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Maria-Florina</forename><surname>Balcan</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Hsuan-Tien</forename><surname>Lin</surname></persName>
+		</editor>
+		<imprint>
+			<date type="published" when="2020-12-06">2020. 2020. December 6-12, 2020, virtual, 2020</date>
+		</imprint>
+	</monogr>
+	<note>e3b21256183cf7c2c7a66be163579d37-Abstract.html</note>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">DVAE++: discrete variational autoencoders with overlapping transformations</title>
+		<author>
+			<persName><forename type="first">Arash</forename><surname>Vahdat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">William</forename><forename type="middle">G</forename><surname>Macready</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhengbing</forename><surname>Bian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amir</forename><surname>Khoshaman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Evgeny</forename><surname>Andriyash</surname></persName>
+		</author>
+		<ptr target="http://proceedings.mlr.press/v80/vahdat18a.html" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 35th International Conference on Machine Learning, ICML 2018</title>
+		<editor>
+			<persName><forename type="first">Jennifer</forename><forename type="middle">G</forename><surname>Dy</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Andreas</forename><surname>Krause</surname></persName>
+		</editor>
+		<meeting>the 35th International Conference on Machine Learning, ICML 2018<address><addrLine>Stockholmsmässan, Stockholm, Sweden</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2018">July 10-15, 2018. 2018</date>
+			<biblScope unit="volume">80</biblScope>
+			<biblScope unit="page" from="5042" to="5051" />
+		</imprint>
+	</monogr>
+	<note>PMLR</note>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Neural discrete representation learning</title>
+		<author>
+			<persName><forename type="first">Aäron</forename><surname>Van Den Oord</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oriol</forename><surname>Vinyals</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Koray</forename><surname>Kavukcuoglu</surname></persName>
+		</author>
+		<ptr target="https://proceedings.neurips.cc/paper/2017/hash/7" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems 30: Annual Conference on Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">Isabelle</forename><surname>Guyon</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Samy</forename><surname>Ulrike Von Luxburg</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Hanna</forename><forename type="middle">M</forename><surname>Bengio</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Rob</forename><surname>Wallach</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">S</forename><forename type="middle">V N</forename><surname>Fergus</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Roman</forename><surname>Vishwanathan</surname></persName>
+		</editor>
+		<editor>
+			<persName><surname>Garnett</surname></persName>
+		</editor>
+		<meeting><address><addrLine>Long Beach, CA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2017-12-04">2017. December 4-9, 2017. 2017</date>
+			<biblScope unit="page" from="6306" to="6315" />
+		</imprint>
+	</monogr>
+	<note>a98af17e63a0ac09ce2e96d03992fbc-Abstract.html</note>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Infodiffusion: Representation learning using information maximizing diffusion models</title>
+		<author>
+			<persName><forename type="first">Yingheng</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yair</forename><surname>Schiff</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aaron</forename><surname>Gokaslan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Weishen</forename><surname>Pan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fei</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><forename type="middle">De</forename><surname>Sa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Volodymyr</forename><surname>Kuleshov</surname></persName>
+		</author>
+		<ptr target="https://proceedings.mlr.press/v202/wang23ah.html" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning, ICML 2023</title>
+		<editor>
+			<persName><forename type="first">Andreas</forename><surname>Krause</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Emma</forename><surname>Brunskill</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Kyunghyun</forename><surname>Cho</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Barbara</forename><surname>Engelhardt</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Sivan</forename><surname>Sabato</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Jonathan</forename><surname>Scarlett</surname></persName>
+		</editor>
+		<meeting><address><addrLine>Honolulu, Hawaii, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2023-07">July 2023. 2023</date>
+			<biblScope unit="volume">202</biblScope>
+			<biblScope unit="page" from="36336" to="36354" />
+		</imprint>
+	</monogr>
+	<note>PMLR</note>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Binary latent diffusion</title>
+		<author>
+			<persName><forename type="first">Ze</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiang</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zicheng</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qiang</forename><surname>Qiu</surname></persName>
+		</author>
+		<idno type="DOI">10.1109/CVPR52729.2023.02162</idno>
+		<ptr target="https://doi.org/10.1109/CVPR52729.2023.02162" />
+	</analytic>
+	<monogr>
+		<title level="m">IEEE/CVF Conference on Computer Vision and Pattern Recognition, CVPR 2023</title>
+		<meeting><address><addrLine>Vancouver, BC, Canada</addrLine></address></meeting>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2023">June 17-24, 2023</date>
+			<biblScope unit="page">2023</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Denoising diffusion autoencoders are unified self-supervised learners</title>
+		<author>
+			<persName><forename type="first">Weilai</forename><surname>Xiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongyu</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Di</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yunhong</forename><surname>Wang</surname></persName>
+		</author>
+		<idno type="DOI">10.1109/ICCV51070.2023.01448</idno>
+		<ptr target="https://doi.org/10.1109/ICCV51070.2023.01448" />
+	</analytic>
+	<monogr>
+		<title level="m">IEEE/CVF International Conference on Computer Vision, ICCV 2023</title>
+		<meeting><address><addrLine>Paris, France</addrLine></address></meeting>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2023">October 1-6, 2023</date>
+			<biblScope unit="page">2023</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Disdiff: Unsupervised disentanglement of diffusion probabilistic models</title>
+		<author>
+			<persName><forename type="first">Tao</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuwang</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yan</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nanning</forename><surname>Zheng</surname></persName>
+		</author>
+		<ptr target="http://papers.nips.cc/paper_files/paper/2023/hash/da" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems 36: Annual Conference on Neural Information Processing Systems 2023, NeurIPS 2023</title>
+		<editor>
+			<persName><forename type="first">Alice</forename><surname>Oh</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Tristan</forename><surname>Naumann</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Amir</forename><surname>Globerson</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Kate</forename><surname>Saenko</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Moritz</forename><surname>Hardt</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Sergey</forename><surname>Levine</surname></persName>
+		</editor>
+		<meeting><address><addrLine>New Orleans, LA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2023">December 10 -16, 2023, 2023</date>
+		</imprint>
+	</monogr>
+	<note>47bfaf3f3a8d5bbab0d60c5195dc18-Abstract-Conference.html</note>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">Diffusion model as representation learner</title>
+		<author>
+			<persName><forename type="first">Xingyi</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xinchao</forename><surname>Wang</surname></persName>
+		</author>
+		<idno type="DOI">10.1109/ICCV51070.2023.01736</idno>
+		<ptr target="https://doi.org/10.1109/ICCV51070.2023.01736" />
+	</analytic>
+	<monogr>
+		<title level="m">IEEE/CVF International Conference on Computer Vision, ICCV 2023</title>
+		<meeting><address><addrLine>Paris, France</addrLine></address></meeting>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2023">October 1-6, 2023</date>
+			<biblScope unit="page">2023</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">Exploring diffusion time-steps for unsupervised representation learning</title>
+		<author>
+			<persName><forename type="first">Zhongqi</forename><surname>Yue</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiankun</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qianru</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lei</forename><surname>Ji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I-Chao</forename><surname>Eric</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hanwang</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Zhang</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=bWzxhtl1HP" />
+	</analytic>
+	<monogr>
+		<title level="m">The Twelfth International Conference on Learning Representations, ICLR 2024</title>
+		<meeting><address><addrLine>Vienna, Austria</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2024">May 7-11, 2024. 2024</date>
+		</imprint>
+	</monogr>
+	<note>OpenReview.net</note>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">The unreasonable effectiveness of deep features as a perceptual metric</title>
+		<author>
+			<persName><forename type="first">Richard</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Phillip</forename><surname>Isola</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexei</forename><forename type="middle">A</forename><surname>Efros</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eli</forename><surname>Shechtman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oliver</forename><surname>Wang</surname></persName>
+		</author>
+		<idno type="DOI">10.1109/CVPR.2018</idno>
+	</analytic>
+	<monogr>
+		<title level="m">2018 IEEE Conference on Computer Vision and Pattern Recognition</title>
+		<meeting><address><addrLine>Salt Lake City, UT, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>IEEE Computer Society</publisher>
+			<date type="published" when="2018">June 18-22, 2018. 2018</date>
+			<biblScope unit="page" from="586" to="595" />
+		</imprint>
+	</monogr>
+	<note>CVPR 2018</note>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<title level="a" type="main">Unsupervised representation learning from pre-trained diffusion probabilistic models</title>
+		<author>
+			<persName><forename type="first">Zijian</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhou</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhijie</forename><surname>Lin</surname></persName>
+		</author>
+		<ptr target="http://papers.nips.cc/paper_files/paper/2022/hash/8" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems 35: Annual Conference on Neural Information Processing Systems 2022, NeurIPS 2022</title>
+		<editor>
+			<persName><forename type="first">S</forename><surname>Sanmi Koyejo</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">A</forename><surname>Mohamed</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Danielle</forename><surname>Agarwal</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">K</forename><surname>Belgrave</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">A</forename><surname>Cho</surname></persName>
+		</editor>
+		<editor>
+			<persName><surname>Oh</surname></persName>
+		</editor>
+		<meeting><address><addrLine>New Orleans, LA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2022">November 28 -Decem-ber 9, 2022, 2022</date>
+		</imprint>
+	</monogr>
+	<note>aff4ffcf2a9d41692a805b3987e29ea-Abstract-Conference.html</note>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<monogr>
+		<title level="m" type="main">Unsupervised discovery of interpretable directions in h-space of pre-trained diffusion models</title>
+		<author>
+			<persName><forename type="first">Zijian</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luping</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhijie</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yichen</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhou</forename><surname>Zhao</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2310.09912" />
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<analytic>
+		<title level="a" type="main">Shiftddpms: Exploring conditional diffusion models by shifting diffusion trajectories</title>
+		<author>
+			<persName><forename type="first">Zijian</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhou</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jun</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qi</forename><surname>Tian</surname></persName>
+		</author>
+		<idno type="DOI">10.1609/aaai.v37i3.25465</idno>
+		<ptr target="https://doi.org/10.1609/aaai.v37i3.25465" />
+	</analytic>
+	<monogr>
+		<title level="m">Thirty-Seventh AAAI Conference on Artificial Intelligence, AAAI 2023, Thirty-Fifth Conference on Innovative Applications of Artificial Intelligence, IAAI 2023, Thirteenth Symposium on Educational Advances in Artificial Intelligence, EAAI 2023</title>
+		<editor>
+			<persName><forename type="first">Brian</forename><surname>Williams</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Yiling</forename><surname>Chen</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Jennifer</forename><surname>Neville</surname></persName>
+		</editor>
+		<meeting><address><addrLine>Washington, DC, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>AAAI Press</publisher>
+			<date type="published" when="2023">February 7-14, 2023</date>
+			<biblScope unit="page">2023</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<monogr>
+		<title level="m" type="main">Infovae: Information maximizing variational autoencoders</title>
+		<author>
+			<persName><forename type="first">Shengjia</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiaming</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stefano</forename><surname>Ermon</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/1706.02262" />
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<analytic>
+		<title level="a" type="main">Denoising diffusion bridge models</title>
+		<author>
+			<persName><forename type="first">Linqi</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aaron</forename><surname>Lou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Samar</forename><surname>Khanna</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stefano</forename><surname>Ermon</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=FKksTayvGo" />
+	</analytic>
+	<monogr>
+		<title level="m">The Twelfth International Conference on Learning Representations, ICLR 2024</title>
+		<meeting><address><addrLine>Vienna, Austria</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2024">May 7-11, 2024. 2024</date>
+		</imprint>
+	</monogr>
+	<note>OpenReview.net</note>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<monogr>
+		<title level="m" type="main">Discrete autoencoders for sequence models</title>
+		<author>
+			<persName><forename type="first">Łukasz</forename><surname>Kaiser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Samy</forename><surname>Bengio</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/1801.09797" />
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

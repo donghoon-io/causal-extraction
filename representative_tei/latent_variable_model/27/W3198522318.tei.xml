@@ -1,0 +1,1276 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Multi-Speaker ASR Combining Non-Autoregressive Conformer CTC and Conditional Speaker Chain</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Pengcheng</forename><surname>Guo</surname></persName>
+							<email>pcguo@nwpu-aslp.org</email>
+							<affiliation key="aff0">
+								<orgName type="department">School of Computer Science</orgName>
+								<orgName type="institution" key="instit1">ASLP@NPU</orgName>
+								<orgName type="institution" key="instit2">Northwestern Polytechnical University</orgName>
+								<address>
+									<settlement>Xi&apos;an</settlement>
+									<country key="CN">China</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Xuankai</forename><surname>Chang</surname></persName>
+							<email>xuankaic@andrew.cmu.edu</email>
+							<affiliation key="aff1">
+								<orgName type="institution">Carnegie Mellon University</orgName>
+								<address>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Shinji</forename><surname>Watanabe</surname></persName>
+							<email>shinjiw@ieee.org</email>
+							<affiliation key="aff1">
+								<orgName type="institution">Carnegie Mellon University</orgName>
+								<address>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Lei</forename><surname>Xie</surname></persName>
+							<email>lxie@nwpu.edu.cn</email>
+							<affiliation key="aff0">
+								<orgName type="department">School of Computer Science</orgName>
+								<orgName type="institution" key="instit1">ASLP@NPU</orgName>
+								<orgName type="institution" key="instit2">Northwestern Polytechnical University</orgName>
+								<address>
+									<settlement>Xi&apos;an</settlement>
+									<country key="CN">China</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Multi-Speaker ASR Combining Non-Autoregressive Conformer CTC and Conditional Speaker Chain</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-21T19:05+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<textClass>
+				<keywords>
+					<term>Non-autoregressive</term>
+					<term>conditional chain model</term>
+					<term>multi-speaker speech recognition</term>
+				</keywords>
+			</textClass>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Non-autoregressive (NAR) models have achieved a large inference computation reduction and comparable results with autoregressive (AR) models on various sequence to sequence tasks. However, there has been limited research aiming to explore the NAR approaches on sequence to multi-sequence problems, like multi-speaker automatic speech recognition (ASR). In this study, we extend our proposed conditional chain model to NAR multi-speaker ASR. Specifically, the output of each speaker is inferred one-by-one using both the input mixture speech and previously-estimated conditional speaker features. In each step, a NAR connectionist temporal classification (CTC) encoder is used to perform parallel computation. With this design, the total inference steps will be restricted to the number of mixed speakers. Besides, we also adopt the Conformer and incorporate an intermediate CTC loss to improve the performance. Experiments on WSJ0-Mix and LibriMix corpora show that our model outperforms other NAR models with only a slight increase of latency, achieving WERs of 22.3% and 24.9%, respectively. Moreover, by including the data of variable numbers of speakers, our model can even better than the PIT-Conformer AR model with only 1/7 latency, obtaining WERs of 19.9% and 34.3% on WSJ0-2mix and WSJ0-3mix sets. All of our codes are publicly available at <ref type="url" target="https://github.com/pengchengguo/espnet/tree/conditionalmultispk">https://github.com/pengchengguo/espnet/tree/conditionalmultispk</ref>.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1.">Introduction</head><p>End-to-end architectures have demonstrated their effectiveness and became the dominant models across various sequence to sequence tasks, like neural machine translation (NMT) <ref type="bibr" target="#b1">[1,</ref><ref type="bibr" target="#b2">2]</ref> and automatic speech recognition (ASR) <ref type="bibr" target="#b3">[3,</ref><ref type="bibr" target="#b4">4,</ref><ref type="bibr" target="#b5">5,</ref><ref type="bibr">6,</ref><ref type="bibr" target="#b7">7]</ref>. However, most of these models follow an autoregressive (AR) strategy, which predicts a target token conditioned on both previously generated tokens and the source input sequence. The incremental process makes it hard to compute parallel and results in a large latency during the inference. In contrary to AR models, non-autoregressive (NAR) models have drawn immense interest recently, aiming to get rid of the temporal dependency and perform parallel inference.</p><p>NAR models were first proposed in NMT and have achieved competitive performance with conventional AR models <ref type="bibr" target="#b8">[8,</ref><ref type="bibr" target="#b9">9,</ref><ref type="bibr" target="#b10">10,</ref><ref type="bibr" target="#b11">11,</ref><ref type="bibr" target="#b12">12,</ref><ref type="bibr" target="#b13">13,</ref><ref type="bibr" target="#b14">14,</ref><ref type="bibr" target="#b15">15]</ref>. The idea of NAR models is to predict the whole target sequence within a constant number of iterations which is not strict with the sequence length. In <ref type="bibr" target="#b8">[8]</ref>, Gu et al. introduced a fertility module to predict the number of *Lei Xie is the corresponding author.</p><p>times each encoder output should be repeated and regraded the repeated encoder outputs as decoder input to perform parallel inference. In <ref type="bibr" target="#b10">[10]</ref>, <ref type="bibr">Lee et al.</ref> proposed a deterministic NAR model by iteratively refine the outputs from corrupted predictions. In addition, there were lots of studies based on the insert or edit sequence generation <ref type="bibr" target="#b11">[11,</ref><ref type="bibr" target="#b12">12]</ref>, connectionist temporal classification (CTC) <ref type="bibr" target="#b9">[9]</ref>, and masked language model objective <ref type="bibr" target="#b13">[13,</ref><ref type="bibr" target="#b14">14,</ref><ref type="bibr" target="#b15">15]</ref>.</p><p>Inspired by the success of NAR models in NMT, several NAR methods were also proposed to reach the performance of AR models on ASR <ref type="bibr" target="#b16">[16,</ref><ref type="bibr" target="#b17">17,</ref><ref type="bibr" target="#b18">18,</ref><ref type="bibr" target="#b19">19,</ref><ref type="bibr" target="#b20">20,</ref><ref type="bibr" target="#b21">21,</ref><ref type="bibr" target="#b22">22]</ref>. Since CTC learns a frame-wise latent alignment between the input speech and output tokens and predicts the target sequence based on a strong conditional independence assumption <ref type="bibr" target="#b23">[23]</ref>, it can be viewed as an early-stage realization of NAR ASR models. In <ref type="bibr" target="#b18">[18]</ref>, Imputer was proposed to iteratively generate a new CTC alignment based on mask prediction. Besides, Mask-CTC <ref type="bibr" target="#b17">[17,</ref><ref type="bibr" target="#b20">20]</ref> and Align-Refine <ref type="bibr" target="#b21">[21]</ref> aimed to refine a tokenlevel CTC output or latent alignments with the mask prediction. In <ref type="bibr" target="#b19">[19]</ref>, Tian et al. proposed to use the estimated CTC spikes to predict the length of target sequence and adopt the encoder states as the input of decoder. However, most of aforementioned methods mainly focus on sequence to sequence tasks, like NMT and single-speaker ASR, and it is hard to directly extended to sequence to multi-sequence tasks, like multi-speaker ASR.</p><p>Multi-speaker ASR aims to predict the corresponding transcription for each speaker from multiple speakers overlapping speech. Although lots of AR models were explored for multispeaker ASR, such as permutation invariant training (PIT) <ref type="bibr" target="#b24">[24]</ref> or deep clustering (DPCL) <ref type="bibr" target="#b25">[25]</ref> based hybrid system and recurrent neural network (RNN) or Transformer based end-to-end model models <ref type="bibr" target="#b26">[26,</ref><ref type="bibr" target="#b27">27,</ref><ref type="bibr" target="#b28">28,</ref><ref type="bibr" target="#b29">29,</ref><ref type="bibr" target="#b30">30]</ref>, few attempts have been made to realize NAR training. In this study, we revisit the proposed conditional chain based methods <ref type="bibr" target="#b31">[31,</ref><ref type="bibr" target="#b32">32,</ref><ref type="bibr" target="#b33">33,</ref><ref type="bibr" target="#b34">34]</ref> and extend it to NAR multi-speaker ASR. By doing this, the output of each speaker is predicted one-by-one by making use of both the mixed input as well as previously-estimated conditional speaker features. In each prediction step, a CTC-based NAR encoder network is used to perform parallel computation. Since the performance of CTC may suffer a severe degradation due to the conditional independence assumption, we also explore adopting an advanced Conformer encoder <ref type="bibr">[6]</ref> architecture to capture both local and global acoustic dependencies and an additional intermediate loss <ref type="bibr" target="#b35">[35]</ref> as a regularization function. Finally, while the original conditional chain model takes the token-level CTC alignments as the "hard" conditional speaker features, we propose to use "soft" conditions which are latent feature representations extracted after the last encoder layer. We evaluate the effectiveness of our model on two multi-speaker ASR benchmarks, WSJ0-Mix and LibriMix. Both results outperform other NAR models with a minor increment of latency arXiv:2106.08595v1 [eess.AS] 16 Jun 2021 and even achieve comparable results with the AR models.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.">End-to-end Multi-speaker ASR</head><p>We briefly introduce the end-to-end multi-speaker ASR in this section. Given the input features of the mixture speech X = {x1, . . . , xT }, where T means the number of frames, the target is to directly predict the transcriptions Y = {Y 1 , . . . , Y J for different speakers, where J refers to the number of mixed speakers. In <ref type="bibr" target="#b26">[26,</ref><ref type="bibr" target="#b28">28]</ref>, an end-to-end multi-speaker ASR model was proposed, which is based on the joint CTC/attention-based encoder-decoder framework <ref type="bibr" target="#b36">[36]</ref>. The encoder of the model consists of a mixture encoder, speaker-dependent (SD) encoders, and a recognition encoder. For a mixture speech X, the encoder output can be formulated as:</p><formula xml:id="formula_0">H = EncoderMix(X),<label>(1)</label></formula><formula xml:id="formula_1">H j = Encoder j SD (H), j = 1, . . . , J,<label>(2)</label></formula><formula xml:id="formula_2">G j = EncoderRec(H j ), j = 1, . . . , J.<label>(3)</label></formula><p>Firstly, the mixture encoder in Eq. ( <ref type="formula" target="#formula_0">1</ref>) encodes the input features as hidden representations H of the mixture speech. Then, J speaker-different encoders extract each speaker's speech representation H j from the mixture representation. Next, the recognition encoder maps speech representations of each speaker into the high-level embeddings G j . Following the encoder, a CTC objective function is used to train the encoder and determine the best permutation π of the embeddings by permutation invariant training (PIT) <ref type="bibr" target="#b37">[37]</ref>:</p><formula xml:id="formula_3">π = arg min π∈P j LossCTC(G j , Y π(j) ), j = 1, . . . , J,<label>(4)</label></formula><p>where Y j is the j-th reference transcription and P means the set of all permutations on {1, . . . , J}.</p><p>After encoder, an attention-based decoder takes each highlevel embedding G j and generates the hypothesis Y j . The computation of the decoder is:</p><formula xml:id="formula_4">c j n = Attention(e j n-1 , G j ),<label>(5)</label></formula><formula xml:id="formula_5">e j n = Update(e j n-1 , c j n-1 , y j n-1 ),<label>(6)</label></formula><formula xml:id="formula_6">y j n ∼ Decoder(e j n , y j n-1 ),<label>(7)</label></formula><p>in which c j n denotes the context vector and e j n is the hidden state of the decoder at step n. The permutation computed in the CTC step (as in Eq. ( <ref type="formula" target="#formula_3">4</ref>)) also plays an important role in the decoder, determining the order of the reference sequences for the cross-entropy (CE) loss function and the input history of teacher-forcing training. The final loss function is a combination of the CTC loss and the decoder CE loss:</p><formula xml:id="formula_7">L = j λLossCTC(G j , Y π(j) )+ (1 -λ)LossAttn( Y j , Y π(j) ) , (<label>8</label></formula><formula xml:id="formula_8">)</formula><p>where λ is an interpolation factor to scale different losses.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.">Non-autoregressive Multi-speaker ASR</head><p>End-to-end models proposed in Section 2 mainly focus on an AR strategy, which will be cumbered with a complex computation and large latency problems. Although an encoder-only CTC framework can be regarded as a NAR model, the system may be susceptible to performance degradation due to the conditional independence assumption. In this study, we revisit our proposed conditional speaker chain based method for NAR multi-speaker ASR. The improved model consists of a conditional speaker chain module and Conformer CTC encoders. While the conditional speaker chain explicitly models the relevance between outputs of different iterations, the Conformer CTC aims to conduct NAR computation in each single step. The total inference steps are restricted to the number of mixed speakers. In addition, we also explore incorporating an intermediate CTC loss as a regularization function to further improve the system performance.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1.">Conformer Encoder</head><p>Conformer encoder <ref type="bibr">[6]</ref> is a stacked multi-block architecture, which includes a multihead self-attention (MHSA) module, a convolution (CONV) module, and a pair of positionwise feedforward (FNN) module in the Macaron-Net style. While the MHSA learns the global context, the CONV module efficiently captures the local correlations synchronously. Since the Conformer encoder has shown consistent improvement over a wide range of end-to-end speech processing applications <ref type="bibr" target="#b7">[7]</ref>, we expect it to compensate for the modeling capacity of CTC and improve the system performance.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2.">Intermediate CTC Loss</head><p>In <ref type="bibr" target="#b35">[35]</ref>, Lee et al. proposed a simple but efficient auxiliary loss function for CTC based ASR models, named intermediate CTC loss. The main idea of intermediate CTC loss is to choose an intermediate layer within the encoder network and induce a subnetwork by skipping all higher layers after the selected layer. By computing the additional CTC loss w.r.t the output of intermediate layer, the sub-network relies more on the lower layers instead of the higher layers, which can regularize the model training. Choosing the m-th layer from a L-layer encoder network, its output can be defined as H j m . Thus, the final loss of our model becomes:</p><formula xml:id="formula_9">L = j (1 -λ)LossCTC(G j , Y π(j) )+ λLossInterCTC(H j m , Y π(j) ) ,<label>(9)</label></formula><p>where λ refers to the weight of intermediate loss. In this work, we set λ equals to 0.1 and choose a middle layer of the EncoderRec as the intermediate layer (m = L/2).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3.">Conditional Chain Model</head><p>Fig. <ref type="figure" target="#fig_0">1</ref> shows an overview of our model. Different from the AR models described in Section 2, we replace the SD encoders with a conditional speaker chain module (CondChain) and predict the output of each speaker one-by-one. With a hidden mixture representation H computed in Eq. ( <ref type="formula" target="#formula_0">1</ref>), the CondChain module extracts each speaker's speech representation by taking advantage of both the mixture representation H and the previouslyestimated high-level embedding G j-1 :</p><formula xml:id="formula_10">H j = CondChain(H, Embed(G j-1 )), j = 1, . . . , J,<label>(10)</label></formula><p>where G j-1 , obtaining from the EncoderRec output for previous speaker, can be viewed as the speaker condition. The Embed module is a multi-layer fully connect layer aiming to project  the linguistic sequence G j-1 into the acoustic sub-space. In the first step, an all-zero vector will be initialized as the speaker condition. Besides, the long short-term memory (LSTM) layer also helps to provide all historic speaker conditions by the flowing states. With this design, we can successfully perform a NAR computation in each step and the total inference steps is a constant number equaling to the number of mixed speakers. Moreover, compared with other multi-speaker ASR methods, which have to fix the number of mixed speakers in the training data, our model can handle variable mixed data and further improve the performance. Algorithm 1 outlines the training procedure of our proposed model.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.">Experiments</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1.">Setup</head><p>The proposed models are evaluated on two commonly used simulated multi-speaker speech datasets. WSJ0-Mix. The dataset can be divided into two categories, namely the 2-speaker scenario and 3-speaker scenario. In the 2speaker scenario, we use the common benchmark called WSJ0-2mix dataset introduced by <ref type="bibr" target="#b38">[38]</ref> with a sampling rate of 16 KHz. The training and validation sets are generated by randomly selecting two utterances from different speakers from the WSJ0 si tr s partition, containing around 30 h and 10 h speech mixture, respectively. To mix the utterances, various signal-to-noise ratios (SNRs) are uniformly chosen from [0, 10] dB. For the test set, the mixture is similarly generated using utterances from the WSJ0 validation set si dt 05 and evaluation set si et 05, resulting in 5 h speech mixtures. For the 3-speaker experiments, similar methods are adopted except the number of speakers is three. LibriMix. Our methods are additionally tested on LibriMix, a recent open-source dataset for multi-speaker speech processing. The LibriMix data is created by mixing the source utterances randomly chosen from different speakers in LibriSpeech <ref type="bibr" target="#b39">[39]</ref> and the noise samples from WHAM! <ref type="bibr" target="#b40">[40]</ref>. The SNRs of the mixtures are normally distributed with a mean of 0 dB and a standard deviation of 4.1 dB. LibriMix is composed of 2speaker or 3-speaker mixtures, with or without noise condi- Forward the Encodermix with X and obtain the mixture hidden representations of H using Eq. (1) 7:</p><formula xml:id="formula_11">for (i = 1; i &lt; J; i++) do 8:</formula><p>Concatenate the H with previously-estimated condition G i-1 and forward the LSTM layer as in Eq. <ref type="bibr" target="#b10">(10)</ref> 9:</p><p>Forward the Encoderrec with the output of LSTM layer 10:</p><p>The output of Encoderrec is used to compute the LossCTC as well as determine the best permutation of transcriptions as in Eq. ( <ref type="formula" target="#formula_3">4</ref>)</p><formula xml:id="formula_12">11:</formula><p>The output of the intermediate layer in Encoderrec is used to compute the LossInterCTC with above best transcription permutations 12:</p><p>G i will also be regarded as the condition for the prediction of the next speaker 13: end for 14:</p><p>Update the model using Eq. (</p><p>Epoch = Epoch + 1 16: end while 17: return θ θ θ tions. For fast evaluation, we conducted our experiments on the train-100 subset from Libri2Mix, which contains around 100 h of 2-speaker mixture speech.</p><p>All the proposed models are implemented with ESPnet <ref type="bibr" target="#b41">[41]</ref>. We followed the ESPnet recipe to set the hyperparameters of the model. For all Transformer-and Conformerbased models, EncoderMix is comprised of two CNN blocks and EncoderRec contains 8 Transformer or Conformer layers, depending on the model choices. For non-conditional chain models, the EncoderSD is a 4-layer Transformer or Conformer network, while the CondChain is a 1-layer LSTM network with 1024 hidden units. The common parameters of the Transformer and Conformer layers are: d head = 4, d att = 256, d ff = 2048 for the number of heads, dimension of attention module, and dimension of feed-forward layer, respectively.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2.">Results on WSJ0-Mix</head><p>In this part, we present the performance on the WSJ0-Mix corpus, which is shown in Table <ref type="table">1</ref>. To evaluate the effectiveness, we compare our conditional speaker chain based Conformer CTC model with a variety of systems including the hybrid systems, PIT-based end-to-end AR and NAR models, and conditional speaker chain based Transformer models. Since all PITbased models are unable to deal with variable numbers of speakers, only the results of 2-speaker scenario are presented. To make a fair comparison with NAR methods, the end-to-end AR models are decoded only with greedy search.</p><p>For the PIT-based AR models, PIT-Conformer (5) shows the best performance, achieving a word error rate (WER) of 22.4% on the WSJ0-2mix test set. When comparing the NAR models, PIT-Transformer-CTC <ref type="bibr">(6)</ref>, which is only trained with Table <ref type="table">1</ref>: Word error rates (WERs) and real time factor (RTF) for multi-speaker speech recognition on WSJ0-Mix dataset. The RTF results are obtained by averaging the results of 5 decoding processes on CPUs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Models</head><p>Training Data WER (%) RTF WSJ0-2mix WSJ0-3mix Hybrid model (w/ beam search)</p><p>(1) PIT-DNN-HMM <ref type="bibr" target="#b24">[24]</ref> WSJ0-2mix 28.2 --(2) DPCL + DNN-HMM <ref type="bibr" target="#b25">[25]</ref> WSJ0-2mix  CTC loss, suffers a dramatic performance degradation (50.3%). There is no doubt that a pure CTC based encoder network can hardly model different speaker's speech simultaneously. When applying the conditional speaker chain based method, both model <ref type="bibr" target="#b7">(7)</ref> and model <ref type="bibr" target="#b8">(8)</ref> are better than PIT model. By combining the single and multi-speaker mixture speech, model <ref type="bibr" target="#b8">(8)</ref> shows a significant improvement, whose WER is 29.5% on the WSJ0-2mix test set. For our conditional Conformer-CTC model ( <ref type="formula" target="#formula_9">9</ref>), we explore two types of conditional features, including the "hard" CTC alignments and "soft" latent features after EncoderRec. Both approaches are better than above models with only a ∼0.07 seconds increase of latency and applying the "soft" features achieves a WER of 24.4%. By incorporating the intermediate loss, we can obtain a superior WER of 22.3%, reaching a strong AR PIT-Conformer model <ref type="bibr" target="#b5">(5)</ref>. However, after combining latent feature conditions and the intermediate CTC loss, we don't get a further improvement. Finally, we also train our model on the data of variable numbers of speakers and obtain the best WERs of 19.9% and 34.3%, which are even better than model ( <ref type="formula" target="#formula_4">5</ref>) with only 1/7 latency.</p><p>We further investigate the correlation between the hypothesis generation order and the source signal length (from long to short), as shown in Table <ref type="table">3</ref>. We find that only 251/3000 ut-Table <ref type="table">3</ref>: Correlation between the hypothesis (Hyp.) generation order and the source signal (Src.) length order on WSJ0-2mix.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Hyp.</head><p>Src. long short 1 st output 2749 251 2 nd output 251 2749 terances do not follow the order on 2-speaker scenario and the average Spearman's Coefficient is 0.833.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3.">Results on LibriMix</head><p>The results on LibriMix are summarized in Table <ref type="table" target="#tab_2">2</ref>. From the table, we can see a quite similar trend as the WSJ0-Mix results in the previous subsection. Our Conditional-Conformer-CTC with both latent features conditions and intermediate CTC loss obtains the best WERs of 24.5% and 24.9% on dev and test sets, respectively, which yields up to 25% relative improvement compared with the Conditional-Transformer-CTC model.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.">Conclusions</head><p>In this study, we revisit our proposed conditional speaker chain based multi-speaker ASR by enhancing the NAR ability. Our improved model mainly includes a conditional speaker chain (CondChain) module and Conformer CTC based encoders. To boost the performance of a pure Conformer CTC encoder, we also investigate two approaches, which are using the "soft" latent features from the encoder output as speaker conditions and including an additional intermediate CTC loss. We evaluate the effectiveness of our model on two multi-speaker benchmarks, WSJ0-Mix and LibriMix. Our model shows consistent improvement over other models with only a slight increment of RTF and even better than a strong AR model in some cases.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: A overview of proposed conditional speaker chain based Conformer CTC model for NAR multi-speaker ASR. This figure shows a training procedure of a 3-speaker mixed waveform. The parameters of blocks with the same name are shared.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Algorithm 1 5 :</head><label>15</label><figDesc>Training procedure of our model 1: Initialize the model parameters θ θ θ and a all-zero condition G 0 for the first step 2: Given hyper parameters • learning rate α, InterCTC loss weight λ 3: Loading pre-trained model or not 4: while Epoch &lt; TotalEpoch do Given the input features X = {x1, . . . , xT } of a mixture speech and the corresponding transcriptions Y = {Y 1 , . . . , Y J } of J different speakers 6:</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head></head><label></label><figDesc>The results are obtained by the same implementation in<ref type="bibr" target="#b33">[33]</ref> but w/o beam search and LM rescoring. When using both beam search and LM rescoring, the results are 14.9% / 37.9% of model (8) and 12.4% / 26.6% of model<ref type="bibr" target="#b10">(10)</ref>.</figDesc><table><row><cell></cell><cell></cell><cell>16.5</cell><cell>-</cell><cell>-</cell></row><row><cell cols="2">E2E Autoregressive Model (w/ greedy search)</cell><cell></cell><cell></cell><cell></cell></row><row><cell>(3) PIT-RNN [27]  †</cell><cell>WSJ0-2mix</cell><cell>51.4</cell><cell>-</cell><cell>1.4293</cell></row><row><cell>(4) PIT-Transformer [33]  †</cell><cell>WSJ0-2mix</cell><cell>37.0</cell><cell>-</cell><cell>1.4695</cell></row><row><cell>(5) PIT-Conformer</cell><cell>WSJ0-2mix</cell><cell>22.4</cell><cell>-</cell><cell>1.3970</cell></row><row><cell cols="2">E2E Non-autoregressive Model (w/ greedy search)</cell><cell></cell><cell></cell><cell></cell></row><row><cell>(6) PIT-Transformer-CTC</cell><cell>WSJ0-2mix</cell><cell>50.3</cell><cell>-</cell><cell>0.1091</cell></row><row><cell>(7) Conditional-Transformer-CTC [33]  †</cell><cell>WSJ0-2mix</cell><cell>41.0</cell><cell>-</cell><cell>0.1293</cell></row><row><cell cols="2">(8) Conditional-Transformer-CTC [33]  † WSJ0-1&amp;2&amp;3mix</cell><cell>29.4</cell><cell>53.3</cell><cell>-</cell></row><row><cell>(9) Conditional-Conformer-CTC</cell><cell>WSJ0-2mix</cell><cell>25.3</cell><cell>-</cell><cell>0.1824</cell></row><row><cell>+ hidden feature conditions</cell><cell>WSJ0-2mix</cell><cell>24.4</cell><cell>-</cell><cell>0.1758</cell></row><row><cell>+ InterCTC loss</cell><cell>WSJ0-2mix</cell><cell>22.3</cell><cell>-</cell><cell>0.1854</cell></row><row><cell>(10) Conditional-Conformer-CTC</cell><cell>WSJ0-1&amp;2&amp;3mix</cell><cell>23.4</cell><cell>39.1</cell><cell>0.1771 / 0.2096</cell></row><row><cell>+ hidden feature conditions</cell><cell>WSJ0-1&amp;2&amp;3mix</cell><cell>22.2</cell><cell>38.6</cell><cell>0.1741 / 0.2241</cell></row><row><cell>+ InterCTC loss</cell><cell>WSJ0-1&amp;2&amp;3mix</cell><cell>19.9</cell><cell>34.3</cell><cell>0.1732 / 0.2088</cell></row><row><cell>†:</cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 2 :</head><label>2</label><figDesc>Word error rates (WERs) for multi-speaker speech recognition on LibriMix dataset.</figDesc><table><row><cell>Models</cell><cell>Dev Test</cell></row><row><cell cols="2">E2E Autoregressive Model (w/ greedy search)</cell></row><row><cell>(1) PIT-Transformer</cell><cell>34.8 36.0</cell></row><row><cell cols="2">E2E Non-autoregressive Model (w/ greedy search)</cell></row><row><cell>(2) PIT-Transformer-CTC</cell><cell>45.2 45.9</cell></row><row><cell>(3) Conditional-Transformer-CTC</cell><cell>32.7 33.3</cell></row><row><cell cols="2">(4) Conditional-Conformer-CTC + both 24.5 24.9</cell></row></table></figure>
+		</body>
+		<back>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<title/>
+		<author>
+			<persName><surname>References</surname></persName>
+		</author>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Neural machine translation by jointly learning to align and translate</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Bahdanau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Cho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. ICLR</title>
+		<meeting>ICLR</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Attention is all you need</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Vaswani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Shazeer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Parmar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Uszkoreit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Jones</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. NeurIPS</title>
+		<meeting>NeurIPS</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="5998" to="6008" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Listen, attend and spell</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Chan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Jaitly</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><forename type="middle">V</forename><surname>Le</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Vinyals</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. ICASSP. IEEE</title>
+		<meeting>ICASSP. IEEE</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="4960" to="4964" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Speech-Transformer: a norecurrence sequence-to-sequence model for speech recognition</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Xu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. ICASSP</title>
+		<meeting>ICASSP</meeting>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="5884" to="5888" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">A comparative study on Transformer vs RNN in speech applications</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Karita</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Hayashi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Hori</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Inaguma</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. ASRU. IEEE</title>
+		<meeting>ASRU. IEEE</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="449" to="456" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Conformer: Convolution-augmented transformer for speech recognition</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Gulati</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Qin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C.-C</forename><surname>Chiu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Parmar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. Interspeech. ISCA</title>
+		<meeting>Interspeech. ISCA</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="5036" to="5040" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Recent developments on ESPnet toolkit boosted by Conformer</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Boyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Hayashi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Higuchi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Inaguma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Kamo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Garcia-Romero</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Shi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. ICASSP</title>
+		<meeting>ICASSP</meeting>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="5874" to="5878" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Nonautoregressive neural machine translation</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Gu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Bradbury</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">O</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Socher</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. ICLR</title>
+		<meeting>ICLR</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">End-to-end non-autoregressive neural machine translation with connectionist temporal classification</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Libovickỳ</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Helcl</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. EMNLP. ACL</title>
+		<meeting>EMNLP. ACL</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="3016" to="3021" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Deterministic nonautoregressive neural sequence modeling by iterative refinement</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Mansimov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Cho</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. EMNLP. ACL</title>
+		<meeting>EMNLP. ACL</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="1173" to="1182" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Insertion Transformer: Flexible sequence generation via insertion operations</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Stern</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Chan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kiros</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Uszkoreit</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. ICML. PMLR</title>
+		<meeting>ICML. PMLR</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="5976" to="5985" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Levenshtein Transformer</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Gu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhao</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. NeurIPS</title>
+		<meeting>NeurIPS</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">11</biblScope>
+			<biblScope unit="page">191</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Maskpredict: Parallel decoding of conditional masked language models</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Ghazvininejad</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Levy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Zettlemoyer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. EMNLP-IJCNLP. ACL</title>
+		<meeting>EMNLP-IJCNLP. ACL</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="6112" to="6121" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<title level="m" type="main">Semiautoregressive training improves mask-predict decoding</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Ghazvininejad</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Levy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Zettlemoyer</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2001.08785</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Nonautoregressive machine translation with latent alignments</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Saharia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Chan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Saxena</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Norouzi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. EMNLP. ACL</title>
+		<meeting>EMNLP. ACL</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="1098" to="1108" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<monogr>
+		<title level="m" type="main">Listen and fill in the missing letters: Non-autoregressive Transformer for speech recognition</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Watanabe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Villalba</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Dehak</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1911.04908</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Mask CTC: Non-autoregressive end-to-end ASR with CTC and mask predict</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Higuchi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Watanabe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Ogawa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Kobayashi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. Interspeech. ISCA</title>
+		<meeting>Interspeech. ISCA</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="3655" to="3659" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Imputer: Sequence modelling via imputation and dynamic programming</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Chan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Saharia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Hinton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Norouzi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Jaitly</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. ICML. PMLR</title>
+		<meeting>ICML. PMLR</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="1403" to="1413" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Spiketriggered non-autoregressive Transformer for end-to-end speech recognition</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Tian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Yi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Wen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. Interspeech. ISCA</title>
+		<meeting>Interspeech. ISCA</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="5026" to="5020" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Improved Mask-CTC for non-autoregressive endto-end ASR</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Higuchi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Inaguma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Watanabe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Ogawa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Kobayashi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. ICASSP. IEEE</title>
+		<meeting>ICASSP. IEEE</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="8363" to="8367" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Align-refine: Nonautoregressive speech recognition via iterative realignment</title>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">A</forename><surname>Chi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Salazar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Kirchhoff</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. NAACL. ACL, 2021</title>
+		<meeting>NAACL. ACL, 2021</meeting>
+		<imprint>
+			<biblScope unit="page" from="1920" to="1927" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<monogr>
+		<title level="m" type="main">CASS-NAT: CTC alignment-based single step non-autoregressive Transformer for speech recognition</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Fan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Chu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Xiao</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2010.14725</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Connectionist temporal classification: Labelling unsegmented sequence data with recurrent neural networks</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Graves</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Fernández</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Gomez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Schmidhuber</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. ICML. PMLR</title>
+		<meeting>ICML. PMLR</meeting>
+		<imprint>
+			<date type="published" when="2006">2006</date>
+			<biblScope unit="page" from="369" to="376" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Single-channel multi-talker speech recognition with permutation invariant training</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Qian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Yu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Speech Communication</title>
+		<imprint>
+			<biblScope unit="volume">104</biblScope>
+			<biblScope unit="page" from="1" to="11" />
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Analysis of deep clustering as preprocessing for automatic speech recognition of sparsely overlapping speech</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Menne</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Sklyar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Schlüter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Ney</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ISCA</title>
+		<imprint>
+			<biblScope unit="page" from="2638" to="2642" />
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">A purely end-to-end system for multi-speaker speech recognition</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Seki</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Hori</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Watanabe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">L</forename><surname>Roux</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">R</forename><surname>Hershey</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. ACL</title>
+		<meeting>ACL</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="2620" to="2630" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">End-to-end monaural multi-speaker asr system without pretraining</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Qian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Watanabe</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. ICASSP</title>
+		<meeting>ICASSP</meeting>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="6256" to="6260" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">End-to-end multi-speaker speech recognition with Transformer</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Qian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">Le</forename><surname>Roux</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Watanabe</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. ICASSP. IEEE</title>
+		<meeting>ICASSP. IEEE</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="6134" to="6138" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Joint speaker counting, speech recognition, and speaker identification for overlapped speech of any number of speakers</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Kanda</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Gaur</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Meng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Yoshioka</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. Interspeech. ISCA</title>
+		<meeting>Interspeech. ISCA</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="36" to="40" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">End-to-end training of time domain audio separation and recognition</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Neumann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Kinoshita</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Drude</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Boeddeker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Delcroix</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Nakatani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Haeb-Umbach</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. ICASSP. IEEE</title>
+		<meeting>ICASSP. IEEE</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="7004" to="7008" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">All-neural online source separation, counting, and diarization for meeting analysis</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Neumann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Kinoshita</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Delcroix</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Araki</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Nakatani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Haeb-Umbach</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. ICASSP. IEEE</title>
+		<meeting>ICASSP. IEEE</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="91" to="95" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Speakerconditional chain model for speech separation and extraction</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Fujita</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Watanabe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Xu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. Interspeech. ISCA</title>
+		<meeting>Interspeech. ISCA</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="2707" to="2711" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Sequence to multi-sequence learning via conditional chain mapping for mixture signals</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Watanabe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Fujita</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Xie</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. NeurIPS</title>
+		<meeting>NeurIPS</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="3735" to="3747" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<monogr>
+		<title level="m" type="main">Neural speaker diarization with speaker-wise chain rule</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Fujita</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Watanabe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Horiguchi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Xue</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Nagamatsu</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2006.01796</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Intermediate loss regularization for ctcbased speech recognition</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Watanabe</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. ICASSP. IEEE, 2021</title>
+		<meeting>ICASSP. IEEE, 2021</meeting>
+		<imprint>
+			<biblScope unit="page" from="6224" to="6228" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Joint CTC-attention based end-to-end speech recognition using multi-task learning</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Hori</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Watanabe</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. ICASSP</title>
+		<meeting>ICASSP</meeting>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="4835" to="4839" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Permutation invariant training of deep models for speaker-independent multi-talker speech separation</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Kolbaek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z.-H</forename><surname>Tan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Jensen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. ICASSP</title>
+		<meeting>ICASSP</meeting>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="241" to="245" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Deep clustering: Discriminative embeddings for segmentation and separation</title>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">R</forename><surname>Hershey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">Le</forename><surname>Roux</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Watanabe</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. ICASSP. IEEE</title>
+		<meeting>ICASSP. IEEE</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="31" to="35" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Librispeech: An ASR corpus based on public domain audio books</title>
+		<author>
+			<persName><forename type="first">V</forename><surname>Panayotov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Povey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Khudanpur</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. ICASSP</title>
+		<meeting>ICASSP</meeting>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="5206" to="5210" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Wham!: Extending speech separation to noisy environments</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Wichern</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Antognini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Flynn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">R</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Mcquinn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Crow</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Manilow</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">L</forename><surname>Roux</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. Interspeech. ISCA</title>
+		<meeting>Interspeech. ISCA</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="1368" to="1372" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">ESPnet: End-to-end speech processing toolkit</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Watanabe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Hori</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Karita</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Hayashi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Nishitoba</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Unno</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">E Y</forename><surname>Soplin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Heymann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Wiesner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. Interspeech. ISCA</title>
+		<meeting>Interspeech. ISCA</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="2207" to="2211" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

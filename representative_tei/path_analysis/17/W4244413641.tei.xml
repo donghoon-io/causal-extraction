@@ -1,0 +1,1118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">S2E: A Platform for In-Vivo Multi-Path Analysis of Software Systems</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Vitaly</forename><surname>Chipounov</surname></persName>
+							<email>vitaly.chipounov@epfl.ch</email>
+							<affiliation key="aff0">
+								<orgName type="department">School of Computer and Communication Sciences École Polytechnique Fédérale de Lausanne (EPFL)</orgName>
+								<address>
+									<country key="CH">Switzerland</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Volodymyr</forename><surname>Kuznetsov</surname></persName>
+							<email>vova.kuznetsov@epfl.ch</email>
+							<affiliation key="aff0">
+								<orgName type="department">School of Computer and Communication Sciences École Polytechnique Fédérale de Lausanne (EPFL)</orgName>
+								<address>
+									<country key="CH">Switzerland</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">George</forename><surname>Candea</surname></persName>
+							<email>george.candea@epfl.ch</email>
+							<affiliation key="aff0">
+								<orgName type="department">School of Computer and Communication Sciences École Polytechnique Fédérale de Lausanne (EPFL)</orgName>
+								<address>
+									<country key="CH">Switzerland</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">S2E: A Platform for In-Vivo Multi-Path Analysis of Software Systems</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-21T21:48+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<textClass>
+				<keywords>
+					<term>D.2.4 [Software/Program Verification] General Terms Reliability</term>
+					<term>Verification</term>
+					<term>Performance</term>
+					<term>Security</term>
+				</keywords>
+			</textClass>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>This paper presents S 2 E, a platform for analyzing the properties and behavior of software systems. We demonstrate S 2 E's use in developing practical tools for comprehensive performance profiling, reverse engineering of proprietary software, and bug finding for both kernel-mode and user-mode binaries. Building these tools on top of S 2 E took less than 770 LOC and 40 person-hours each.</p><p>S 2 E's novelty consists of its ability to scale to large real systems, such as a full Windows stack. S 2 E is based on two new ideas: selective symbolic execution, a way to automatically minimize the amount of code that has to be executed symbolically given a target analysis, and relaxed execution consistency models, a way to make principled performance/accuracy trade-offs in complex analyses. These techniques give S 2 E three key abilities: to simultaneously analyze entire families of execution paths, instead of just one execution at a time; to perform the analyses in-vivo within a real software stack-user programs, libraries, kernel, drivers, etc.-instead of using abstract models of these layers; and to operate directly on binaries, thus being able to analyze even proprietary software.</p><p>Conceptually, S 2 E is an automated path explorer with modular path analyzers: the explorer drives the target system down all execution paths of interest, while analyzers check properties of each such path (e.g., to look for bugs) or simply collect information (e.g., count page faults). Desired paths can be specified in multiple ways, and S 2 E users can either combine existing analyzers to build a custom analysis tool, or write new analyzers using the S 2 E API.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1.">Introduction</head><p>System developers routinely need to analyze the behavior of what they build. One basic analysis is to understand observed behavior, such as why a given web server is slow on a SPECweb benchmark. More sophisticated analyses aim to characterize future behavior in previously unseen circumstances, such as what will a web server's maximum latency and minimum throughput be, once deployed at Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. To copy otherwise, to republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. ASPLOS <ref type="bibr">'11, March 5-11, 2011</ref>, Newport Beach, California, USA. Copyright © 2011 ACM 978-1-4503-0266-1/11/03. . . $10.00 a customer site. Ideally, system designers would also like to be able to do quick what-if analyses, such as determining whether aligning a certain data structure on a page boundary will avoid all cache misses and thus increase performance. For small programs, experienced developers can often reason through some of these questions based on code alone. The goal of our work is to make it feasible to answer such questions for large, complex, real systems.</p><p>We introduce in this paper a platform that enables easy construction of analysis tools (such as oprofile, valgrind, bug finders, or reverse engineering tools) that simultaneously offer the following three properties: <ref type="bibr" target="#b0">(1)</ref> they efficiently analyze entire families of execution paths; (2) they maximize realism by running the analyses within a real software stack; and <ref type="bibr" target="#b2">(3)</ref> they are able to directly analyze binaries. We explain these properties below.</p><p>First, predictive analyses often must reason about entire families of paths through the target system, not just one path. For example, security analyses must check that there exist no corner cases that could violate a desired security policy; recent work has employed model checking <ref type="bibr" target="#b28">[29]</ref> and symbolic execution <ref type="bibr" target="#b10">[11]</ref> to find bugs in real systems-these are all multi-path analyses. One of our case studies demonstrates multi-path analysis of performance properties: instead of profiling solely one execution path, we derive performance envelopes that characterize the performance of entire families of paths. Such analyses can check real-time requirements (e.g., that an interrupt handler will never exceed a given bound on execution time), or can help with capacity planning (e.g., determine how many web servers to provision for a web farm). In the end, properties shown to hold for all paths constitute proofs, which are in essence the ultimate prediction of a system's behavior.</p><p>Second, an accurate estimate of program behavior often requires taking into account the whole environment surrounding the analyzed program: libraries, kernel, drivers, etc.-in other words, it requires in-vivo <ref type="foot" target="#foot_0">1</ref> analysis. Even small programs interact with their environment (e.g., to read/write files or send/receive network packets), so understanding program behavior requires understanding the nature of these interactions. Some tools execute the real environment, but allow calls from different execution paths to interfere inconsistently with each other <ref type="bibr" target="#b11">[12,</ref><ref type="bibr" target="#b17">18]</ref>. Most approaches abstract away the environment behind a model <ref type="bibr" target="#b1">[2,</ref><ref type="bibr" target="#b10">11]</ref>, but writing abstract models is labor-intensive (taking in some cases multiple personyears <ref type="bibr" target="#b1">[2]</ref>), models are rarely 100% accurate, and they tend to lose accuracy as the modeled system evolves. It is therefore preferable that target programs interact directly with their real environment during analysis in a way that keeps multi-path analysis consistent.</p><p>Third, real systems are made up of many components from various vendors; access to all corresponding source code is rarely feasible and, even when source code is available, building the code exactly as in the shipped software product is difficult <ref type="bibr" target="#b4">[5]</ref>. Thus, in order to be practical, analyses ought to operate directly on binaries.</p><p>Scalability is the key challenge of performing analyses that are in-vivo, multi-path, and operate on binaries. Going from singlepath analysis to multi-path analysis turns a linear problem into an exponential one, because the number of paths through a program increases exponentially in the number of branches-the "path explosion" problem <ref type="bibr" target="#b6">[7]</ref>. It is therefore not feasible today to execute fully symbolically an entire software stack (programs, libraries, OS kernel, drivers, etc.) as would be necessary if we wanted consistent in-vivo multi-path analysis.</p><p>We describe in this paper S 2 E, a general platform for developing multi-path in-vivo analysis tools that are practical even for large, complex systems, such as an entire Windows software stack. First, S 2 E simultaneously exercises entire families of execution paths in a scalable manner by using selective symbolic execution and relaxed execution consistency models. Second, S 2 E employs virtualization to perform the desired analyses in vivo; this removes the need for the stubs or abstract models required by most state-of-the-art symbolic execution engines and model checkers <ref type="bibr" target="#b2">[3,</ref><ref type="bibr" target="#b10">11,</ref><ref type="bibr" target="#b17">18,</ref><ref type="bibr" target="#b28">29,</ref><ref type="bibr" target="#b35">36]</ref>. Third, S 2 E uses dynamic binary translation to directly interpret x86 machine code, so it can analyze a wide range of software, including proprietary systems, even if self-modifying or JITed, as well as obfuscated and packed/encrypted binaries.</p><p>The S 2 E platform offers an automated path exploration mechanism and modular path analyzers. The explorer drives in parallel the target system down all execution paths of interest, while analyzers check properties of each such path (e.g., to look for bugs) or simply collect information (e.g., count page faults). An analysis tool built on top of S 2 E glues together path selectors with path analyzers. Selectors guide S 2 E's path explorer by specifying the paths of interest: all paths that touch a specific memory object, paths influenced by a specific parameter, paths inside a target code module, etc. Analyzers can be pieced together from S 2 E-provided analyzers, or can be written from scratch using the S 2 E API.</p><p>S 2 E comes with ready-made selectors and analyzers that provide a wide range of analyses out of the box. The typical S 2 E user only needs to define in a configuration file the desired selector(s) and analyzer(s) along with the corresponding parameters, start up the desired software stack inside the S 2 E virtual machine, and run the S 2 E launcher in the guest OS, which starts the desired application and communicates with the S 2 E VM underneath. For example, one may want to verify the code that handles license keys in a proprietary program, such as Adobe Photoshop. The user installs the program in the S 2 E Windows VM and launches the program using s2e.exe C:\Program Files\Adobe\Photoshop. From inside the guest OS, the s2e.exe launcher communicates with S 2 E via custom opcodes (described in §4). In the S 2 E configuration file, the tester may choose a memory-checker analyzer along with a path selector that returns a symbolic string whenever Photoshop reads HKEY LOCAL MACHINE\Software\Photoshop\LicenseKey from the Windows registry. S 2 E then automatically explores the code paths in Photoshop that are influenced by the value of the license key and looks for memory safety errors along those paths.</p><p>Developing a new analysis tool with S 2 E takes on the order of 20-40 person-hours and a few hundred LOC. To illustrate S 2 E's generality, we present here three very different tools built using S 2 E: a multi-path in-vivo performance profiler, a reverse engineering tool, and a tool for automatically testing proprietary software. This paper makes the following four contributions:</p><p>• Selective symbolic execution, a new technique for automatic bidirectional symbolic-concrete state conversion that enables execution to seamlessly and correctly weave back and forth between symbolic and concrete mode;</p><p>• Execution consistency models, a systematic way to reason about the trade-offs involved in over/under-approximation of paths in software system analyses;</p><p>• A general platform for performing diverse in-vivo multi-path analyses in a way that scales to large real systems;</p><p>• The first use of symbolic execution in performance analysis.</p><p>In the rest of the paper, we describe selective symbolic execution ( §2), execution consistency models ( §3), S 2 E's APIs for developing analysis tools ( §4), the S 2 E prototype ( §5), evaluation ( §6), related work ( §7), and conclusions ( §8).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.">Selective Symbolic Execution</head><p>In devising a way to efficiently exercise entire families of paths, we were inspired by the successful use of symbolic execution <ref type="bibr" target="#b21">[22]</ref> in automated software testing <ref type="bibr" target="#b10">[11,</ref><ref type="bibr" target="#b17">18]</ref>. The idea is to treat a program as a superposition of possible execution paths. For example, a program that is all linear code except for one conditional statement if (x&gt;0) then ... else ... can be viewed as a superposition of two possible paths: one for x&gt;0 and another one for x≤0. To exercise all paths, it is not necessary to try all possible values of x, but rather just one value greater than 0 and one value less than 0.</p><p>We unfurl this superposition of paths into a symbolic execution tree, in which each possible execution corresponds to a path from the root of the tree to a leaf corresponding to a terminal state. The mechanics of doing so consist of marking variables as symbolic at the beginning of the program, i.e., instead of allowing a variable x to take on a concrete value (say, x=5), it is viewed as a superposition λ of all possible values x could take. Then, any time a branch instruction is conditioned on a predicate p that depends (directly or indirectly) on x, execution is split into two executions Ei and E k , two copies of the program's state are created, and Ei's path remembers that the variables involved in p must be constrained to make p true, while Ej's path remembers that p must be false.</p><p>The process repeats recursively: Ei may further split into Ei i and Ei k , and so on. Every execution of a branch statement creates a new set of children, and thus what would normally be a linear execution (if concrete values were used) now turns into a tree of executions (since symbolic values are used). A node s in the tree represents a program state (a set of variables with formulae constraining the variables' values), and an edge si → sj indicates that sj is si's successor on any path satisfying the constraints in sj. Paths in the tree can be pursued simultaneously, as the tree unfurls; since program state is copied, the paths can be explored independently. Copy-on-write is used to make this process efficient.</p><p>S 2 E is based on the key observation that often only some families of paths are of interest. For example, one may want to exhaustively explore all paths through a small program, but not care about all paths through the libraries it uses or the OS kernel. This means that, when entering that program, S 2 E should split executions to explore the various paths, but whenever it calls into some other part of the system, such as a library, multi-path execution can cease and execution can revert to single-path. Then, when execution returns to the program, multi-path execution must be resumed.</p><p>Multi-path execution corresponds to expanding a family of paths by exploring the various side branches as they appear, while switching to single-path mode corresponds to corseting the family of paths. In multi-path mode, the tree grows in width and depth; in single-path mode, the tree only grows in depth. We therefore say S 2 E's exploration of program paths is elastic. S 2 E turns multi-path mode off whenever possible, to minimize the size of the execution tree and include only paths that are of interest to the target analysis.</p><p>S 2 E's elasticity of multi-path exploration is key in being able to perform in-vivo multi-path exploration of programs inside complex systems, like Windows. By combining elasticity with virtualization, S 2 E offers the illusion of symbolically executing a full software stack, while actually executing symbolically only select components. For example, by concretely (i.e., non-symbolically) executing libraries and the OS kernel, S 2 E allows a program's paths to be explored efficiently without having to model its surrounding environment. We refer to this as selective symbolic execution.</p><p>Interleaving of symbolic execution phases with concrete phases must be done carefully, to preserve the meaningfulness of each explored execution. For example, say we wish to analyze a program P in multi-path (symbolic) mode, but none of its libraries Li are to be explored symbolically. If P has a symbolic variable n and calls strncpy(dst,src,n) in L k , S 2 E must convert n to some concrete value and invoke strncpy with that value. This is straightforward: solve the current path constraints with a constraint solver and get some legal value for n (say n=5) and call strncpy. But what happens to n after strncpy returns? Variable dst will contain n=5 bytes, whereas n prior to the call was symbolic-can n still be treated symbolically? The answer is yes, if done carefully.</p><p>In S 2 E, when a symbolic value is converted to concrete (n : λ → 5), the family of executions is corseted. When a concrete value is converted to symbolic (n : 5 → λ), the execution family is allowed to expand. The process of doing this back and forth is governed by the rules of an execution consistency model ( §3). For the above example, one might require that n be constrained to value 5 in all executions following the return from strncpy. However, doing so may exclude a large number of paths from the analysis. In §3 we describe systematic and safe relaxations of execution consistency.</p><p>We now describe the mechanics of switching back and forth between multi-path (symbolic) and single-path (concrete) execution in a way that executions stay consistent. We know of no prior symbolic execution engine that has the machinery to efficiently and flexibly cross the symbolic/concrete boundary both back and forth.</p><p>Fig. <ref type="figure" target="#fig_0">1</ref> provides a simplified example of using S 2 E: an application app uses a library lib on top of an OS kernel. The target analysis requires to symbolically execute lib, but not app or kernel. Function appFn in the application calls a library function libFn, which eventually invokes a system call sysFn. Once sysFn returns, libFn does some further processing and returns to appFn. After the execution crosses into the symbolic domain (shaded) from the concrete domain (white), the execution tree (right side of Fig. <ref type="figure" target="#fig_0">1</ref>) expands. After the execution returns to the concrete domain, the execution tree is corseted and does not add any new paths, until execution returns to the symbolic domain. Some paths may terminate earlier than others, e.g., due to hitting a bug in the program.</p><p>We now describe the two directions in which execution can cross the concrete/symbolic boundary.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.1">Concrete → Symbolic Transition</head><p>When appFn calls libFn, it does so by using concrete arguments; the simplest conversion is to use an S 2 E selector to change the concrete arguments into symbolic ones, e.g., instead of libFn <ref type="bibr" target="#b9">(10)</ref> call libFn(λ). One can additionally opt to constrain λ, e.g., λ ≤ 15.</p><p>Once this transition occurs, S 2 E executes libFn symbolically using the (potentially constrained) argument(s) and simultaneously executes libFn with the original concrete argument(s) as well. Once exploration of libFn completes, S 2 E returns to appFn the concrete return value resulting from the concrete execution, but libFn will have been explored symbolically as well. In this way, the execution of app is consistent, while at the same time S 2 E exposes to the analyzer plugins those paths in lib that are rooted at libFn's entry point. The concrete domain is unaware of libFn being executed in multi-path mode. All paths execute independently, and it is up to the S 2 E analyzer plugins to decide whether, besides observing the concrete path, they also wish to look at the symbolic paths.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.2">Symbolic → Concrete Transition</head><p>Dealing with the libFn→sysFn call is more complicated. Say libFn has the code shown in Fig. <ref type="figure" target="#fig_1">2</ref> and was called with an unconstrained symbolic value x∈(-∞, +∞). At the first if branch instruction, execution forks into one path along which x∈(-∞, 5) and another path where x∈ <ref type="bibr">[5, +∞)</ref>. These expressions are referred to as path constraints, as they constrain the values that x can take on a path. Along the then-branch, a call to sysFn(x) must be made. This requires x to be concretized, since sysFn is in the concrete domain. Thus, we choose a value, say x=4, that is consistent with the x∈(-∞, 5) constraint and perform the sysFn(4) call. The path constraints in the symbolic domain are updated to reflect that x=4.</p><formula xml:id="formula_0">void libFn(int x) { if (x&lt;5) { buf=sysFn(x); if (x&lt;0) ... } } x&lt;5 x ∈ (-∞, +∞)</formula><p>x ∈ (-∞, 5)</p><p>x ∈ [5, +∞) Note that S 2 E actually employs lazy concretization: it converts the value of x from symbolic to concrete on-demand, only when concretely running code actually reads the value of x. This is an important optimization when doing in-vivo symbolic execution, because a lot of data can be carried through the layers of the software stack without conversion. For example, when a program writes a buffer of symbolic data to the filesystem, there are usually no branches in the kernel or the disk device driver that depend on this data, so the buffer can pass through unconcretized and be written in symbolic form to the virtual disk, from where it will eventually be read back in its symbolic form. For the sake of clarity, in this section we assume eager (non-lazy) concretization.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Path constraints</head><p>Once sysFn completes, execution returns to libFn in the symbolic domain. When x was concretized prior to calling sysFn, the x=4 constraint was automaticaly added to the path constraints-sysFn's return value is correct only under this constraint, because all computation in sysFn was done assuming x=4. Furthermore, sysFn may also have had side effects that are equally intimately tied to the x=4 constraint. With this constraint, execution of libFn can continue, and correctness is fully preserved.</p><p>The problem, however, is that this constraint corsets the family of future paths that can be explored from this point on: x can no longer take on all values in (-∞, 5) so, when we subsequently get to the branch if (x&lt;0) ..., the then-branch will no longer be feasible due to the added x=4 constraint. This is referred to as "overconstraining": the constraint is not introduced by features of libFn's code, but rather as a result of concretizing x to call into the concrete domain. We think of x=4 as a soft constraint imposed by the symbolic/concrete boundary, while x∈(-∞, 5) is a hard constraint imposed by libFn's code. Whenever a branch in the symbolic domain is disabled because of a soft constraint, it is possible to go back in the execution tree and pick an additional value for concretization, fork another subtree, and repeat the sysFn call in a way that would enable that branch. As explained later, S 2 E can track branch conditions in the concrete domain, which helps redo the call in a way that re-enables subsequent branches.</p><p>The "overconstraining" problem has two components: (a) the loss of paths that results directly from the concretization of x, and (b) the loss of paths that results indirectly via the constrained return value and side effects. Due to the fact that S 2 E implements VM state in a way that is shared between the concrete and symbolic domain (more details in §5), return values and side effects can be treated using identical mechanisms. We now discuss how the constraints are handled under different consistency models.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.">Execution Consistency Models</head><p>The traditional assumption about system execution is that the state at any point in time is consistent, i.e., there exists a feasible path from the start state to the current state. However, there are many analyses for which this assumption is unnecessarily strong, and the cost of providing such consistency during multi-path exploration is often prohibitively high. For example, when doing unit testing, one typically exercises the unit in ways that are consistent with the unit's interface, without regard to whether all those paths are indeed feasible in the integrated system. This is both because testing the entire system in a way that exercises all paths through the unit is too expensive, and because exercising the unit as described above offers higher confidence in its correctness in the face of future use.</p><p>S 2 E aims to be a general platform for system analyses, so it provides several levels of execution consistency, to enable users to make the best trade-offs. In this section, we take a first step toward systematically defining alternate execution consistency models ( §3.1), after which we explain how these different models dictate the symbolic/concrete conversions applied during the backand-forth transition between the analyzed code and its environment ( §3.2). In §3.3 we survey some of the ways in which consistency models are implemented in existing analysis tools.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Model Definitions</head><p>The key distinction between the various execution consistency models is which execution paths each model admits. Choosing an appropriate consistency model is a trade-off between how "realistic" the admitted paths are vs. the cost of enforcing the model. The appropriateness of the trade-off is determined by the nature of the analysis, i.e., by the way in which feasibility of different paths affects completeness and soundness of the analysis.</p><p>In the rest of the paper, we use the term system to denote the complete software system under analysis, including the application programs, libraries, and the operating system. We use the term unit to denote the part of the system that is to be analyzed. A unit could encompass different parts of multiple programs, libraries, or even parts of the operating system itself. We use the term environment to denote everything in the system except the unit. Thus, the system is the sum of the environment and the unit to be analyzed. When defining a model, we think in terms of which paths it includes vs. excludes. Following the Venn diagram on the right, an execution path can be statically feasible, in that there exists a path in the system's inter-procedural control flow graph (CFG) corresponding to the execution in question. A subset of the statically feasible paths are locally feasible in the unit, in the sense that the execution is consistent with both the system's CFG and with the restrictions on control flow imposed by the data-related constraints within the unit. Finally, a subset of locally feasible paths is globally feasible, in the sense that their execution is additionally consistent with control flow restrictions imposed by data-related constraints in the environment. Observing only the code executing in the unit, with no knowledge of code in the environment, it is impossible to tell apart locally feasible from globally feasible paths.</p><p>We say that a model is complete if every path through the unit that corresponds to some globally feasible path through the system will eventually be discovered by exploration done under that model. A model is consistent if, for every path through the unit admissible by the model, there exists a corresponding globally feasible path through the system (i.e., the system can run concretely in that way).</p><p>We now define six points that we consider of particular interest in the space of possible consistency models, progressing from strongest to weakest consistency. They are summarized in Fig. <ref type="figure" target="#fig_3">3</ref> using a representation corresponding to the Venn diagram above. Their completeness and consistency are summarized in Table <ref type="table" target="#tab_1">1</ref>. We invite the reader to follow Fig. <ref type="figure" target="#fig_3">3</ref> while reading this section.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1.1">Strict Consistency (SC)</head><p>The strongest form of consistency is one that admits only the globally consistent paths. For example, the concrete execution of a program always obeys the strict consistency (SC) model. Moreover, every path admitted under the SC model can be mapped to a certain concrete execution of the system starting with certain concrete inputs. Sound analyses produce no false positives under SC.</p><p>We define three subcategories of SC based on what information is taken into account when exploring new paths.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Strictly Consistent Concrete Execution (SC-CE):</head><p>Under the SC-CE model, the entire system is treated as a black box: no internal information is used to explore new paths. The only explored paths are the paths that the system follows when executed with the sample input provided by the analysis. New paths can only be explored by blindly guessing new inputs. Classic fuzzing (random input testing) falls under this model.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Strictly Consistent Unit-level Execution (SC-UE):</head><p>Under the SC-UE model, an exploration engine is allowed to gather and use information internal to the unit (e.g., by collecting path constraints while executing the unit). The environment is still treated as a black box, i.e., path constraints generated by environment code are not tracked. Not every globally feasible path can be found with such partial information (e.g., paths that are enabled by branches in the environment can be missed). However, the exploration engine saves time by not having to analyze the environment, which is typically orders of magnitude larger than the unit.</p><p>This model is widely used by symbolic and concolic execution tools <ref type="bibr" target="#b10">[11,</ref><ref type="bibr" target="#b11">12,</ref><ref type="bibr" target="#b17">18]</ref>. Such tools usually instrument only the program but not the operating system code (sometimes such tools replace parts of the OS by models, effectively adding a simplified version of it as a part of the program). Whenever such tools see a call to the OS, they execute the call uninstrumented, selecting some concrete arguments for the call. Such "blind" selection of concrete </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>SC-CE</head><p>Strictly consistent concrete execuƟon</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>SC-UE</head><p>Strictly consistent unit-level execuƟon</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>SC-SE</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Strictly consistent system-level execuƟon</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>LC</head><p>Local consistency The SC-UE and SC-SE models are obtained from the previous ones by using increasingly more information about the system execution to explore new states. The LC, RC-OC and RC-CC models are obtained through progressive relaxation of constraints.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>RC-OC</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Overapproximate consistency</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>RC-CC</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>CFG consistency</head><p>arguments might cause some paths through the unit to be missed, if they depend on unexplored environment behaviors.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Strictly Consistent System-level Execution (SC-SE):</head><p>Under the SC-SE model, an exploration engine gathers and uses information about all parts of the system, to explore new paths through the unit. Such exploration is not only sound but also complete, provided that the engine can solve all constraints it encounters. In other words, every path through the unit that is possible under a concrete execution of the system will be eventually found by SC-SE exploration, making SC-SE the only model that is both strict and complete.</p><p>However, the implementation of SC-SE is limited by the path explosion problem: the number of globally feasible paths is roughly exponential in the size of the whole system. As the environment is typically orders of magnitude larger than the unit, including its code in the analysis (as would be required under SC-SE) offers an unfavorable trade-off given today's technology.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1.2">Local Consistency (LC)</head><p>The local consistency (LC) model aims to combine the performance advantages of SC-UE with the completeness advantages of SC-SE. The idea is to avoid exploring all paths through the environment, yet still explore the corresponding path segments in the unit by replacing the results of (some) calls to the environment with symbolic values that represent any possible valid result of the execution.</p><p>For example, when a unit (such as a user-mode program) invokes the write(fd, buf, count) system call of a POSIX OS, the return value can be any integer between -1 and count, depending on the state of the system. The exploration engine can discard the actual concrete value returned by the OS and replace it with a symbolic integer between -1 and count. This allows exploring all paths in the unit that are enabled by different return values of write, without analyzing the write function and having to find concrete inputs to the overall system that would enable those paths. This however introduces global inconsistency-for instance, there exists no concrete execution in which count bytes are written to the file and the write system call returns 0. However, unless the unit explicitly checks the file (e.g., by reading its content) this does not matter: the inconsistency cannot yield locally infeasible paths.</p><p>In other words, the LC model allows for inconsistencies in the environment, while keeping the state of the unit internally consistent. To preserve LC, an exploration engine must track the propagation of inconsistencies inside the environment and abort an execution path as soon as these inconsistencies influence the internal state of the unit on that path.</p><p>This keeps the internal state of the unit internally consistent on all explored paths: for each explored path, there exists some concrete execution of the system that would lead to exactly the same internal state of the unit along that path-except the engine does not need to incur the cost of actually finding that path. Consequently, any sound analysis that takes into account only the internal state of the unit produces no false positives under the LC model. For this reason, we call the LC model "locally consistent."</p><p>The set of paths explored under this model corresponds to the set of locally feasible paths, as defined earlier. However, some paths could be aborted before completion, or even be missed completely, due to the propagation of inconsistencies. This means that the LC model is not complete. In practice, the less a unit interacts with its environment, the fewer such paths are aborted or missed.</p><p>Technically speaking, the LC model is inconsistent, thus it ought to be a sub-model of the RC model, described next. However, since the LC model is equivalent to a SC model for a large class of analyses, we devoted to it an independent category.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1.3">Relaxed Consistency (RC)</head><p>Under relaxed consistency (RC), all paths through the unit are admitted, even those that are not allowed by the SC and LC models. The RC model is therefore inconsistent in the general case.</p><p>The main advantage of RC is performance: by admitting these additional infeasible paths, one can avoid having to analyze large parts of the system that are not really targets of the analysis, thus allowing path exploration to reach the true target code sooner. However, admitting locally infeasible paths (i.e., allowing the internal state of the unit to become inconsistent) makes most analyses prone to false positives, because some of the paths these analyses are exposed to cannot be produced by any concrete run.</p><p>This might be acceptable if the analysis is itself unsound anyway, or if the analysis only relies on a subset of the state that can be easily kept consistent (in some sense, this is like LC, except that the subset of the state to be kept consistent may not be the unit's state). Also note that, even though RC admits more paths, thus producing more analysis work, analyses under RC can abort early those paths that turn out to be infeasible, or the accuracy of the analysis can be decreased, thus preserving the performance advantage.</p><p>We distinguish two subcategories of the RC model, both of which we found to be useful in practice.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Overapproximate Consistency (RC-OC):</head><p>In the RC-OC model, path exploration can follow paths through the unit while completely ignoring the constraints that the environment/unit API contracts impose on return values and side effects. For example, the unit may invoke write(fd, buf, count), and the RC-OC model would permit the return result to be larger than count, which violates the specification of the write system call. Under the previous model (local consistency), such paths would be disallowed. Even though it is not consistent, RC-OC is complete: every environment behavior is admitted under RC-OC, so every path in the unit corresponding to some real environment behavior is admitted too.</p><p>The RC-OC model is useful, for example, for reverse engineering. It enables efficient exploration of all behaviors of the unit that are possible in a valid environment, plus some additional behaviors that are possible only when the environment behaves outside its specification. For instance, when reverse engineering a device driver, the RC-OC model allows symbolic hardware <ref type="bibr" target="#b22">[23]</ref> to return unconstrained values; in this way, the resulting reverse engineered paths include some of those that correspond to allegedly impossible hardware behaviors. Such overapproximation improves the quality of the reverse engineering, as explained in <ref type="bibr" target="#b12">[13]</ref>. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>CFG Consistency (RC-CC):</head><p>In the RC-CC model, the exploration engine is allowed to change any part of the system state, as long as the explored execution paths correspond to paths in the unit's inter-procedural control flow graph. This roughly corresponds to the consistency provided by static program analyzers that are dataflow-insensitive and analyze completely unconstrained paths.</p><p>Being strictly weaker than the SC-SE model, though using the same information to explore new paths, the RC-CC model is complete.</p><p>The RC-CC model is useful in disassembling obfuscated and/or encrypted code: after letting the unit code decrypt itself under an LC model (thus ensuring the correctness of decryption), a disassembler can switch to the RC-CC model to reach high coverage of the decrypted code and quickly disassemble as much of it as possible.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Implementing Consistency Models</head><p>We now explain how the consistency models can be implemented by a selective symbolic execution engine (SSE), by describing the specifics of symbolic ↔ concrete conversion as execution goes from the unit to the environment and then back again.</p><p>We illustrate the different implementations with the example of a kernel-mode device driver (Fig. <ref type="figure" target="#fig_4">4</ref>). The driver reads and writes from/to hardware I/O ports and calls the write usb function, which is implemented in a kernel-mode USB library, as well as alloc, implemented by the kernel itself.  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2.1">Implementing Strict Consistency (SC)</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Strictly Consistent Concrete Execution (SC-CE):</head><p>For this model, an SSE allows only concrete input to enter the system. This leads to executing a single path through the unit and the environment. The SSE can execute the whole system natively without having to track or solve any constraints, because there is no symbolic data.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Strictly Consistent Unit-level Execution (SC-UE):</head><p>To implement this model, the SSE converts all symbolic data to concrete values when the unit calls the environment. The conversion is consistent with the current set of path constraints in the unit. No other conversion is performed. The environment is treated as a black box, and no symbolic data can flow into it.</p><p>In the example of Fig. <ref type="figure" target="#fig_4">4</ref>, the SSE concretizes the content of packet pkt when calling write usb and, from there on, this soft constraint (see §2.2) is treated as a hard constraint on the content of pkt. The resulting paths trough the driver are globally feasible paths, but exploration is not complete, because treating the constraint as hard can curtail globally feasible paths during the exploration of the driver (e.g., paths that depend on the packet type).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Strictly-Consistent System-level Execution (SC-SE):</head><p>Under SC-SE, the SSE lets symbolic data cross the unit/environment boundary, and the entire system is executed symbolically. This preserves global execution consistency.</p><p>Consider the write usb function: This function gets its input from the USB host controller. Under strict consistency, the USB host controller (being "outside the system") can return a symbolic value, which in turn propagates through the USB library, eventually causing usb ready to return a symbolic value as well.</p><p>Path explosion due to a large environment can make SC-SE hard to use in practice. The paths that go through the environment can substantially outnumber those that go through the unit, possibly delaying the exploration of interest. An SSE can heuristically prioritize the paths to explore, or employ incremental symbolic execution to execute parts of the environment as much as needed to discover interesting paths in the unit quicker. We describe this next.</p><p>The execution of write usb proceeds as if it was executed symbolically, but only one globally feasible path is pursued in a depth-first manner, while all other forked paths are stored in a wait list. This simulates a concrete, single-path execution through a symbolically executing environment. After returning to send packet, the path being executed carries the constraints that were accumulated in the environment, and symbolic execution continues in send packet as if write usb had executed symbolically. The return value x of write usb is constrained according to the depthfirst path pursued in the USB library, and so are the side effects. If, while executing send packet, a branch that depends on x becomes infeasible due to the constraints imposed by the call to write usb, the SSE returns to the wait list and resumes execution of a wait-listed path that, e.g., is likely to eventually execute line 9.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2.2">Implementing Local Consistency (LC)</head><p>For LC, an SSE converts, at the unit/environment boundary, the concrete values generated by the environment into symbolic values that satisfy the constraints of the environment's API. This enables multipath exploration of the unit. In Fig. <ref type="figure" target="#fig_4">4</ref>, SSE would turn alloc's return value v into a symbolic value λret∈{v, FAIL} and pkt into a symbolic pointer, while ensuring that λret=FAIL ⇒ pkt=null, so that the alloc API contract is always upheld.</p><p>If symbolic data is written by the unit to the environment, the SSE must track its propagation. If a branch in the environment ever depends on this data, the SSE must abort that execution path, because the unit may have derived that data based on (symbolified) input from the environment that subsumed values the environment could not have produced in its state at the time.</p><p>From the driver's perspective, the global state may seem inconsistent, since the driver is exploring a failure path when no failure actually occurred. However, this inconsistency has no effect on the execution, as long as the OS does not make assumptions about whether or not buffers are still allocated after the driver's failure. LC would have been violated had the OS read the symbolic value of pkt, e.g., if the driver stored it in an OS data structure.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2.3">Implementing Relaxed Consistency (RC)</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Overapproximate Consistency (RC-OC):</head><p>In this model, the SSE converts concrete values at unit/environment interface boundaries into unconstrained symbolic values that disregard interface contracts. For example, when returning from alloc, both pkt and status become completely unconstrained symbolic values.</p><p>This model brings completeness at the expense of substantial overapproximation. No feasible paths are ever excluded from the symbolic execution of send packet, but since pkt and status are completely unconstrained, there could be locally infeasible paths when exploring send packet after the call to alloc.</p><p>As an example, note that alloc is guaranteed to set pkt to null whenever it returns FAIL, so the assert on line 4 should normally never fail. Nevertheless, under RC-OC, both status on line 3 and pkt on line 4 are unconstrained, so both outcomes of the assert statement are explored, including the infeasible one. Under stronger consistency models, like LC, pkt must be null if status==FAIL.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>CFG Consistency (RC-CC):</head><p>An SSE can implement RC-CC by pursuing all outcomes of every branch, regardless of path constraints, thus following all edges in the unit's inter-procedural CFG. Under RC-CC, exploration is fast, because branch feasibility need not be checked with a constraint solver. As mentioned earlier, one use case is a dynamic disassembler, where running with stronger consistency models may leave uncovered (i.e., non-disassembled) code. Implementing RC-CC may require program-specific knowledge, to avoid exploring non-existing edges, as in the case of an indirect jump pointing to an unconstrained memory location.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3">Consistency Models in Existing Tools</head><p>We now illustrate some of the consistency models by surveying example tools that implement such execution consistency.</p><p>Most dynamic analysis tools use the SC-CE model. Examples include Valgrind <ref type="bibr" target="#b37">[38]</ref> and Eraser <ref type="bibr" target="#b32">[33]</ref>. These tools execute and analyze programs along a single path, generated by user-specified concrete input values. Being significantly faster than multi-path exploration, analyses performed by such tools are, for instance, useful to characterize or explain program behavior on a small set of developer-specified paths (i.e., test cases). However, such tools cannot provide any confidence that results of the analyses extend beyond the concretely explored paths.</p><p>Dynamic test case generation tools usually employ either the SC-UE or the SC-SE models. For example, DART <ref type="bibr" target="#b17">[18]</ref> uses SC-UE: it executes the program concretely, starting with random inputs, and then instruments the code to collect path constraints on each execution. DART uses these constraints to produce new concrete inputs that would drive the program along a different path on the next run. However, DART does not instrument the environment and hence cannot use information from it when generating new concrete inputs, thus missing feasible paths as indicated by SC-UE.</p><p>As another example, KLEE <ref type="bibr" target="#b10">[11]</ref> uses either the SC-SE or a form of the SC-UE model, depending on whether the environment is modeled or not. In the former case, both the unit and the model of the environment are executed symbolically. In the latter case, whenever the unit calls the environment, KLEE executes the environment with concrete arguments. However, KLEE does not track the side effects of executing the environment, allowing them to propagate across otherwise independent execution paths, thus making the corresponding program states inconsistent. Due to this limitation, we cannot say KLEE implements precisely SC-UE as we defined it.</p><p>Static analysis tools usually implement some forms of the RC model. For example, SDV <ref type="bibr" target="#b1">[2]</ref> converts a program into a boolean form, which is an over-approximation of the original program. Consequently, every path that is feasible in the original program would be found by SDV, but it also finds additional infeasible paths.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.">System Analysis with S 2 E</head><p>S 2 E is a platform for rapid prototyping of custom system analyses. It offers two key interfaces: the selection interface, used to guide the exploration of execution paths (and thus implement arbitrary consistency models), and the analysis interface, used to collect events or check properties of execution paths. Both interfaces accept modular selection and analysis plugins. Underneath the covers, S 2 E consists of a customized virtual machine, a dynamic binary translator (DBT), and an embedded symbolic execution engine, as shown in Fig. <ref type="figure" target="#fig_5">5</ref>. The DBT decides which guest machine instructions to execute concretely on the physical CPU vs. which ones to execute symbolically using the embedded symbolic execution engine.</p><p>S 2 E provides many plugins out of the box for building custom analysis tools-we describe these plugins in §4.1. One can also extend S 2 E with new plugins, using S 2 E's developer API ( §4.2).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">User Interface</head><p>Path Selection: The first step in using S 2 E is deciding on a policy for which part of a program to execute in multi-path (symbolic) mode vs. single-path (concrete) mode; this policy is encoded in a selector. S 2 E provides a default set of selectors for the most common types of selection. They fall into three categories:</p><p>Data-based selection provides a way to expand an execution path into a multi-path execution by introducing symbolic values into the system; then, any time S 2 E encounters a branch predicate involving a symbolic value, it will fork the execution accordingly. Symbolic data can enter the system from various sources, and S 2 E provides a selector for each: CommandLine for symbolic command-line arguments, Environment for shell environment variables, MSWinRegistry for Microsoft Windows registry entries, etc.</p><p>Often it is useful to introduce a symbolic value at an internal interface. For example, say a server program calls a library function libFn(x) almost always with x = 10, but may call it with x &lt; 10 in strange corner cases that are hard to induce via external workloads. The developer might therefore be interested in exploring the behavior of libFn for all values 0 ≤ x ≤ 10. For such analyses, we provide an Annotation plugin, which allows direct injection of custom-constrained symbolic values anywhere they are needed.</p><p>Code-based selection enables/disables multi-path execution depending on whether the program counter is or not within a target code area; e.g., one might focus cache profiling on a web browser's SSL code, to see if it is vulnerable to side channel attacks. The CodeSelector plugin takes the name of the target program, library, driver, etc. and a list of program counter ranges. Each such range can be an inclusion or an exclusion range, indicating that code within that range should be explored in multi-path mode or singlepath mode, respectively. CodeSelector is typically used in conjunction with data-based selectors to constrain the data-selected multipath execution to within only code of interest.</p><p>Priority-based selection is used to define the order in which paths are explored within the family of paths defined with databased and code-based selectors. S 2 E includes basic ones, such as Random, DepthFirst, and BreadthFirst, as well as others. The Max-Coverage selector works in conjunction with coverage analyzers to heuristically select paths that maximize coverage. The PathKiller selector monitors the executed program and deletes paths that are determined to no longer be of interest to the analysis. For example, paths can be killed if a fixed sequence of program counters repeats more than n times; this avoids getting stuck in polling loops.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Path Analysis:</head><p>Once the selectors define a family of paths, S 2 E executes these paths and exposes each one of them to the analyzer plugins. One class of analyzers are bug finders, such as DataRaceDetector and MemoryChecker, which look for the corresponding bug conditions and output an execution path leading to the encountered bug. Another type of analyzer is ExecutionTracer, which selectively records the instructions executed along a path, along with the memory accesses, register values, and hardware I/O. Tracing can be used for many purposes, including measuring coverage offline. Finally, the PerformanceProfile analyzer counts cache misses, TLB misses, and page faults incurred along each path-this can be used to obtain the performance envelope of an application, and we describe it in more detail in the evaluation section ( §6).</p><p>While most plugins are OS-agnostic, S<ref type="foot" target="#foot_1">foot_1</ref> E also includes a set of analyzers that expose Windows-specific events using undocumented interfaces or other hacks. For example, WinDriverMon parses and monitors OS-private data structures and notifies other plugins when the Windows kernel loads a driver. The WinBugCheck plugin catches "blue screen of death" events and kernel hangs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Developer Interface</head><p>We now describe the interface that can be used to write new plugins or to extend the default plugins described above. Both selectors and analyzers use the same interface; the only distinction between selectors and analyzers is that selectors influence the execution of the program, whereas analyzers are passive observers. S 2 E also allows writing of plugins that arbitrarily modify the execution state.</p><p>S 2 E has a modular plugin architecture, in which plugins communicate via events in a publish/subscribe fashion. S 2 E events are generated either by the S 2 E platform or by other plugins. To register for a class of events, a plugin invokes regEventX(callbackPtr); the event callback is then invoked every time EventX occurs. Callbacks have different parameters, depending on the type of event.</p><p>Table <ref type="table" target="#tab_3">2</ref> shows the core events exported by S 2 E that arise from regular code translation and execution. We chose these core events because they correspond to the lowest possible level of abstraction of execution: instruction translation, execution, memory accesses, and state forking. It is possible to build diverse state manipulation and analyses on top of them, as we will show in the evaluation.</p><p>The ExecState object captures the current state of the entire virtual machine along a specific individual path. It is the first parameter of every event callback. ExecState gives plugins read/write access to the entire VM state, including the virtual CPU, VM physical memory, and virtual devices. Plugins can also toggle multi-path execution and read/write VM memory and registers (see Table <ref type="table" target="#tab_4">3</ref> for a short list of ExecState object methods). A plugin can obtain the PID of the running process from the page directory base register, can read/write page tables and physical memory, can change the control flow by modifying the program counter, and so on.</p><p>For each path being explored, there exists a distinct ExecState object instance; when execution forks, each child execution receives its own private copy of the parent ExecState. Aggressive use of copy-on-write reduces the memory overhead substantially ( §5).</p><p>Plugins partition their own state into per-path state (e.g., number of cache misses along a path) and global state (e.g., total number of basic blocks touched). The per-path state is stored in a PluginState object, which hangs off of the ExecState object. PluginState must implement a clone method, so that it can be cloned together with ExecState whenever S 2 E forks execution. Global plugin state can live in the plugin's own heap.</p><p>The dynamic binary translator (DBT) turns blocks of guest code into corresponding host code; for each block of code this is typically done only once. During the translation process, a plugin may be interested in marking certain instructions (e.g., function calls) for subsequent notification. It registers for onInstrTranslation and, when notified, it inspects the ExecState to see which instruction is about to be translated; if it is of interest (e.g., a CALL instruction), the plugin marks it. Whenever the VM executes a marked instruction, it raises the onInstrExecution event, which notifies the registered plugin. For example, the CodeSelector plugin is imple- mented as a subscriber to onInstrTranslation events; upon receiving an event, it marks the instruction depending on whether it is or not an entry/exit point for a code range of interest. Having the onInstrTranslation and onInstrExecution events separate leverages the fact that each instruction gets translated once, but may get executed millions of times, as in the body of a loop. For most analyses, onInstrTranslation ends up being raised so rarely that using it introduces no runtime overhead (e.g., catching the kernel panic handler requires instrumenting only the first instruction of that handler).</p><p>S 2 E opcodes are custom guest machine instructions that are directly interpreted by S 2 E. These form an extensible set of opcodes for creating symbolic values (S2SYM), enabling/disabling multipath execution (S2ENA and S2DIS) and logging debug information (S2OUT). They give developers the finest grain control over multipath execution and analysis; they can be injected into the target code manually or using binary instrumentation tools like PIN <ref type="bibr" target="#b26">[27]</ref>. In practice, opcodes are the easiest way to mark data symbolic and get started with S 2 E, without involving any plugins.</p><p>The interface presented here was sufficient for all the multi-path analyses we attempted with S 2 E. Selectors can enable or disable multi-path execution based on arbitrary criteria and can manipulate machine state. Analyzers can collect information about low-level hardware events all the way up to program-level events, they can probe memory to extract any information they need, and so on.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.">S 2 E Prototype</head><p>The S 2 E platform prototype (Fig. <ref type="figure" target="#fig_5">5</ref>) reuses parts of the QEMU virtual machine <ref type="bibr" target="#b3">[4]</ref>, the KLEE symbolic execution engine <ref type="bibr" target="#b10">[11]</ref>, and the LLVM tool chain <ref type="bibr" target="#b24">[25]</ref>. To these, we added 23 KLOC of C++ code written from scratch, not including third party libraries 2 . We added 1 KLOC of new code to KLEE and modified 1.5 KLOC; in QEMU, we added 1.5 KLOC of new code and modified 3.5 KLOC of existing code. S 2 E currently runs on Mac OS X, Microsoft Windows, and Linux, it can execute any guest OS that runs on x86, and can be easily extended to other CPU architectures, like ARM or PowerPC. S 2 E can be downloaded from <ref type="url" target="http://s2e.epfl.ch">http://s2e.epfl.ch</ref>.</p><p>S 2 E explores paths by running the target system in a virtual machine and selectively executing small parts of it symbolically. Depending on which paths are desired, some of the system's machine instructions are dynamically translated within the VM into an intermediate representation suitable for symbolic execution, while the rest are translated to the host instruction set. Underneath the covers, S 2 E transparently converts data back and forth as execution weaves between the symbolic and concrete domains, so as to offer the illusion that the full system (OS, libraries, applications, etc.) is executing in multi-path mode.</p><p>S 2 E mixes concrete with symbolic execution in the same path by using a representation of machine state that is shared between the VM and the embedded symbolic execution engine. S  state by redirecting reads and writes from QEMU and KLEE to the common machine state-VM physical memory, virtual CPU state, and virtual device state. In this way, S 2 E can transparently convert data between concrete and symbolic and provide distinct copies of the entire machine state to distinct paths. S 2 E reduces the memory footprint of all these states using copy-on-write optimizations.</p><p>In order to achieve transparent interleaving of symbolic and concrete execution, we modified QEMU's to translate the instructions that depend on symbolic data to LLVM and dispatch them to KLEE. Most instructions, however, run "natively"; this is the case even in the symbolic domain, because most instructions do not operate on symbolic state. We wrote an x86-to-LLVM back-end for QEMU, so neither the guest OS nor KLEE are aware of the x86 to LLVM translation. S 2 E redirects all guest physical memory accesses, including MMIO devices, to the shared memory state object.</p><p>Besides VM physical memory, S 2 E must also manage the internal state of the virtual devices when switching between execution paths. S 2 E uses QEMU's snapshot mechanism to automatically save and restore virtual devices and CPU states when switching execution states. The shared representation of memory and device state between the concrete and symbolic domains enables S 2 E to do on-demand concretization of data that is stored as symbolic. A snapshot can range from hundreds of MBs to GBs; we use aggressive copy-on-write to transparently share common state between snapshots of physical memory and disks. Some state need not be saved-for example, we do not snapshot video memory, so all paths share the same frame buffer. As an aside, this makes for intriguing visual effects on-screen: multiple erratic mouse cursors and BSODs blend chaotically, providing free entertainment to the S 2 E user.</p><p>Interleaved concrete/symbolic execution and copy-on-write are transparent to the guest OS, so all guest OSes can run out of the box. Sharing state between QEMU and KLEE allows the guest to have a view of the system that is consistent with the chosen execution consistency model. It also makes it easy to replay execution paths of interest, e.g., to replay a bug found by a bug-detection analyzer.</p><p>Conversion from x86 to LLVM gives rise to complex symbolic expressions. S 2 E sees a lower level representation of the programs than what would be obtained by compiling source code to LLVM (as done in KLEE): it actually sees the code that simulates the execution of the original program on the target CPU architecture. Such code typically contains many bitfield operations (such as and/or, shift, masking to extract or set bits in the eflags register).</p><p>We therefore implemented a bitfield-theory expression simplifier to optimize these expressions. We rely on the observation that, if parts of a symbolic variable are masked away by bit operations, removing those bits can simplify the corresponding expressions. First, the simplifier starts from the bottom of the expression (represented as a tree) and propagates information about individual bits whose value is known. If all bits in an expression are known, we replace it with the corresponding constant. Second, the simplifier propagates top-down information about bits that are ignored by the upper parts of the expression-when an operator modifies only bits that are ignored later, the simplifier removes that entire operation.</p><p>Symbolic expressions can also appear in pointers (e.g., as array indices or jump tables generated by compilers for switch statements). When a memory access with a symbolic pointer occurs, S 2 E determines the pages referenced by the pointer and passes their contents to the constraint solver. Alas, large page sizes can bottleneck the solver, so S 2 E splits the memory into small pages of configurable size (e.g., 128 bytes), so that the constraint solver need not reason about large areas of symbolic memory. In §6.2 we show how much this helps in practice.</p><p>Finally, S 2 E must carefully handle time. Each system state has its own virtual time, which freezes when that state is not being run (i.e., is not in an actively explored path). Since running code symbolically is slower than native, S 2 E slows down the virtual clock when symbolically executing a state. If it didn't do this, the (relatively) frequent VM timer interrupts would overwhelm execution and prevent progress. S 2 E also offers an opcode to completely disable interrupts for a section of code, to further reduce the overhead.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.">Evaluation</head><p>S 2 E's main goal is to enable rapid prototyping of useful, deep system analysis tools. In this vein, our evaluation of S 2 E aims to answer three key questions: Is S 2 E truly a general platform for building diverse analysis tools ( §6.1)? Does S 2 E perform these analyses with reasonable performance ( §6.2)? What are the measured tradeoffs involved in choosing different execution consistency models on both kernel-mode and user-mode binaries ( §6.3)? All reported results were obtained on a 2 × 4-core Intel Xeon E5405 2GHz machine with 20 GB of RAM, unless otherwise noted.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.1">Three Use Cases</head><p>We used S 2 E to build three vastly different tools: an automated tester for proprietary device drivers ( §6.1.1), a reverse engineering tool for binary drivers ( §6.1.2), and a multi-path in-vivo performance profiler ( §6. <ref type="bibr">1.3)</ref>. The first two use cases are complete rewrites of two systems that we built previously in an ad-hoc manner: RevNIC <ref type="bibr" target="#b12">[13]</ref> and DDT <ref type="bibr" target="#b22">[23]</ref>. The third tool is brand new.</p><p>Table <ref type="table" target="#tab_6">4</ref> summarizes the productivity advantage we experienced by using S 2 E compared to writing these tools from scratch. For these use cases, S 2 E engendered two orders of magnitude improvement in both development time and resulting code volume. This justifies our efforts to create general abstractions for multi-path invivo analyses, and to centralize them into one platform. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.1.1">Automated Testing of Proprietary Device Drivers</head><p>We used S 2 E to build DDT + , a tool for testing closed-source Windows device drivers. This is a reimplementation of DDT <ref type="bibr" target="#b22">[23]</ref>, an ad-hoc combination of changes to QEMU and KLEE, along with handwritten interface annotations: 35 KLOC added to QEMU, 3 KLOC added to KLEE, 2 KLOC modified in KLEE, and 7 KLOC modified in QEMU. By contrast, DDT + has 720 LOC of C++ code, which glues together several exploration and analysis plugins, and provides the necessary kernel/driver interface annotations to implement LC. DDT + combines several plugins: the CodeSelector plugin restricts multi-path exploration to the target driver, while the Memo-ryCheck, DataRaceDetector, and WinBugCheck analyzers look for bugs. To collect additional information about the quality of testing (e.g., coverage), we use the ExecutionTracer analyzer plugin. Additional checkers can be easily added. DDT + implements local consistency (LC) via interface annotations that specify where to inject symbolic values while respecting local consistency-examples of annotations appear in <ref type="bibr" target="#b22">[23]</ref>. None of the reported bugs are false positives, indicating the appropriateness of local consistency for bug finding. In the absence of annotations, DDT + reverts to strict consistency (SC-SE), where the only symbolic input comes from hardware.</p><p>We run DDT + on two Windows network drivers, RTL8029 and AMD PCnet. DDT + finds the same 7 bugs reported in <ref type="bibr" target="#b22">[23]</ref>, including memory leaks, segmentation faults, race conditions, and memory corruption. Of these bugs, 2 can be found when operating under SC-SE consistency; relaxation to local consistency (via annotations) helps find 5 additional bugs. DDT + takes &lt;20 minutes to complete testing of each driver and explores thousands of paths in each one.</p><p>For each bug found, DDT + outputs a crash dump, an instruction trace, a memory trace, a set of concrete inputs (e.g., registry values and hardware input) and values that where injected according to the LC model that trigger the buggy execution path.</p><p>While it is always possible to produce concrete inputs that would lead the system to the desired local state of the unit (i.e., the state in which the bug is reproduced) along a globally feasible path, the exploration engine does not actually do that while operating under LC. Consequently, replaying execution traces provided by DDT + usually requires replaying the symbolic values injected into the system during testing. Such replaying can be done in S 2 E itself. Despite being only locally consistent, the replay is still effective for debugging: the execution of the driver during replay is valid and appears consistent, and injected values correspond to the values that the kernel could have passed to the driver under real, feasible (but not exercised) conditions.</p><p>S 2 E generates crash dumps readable by Microsoft WinDbg. Developers can thus inspect the crashes using their existing tools, scripts, and extensions for WinDbg. They can also compare crash dumps from different execution paths to better understand the bugs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.1.2">Reverse Engineering of Closed-Source Drivers</head><p>We also built REV + , a tool for reverse engineering binary Windows device drivers; it is a reimplementation of RevNIC <ref type="bibr" target="#b12">[13]</ref>. REV + takes a closed-source binary driver, traces its execution, and then feeds the traces to an offline component that reverse engineers the driver's logic and produces new device driver code that implements the exact same hardware protocol as the original driver. In principle, REV + can synthesize drivers for any OS, making it easy to port device drivers without any vendor documentation or source code.</p><p>Adopting the S 2 E perspective, we cast reverse engineering as a type of behavior analysis. As in DDT + , the CodeSelector plugin restricts the symbolic domain to the driver's code segment. The ExecutionTracer plugin is configured to log to a file the driver's executed instructions, memory and register accesses, and hardware I/O. The already existing offline analysis tool from RevNIC then processes these traces to synthesize a new driver.</p><p>REV + uses overapproximate consistency (RC-OC). The goal of the tracer is to see each basic block execute, in order to extract its logic-full path consistency is not necessary. The offline trace analyzer only needs fragments of paths in order to reconstruct the original control flow graph-details appear in <ref type="bibr" target="#b12">[13]</ref>. By using RC-OC, REV + sacrifices consistency in favor of obtaining coverage fast. We run REV + on the same drivers reported in <ref type="bibr" target="#b12">[13]</ref>, and REV + reverse engineers them with better coverage than RevNIC (see Table <ref type="table" target="#tab_7">5</ref>). Fig. <ref type="figure" target="#fig_6">6</ref> shows how coverage evolves over time during reverse engineering. Manual inspection of the reverse engineered code blocks reveals that the resulting drivers are equivalent to those generated by RevNIC, and thus to the originals too <ref type="bibr" target="#b12">[13]</ref>. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>RevNIC</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.1.3">Multi-Path In-Vivo Performance Profiling</head><p>To further illustrate S 2 E's generality, we used it to develop PROFS, a multi-path in-vivo performance profiler and debugger. To our knowledge, such a tool did not exist previously, and this use case is the first in the literature to employ symbolic execution for performance analysis. In this section, we show through several examples how PROFS can be used to predict performance for certain classes of inputs. To obtain realistic profiles, performance analysis can be done under local consistency or any stricter consistency model. PROFS allows users to measure instruction count, cache misses, TLB misses, and page faults for arbitrary memory hierarchies, with flexibility to combine any number of cache levels, size, associativity, line sizes, etc. This is a superset of the cache profiling functionality found in Valgrind <ref type="bibr" target="#b37">[38]</ref>, which can only simulate L1 and L2 caches, and can only measure cache misses.</p><p>For PROFS, we developed the PerformanceProfile plugin. It counts the number of instructions along each path and, for memory reads/writes, it simulates the behavior of a desired cache hierarchy and counts hits and misses. For our measurements, we configured PROFS with 64-KB I1 and D1 caches with 64-byte cache lines and associativity 2, plus a 1-MB L2 cache that has 64-byte cache lines and associativity 4. The path exploration in PROFS is tunable, allowing the user to choose any execution consistency model.</p><p>The first PROFS experiment analyzes the distribution of instruction counts and cache misses for Apache's URL parser. In particular, we were interested to see whether there is any opportunity for a denial-of-service attack on the Apache web server via carefully constructed URLs. The analysis ran under local consistency for 9.5 hours and explored 5,515 different paths through the code. Of the 9.5 hours, 2.5 hours were spent in the constraint solver and 6 hours were spent running concrete code. In this experiment, the analysis carries high overhead, because it simulates a TLB and three caches.</p><p>We found each path involved in parsing a URL to take on the order of 4.3 × 10 6 instructions, with one interesting feature: for every additional "/" character present in the URL, there are 10 extra instructions being executed. We found no upper bound on the execution of URL parsing: a URL containing n + k "/" characters will take 10 × k more instructions to parse than a URL with n "/" characters. The total number of cache misses on each path was predictable at 15, 984 ± 20. These are examples of behavioral insights one can obtain with a multi-path performance profiler. Such insights can help developers fine-tune their code or make it more secure (e.g., by ensuring that password processing time does not depend on the password content, to avoid side channel attacks).</p><p>We also set out to measure the page fault rate experienced by the Microsoft IIS web server inside its SSL modules while serving a static page workload over HTTPS. Our goal was to check the distribution of page faults in the cryptographic algorithms, to see if there is any opportunity for side channel attacks. We found no page faults in the SSL code along any of the paths, and only a constant number of them in gzip.dll. This suggests that counting page faults should not be the first choice if trying to break IIS's SSL encryption.</p><p>Next, we aimed to establish a performance envelope in terms of instructions executed, cache misses, and page faults for the ubiquitous ping program. This program has on the order of 1.3 KLOC. The performance analysis ran under local consistency, explored 1,250 different paths, and ran for 5.9 hours. Unlike the URL parsing case, almost 5.8 hours of the analysis were spent in the constraint solver-the first 1,000 paths were explored during the first 3 hours, after which the exploration rate slowed down. The analysis does not find a bound on execution time, and it points to a path that could hit an infinite loop. This happens when the reply packet to ping's initial packet has the record route (RR) flag set and the option length is 3 bytes, leaving no room to store the IP address list. While parsing the header, ping finds that the list of addresses is empty and, instead of break-ing out of the loop, it does continue without updating the loop counter. This is an example where performance analysis can identify a dual performance and security bug: malicious hosts could hang ping clients. Once we patched ping, we found the performance envelope to be 1,645 to 129,086 executed instructions. With the bug, the maximum during analysis had reached 1.5 × 10 6 instructions and kept growing.</p><p>PROFS can find "best case performance" inputs without having to enumerate the input space. For this, we modify slightly the PerformanceProfile plugin to track, for all paths being explored, the common lower bound on instructions, page faults, etc. Any time a path exceeds this minimum, the plugin automatically abandons exploration of that path, using the PathKiller selector described in §4. This type of functionality can be used to efficiently and automatically determine workloads that make a system perform at its best. This use case is another example of performance profiling that can only be done using multi-path analysis.</p><p>We wanted to compare our results to what a combination of existing tools could achieve: run KLEE to obtain inputs for paths through the program, then run each such test case in Valgrind (for multi-path analysis) and with Oprofile (for in-vivo analysis). This is not possible for ping, because KLEE's networking model does not support yet ICMP packets. It is not possible for binary drivers either, because KLEE cannot fork kernel state and requires source code. These difficulties illustrate the benefits of having a platform like S 2 E that does not require models and can automatically cross back and forth the boundary between symbolic and concrete domains.</p><p>To conclude, we used S 2 E to build a thorough multi-path invivo performance profiler that improves upon classic profilers. Valgrind <ref type="bibr" target="#b37">[38]</ref> is thorough, but only single-path and not in-vivo. Unlike Valgrind-type tools, PROFS performs its analyses along multiple paths at a time, not just one, and can measure the effects of the OS kernel on the program's cache behavior and vice versa, not just the program in isolation. Although tools like Oprofile <ref type="bibr" target="#b29">[30]</ref> can perform in-vivo measurements, but not multi-path, they are based on sampling, so they lack the accuracy of PROFS-it is impossible, for instance, to count the exact number of cache misses in an execution. Such improvements over state-of-the-art tools come easily when using S 2 E to build new tools.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.1.4">Other Uses of S 2 E</head><p>S 2 E can be used for pretty much any type of system-wide analysis. We describe here four additional ideas: energy profiling, hardware validation, certification of binaries, and privacy analysis.</p><p>First, S 2 E could be used to profile energy use of embedded applications: given a power consumption model, S 2 E could find energy-hogging paths and help the developer optimize them. Second, S 2 E could serve as a hardware model validator: S 2 E can symbolically execute a SystemC-based model <ref type="bibr" target="#b19">[20]</ref> together with the real driver and OS; when there is enough confidence in the correctness of the hardware model, the modeled chip can be produced for real. Third, S 2 E could perform end-to-end certification of binaries, e.g., verify that memory safety holds along all critical paths. Finally, S 2 E could be used to analyze binaries for privacy leaks: by monitoring the flow of symbolic input values (e.g., credit card numbers) through the software stack, S 2 E could tell whether any of the data leaks outside the system. S 2 E alleviates the need to trust a compiler, since it performs all analysis on the final binary.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.2">Implementation Overhead</head><p>S2E introduces ∼ 6× runtime overhead over vanilla QEMU when running in concrete mode, and ∼ 78× in symbolic mode. Concretemode overhead is mainly due to checks for accesses to symbolic memory, while the overhead in symbolic mode is due to LLVM interpretation and symbolic constraint solving.</p><p>The overhead of symbolic execution is mitigated in practice by the fact that the symbolic domain is much smaller than the concrete domain. For instance, in the ping experiments, S 2 E executed 3 × 10 4 times more x86 instructions concretely than it did symbolically. All the OS code (e.g., page fault handler, timer interrupt, system calls) that is called frequently, as well as all the software that is running on top (e.g., services and daemons) are in concrete mode. Furthermore, S 2 E can distinguish inside the symbolic domain instructions that can execute concretely (e.g., that do not touch symbolic data) and run them "natively." ping's 4 orders of magnitude difference is a lower bound on the amount of savings selective symbolic execution brings over classic symbolic execution: by executing concretely those paths that would otherwise run symbolically, S 2 E also saves the overhead of further forking (e.g., on branches inside the concrete domain) paths that are ultimately not of interest.</p><p>Another source of overhead are symbolic pointers. We compared the performance of symbolically executing the unlink utility's x86 binary in S 2 E vs. symbolically executing its LLVM version in KLEE. Since KLEE recognizes all memory allocations performed by the program, it can pass to the constraint solver memory arrays of exactly the right size; in contrast, S 2 E must pass entire memory pages. In 1 hour, with a 256-byte page size, S 2 E explores 7,082 paths, compared to 7,886 paths in KLEE. Average constraint solving time is 0.06 sec for both. With 4 KB pages, though, S 2 E explores only 2,000 states and averages 0.15 sec per constraint.</p><p>We plan to reduce this overhead in two ways: First, we can instrument the LLVM bitcode generated by S 2 E with calls to the symbolic execution engine, before JITing it into native machine code, to avoid the overhead of interpreting each instruction in KLEE. This is similar in spirit to the difference between QEMU and the Bochs <ref type="bibr" target="#b5">[6]</ref> emulator: the latter interprets instructions in one giant switch statement, whereas the former JITs them to native code and obtains a major speedup. Second, we plan to add support for directly executing native LLVM binaries inside S 2 E, which would reduce significantly the blowup resulting from x86-to-LLVM translation and would reduce the overhead of symbolic pointers.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.3">Execution Consistency Model Trade-Offs</head><p>Having seen the ability of S 2 E to serve as a platform for building powerful analysis tools, we now experimentally evaluate the tradeoffs involved in the use of different execution consistency models. In particular, we measure how total running time, memory usage, and path coverage efficiency are influenced by the choice of models. We illustrate the tradeoffs using both kernel-mode binariesthe SMSC 91C111 and AMD PCnet network drivers-and a usermode binary-the interpreter for the Lua embedded scripting language <ref type="bibr" target="#b25">[26]</ref>. The 91C111 closed-source driver binary has 19 KB, PCnet has 35 KB; the symbolic domain consists of the driver, and the concrete domain is everything else. Lua has 12.7 KLOC; the concrete domain consists of the lexer+parser (2 KLOC) and the environment, while the symbolic domain is the remaining code (e.g., the interpreter). Parsers are the bane of symbolic execution engines, because they have many possible execution paths, of which only a small fraction are paths that pass the parsing/lexing stage <ref type="bibr" target="#b18">[19]</ref>. The ease of separating the Lua interpreter from its parser in S 2 E illustrates the benefit of selective symbolic execution.</p><p>We use a script in the guest OS to call the entry points of the drivers. Execution proceeds until all paths have reached the driver's unload entry point. We configure a selector plugin to exercise the entry points one by one. If S 2 E has not discovered any new basic block for some time (60 sec), this plugin kills all paths but one. The plugin chooses the remaining path so that execution can proceed to the driver's next entry point.</p><p>Without path killing, drivers could get stuck in the early initialization phase, because of path explosion (e.g., the tree rooted at the initialization entry point may have several thousand paths when its exploration completes). The selector plugin also kills redundant subtrees when entry points return, because calling the next entry point in the context of each of these execution states (subtree leaves) would mostly exercise the same paths over again.</p><p>For Lua, we provide a symbolic string as the input program, under SC-SE consistency. Under local consistency, the input is concrete, and we insert suitably constrained symbolic Lua opcodes after the parser stage. Finally, in RC-OC mode, we make the opcodes completely unconstrained. We average results over 10 runs for each consistency model on a 4×6-core AMD Opteron 8435 machine, 2.6 GHz, 96GB of RAM. Table <ref type="table" target="#tab_8">6</ref> shows running times for different execution consistencies.</p><p>Weaker (more relaxed) consistency models help achieve higher basic block coverage in that time-Fig. <ref type="figure" target="#fig_7">7</ref> shows results for the running times from Table <ref type="table" target="#tab_8">6</ref>. For PCnet, coverage varies between 14%-66%, while 91C111 ranges from 10%-88%. The stricter the model, the fewer sources of symbolic values, hence the fewer explorable paths and discoverable basic blocks in a given amount of time. In the case of our Windows drivers, system-level strict consistency (SC-SE) keeps all registry inputs concrete, which prevents several configuration-dependent blocks from being explored. In SC-UE, concretizing symbolic inputs to arbitrary values prevents the driver from loading, thus yielding poor coverage. In the case of Lua, the local consistency model allows bypassing the lexer component, which is especially difficult to symbolically execute due to its loops and complex string manipulations. RC-OC exceptionally yielded less coverage because execution got stuck in complex crash paths reached due to incorrect Lua opcodes. Path selection together with adequate consistency models improve memory usage (Fig. <ref type="figure" target="#fig_8">8</ref>). Under LC, the PCnet driver spends 4 minutes in the initialization method, exploring ∼ 7,000 paths and using 8 GB of memory. In contrast, it spends only 2 minutes ( ∼ 2,500 paths) and 4 GB under RC-OC consistency. Under LC consistency, the CardType registry setting is symbolic, causing the initialization entry point to call in parallel several functions that look for different card types. Under LC consistency, S 2 E explores these functions slower than under RC-OC consistency, where we liberally inject symbolic values to help these functions finish quicker. Slower exploration leads to less frequent timeout-based path kills, hence more paths, more memory consumption, and longer exploration times. Under SC-SE and SC-UE consistency, registry settings are concrete, thus exploring only functions for one card type. Finally, consistency models affect constraint solving time (Fig. <ref type="figure" target="#fig_10">9</ref>). The relationship between consistency model and constraint solving time often depends on the structure of the system being analyzedgenerally, the deeper a path, the more complex the corresponding path constraints. For our targets, solving time decreases with stricter consistency, because stricter models restrict the amount of symbolic data. For 91C111, switching from local to overapproximate consistency increases solving time by 10×. This is mostly due to the unconstrained symbolic inputs passed to the QueryInformationHandler and SetInformationHandler entry points, which results in complex expressions being generated by switch statements. In Lua, the structure of the constraints causes S 2 E to spend most of its time in the constraint solver.  As in §6.1.3, we attempted a comparison to vanilla KLEE. We expected that the Lua interpreter, being completely in user-mode and not having any complex interactions with the environment, could be handled by KLEE. However, KLEE does not model some of its operations. For example, the Lua interpreter makes use of setjmp and longjmp, which turn into libc calls that manipulate the program counter and other registers in a way that confuses KLEE. Unlike S 2 E, other engines do not have a unified representation of the hardware, so all these details must be explicitly coded for (e.g., detect that setjmp / longjmp is used and ensure that KLEE's view of the execution state is appropriately adjusted). In S 2 E, this comes "for free," because the CPU registers, memory, I/O devices, etc. are shared between the concrete and symbolic domain.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Consistency</head><p>Our evaluation shows that S 2 E is a general platform that can be used to write diverse and interesting system analyses-we illustrated this by building, with little effort, tools for bug finding, reverse engineering, and comprehensive performance profiling. Consistency models offer flexible trade-offs between the performance, completeness, and soundness of analyses. By employing selective symbolic execution and relaxed execution consistency models, S 2 E is able to scale these analyses to large systems, such as an entire Windows stack-analyzing real-world programs like Apache httpd, Microsoft IIS, and ping takes a few minutes up to a few hours, in which S 2 E explores thousands of paths through the binaries.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7.">Related Work</head><p>We are not aware of any platform that can offer the level of generality in terms of dynamic analyses and execution consistency models that S 2 E offers. Nevertheless, a subset of the ideas behind S 2 E did appear in various forms in earlier work.</p><p>BitBlaze <ref type="bibr" target="#b36">[37]</ref> is the closest dynamic analysis framework to S 2 E. It combines virtualization and symbolic execution for malware analysis and offers a form of local consistency to introduce symbolic values into API calls. In contrast, S 2 E has several additional consistency models and various generic path selectors that trade accuracy for exponentially improved performance in more flexible ways. To our knowledge, S 2 E is the first to handle all aspects of hardware communication, which consists of I/O, MMIO, DMA, and interrupts. This enables symbolic execution across the entire software stack, down to hardware, resulting in richer analyses.</p><p>One way to tackle the path explosion problem is to use models and/or relax execution consistency. File system models have allowed, for instance, KLEE to test UNIX utilities without involving the real filesystem <ref type="bibr" target="#b10">[11]</ref>. However, based on our own experience, writing models is a labor-intensive and error-prone undertaking. Other researchers report that writing a model for the kernel/driver interface of a modern OS took several person-years <ref type="bibr" target="#b1">[2]</ref>.</p><p>Other bodies of work have chosen to execute the environment concretely, with various levels of consistency that were appropriate for the specific analysis in question, most commonly bug finding. For instance, CUTE <ref type="bibr" target="#b35">[36]</ref> can run concrete code consistently without modeling, but it is limited to strict consistency and code-based selection. SJPF <ref type="bibr" target="#b31">[32]</ref> can switch from concrete to symbolic execution, but does not track constraints when switching back, so it cannot preserve consistency in the general case.</p><p>Another approach to tackling path explosion is compositional symbolic execution <ref type="bibr" target="#b16">[17]</ref>. This approach saves the results of exploration of parts of the program and reuses them when those parts are called again in a different context. We are investigating how to implement this approach in S 2 E, to further improve scalability.</p><p>Non-VM based approaches cannot control the environment outside the analyzed program. For instance, both KLEE and EXE allow a symbolically executing program to call into the concrete domain (e.g., perform a system call), but they cannot fork the global system state. As a result, different paths clobber each other's concrete domain, with unpredictable consequences. Concolic execution <ref type="bibr" target="#b34">[35]</ref> runs everything concretely and scales to full systems (and is not affected by state clobbering), but may result in lost paths when execution crosses program boundaries. Likewise, CUTE, KLEE, and other similar tools cannot track the branch conditions in the concrete code (unlike S 2 E), and thus cannot determine how to redo calls in order to enable overconstrained but feasible paths.</p><p>In-situ model checkers <ref type="bibr" target="#b15">[16,</ref><ref type="bibr" target="#b20">21,</ref><ref type="bibr" target="#b28">29,</ref><ref type="bibr" target="#b39">40,</ref><ref type="bibr" target="#b40">41]</ref> can directly check programs written in a common programming language, usually with some simplifications, such as data-range reduction, without requiring the creation of a model. Since S 2 E directly executes the target binary, one could say it is an in-situ tool. However, S 2 E goes further and provides a consistent separation between the environment (whose symbolic execution is not necessary) and the target code to be tested (which is typically orders of magnitude smaller than the rest). This is what we call in-vivo in S 2 E: analyzing the target code in-situ, while facilitating its consistent interaction with that code's unmodified, real environment. Note that other work uses the "in vivo" term to mean something different from S 2 E's meaninge.g., <ref type="bibr">Murphy et al.</ref> propose a technique for testing where "in vivo" stands for executing tests in production environments <ref type="bibr" target="#b27">[28]</ref>.</p><p>Several static analysis frameworks have been used to build analysis tools. Saturn <ref type="bibr" target="#b13">[14]</ref> and bddbddb <ref type="bibr" target="#b23">[24]</ref> prove the presence or absence of bugs using a path-sensitive analysis engine to decrease the number of false positives. Saturn uses function summaries to scale to larger programs and looks for bugs described in a logic programming language. bddbddb stores programs in a database as relations that can be searched for buggy patterns using Datalog. Besides detecting bugs, bddbddb helped optimizing locks in multithreaded programs. Static analysis tools rely on source code for accurate type information and cannot easily verify run-time properties or reason about the entire system. Both bddbddb and Saturn require learning a new language.</p><p>Dynamic analysis frameworks alleviate the limitations of static analysis tools. In particular, they allow the analysis of binary software. Theoretically, one could statically convert an x86 binary to, say, LLVM and run it in a system like KLEE, but this faces the classic undecidable problems of disassembly and decompilation <ref type="bibr" target="#b33">[34]</ref>: disambiguating code from data, determining the targets of indirect jumps, unpacking code, etc.</p><p>S 2 E adds multi-path analysis abilities to all single-path dynamic tools, while not limiting the types of analysis. PTLsim <ref type="bibr" target="#b41">[42]</ref> is a VMbased cycle-accurate x86 simulator that selectively limits profiling to user-specified code ranges to improve scalability. Valgrind <ref type="bibr" target="#b37">[38]</ref> is a framework best known for cache profiling tools, memory leak detectors, and call graph generators. PinOS <ref type="bibr" target="#b8">[9]</ref> can instrument operating systems and unify user/kernel-mode tracers. However, PinOS relies on Xen and a paravirtualized guest OS, unlike S 2 E. PTLsim, PinOS, and Valgrind implement cache simulators that model multilevel data and code cache hierarchies. S 2 E allowed us to implement an equivalent multi-path simulator with little effort.</p><p>S 2 E complements classic single-path, non VM-based profiling and tracing tools. For instance, DTrace <ref type="bibr" target="#b14">[15]</ref> is a framework for troubleshooting kernels and applications on production systems in real time. DTrace and other techniques for efficient profiling, such as continuous profiling <ref type="bibr" target="#b0">[1]</ref>, sampling-based profiling <ref type="bibr" target="#b9">[10]</ref>, and data type profiling <ref type="bibr" target="#b30">[31]</ref>, trade accuracy for low overhead. They are useful in settings where the overhead of precise instrumentation is prohibitive. Other projects have also leveraged virtualization to achieve goals that were previously prohibitively expensive. These tools could be improved with S 2 E by allowing the analyses to be exposed to multi-path executions.</p><p>S 2 E uses mixed-mode execution as an optimization, to increase efficiency. This idea first appeared in DART <ref type="bibr" target="#b17">[18]</ref>, CUTE <ref type="bibr" target="#b35">[36]</ref>, and EXE <ref type="bibr" target="#b11">[12]</ref>, and later in Bitscope <ref type="bibr" target="#b7">[8]</ref>. However, automatic bidirectional data conversions across the symbolic-concrete boundary did not exist previously, and they are key to S 2 E's scalability.</p><p>To summarize, S 2 E embodies numerous ideas that were fully or partially explored in earlier work. What is unique in S 2 E is its generality for writing various analyses, the availability of multiple user-selectable (as well as definable) consistency models, automatic bidirectional conversion of data between the symbolic and concrete domains, and its ability to operate without any modeling or modification of the (concretely running) environment.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="8.">Conclusions</head><p>This paper described S 2 E, a new platform for in-vivo multi-path analysis of systems, which scales even to large, proprietary, realworld software stacks, like Microsoft Windows. It is the first time virtualization, dynamic binary translation, and symbolic execution are combined for the purpose of generic behavior analysis. S 2 E simultaneously analyzes entire families of paths, operates directly on binaries, and operates in vivo, i.e., includes in its analyses the entire software stack: user programs, libraries, kernel, drivers, and hardware. S 2 E uses automatic bidirectional symbolic-concrete data conversions and relaxed execution consistency models to achieve scalability. We showed that S 2 E enables rapid prototyping of a variety of system behavior analysis tools with little effort. S 2 E can be downloaded from <ref type="url" target="http://s2e.epfl.ch/">http://s2e.epfl.ch/</ref>.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: Multi-path/single-path execution: three different modules (left) and the resulting execution tree (right). Shaded areas represent the multipath (symbolic) execution domain, while the white areas are single-path.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: The top level in libFn's execution tree.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: Different execution consistency models cover different sets of feasible paths. The SC-CE model corresponds to the concrete execution.The SC-UE and SC-SE models are obtained from the previous ones by using increasingly more information about the system execution to explore new states. The LC, RC-OC and RC-CC models are obtained through progressive relaxation of constraints.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 4 :</head><label>4</label><figDesc>Figure 4: Example of a "unit" (device driver) interacting with the "environment" (kernel-mode library and OS kernel itself).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Figure 5 :</head><label>5</label><figDesc>Figure 5: S 2 E architecture, centered around a custom VM.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>Figure 6 :</head><label>6</label><figDesc>Figure 6: Basic block coverage over time for REV + .</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head>Figure 7 :</head><label>7</label><figDesc>Figure 7: Effect of consistency models on coverage.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head>Figure 8 :</head><label>8</label><figDesc>Figure 8: Effect of consistency models on memory usage.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_10"><head>Figure 9 :</head><label>9</label><figDesc>Figure 9: Impact of consistency models on constraint solving.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 1 :</head><label>1</label><figDesc>S 2 E consistency models: completeness, consistency and use cases. Each use case is assigned to the weakest model it can be accomplished with.</figDesc><table><row><cell cols="2">Model Consistency Completeness</cell><cell>Use Case</cell></row><row><cell cols="2">SC-CE consistent incomplete</cell><cell>Single-path profiling/testing of units</cell></row><row><cell></cell><cell></cell><cell>that have a limited number of paths</cell></row><row><cell cols="2">SC-UE consistent incomplete</cell><cell>Analysis of units that generate hard-</cell></row><row><cell></cell><cell></cell><cell>to-solve constraints (e.g., crypto-</cell></row><row><cell></cell><cell></cell><cell>graphic code)</cell></row><row><cell cols="2">SC-SE consistent complete</cell><cell>Sound and complete verification</cell></row><row><cell></cell><cell></cell><cell>without false positives or negatives;</cell></row><row><cell></cell><cell></cell><cell>testing of tightly coupled systems</cell></row><row><cell></cell><cell></cell><cell>with fuzzy unit boundaries.</cell></row><row><cell>LC locally con-</cell><cell>incomplete</cell><cell>Testing/profiling while avoiding false</cell></row><row><cell>sistent</cell><cell></cell><cell>positives from the unit's perspective</cell></row><row><cell cols="2">RC-OC inconsistent complete</cell><cell>Reverse engineering: extract consis-</cell></row><row><cell></cell><cell></cell><cell>tent path segments</cell></row><row><cell cols="2">RC-CC inconsistent complete</cell><cell>Dynamic disassembly of a poten-</cell></row><row><cell></cell><cell></cell><cell>tially obfuscated binary</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 2 :</head><label>2</label><figDesc>Core events exported by the S 2 E platform.</figDesc><table><row><cell>onInstrTranslation</cell><cell>DBT is about to translate a machine instruction</cell></row><row><cell>onInstrExecution</cell><cell>VM is about to execute a marked instruction</cell></row><row><cell>onExecutionFork</cell><cell>S 2 E is about to fork execution</cell></row><row><cell>onException</cell><cell>The VM interrupt pin has been asserted</cell></row><row><cell>onMemoryAccess</cell><cell>VM is about to execute a memory access</cell></row><row><cell>multiPathOn/Off()</cell><cell>Turn on/off multi-path execution</cell></row><row><cell>readMem(addr)</cell><cell>Read contents of memory at address addr</cell></row><row><cell>writeReg(reg, val)</cell><cell>Write val (symbolic or concrete) to reg</cell></row><row><cell>getCurBlock()</cell><cell>Get currently executing code block from DBT</cell></row><row><cell>raiseInterrupt(irq)</cell><cell>Assert the interrupt line for irq</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 3 :</head><label>3</label><figDesc>A subset of the ExecState object's interface.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head></head><label></label><figDesc>2 E shares the</figDesc><table><row><cell>selecƟon interface</cell><cell></cell><cell cols="3">applicaƟons</cell><cell>analysis interface</cell></row><row><cell></cell><cell></cell><cell cols="2">libraries</cell><cell></cell></row><row><cell></cell><cell cols="4">operaƟng system kernel</cell><cell>drivers</cell></row><row><cell>user-defined selectors</cell><cell>virtual CPU</cell><cell cols="3">VM phys memory</cell><cell>virtual devices</cell><cell>user-defined analyzers</cell></row><row><cell>selectors S E stock 2</cell><cell cols="2">translaƟon binary dynamic</cell><cell>LLVM</cell><cell cols="2">symbolic execuƟon</cell><cell>analyzers S E stock 2</cell></row><row><cell></cell><cell cols="2">QEMU</cell><cell></cell><cell></cell><cell>KLEE</cell></row><row><cell></cell><cell>real CPU</cell><cell cols="3">real phys memory</cell><cell>real devices</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>Table 4 :</head><label>4</label><figDesc>Comparative productivity when building analysis tools from scratch (i.e., without S 2 E) vs. using S 2 E. Reported LOC include only new code written or modified; any code that was reused from QEMU, KLEE, or other sources is not included. For reverse engineering, 10 KLOC of offline analysis code is reused in the new version. For performance profiling, we do not know of any equivalent non-S 2 E tool, hence the lack of comparison.</figDesc><table><row><cell></cell><cell cols="2">Development Time</cell><cell cols="2">Tool Complexity</cell></row><row><cell>Use Case</cell><cell cols="2">[ person-hours ]</cell><cell cols="2">[ lines of code ]</cell></row><row><cell></cell><cell cols="4">from scratch with S 2 E from scratch with S 2 E</cell></row><row><cell>Testing of proprietary</cell><cell>2,400</cell><cell>38</cell><cell>47,000</cell><cell>720</cell></row><row><cell>device drivers</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>Reverse engineering of</cell><cell>3,000</cell><cell>40</cell><cell>57,000</cell><cell>580</cell></row><row><cell>closed-source drivers</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>Multi-path in-vivo</cell><cell>n/a</cell><cell>20</cell><cell>n/a</cell><cell>767</cell></row><row><cell>performance profiling</cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head>Table 5 :</head><label>5</label><figDesc>Basic block coverage obtained by RevNIC and REV + in 1 hour.</figDesc><table><row><cell></cell><cell></cell><cell>REV +</cell><cell>Improvement</cell></row><row><cell>PCnet</cell><cell>59%</cell><cell>66%</cell><cell>+7%</cell></row><row><cell>RTL8029</cell><cell>82%</cell><cell>87%</cell><cell>+5%</cell></row><row><cell>91C111</cell><cell>84%</cell><cell>87%</cell><cell>+3%</cell></row><row><cell>RTL8139</cell><cell>84%</cell><cell>86%</cell><cell>+2%</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_8"><head>Table 6 :</head><label>6</label><figDesc>Time (in seconds) to finish the exploration experiment for two device drivers and the Lua interpreter under different consistency models.</figDesc><table><row><cell></cell><cell>91C111 Driver</cell><cell>PCnet Driver</cell><cell>Lua</cell></row><row><cell>RC-OC</cell><cell>1,400</cell><cell>3,300</cell><cell>1,103</cell></row><row><cell>LC</cell><cell>1,600</cell><cell>3,200</cell><cell>1,114</cell></row><row><cell>SC-SE</cell><cell>1,700</cell><cell>1,300</cell><cell>1,148</cell></row><row><cell>SC-UE</cell><cell>5</cell><cell>7</cell><cell>-</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>In vivo is Latin for "within the living" and refers to experimenting using a whole live system; in vitro uses a synthetic or partial system. In life sciences, in vivo testing-animal testing or clinical trials-is often preferred, because, when organisms or tissues are disrupted (as in the case of in vitro settings), results can be substantially less representative. Analogously, invivo program analysis captures all interactions of the analyzed code with its surrounding system, not just with a simplified abstraction of that system.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_1"><p>All reported LOC measurements were obtained with SLOCCount<ref type="bibr" target="#b38">[39]</ref>.</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>Acknowledgments</head><p>We thank <rs type="person">Jim Larus</rs>, our shepherd, and <rs type="person">Andrea Arpaci-Dusseau</rs>, <rs type="person">Herbert Bos</rs>, <rs type="person">Johannes Kinder</rs>, <rs type="person">Miguel Castro</rs>, <rs type="person">Byung-Gon Chun</rs>, <rs type="person">Petros Maniatis</rs>, <rs type="person">Raimondas Sasnauskas</rs>, <rs type="person">Willy Zwaenepoel</rs>, the S 2 E user community, and the anonymous reviewers for their help in improving our paper. We are grateful to <rs type="institution">Microsoft Research</rs> for supporting our work through a PhD Fellowship starting in 2011.</p></div>
+			</div>			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<author>
+			<persName><forename type="first">J</forename><surname>Anderson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Berc</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Dean</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ghemawat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Henzinger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S.-T</forename><surname>Leung</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Sites</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Vandevoorde</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">A</forename><surname>Waldspurger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">E</forename><surname>Weihl</surname></persName>
+		</author>
+		<title level="m">Continuous profiling: Where have all the cycles gone? In Symp. on Operating Systems Principles</title>
+		<imprint>
+			<date type="published" when="1997">1997</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Thorough static analysis of device drivers</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Ball</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Bounimova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Cook</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Levin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lichtenberg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Mcgarvey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Ondrusek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">K</forename><surname>Rajamani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Ustuner</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ACM SIGOPS/EuroSys European Conf. on Computer Systems</title>
+		<imprint>
+			<date type="published" when="2006">2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">The static driver verifier research platform</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Ball</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Bounimova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Levin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Kumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lichtenberg</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Intl. Conf. on Computer Aided Verification</title>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">QEMU, a fast and portable dynamic translator</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Bellard</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">USENIX Annual Technical Conf</title>
+		<imprint>
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">A few billion lines of code later: using static analysis to find bugs in the real world</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bessey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Block</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Chelf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Chou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Fulton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Hallem</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Henri-Gros</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Kamsky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Mcpeak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Engler</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Communications of the ACM</title>
+		<imprint>
+			<biblScope unit="volume">53</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<monogr>
+		<ptr target="http://bochs.sourceforge.net/" />
+		<title level="m">Bochs IA-32 Emulator</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">RWset: Attacking path explosion in constraint-based test generation</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Boonstoppel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Cadar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">R</forename><surname>Engler</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Intl. Conf. on Tools and Algorithms for the Construction and Analysis of Systems</title>
+		<imprint>
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<title level="m" type="main">BitScope: Automatically dissecting malicious binaries</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Brumley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Hartwig</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">G</forename><surname>Kang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><forename type="middle">L J</forename><surname>Newsome</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Poosankam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Yin</surname></persName>
+		</author>
+		<idno>CMU-CS-07-133</idno>
+		<imprint>
+			<date type="published" when="2007">2007</date>
+		</imprint>
+		<respStmt>
+			<orgName>Carnegie Mellon University</orgName>
+		</respStmt>
+	</monogr>
+	<note type="report_type">Technical Report</note>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">PinOS: a programmable framework for whole-system dynamic instrumentation</title>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">P</forename><surname>Bungale</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C.-K</forename><surname>Luk</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Intl. Conf. on Virtual Execution Environments</title>
+		<imprint>
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Efficient and flexible value sampling</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Burrows</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">U</forename><surname>Erlingson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S.-T</forename><surname>Leung</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">T</forename><surname>Vandevoorde</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">A</forename><surname>Waldspurger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Walker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">E</forename><surname>Weihl</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Intl. Conf. on Architectural Support for Programming Languages and Operating Systems</title>
+		<imprint>
+			<date type="published" when="2000">2000</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">KLEE: Unassisted and automatic generation of high-coverage tests for complex systems programs</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Cadar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Dunbar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">R</forename><surname>Engler</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Symp. on Operating Systems Design and Implementation</title>
+		<imprint>
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">EXE: Automatically generating inputs of death</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Cadar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Ganesh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">M</forename><surname>Pawlowski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">L</forename><surname>Dill</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">R</forename><surname>Engler</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Conf. on Computer and Communication Security</title>
+		<imprint>
+			<date type="published" when="2006">2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Reverse engineering of binary device drivers with RevNIC</title>
+		<author>
+			<persName><forename type="first">V</forename><surname>Chipounov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Candea</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ACM SIGOPS/EuroSys European Conf. on Computer Systems</title>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Sound, complete and scalable pathsensitive analysis</title>
+		<author>
+			<persName><forename type="first">I</forename><surname>Dillig</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Dillig</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Aiken</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Conf. on Programming Language Design and Implementation</title>
+		<imprint>
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<title/>
+		<author>
+			<persName><surname>Dtrace</surname></persName>
+		</author>
+		<ptr target="http://www.sun.com/bigadmin/content/dtrace/index.jsp" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Model checking for programming languages using Verisoft</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Godefroid</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Symp. on Principles of Programming Languages</title>
+		<imprint>
+			<date type="published" when="1997">1997</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Compositional dynamic test generation</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Godefroid</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Symp. on Principles of Programming Languages</title>
+		<imprint>
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+	<note>Extended abstract</note>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">DART: Directed automated random testing</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Godefroid</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Klarlund</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Sen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Conf. on Programming Language Design and Implementation</title>
+		<imprint>
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Automated whitebox fuzz testing</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Godefroid</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">Y</forename><surname>Levin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Molnar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Network and Distributed System Security Symp</title>
+		<imprint>
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<monogr>
+		<title level="m" type="main">Standard 1666: SystemC language reference manual</title>
+		<author>
+			<persName><surname>Ieee</surname></persName>
+		</author>
+		<ptr target="http://standards.ieee.org/getieee/1666/" />
+		<imprint>
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">Java</forename><surname>Pathfinder</surname></persName>
+		</author>
+		<ptr target="http://javapathfinder.sourceforge.net" />
+		<imprint>
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Symbolic execution and program testing</title>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">C</forename><surname>King</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Communications of the ACM</title>
+		<imprint>
+			<date type="published" when="1976">1976</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Testing closed-source binary device drivers with DDT</title>
+		<author>
+			<persName><forename type="first">V</forename><surname>Kuznetsov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Chipounov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Candea</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">USENIX Annual Technical Conf</title>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Context-sensitive program analysis as database queries</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">S</forename><surname>Lam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Whaley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">B</forename><surname>Livshits</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">C</forename><surname>Martin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Avots</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Carbin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Unkel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Symp. on Principles of Database Systems</title>
+		<imprint>
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">LLVM: A compilation framework for lifelong program analysis and transformation</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Lattner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Adve</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Intl. Symp. on Code Generation and Optimization</title>
+		<imprint>
+			<date type="published" when="2004">2004</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<monogr>
+		<ptr target="http://www.lua.org/" />
+		<title level="m">Lua: A lightweight embeddable scripting language</title>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">PIN: building customized program analysis tools with dynamic instrumentation</title>
+		<author>
+			<persName><forename type="first">C.-K</forename><surname>Luk</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Cohn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Muth</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Patil</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Klauser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Lowney</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Wallace</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">J</forename><surname>Reddi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Hazelwood</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Conf. on Programming Language Design and Implementation</title>
+		<imprint>
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Quality assurance of software applications using the in vivo testing approach</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Murphy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Kaiser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Vo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Chu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Intl. Conf. on Software Testing Verification and Validation</title>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Finding and reproducing Heisenbugs in concurrent programs</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Musuvathi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Qadeer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Ball</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Basler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">A</forename><surname>Nainar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Neamtiu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Symp. on Operating Systems Design and Implementation</title>
+		<imprint>
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<monogr>
+		<ptr target="http://oprofile.sourceforge.net" />
+		<title level="m">Oprofile</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Locating cache performance bottlenecks using data profiling</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Pesterev</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Zeldovich</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">T</forename><surname>Morris</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ACM SIGOPS/EuroSys European Conf. on Computer Systems</title>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Combining unit-level symbolic execution and system-level concrete execution for testing NASA software</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Pȃsȃreanu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Mehlitz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Bushnell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Gundy-Burlet</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Lowry</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Person</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Pape</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Intl. Symp. on Software Testing and Analysis</title>
+		<imprint>
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Eraser: a dynamic data race detector for multithreaded programs</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Savage</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Burrows</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Nelson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Sobalvarro</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Anderson</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Transactions on Computer Systems</title>
+		<imprint>
+			<biblScope unit="volume">15</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<date type="published" when="1997">1997</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Disassembly of executable code revisited</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Schwarz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Debray</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Andrews</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Working Conf. on Reverse Engineering</title>
+		<imprint>
+			<date type="published" when="2002">2002</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Concolic testing</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Sen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Intl. Conf. on Automated Software Engineering</title>
+		<imprint>
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">CUTE: a concolic unit testing engine for C</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Sen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Marinov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Agha</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Symp. on the Foundations of Software Eng</title>
+		<imprint>
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Bitblaze: A new approach to computer security via binary analysis</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Brumley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Yin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Caballero</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Jager</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">G</forename><surname>Kang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Newsome</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Poosankam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Saxena</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Intl. Conf. on Information Systems Security</title>
+		<imprint>
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<monogr>
+		<ptr target="http://valgrind.org/" />
+		<title level="m">Valgrind</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<monogr>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wheeler</surname></persName>
+		</author>
+		<ptr target="http://www.dwheeler.com/sloccount/" />
+		<title level="m">SLOCCount</title>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">MODIST: Transparent model checking of unmodified distributed systems</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Long</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Zhou</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Symp. on Networked Systems Design and Implementation</title>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">EXPLODE: a lightweight, general system for finding serious storage system errors</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Sar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Engler</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Symp. on Operating Systems Design and Implementation</title>
+		<imprint>
+			<date type="published" when="2006">2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">PTLsim: A cycle accurate full system x86-64 microarchitectural simulator</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">T</forename><surname>Yourst</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE Intl. Symp. on Performance Analysis of Systems and Software</title>
+		<imprint>
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

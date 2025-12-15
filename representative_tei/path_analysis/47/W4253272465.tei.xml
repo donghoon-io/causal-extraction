@@ -1,0 +1,791 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Predicated Static Single Assignment</title>
+				<funder ref="#_4QUVzN5">
+					<orgName type="full">National Science Foundation</orgName>
+					<orgName type="abbreviated">NSF</orgName>
+				</funder>
+				<funder>
+					<orgName type="full">Hewlett Packard</orgName>
+				</funder>
+				<funder>
+					<orgName type="full">Intel Corporation</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Lori</forename><surname>Carter</surname></persName>
+							<email>flcarter@cs.ucsd.edu</email>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Computer Science and Engineering</orgName>
+								<orgName type="institution">University of California</orgName>
+								<address>
+									<settlement>San Diego</settlement>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Beth</forename><surname>Simon</surname></persName>
+							<email>esimon@cs.ucsd.edu</email>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Computer Science and Engineering</orgName>
+								<orgName type="institution">University of California</orgName>
+								<address>
+									<settlement>San Diego</settlement>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Brad</forename><surname>Calder</surname></persName>
+							<email>calder@cs.ucsd.edu</email>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Computer Science and Engineering</orgName>
+								<orgName type="institution">University of California</orgName>
+								<address>
+									<settlement>San Diego</settlement>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Larry</forename><surname>Carter</surname></persName>
+							<email>carter@cs.ucsd.edu</email>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Computer Science and Engineering</orgName>
+								<orgName type="institution">University of California</orgName>
+								<address>
+									<settlement>San Diego</settlement>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Jeanne</forename><surname>Ferrante</surname></persName>
+							<email>ferranteg@cs.ucsd.edu</email>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Computer Science and Engineering</orgName>
+								<orgName type="institution">University of California</orgName>
+								<address>
+									<settlement>San Diego</settlement>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Predicated Static Single Assignment</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-29T01:18+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Increases in instruction level parallelism are needed to exploit the potential parallelism available in future wide issue architectures. Predicated execution is an architectural mechanism that increases instruction level parallelism by removing branches and allowing simultaneous execution of multiple paths of control, only committing instructions from the correct path. In order for the compiler to expose such parallelism, traditional compiler data-flow analysis needs to be extended to predicated code.</p><p>In this paper, we present Predicated Static Single Assignment (PSSA) to enable aggressive predicated optimization and instruction scheduling. PSSA removes false dependences by exploiting renaming and information about the multiple control paths. We demonstrate the usefulness of PSSA for Predicated Speculation and Control Height Reduction. These two predicated code optimizations used during instruction scheduling reduce the dependence length of the critical paths through a predicated region. Our results show that using PSSA to enable speculation and control height reduction reduces execution time from 10% to 58%.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>The Explicitly Parallel Instruction Computing (EPIC) architecture has been put forth as a viable architecture for achieving the instruction level parallelism (ILP) needed to keep increasing future processor performance <ref type="bibr" target="#b6">[7,</ref><ref type="bibr" target="#b14">15]</ref>. The Merced <ref type="bibr" target="#b0">[1]</ref> processor being developed at Intel is an example of an EPIC architecture. An EPIC architecture issues wide instructions, similar to a VLIW architecture, where each instruction contains many operations.</p><p>One of the new features of the EPIC architecture is its support for predicated execution <ref type="bibr" target="#b20">[21]</ref>, where each operation is guarded by one of the predicate registers available in the architecture. An operation is committed only if the value of its guarding predicate is true.</p><p>One advantage of predicated execution is that it can eliminate hard-to-predict branches by combining both paths of a branch into a single path. Another advantage comes from using predication to combine several smaller basic blocks into one larger hyperblock <ref type="bibr" target="#b18">[19]</ref>. This provides a larger pool from which to draw ILP for EPIC architectures.</p><p>A significant limitation to ILP is the presence of control-flow and data-flow dependences. Static Single Assignment (SSA) is an important compiler transformation used to remove false data dependences across basic block boundaries in a control flow graph <ref type="bibr" target="#b10">[11]</ref>. Removing these false dependences reveals more ILP, allowing better performance of optimizations like instruction scheduling. Without performing SSA, the benefit of many optimizations on traditional code is limited.</p><p>Eliminating false dependences is equally important and a more complex task for predicated code, since multiple control paths are merged into a single predicated region. However, the control-flow and data-flow analysis needed to support predicated compilation is different than traditional analysis used in compilers for superscalar architectures. A sequential region of predicated code contains not only data dependences, but also predicate dependences. A predicate dependence exists between every operation and the definition of its guarding predicate. A chain of predicate dependences represents a unique control path through the original code.</p><p>In this paper we describe a predicate-sensitive implementation of SSA called Predicated Static Single Assignment (PSSA). We extend SSA to handle predicate definitions and the multiple control paths that are merged together in a single predicated region. We demonstrate that PSSA allows effective predicated scheduling by <ref type="bibr" target="#b0">(1)</ref> eliminating false dependences along paths via renaming, (2) creating full-path predicates, and (3) providing path-sensitive data-flow analysis. We show the benefit of using PSSA to perform Predicated Speculation and Control Height Reduction during instruction scheduling. Using PSSA allows these two optimizations, when applied together, to schedule all operations at their earliest schedulable cycle. In our implementation, the earliest schedulable cycle takes into consideration true data dependences and load/store constraints. We conservatively assume that a load is dependent on all prior stores along a given path, and that a store is dependent on prior stores as well. In addition, we ensure that all instructions along a path leading to a branch out of the hyperblock are executed prior to exiting the hyperblock.</p><p>The paper is organized as follows. Section 2 describes predicated execution. Section 3 presents Predicated Static Single Assignment. Section 4 shows how PSSA can enable aggressive Predicated Speculation and Control Height Reduction. Section 5 reports the increased ILP and reduced execution times achieved by applying our algorithms to predicated code. Section 6 summarizes related work. Section 7 discusses using PSSA within the IA-64 framework, and Section 8 describes our future work. Finally, Section 9 summarizes the contributions of this paper.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Predicated Execution</head><p>Predicated execution is a feature designed to increase ILP and remove hard-to-predict branches. Machines with hardware to support predicated code include an additional set of registers called predicate registers. The process of predication replaces branches with compare operations that set predicate registers to either true or false based on the comparison in the original branch. Each operation is then associated with one of these predicate registers (the operation's guarding predicate). The operation will be committed only if its guarding predicate is true, except for predicates defined unconditionally. This process of replacing branches with compare operations and associating operations with a predicate defined by that compare is called If-Conversion <ref type="bibr" target="#b4">[5,</ref><ref type="bibr" target="#b20">21]</ref>.</p><p>Our work uses the notion of a hyperblock <ref type="bibr" target="#b18">[19]</ref>. A hyperblock is a predicated region of code consisting of a group of basic blocks with one entry point and possibly multiple branch points. Branches with both targets in the hyperblock are eliminated and converted to predicate definitions using if-conversion. All remaining branches have targets outside the hyperblock. Consequently, there are no cyclic control-flow or data-flow dependences within the hyperblock. The selection of basic blocks to be included in the hyperblock is based on program profiling which includes information such as execution frequency, basic block size, operation latencies, and other characteristics.</p><p>A typical code section to include in a hyperblock is one that contains a hard-to-predict (unbiased) branch <ref type="bibr" target="#b17">[18]</ref>, as shown in Figure <ref type="figure">1</ref>. After predication, the Control Flow Graph (CFG) in Figure <ref type="figure">1</ref>(b), which is comprised of five basic blocks, results in the predicated hyperblock shown in Figure <ref type="figure">1(c</ref>). All operations in the hyperblock are now guarded, either by a predicate register set to the constant value of true, or by a register that can be defined as either true or false by a cmpp (compare and put (result) in predicate) operation. Operations guarded by the constant true, such as the operation d=c*2 in Figure <ref type="figure">1</ref>, will be executed and committed regardless of the path taken. Operations guarded by a predicate register, such as the operation b=7, will be put into the pipeline, but only committed if the value of the operation's guarding predicate (B for this operation) is determined to be true. In a hyperblock, a control flow path is now represented by a chain of predicate dependences.</p><p>In what follows, we describe three types of operations that can be included in a hyperblockcmpp operations, the predicate OR operation, and normal (non-predicatedefining) operations.</p><p>As defined in the Trimaran System <ref type="bibr" target="#b1">[2]</ref> (which supports EPIC computing via the Playdoh ISA <ref type="bibr" target="#b15">[16]</ref>), guarding predicates are assigned their values via cmpp operations <ref type="bibr" target="#b6">[7]</ref>. Consider the operation B,C cmpp.un.ac a&gt;c if A as an example. The cmpp operation can define one or two predicates. This operation will define predicates B and C. The first tag (.un) applies to the definition of the first predicate B and the second tag (.ac) to C. The first character of the tag defines how the predicate is to be defined. The character u means that the predicate will unconditionally get a value, whether the guarding predicate (A in this case) is true or false. If A is false, then B is set to false. Otherwise, A is true and the value of B depends upon the evaluation of a&gt;c.</p><p>The character a in the second tag (.ac) indicates that the full definition of the related predicate C is contingent on the value of A, the evaluation of a&gt;c, and the prior value of C. If A is false, the value of predicate C does not change. If A is true and either C or a&gt;c evaluate to false, the new value of C will be false. The second character of the tag defines whether the normal (n) result of the condition (a&gt;c) or the complement (c) of the condition must be true to make the related predicate true. For a complete definition of cmpp statements see the Playdoh architecture specification <ref type="bibr" target="#b15">[16]</ref>.</p><p>In our implementation of PSSA, we use a new OR operation currently not defined by Trimaran. The predicate OR operation defines block predicates by taking the logical OR of multiple predicates. For example, consider the operation G = OR(A, B, C) if true where A, B and C are predicates, each defining a unique path to G. If any one of them has the value of true, G will receive a value of true, otherwise G will be assigned false.</p><p>When scheduling, we assume that the definition of a predicate is available for use as a source for another operation or as a guard to a subsequent cmpp operation in the cycle following its definition. When used as a guard for all other operations, the predicate definition is available for use in the same cycle as it is defined.</p><p>We refer to all other operations, which do not define predicates, as normal operations. Normal operations include assignments, arithmetic operations, branches, and memory operations. Static Single Assignment (SSA) <ref type="bibr" target="#b10">[11,</ref><ref type="bibr" target="#b11">12]</ref> provides an efficient representation of data dependences. Code in SSA form has only true data dependences remaining, since all false data dependences have been removed <ref type="bibr" target="#b3">[4,</ref><ref type="bibr" target="#b27">28]</ref>. Removing false dependences allows more flexibility in scheduling since data independent operations can move past each other during instruction scheduling.</p><p>In non-predicated code, SSA assigns each target of an assignment operation a unique variable. At join nodes (points in the CFG where paths come together), a function is inserted to determine which of the multiple versions of a variable reaches the join. In addition, a newly renamed version of the variable is assigned using the function. This new variable is used to represent the merging of the different variable names. Figure <ref type="figure" target="#fig_1">2</ref> shows an example control flow graph and code in SSA form. In the assignment b3-&gt; (b1,b2), the variable b3 represents the reaching definition of b which is to be used after the join (b1 or b2).</p><p>Eliminating false dependences is equally important and a more complex task for predicated code, since multiple control paths are merged. To address this problem we developed a predicate-sensitive implementation of SSA called Predicated Static Single Assignment (PSSA).</p><p>PSSA seeks to accomplish the same objectives as SSA for a predicated hyperblock. First, it must assign each target of an assignment operation in the hyperblock a unique variable. Second, at points in the hyperblock where multi-  Consider the sample predicated code shown in Figure <ref type="figure" target="#fig_3">3</ref> using traditional hyperblock predication <ref type="bibr" target="#b18">[19]</ref>. In this predicated example, all branches have been replaced (except the one leaving the hyperblock) with predicate-defining compare operations using if-conversion. The predicates that are defined in this example correspond to the two edges exiting each conditional branch in the CFG in Figure <ref type="figure" target="#fig_3">3</ref>. Figure <ref type="figure" target="#fig_4">4</ref> shows this example after PSSA has been applied and displays a graph showing the post-PSSA dependence relationships.</p><p>The PSSA transformation has 2 phases. Hyperblocks are converted to PSSA form before optimization. After optimization, PSSA inserts clean-up code, copying renamed (A) </p><formula xml:id="formula_0">(B) (C) (D) (E) (F) (G) (L) a) Control Flow Graph (CFG) a=rand() if true d=a*2 if true B,C cmpp.un.uc d&gt;c if true b=7 if B a=4 if B L cmpp.un b&gt;d if B branch out if L a=6 if C c=a+c if C D cmpp.un c&gt;a if C a=5 if D c=a+b if true d=c+4 if true e=d+7 if true F,G cmpp.un.uc d&gt;b if true a=3+d if F a=4+a if G b) Predicated Hyperblock</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Converting to PSSA Form</head><p>PSSA conversion takes two forms. Control PSSA is applied to predicate-defining operations, and Normal PSSA is applied to all other operations. When converting to PSSA form, each operation is processed in turn beginning at the top of the hyperblock and proceeding to the end. When a normal operation is encountered, Normal PSSA is invoked. If the operation is an assignment, the variable defined is renamed. The third operation d1=a0*2 in Figure 4(b) is an example. All operands are adjusted to reflect previously renamed variables (e.g. a becomes a0). If the operation is part of a join block, multiple versions of the operands may be live. The first operation (c=a+b) in block E of Figure <ref type="figure" target="#fig_3">3</ref>(a) provides an example. In this situation, the operation will be duplicated for each path leading to the join and the correct operand versions for each path will be used in the duplicate statement as seen in Figure <ref type="figure" target="#fig_4">4</ref> (in the multiple definitions of c2). The duplicates are guarded by the full-path predicate (described in the next paragraph) associated with the path along which the operands are defined. Though there are 3 definitions of c2, there is only one definition of c2 on any given path. These definitions are predicated on disjoint predicates; only one of them can possibly be true, and only one of them will be committed.</p><p>When a cmpp operation is processed, Control PSSA is invoked. The single cmpp operation that defined one or two block predicates (such as the definitions of F and G in Figure <ref type="figure" target="#fig_3">3</ref>) is replaced by one or more cmpp operations, each associated with a particular path leading to that block. As can be seen in Figure <ref type="figure" target="#fig_4">4</ref>(b) there are now three cmpp operations defining FEBA and GEBA, FECA and GECA, and FEDCA and GEDCA. These new predicates are called fullpath predicates (FPPs). Each FPP definition has the appropriate operand versions for its path and each is guarded by the FPP that defined the path prior to reaching the new block. For example, the cmpp defining GEBA and FEBA is predicated on EBA.</p><p>An FPP specifies the unique path along which an operation is valid for execution, enabling PSSA to provide correct guarding predicates for the duplicate statements previously described. For example, the use of a in operation a=4+a in block G of Figure <ref type="figure" target="#fig_3">3</ref>(a) could originate from 3 different definitions as renamed in Figure <ref type="figure" target="#fig_4">4</ref> (a1, a2, a3). It might appear that we could predicate the duplicate assignment statements as follows:</p><p>(1)</p><formula xml:id="formula_1">a5=4+a1 if B (2) a5=4+a2 if C (3) a5=4+a3 if D</formula><p>However, all three of these statements could cause erroneous execution. The first statement could cause a scheduling problem. A scheduler might assume that once the predicate B was defined and the operand a1 was defined, all dependences had been met and a5=4+a1 if B could be scheduled. If the branch out of the hyperblock was taken, this would result in an incorrect modification of a5. Predicating the operation on GEBA instead of B, avoids this error. The operation would be executed only if block predicates G,E,B and A are true. In the case of statements (2) and (3) predicated on if C and if D, note that both C and D can be true. Without the more specific path information given by using the FPPs GECA and GEDCA, both assignments to a5 could be made. Full path predicates are used to avoid these problems.</p><p>In addition to the cmpp statements added to define FPPs, cmpp statements are included to rename join blocks whose statements were originally predicated on true. A and E and their associated FPPs are examples. The operations in Figure <ref type="figure" target="#fig_3">3</ref>(b) predicated on true, are predicated on A and E in the PSSA version of the code shown in Figure <ref type="figure" target="#fig_4">4</ref>. This is necessary to maintain exact path information.</p><p>We could have used the FPPs to implement functions as in SSA. For example, instead of the 3 definitions of a5 found in Figure <ref type="figure" target="#fig_4">4</ref>, we could have used:  Blocks labeled with block predicates (single letters) contain statements that will be executed along several paths.</p><formula xml:id="formula_2">a7=a1</formula><p>of this study was to show an implementation of PSSA that could schedule each operation at its earliest cycle, we do not use any functions. For future work, we are examining using functions for non-critical paths through the hyperblock.</p><p>Block predicates are also important to the PSSA transformation. PSSA uses predicate OR statements to redefine the block predicates as the union of the FPPs associated with the paths that reach the block. PSSA does not simply duplicate every path through the hyperblock. Duplication only occurs when necessary to remove false dependences. When there is only one version of all operands reaching a statement, only one version of the statement is required. This is the case with a6=3+d2 in Figure <ref type="figure" target="#fig_4">4</ref>. The variable d2 is the only version live going into node F. This statement is guarded by F, a block predicate created by taking the logical OR of FEBA, FECA and FEDCA. As long as control reaches node F, regardless of the path taken, we will execute and commit the statement a6=3+d2.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Post-Optimization Clean-up</head><p>After optimization is applied to code in PSSA form, a clean-up phase is run to remove unnecessary code and to assure consistent code outside of the hyperblock.</p><p>The earliest cycle PSSA implementation described in this paper generates cmpp statements for every path and block. These are entered into the PSSA data structure that maintains information about the relationships between the predicates they define, which provides maximum flexibility during optimization. However, some of these FPP definitions may not be used, and the corresponding cmpp operations will be discarded, reducing the code size significantly.</p><p>Finally, to assure correct execution following the hyperblock, PSSA inserts copy operations assigning the original variable names to all renamed definitions that are live out of the hyperblock. In Figure <ref type="figure" target="#fig_4">4</ref>, definitions a and e are assumed to be live out of the hyperblock and so the copy operations have been inserted.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Hyperblock Scheduling Optimizations</head><p>In this section, we describe how PSSA enables Predicated Speculation (PSpec) and Control Height Reduction (CHR) for aggressive instruction scheduling. PSpec allows operations to be executed before their guarding predicates are determined and CHR allows the guarding predicates to be determined as soon as possible, reducing the number of operations that need to be speculated. Used together with PSSA, we demonstrate that we can schedule the code at its earliest schedulable cycle, assuming a machine with unlimited resources.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Predicated Speculation</head><p>This section describes how to perform speculation on PSSA-transformed code. In general, speculation is used to relieve constraints which control dependences place on scheduling. One can speculatively execute operations from the likely-taken path of a highly-predictable branch, by scheduling those operations before their controlling branch <ref type="bibr" target="#b16">[17]</ref>. Similarly, Predicated Speculation (PSpec) will schedule a normal operation above the cmpp it is dependent upon, optimizing a hyperblock's execution time.</p><p>PSpec handles placement of the speculated predicated operation in a uniform manner. PSpec schedules a normal operation at its earliest schedulable cycle. When speculating an operation, the operation is scheduled earlier than the operation it is control dependent on, and is predicated on true. We assume that any exceptions raised by the speculated operations will be taken care of using architecture features such as poison bits <ref type="bibr" target="#b8">[9]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1.1">Instruction Scheduling with Speculation</head><p>To demonstrate the usefulness of PSSA in enabling PSpec, Figure <ref type="figure" target="#fig_5">5</ref> shows the code from Figure <ref type="figure" target="#fig_4">4</ref> after the PSpec optimization has been applied. The assignments to a1, a2 and a3 are examples of speculated operations. Notice that based on dependences, they could all be scheduled at cycle one which would have been impossible without renaming.</p><p>During predicated speculation, each operation is considered sequentially, beginning with the first instruction in the hyperblock. If it is a normal, non-store operation, PSpec compares its earliest schedulable cycle with the cycle in which its guarding predicate is currently defined. If the operation can be scheduled earlier than its guarding predicate, the operation is predicated on true and scheduled at its earliest schedulable cycle.</p><p>Recall that PSSA has not performed full renaming, so further renaming may be required by PSpec. An example is the definition of c2 in Figure <ref type="figure" target="#fig_4">4</ref>  of applying this to the 3 definitions of c2 (now c2, c3, and c4) appear in Figure <ref type="figure" target="#fig_5">5</ref>. Speculation and renaming may require the duplication of operations using the definition being speculated, since there may now be multiple reaching definitions. When speculating c2, the operation d2=c2+4 had to be duplicated and guarded on the appropriate FPP as shown in Figure <ref type="figure" target="#fig_5">5</ref>. This is made possible, since PSSA already created all the necessary FPPs and path information.  is again scheduled at the cycle equal to its earliest schedulable cycle, but guarded by the guarding predicate assigned by PSSA. The algorithm for PSpec instruction scheduling is shown in Figure <ref type="figure" target="#fig_6">6</ref>.</p><p>Using PSpec, the hyperblock can now be scheduled in 6 cycles as compared to 10 cycles in Figure <ref type="figure" target="#fig_4">4</ref>. Since PSpec is applied whenever the definition of the operation's guarding predicate occurs later than the earliest schedulable cycle of the operation, we could reduce the number of operations that need to be speculated by moving the definition of the guarding predicates earlier. The goal of the next optimization, Control Height Reduction, is to allow predicates to be defined as early as possible.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Control Height Reduction</head><p>Control Height Reduction (CHR) eases control constraints between multiple control statements. CHR allows successive control operations on the control path to be scheduled in the same cycle, effectively reducing control dependence height. For example, in the code in Figure <ref type="figure" target="#fig_5">5</ref>, the control comparisons for d1&gt;c and b1&gt;d1 are scheduled in cycles 3 and 4, respectively. However, the second comparison is only waiting for the definition of its guarding predicate BA.</p><p>To schedule it earlier, consider the PSSA dependence graph in Figure <ref type="figure" target="#fig_4">4</ref>. The definition of EBA (defined by the condition b1&gt;d1), is control dependent on the definition of BA (defined by the condition d1&gt;c). We could also define EBA directly as the logical AND of the conditions b1&gt;d1 and d1&gt;c removing the dependence on the definition of BA. This AND expression could also be scheduled in cycle 3.</p><p>Control Height Reduction was proposed in <ref type="bibr" target="#b23">[24]</ref>. It was successfully used to reduce the height of control recurrences found in loops when applied to superblocks superblock is a selected trace of basic blocks through the control flow graph containing only one path of control <ref type="bibr" target="#b22">[23]</ref>.</p><p>The path defining aspects of PSSA allow our algorithm to efficiently apply CHR to predicated hyperblocks, since the full-path predicates expose all of the original separate paths throughout the hyperblock. Schlansker et. al. <ref type="bibr" target="#b24">[25]</ref> expanded on their previous research, applying speculation prior to attempting height reduction. Speculation can remove dependences between the branch conditions that need to be combined to accomplish the reduction. However, in that work, speculation was limited to operations that would not overwrite a live register or memory value if speculated, since they did not use renaming. In Figure <ref type="figure" target="#fig_4">4</ref>, the cmpp operation defining EDCA and ECA is shown scheduled at cycle 5 due to dependences on a2 and c1. PSSA allows us to apply PSpec and schedule these definitions in cycles 1 and 2 respectively, making the cmpp available for CHR as shown in Figure <ref type="figure">7</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2.1">Instruction Scheduling with PSpec and CHR</head><p>During instruction scheduling, PSpec is performed as described in Section 4.1.1. For each control operation (cmpp), CHR is performed if possible.</p><p>Recall that the operations in Figure <ref type="figure" target="#fig_4">4</ref> are scheduled in the order given in the PSSA hyperblock. Like PSpec, CHR compares when the operation could be scheduled based on its earliest schedulable cycle with when it must be scheduled if it waited for its guarding predicate to be defined. If it does not need to wait on the definition of its guarding predicate, it is simply scheduled at its earliest schedulable cycle. For example, consider the definitions of FEBA and GEBA in Figure <ref type="figure">7</ref>. The definition of EBA (the guarding predicate of this cmpp operation) is scheduled at cycle 3, but the earliest schedulable cycle of this cmpp operation is 4 because of its true data dependency on the definition of d2 in cycle 3.</p><p>If the cmpp operation must wait for the definition of the guarding predicate it is beneficial to CHR. By ANDing the conditions of the current definition with that of its guarding predicate, we can schedule this definition earlier.</p><p>If the definition of the guarding predicate involved conditions that were ANDed as well, all of the conditions must be included, so the number of cmpp statements needed to define the current operation increases. The .a tag on each of these cmpp statements indicates that all of them are required for the final definition.</p><p>Consider the operations d1&gt;c and c1&gt;a2 in Figure <ref type="figure" target="#fig_4">4</ref>. We control height reduce these operations in Figure <ref type="figure">7</ref>, since they are both schedulable in cycle 3 based on our scheduling constraints. The definition of EDCA now describes the combination of d1&gt;c being false AND c1&gt;a2 having a value of true. We implement this logical AND, using the .ac and .an qualifiers. The definition of EDCA requires that both the complement of the condition d1&gt;c and the condition c1&gt;a2 evaluate to true for the FPP to get a value of true. If one or both of the requirements are not met, the FPP will be set to false. The compares can architecturally be performed in the same cycle <ref type="bibr" target="#b15">[16]</ref> allowing multiple links in a control path to be defined simultaneously. The algorithm for CHR is found in Figure <ref type="figure" target="#fig_7">8</ref>.</p><p>Using PSpec and CHR on PSSA-transformed code results in the 4 cycle schedule shown in Figure <ref type="figure">7</ref>. One additional cycle is required to resolve renamed variables that  are live out. Note that this last version of the code has fewer operations than the previous version in Figure <ref type="figure" target="#fig_5">5</ref> and the operations shown in gray can be removed in a post-pass because these operations define predicates that are never used. Using predicated speculation and control height reduction together on PSSA-transformed code allows every operation to be scheduled at its earliest schedulable cycle.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Results</head><p>We have implemented algorithms to perform PSSA, CHR and PSpec on hyperblocks in the Trimaran System (Version 1.00). We collect profile-based execution weights for operations in the codes and schedule operations with an assumed one-cycle latency in order to calculate execution time.</p><p>Figure <ref type="figure" target="#fig_8">9</ref> shows normalized execution time when applying our optimizations for several Trimaran benchmarks: compress (from SPECINT95), alvinn (from SPECFP92), fib and matrix multiply (mm) (from Trimaran), and qsort. The original execution times are created from the default Trimaran settings, with the exception that the architecture issue rate is set to 16. Execution time is estimated by summing together the frequency of execution of each hyperblock multiplied by the number of cycles it takes to execute the hyperblock, and a perfect memory system is assumed. The results are normalized to the original schedule generated by Trimaran for a 16 issue machine. The infinite results show the normalized execution time assuming an infinite issue architecture. The optimized results show the performance after applying PSSA, PSpec,   and CHR. The results show that using PSSA with PSpec and CHR results in a significant reduction in executed cycles.</p><p>Figure <ref type="figure" target="#fig_9">10</ref> shows the average number of operations executed per cycle for the configurations examined in Figure <ref type="figure" target="#fig_8">9</ref>. In comparing the two graphs for the 16-way results, 3 to 4 times as many instructions are issued per cycle after applying PSSA, PSpec, and CHR, and this resulted in a reduction in execution time ranging from 10% to 58%.</p><p>The renaming required by PSSA and PSpec also signif-  <ref type="bibr" target="#b15">[16]</ref>. Figure <ref type="figure">11</ref> shows the average number of live registers for the original code and the optimized code using PSSA, PSpec and CHR. The average live register results are weighted by the frequency of hyperblock execution. For example, matrix multiply has on average 18 live general purpose registers in the original code, and 50 live general purpose registers after optimization. Though the increase in utilization of all these register files is notable, the weighted average utilization still remains well within the reported IA-64 register file sizes (128 general purpose, 128 floating point, 8 branch, and 64 predicate) <ref type="bibr" target="#b2">[3]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Related Work</head><p>Predicated execution presents challenges and prospects that researchers have addressed in a variety of ways. Mahlke et. al. <ref type="bibr" target="#b17">[18]</ref> showed that predicated execution can be used to remove an average of 27% of the executed branches and 56% of the branch mispredictions. Tyson also found similar results and correlated the relationship between predication and branch prediction <ref type="bibr" target="#b25">[26]</ref>.</p><p>In an effort to relieve some of the difficulties related to applying compiler techniques to predicated code, Mahlke et. al. <ref type="bibr" target="#b18">[19]</ref> defined the hyperblock as a single-entry, multiple-exit structure to help support effective predicated compilation. These hyperblocks are formed via selective ifconversion <ref type="bibr" target="#b4">[5,</ref><ref type="bibr" target="#b20">21]</ref> -a technique that replaces branches with predicate define instructions. The success of predicated execution can depend greatly on the region of the code se-lected to be included in the predicated hyperblock. August et. al. <ref type="bibr" target="#b7">[8]</ref> relates the pitfalls and potentials of hyperblock formation heuristics that can be used to guide the inclusion or exclusion of paths in a hyperblock. Warter et. al. <ref type="bibr" target="#b26">[27]</ref> explore the use of reverse-if-conversion for exposing scheduling opportunities in architectures lacking support for predicated execution as well as for re-forming hyperblocks to increase efficiency for predicated code <ref type="bibr" target="#b7">[8,</ref><ref type="bibr" target="#b26">27]</ref>.</p><p>The challenges of doing data-flow and control-flow analysis on hyperblocks have also been addressed. Since hyperblocks include multiple paths of control in one block, traditional compiler techniques are often too conservative or inefficient when applied to them. Methods of predicate-sensitive analysis have been devised to make traditional optimization techniques more effective for predicated code <ref type="bibr" target="#b12">[13,</ref><ref type="bibr" target="#b21">22]</ref>. Our research has extended this predicate-sensitive analysis, as well as incorporated pathsensitive analysis for predicated code which has previously been found useful for traditional data-flow analysis <ref type="bibr" target="#b5">[6,</ref><ref type="bibr" target="#b9">10,</ref><ref type="bibr" target="#b13">14]</ref>. We use this specialized information to accomplish PSSA (a predicate-sensitive form of SSA <ref type="bibr" target="#b11">[12,</ref><ref type="bibr" target="#b10">11]</ref>) which enables Predicated Speculation and Control Height Reduction for hyperblocks that have previously been examined only in the presence of the single path of control found in superblocks <ref type="bibr" target="#b22">[23,</ref><ref type="bibr" target="#b23">24,</ref><ref type="bibr" target="#b24">25]</ref>.</p><p>Moon and Ebcioglu <ref type="bibr" target="#b19">[20]</ref> have implemented selective scheduling algorithms, which can schedule operations at their earliest possible cycle for non-predicated code. Our work extends theirs for predicated code, by allowing earliest possible cycle scheduling using predicated renaming with full-path predicates.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7">Implementing PSSA in IA-64</head><p>Implementing PSSA using the IA-64 ISA <ref type="bibr" target="#b2">[3]</ref> would be straightforward with the exception of the predicate OR statement we introduced. The OR instruction can be implemented by transferring the predicate register file into a general register using the move from predicate instruction in IA-64. The general purpose masking instruction would then be used to mask all but the bits corresponding to the sources of the predicate OR instruction. A result of zero evaluates to false, and anything else evaluates to true.</p><p>IA-64 places limits on compare instructions not found in the Playdoh ISA. For example, conditions that are included in logical AND compare statements can only compare a variable to zero. Specifically, the statement LBA, EBA cmpp.an.ac b1&gt;d1 in Figure <ref type="figure">7</ref> would not be permitted. In implementing CHR, we would have to transform the prior expression into the following 2 statements: temp = b1-d1; LBA, EBA cmpp.an.ac temp&gt;0;</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="8">Future Work</head><p>When constructing a hyperblock schedule for a specific processor implementation, resource limits will mandate how many operations can be performed in each cycle. Architectural characteristics such as issue width, resource utilization, number of available predicate registers, and number of available rename registers all need to be considered when creating an architecture-specific schedule. The goal of a hyperblock scheduler is to reduce the execution-height while taking these architectural features into consideration.</p><p>In this paper, our goal was to show that PSSA provided an efficient form of renaming and ample path information to allow all operations to be scheduled at their earliest schedulable cycle. We are currently examining different PSSA representations to reduce code duplication and the number of full-path predicates created. Since various control paths through a hyperblock may have different true data dependence heights, it may provide no advantage to speculate operations that are not on the critical path through the hyperblock. PSSA could concentrate on only the critical paths through the hyperblock (reducing code duplication), since these are the optimized paths. For non-critical paths, it may be advantageous in PSSA to implement functions combining different variable names, instead of maintaining renamed variables for each full-path in the hyperblock. At a point in the hyperblock where all paths join, copy operations could be used to return renamed definitions to original names. Path definitions could then be restarted at this point. This would reduce the amount of duplication required for a given operation to use correctly renamed variables. Our future research concentrates on these issues and creating a more efficient implementation of PSSA.</p><p>We have presented only two of the optimizations that benefit from PSSA. Many classical optimizations for traditional code would benefit from a more predicate-sensitive implementation using the information provided by PSSA, and for future work we are applying PSSA to other code optimizations.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="9">Conclusions</head><p>This paper presented Predicated Static Single Assignment, a predicate-sensitive implementation of SSA, to eliminate false dependences for predicated code. We showed the benefit of using PSSA to perform Predicated Speculation and Control Height Reduction during scheduling. Predicated Speculation allows operations to be executed at the cycle of their earliest schedulable cycle, even before their guarding predicates are determined. CHR allows guarding predicates to be defined as soon as possible, reducing the amount of speculation needed.</p><p>By maintaining information about each of the control paths that exist in a hyperblock, PSSA can provide infor-mation that allows precise placement of renamed and speculated code, and allows the correct, renamed values to be propagated to subsequent operations. The renaming used by PSSA allows more aggressive speculation, as overwriting live registers and memory values is no longer a concern. In addition, PSSA supports Control Height Reduction along every control path using full-path predicates, reducing control dependence depth throughout the hyperblock.</p><p>Our experiments show that PSSA is an effective tool for optimizing predicated code. Using PSSA with PSpec and CHR results in a reduction in executed cycles ranging from 10% to 58% for a 16 issue machine.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: Static Single Assignment</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: Extended example of transformation from nonpredicated CFG to predicated hyperblock</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 4 :</head><label>4</label><figDesc>Figure 4: The PSSA dependence graph shows the flow of data and control through the PSSA-transformed code. Blocks labeled with full-path predicates (indicated by multiple letters) contain statements that are only executed along that path.Blocks labeled with block predicates (single letters) contain statements that will be executed along several paths.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Figure 5 :</head><label>5</label><figDesc>Figure 5: Extended code example after PSpec optimization has been applied.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>Figure 6 :</head><label>6</label><figDesc>Figure 6: Basic PSpec Algorithm.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head>Figure 8 :</head><label>8</label><figDesc>Figure 8: Basic Control Height Reduction Algorithm.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head>Figure 9 :</head><label>9</label><figDesc>Figure 9: Executed cycles normalized to the number of cycles to execute the original code produced by Trimaran for a 16 issue machine.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_9"><head>Figure 10 :</head><label>10</label><figDesc>Figure 10: Weighted average number of operations scheduled per cycle for hyperblocks when using PSSA with Predicated Speculation and Control Height Reduction.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>3 Predicated Static Single Assignment (PSSA)</head><label></label><figDesc></figDesc><table><row><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="2">c=rand()</cell><cell>if true //c=random num</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell>d=c*2</cell><cell>if true //d=c*2</cell></row><row><cell></cell><cell></cell><cell cols="2">c=rand()</cell><cell cols="2">B,C cmpp.un.uc a&gt;c if true //if a&gt;c B=true,</cell></row><row><cell></cell><cell>(A)</cell><cell cols="2">d=c*2</cell><cell></cell><cell>//C=false, else</cell></row><row><cell>c=rand()</cell><cell></cell><cell cols="2">a&gt;c</cell><cell></cell><cell>//B=true,C=false</cell></row><row><cell>d=c*2</cell><cell></cell><cell></cell><cell></cell><cell>b=7</cell><cell>if B //if B=true,b=7</cell></row><row><cell>if a&gt;c b=7</cell><cell>(B)</cell><cell></cell><cell>(C)</cell><cell cols="2">//else nullify stmt D cmpp.un b&gt;d if B //if B=true &amp; b&gt;d</cell></row><row><cell>if b&gt;d exit HB else</cell><cell cols="2">b=7 b&gt;d</cell><cell>b=6 b&lt;d</cell><cell cols="2">branch out</cell><cell>//D=true,else false //if B=false,D=false if D //if D=true, exit</cell></row><row><cell>b=6</cell><cell></cell><cell></cell><cell>(F)</cell><cell></cell><cell>//hyperblock</cell></row><row><cell>if b&lt;d a=b+4 c=a+b</cell><cell>(D) Exit HB</cell><cell>(E)</cell><cell>a=b+4</cell><cell cols="2">b=6 F cmpp.un b&lt;d if C //if C=true &amp; b&lt;d if C //if C=true, b=6 //else nullify stmt</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>//F=true,else false</cell></row><row><cell></cell><cell></cell><cell></cell><cell>c=a+b</cell><cell></cell><cell>//if C=false,F=false</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell>a=b+4</cell><cell>if F //if F=true, a=b+4</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>//else nullify stmt</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell>c=a+b</cell><cell>if true //c=a+b</cell></row><row><cell>a) Original code</cell><cell cols="4">b) Basic blocks included in hyperblock</cell><cell>c) Predicated hyperblock</cell></row><row><cell cols="6">Figure 1: Short code example showing the transformation from non-predicated code to predicated hyperblock.</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head></head><label></label><figDesc>. If we speculate any of the definitions of c2 by predicating them on true without renaming, incorrect code can result. Consequently, we must rename the operations being speculated. The results</figDesc><table><row><cell></cell><cell></cell><cell cols="2">cycle available</cell></row><row><cell></cell><cell></cell><cell cols="2">for scheduling</cell></row><row><cell>A</cell><cell>cmpp.un TRUE</cell><cell>if true</cell><cell>1</cell></row><row><cell></cell><cell>a0=rand()</cell><cell>if A</cell><cell>1</cell></row><row><cell></cell><cell>d1=a0*2</cell><cell>if A</cell><cell>2</cell></row><row><cell>BA,CA</cell><cell>cmpp.un.uc d1&gt;c</cell><cell>if A</cell><cell>3</cell></row><row><cell>B</cell><cell>O R ( B A )</cell><cell>i f t r u e</cell><cell>4</cell></row><row><cell>C</cell><cell>O R ( C A )</cell><cell>i f t r u e</cell><cell>4</cell></row><row><cell></cell><cell>b1=7</cell><cell>if true</cell><cell>1</cell></row><row><cell></cell><cell>a1=4</cell><cell>if true</cell><cell>1</cell></row><row><cell>LBA,EBA</cell><cell>cmpp.un.uc b1&gt;d1</cell><cell>if BA</cell><cell>4</cell></row><row><cell></cell><cell>branch out</cell><cell>if LBA</cell><cell>4</cell></row><row><cell></cell><cell>a2=6</cell><cell>if true</cell><cell>1</cell></row><row><cell></cell><cell>c1=a2+c</cell><cell>if true</cell><cell>2</cell></row><row><cell>EDCA,ECA</cell><cell>cmpp.un.uc c1&gt;a2</cell><cell>if CA</cell><cell>4</cell></row><row><cell>D</cell><cell>O R ( E D C A )</cell><cell>i f t r u e</cell><cell>5</cell></row><row><cell></cell><cell>a3=5</cell><cell>if true</cell><cell>1</cell></row><row><cell>E</cell><cell>OR (EBA,ECA,EDCA)</cell><cell>if true</cell><cell>5</cell></row><row><cell></cell><cell>c2=a1+b1</cell><cell>if true</cell><cell>2</cell></row><row><cell></cell><cell>c3=a2+b</cell><cell>if true</cell><cell>2</cell></row><row><cell></cell><cell>c4=a3+b</cell><cell>if true</cell><cell>2</cell></row><row><cell></cell><cell>d2=c2+4</cell><cell>if true</cell><cell>3</cell></row><row><cell></cell><cell>d3=c3+4</cell><cell>if true</cell><cell>3</cell></row><row><cell></cell><cell>d4=c4+4</cell><cell>if true</cell><cell>3</cell></row><row><cell></cell><cell>e1=d2+7</cell><cell>if EBA</cell><cell>4</cell></row><row><cell></cell><cell>e1=d3+7</cell><cell>if ECA</cell><cell>4</cell></row><row><cell></cell><cell>e1=d4+7</cell><cell cols="2">if EDCA 4</cell></row><row><cell>FEBA,GEBA</cell><cell>cmpp.un.uc d2&gt;b1</cell><cell>if EBA</cell><cell>5</cell></row><row><cell>FECA,GECA</cell><cell>cmpp.un.uc d2&gt;b</cell><cell>if ECA</cell><cell>5</cell></row><row><cell cols="2">FEDCA,GEDCA cmpp.un.uc d2&gt;b</cell><cell cols="2">if EDCA 5</cell></row><row><cell>F</cell><cell cols="2">OR (FEBA,FECA,FEDCA) if true</cell><cell>6</cell></row><row><cell>G</cell><cell cols="2">OR (GEBA,GECA,GEDCA) if true</cell><cell>6</cell></row><row><cell></cell><cell>a9=3+d2</cell><cell>if true</cell><cell>4</cell></row><row><cell></cell><cell>a7=3+d3</cell><cell>if true</cell><cell>4</cell></row><row><cell></cell><cell>a8=3+d4</cell><cell>if true</cell><cell>4</cell></row><row><cell></cell><cell>a4=4+a1</cell><cell>if true</cell><cell>2</cell></row><row><cell></cell><cell>a5=4+a2</cell><cell>if true</cell><cell>2</cell></row><row><cell></cell><cell>a6=4+a3</cell><cell>if true</cell><cell>2</cell></row><row><cell></cell><cell>a=a9</cell><cell cols="2">if FEBA 5</cell></row><row><cell></cell><cell>a=a7</cell><cell cols="2">if FECA 5</cell></row><row><cell></cell><cell>a=a8</cell><cell cols="2">if FEDCA 5</cell></row><row><cell></cell><cell>a=a4</cell><cell cols="2">if GEBA 5</cell></row><row><cell></cell><cell>a=a5</cell><cell cols="2">if GECA 5</cell></row><row><cell></cell><cell>a=a6</cell><cell cols="2">if GEDCA 5</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head></head><label></label><figDesc>If the guarding predicate has been defined by the operation's earliest schedulable cycle, we do not apply PSpec. It</figDesc><table><row><cell>PSpec(normal op)</cell></row><row><cell>f</cell></row><row><cell>if (normal op.guarding predicate not defined by</cell></row><row><cell>normal op.earliest schedulable cycle)</cell></row><row><cell>f</cell></row><row><cell>if (multiple defs of normal op.target exist</cell></row><row><cell>f</cell></row><row><cell>rename(normal op.target);</cell></row><row><cell>g</cell></row><row><cell>normal op.schedule(earliest schedulable cycle);</cell></row><row><cell>normal op.set predicate(true);</cell></row><row><cell>g</cell></row><row><cell>else</cell></row><row><cell>f</cell></row><row><cell>normal op.schedule(earliest schedulable cycle);</cell></row><row><cell>g</cell></row><row><cell>g</cell></row></table></figure>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>Acknowledgements</head><p>We would like to thank the <rs type="institution">Compiler and Architecture Research Group at Hewlett Packard, University of Illinois' IMPACT Group</rs>, and <rs type="institution">New York University's ReaCT-ILP Group</rs> for providing Trimaran. We specifically appreciate the time and patience of <rs type="person">Rodric Rabbah</rs>, <rs type="person">Scott Mahlke</rs>, <rs type="person">Vinod Kathail</rs>, and <rs type="person">Richard Johnson</rs> in answering many questions regarding the Trimaran system. In addition, we would like to thank <rs type="person">Scott Mahlke</rs> for providing useful comments on this paper. This work was supported in part by <rs type="funder">NSF</rs> CAREER grant No. <rs type="grantNumber">CCR-9733278</rs>, a <rs type="grantName">National Defense Science and Engineering Graduate Fellowship</rs>, a gift from <rs type="funder">Intel Corporation</rs>, and equipment support from <rs type="funder">Hewlett Packard</rs>.</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funding" xml:id="_4QUVzN5">
+					<idno type="grant-number">CCR-9733278</idno>
+					<orgName type="grant-name">National Defense Science and Engineering Graduate Fellowship</orgName>
+				</org>
+			</listOrg>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<title level="m" type="main">Merced processor and IA-64 architecture</title>
+		<ptr target="http://developer.intel.com/design/processor/future/iaa64.htm" />
+		<imprint>
+			<date type="published" when="1998">1998. 1998</date>
+			<publisher>Intel Press Release</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<title level="m" type="main">An Infrastructure for Research in Instruction Level Parallelism</title>
+		<author>
+			<persName><surname>Trimaran</surname></persName>
+		</author>
+		<ptr target="http://www.trimaran.org" />
+		<imprint>
+			<date type="published" when="1998">1998</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<monogr>
+		<title level="m" type="main">IA-64 Application Instruction Set Architecture Guide</title>
+		<imprint>
+			<date type="published" when="1999">Revision 1.0, 1999</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">V</forename><surname>Aho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Sethi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">D</forename><surname>Ullman</surname></persName>
+		</author>
+		<title level="m">Compilers : Principles, Techniques and Tools</title>
+		<imprint>
+			<publisher>Addison-Wesley</publisher>
+			<date type="published" when="1986">1986</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Conversion of control dependence to data dependence</title>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">R</forename><surname>Allen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Kennedy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Porterfield</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Warren</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 10th ACM Symposium on Principles of Programming Languages</title>
+		<meeting>the 10th ACM Symposium on Principles of Programming Languages</meeting>
+		<imprint>
+			<date type="published" when="1994-12">December 1994</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Improving data-flow analysis with path profiles</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Ammons</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">R</forename><surname>Larus</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM SIGPLAN Notices</title>
+		<imprint>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="issue">5</biblScope>
+			<biblScope unit="page" from="72" to="84" />
+			<date type="published" when="1998-05">May 1998</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<monogr>
+		<title level="m" type="main">The IMPACT EPIC 1.0 Architecture and Instruction Set reference manual</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">I</forename><surname>August</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">M</forename><surname>Crozier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">W</forename><surname>Sias</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">R</forename><surname>Eaton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><forename type="middle">B</forename><surname>Olaniran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">A</forename><surname>Conners</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">W</forename><surname>Hwu</surname></persName>
+		</author>
+		<idno>IMPACT- 98-04</idno>
+		<imprint>
+			<date type="published" when="1998-02">Feb 1998</date>
+		</imprint>
+		<respStmt>
+			<orgName>IMPACT, University of Illinois</orgName>
+		</respStmt>
+	</monogr>
+	<note type="report_type">Technical Report</note>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">A framework for balancing control flow and predication</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">I</forename><surname>August</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Hwu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">A</forename><surname>Mahlke</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">30th Annual Intl. Symp. on Microarchitecture</title>
+		<imprint>
+			<date type="published" when="1997-12">December 1997</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Integrated predicated and speculative execution in the IMPACT EPIC architecture</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">L</forename><surname>August</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">A</forename><surname>Conners</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">A</forename><surname>Mahlke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">W</forename><surname>Sias</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">M</forename><surname>Crozier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Cheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">R</forename><surname>Eaton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><forename type="middle">B</forename><surname>Olaniran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">W</forename><surname>Hwu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 25th Intl. Symp. on Computer Architecture</title>
+		<meeting>the 25th Intl. Symp. on Computer Architecture</meeting>
+		<imprint>
+			<date type="published" when="1998-07">July 1998</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Efficient path profiling</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Ball</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">R</forename><surname>Larus</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 29th Annual International Symposium on Microarchitecture</title>
+		<meeting>the 29th Annual International Symposium on Microarchitecture</meeting>
+		<imprint>
+			<date type="published" when="1996">December 2-4, 1996</date>
+			<biblScope unit="page" from="46" to="57" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">An efficient method of computing static single assignment form</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Cytron</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ferrante</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">K</forename><surname>Rosen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">K</forename><surname>Wegman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><forename type="middle">K</forename><surname>Zadeck</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">16th Annual ACM Symposium on Principles of Programming Languages</title>
+		<imprint>
+			<date type="published" when="1989">1989</date>
+			<biblScope unit="page" from="25" to="35" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Efficiently computing static single assignment form and the control dependence graph</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Cytron</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ferrante</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">K</forename><surname>Rosen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">N</forename><surname>Wegman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><forename type="middle">K</forename><surname>Zadeck</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Transactions on Programming Languages and Systems</title>
+		<imprint>
+			<biblScope unit="volume">13</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="451" to="490" />
+			<date type="published" when="1991-10">October 1991</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Global predicate analysis and its application to register allocation</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">M</forename><surname>Gillies</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">R</forename><surname>Ju</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Johnson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Schlansker</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 29th Annual Intl. Symp. on Microarchitecture</title>
+		<meeting>the 29th Annual Intl. Symp. on Microarchitecture</meeting>
+		<imprint>
+			<date type="published" when="1996-12">December 1996</date>
+			<biblScope unit="page" from="114" to="125" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Path profile guided partial dead code elimation using predication</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Gupta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">A</forename><surname>Berson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">Z</forename><surname>Fang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 1997 International Conference on Parallel Architectures and Compilation Techniques</title>
+		<meeting>the 1997 International Conference on Parallel Architectures and Compilation Techniques</meeting>
+		<imprint>
+			<date type="published" when="1997">November 10-14, 1997</date>
+			<biblScope unit="page" from="102" to="113" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<author>
+			<persName><forename type="first">L</forename><surname>Gwennap</surname></persName>
+		</author>
+		<title level="m">Intel, HP make EPIC disclosure. Microprocessor Report</title>
+		<imprint>
+			<date type="published" when="1997-10">October 1997</date>
+			<biblScope unit="volume">11</biblScope>
+			<biblScope unit="page" from="1" to="9" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<monogr>
+		<title level="m" type="main">HPL PlayDoh architecture specification: Version 1.0</title>
+		<author>
+			<persName><forename type="first">V</forename><surname>Kathail</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">S</forename><surname>Schlansker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">R</forename><surname>Rau</surname></persName>
+		</author>
+		<idno>HPL-93-80</idno>
+		<imprint>
+			<date type="published" when="1994-02">Feb 1994</date>
+		</imprint>
+		<respStmt>
+			<orgName>HP Labs</orgName>
+		</respStmt>
+	</monogr>
+	<note type="report_type">Technical Report</note>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">The Multiflow Trace Scheduling compiler</title>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">G</forename><surname>Lowney</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">M</forename><surname>Freudenberger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">J</forename><surname>Karzes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">D</forename><surname>Lichtenstein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">P</forename><surname>Nix</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">S</forename><surname>O'donnell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">C</forename><surname>Ruttenberg</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">The Journal of Supercomputing</title>
+		<imprint>
+			<biblScope unit="volume">7</biblScope>
+			<biblScope unit="issue">1-2</biblScope>
+			<biblScope unit="page" from="51" to="142" />
+			<date type="published" when="1993-05">May 1993</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Characterizing the impact of predicated execution on branch prediction</title>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">A</forename><surname>Mahlke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">E</forename><surname>Hank</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">A</forename><surname>Bringmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">C</forename><surname>Gyllenhaal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">M</forename><surname>Gallagher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">W</forename><surname>Hwu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 27th Annual Intl. Symp. on Microarchitecture</title>
+		<meeting>the 27th Annual Intl. Symp. on Microarchitecture</meeting>
+		<imprint>
+			<date type="published" when="1994-12">December 1994</date>
+			<biblScope unit="page" from="217" to="227" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Bringmann. Effective compiler support for predicated execution using the hyperblock</title>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">A</forename><surname>Mahlke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">C</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">Y</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">E</forename><surname>Hank</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">A</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 25th Annual Intl. Symp. on Microarchitecture</title>
+		<meeting>the 25th Annual Intl. Symp. on Microarchitecture</meeting>
+		<imprint>
+			<date type="published" when="1992-12">December 1992</date>
+			<biblScope unit="page" from="45" to="54" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Parallelizing nonnumerical code with selective scheduling and software pipelining</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Moon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Ebcioglu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Transactions on Programming Languages and Systems</title>
+		<imprint>
+			<biblScope unit="volume">19</biblScope>
+			<biblScope unit="issue">6</biblScope>
+			<biblScope unit="page" from="853" to="898" />
+			<date type="published" when="1997-11">November 1997</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<monogr>
+		<title level="m" type="main">On Predicated Execution</title>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">C H</forename><surname>Park</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Schlansker</surname></persName>
+		</author>
+		<idno>HPL-91-58</idno>
+		<imprint>
+			<date type="published" when="1991-05">May 1991</date>
+		</imprint>
+		<respStmt>
+			<orgName>HP Labs</orgName>
+		</respStmt>
+	</monogr>
+	<note type="report_type">Technical Report</note>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Analysis techniques for predicated code</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Schlansker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Johnson</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 29th Annual Intl. Symp. on Microarchitecture</title>
+		<meeting>the 29th Annual Intl. Symp. on Microarchitecture</meeting>
+		<imprint>
+			<date type="published" when="1996-12">December 1996</date>
+			<biblScope unit="page" from="100" to="113" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Critical path reduction for scalar programs</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Schlansker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Kathail</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 28th Annual International Symposium on Microarchitecture</title>
+		<meeting>the 28th Annual International Symposium on Microarchitecture</meeting>
+		<imprint>
+			<date type="published" when="1995-12-01">November 29-December 1, 1995</date>
+			<biblScope unit="page" from="57" to="69" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Height reduction of control recurrences for ILP processors</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Schlansker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Kathail</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Anik</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 27th Annual Intl. Symp. on Microarchitecture</title>
+		<meeting>the 27th Annual Intl. Symp. on Microarchitecture</meeting>
+		<imprint>
+			<date type="published" when="1994-12">December 1994</date>
+			<biblScope unit="page" from="40" to="51" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Control CPR: A branch height reduction optimization for EPIC architectures</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Schlansker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Mahlke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Johnson</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 1999 ACM SIGPLAN Conference on Programming Language Design and Implementation</title>
+		<meeting>the 1999 ACM SIGPLAN Conference on Programming Language Design and Implementation</meeting>
+		<imprint>
+			<date type="published" when="1999-05">May 1999</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">The effects of predicated execution on branch prediction</title>
+		<author>
+			<persName><forename type="first">G</forename><forename type="middle">S</forename><surname>Tyson</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 27th Annual International Symposium on Microarchitecture</title>
+		<meeting>the 27th Annual International Symposium on Microarchitecture</meeting>
+		<imprint>
+			<date type="published" when="1994-12-02">November 30-December 2, 1994</date>
+			<biblScope unit="page" from="196" to="206" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Reverse ifconversion</title>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">J</forename><surname>Warter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">A</forename><surname>Mahlke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">W</forename><surname>Hwu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">R</forename><surname>Rau</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the SIGPLAN &apos;93 Conference on Programming Language Design and Implementation</title>
+		<meeting>the SIGPLAN &apos;93 Conference on Programming Language Design and Implementation</meeting>
+		<imprint>
+			<date type="published" when="1993-06">June 1993</date>
+			<biblScope unit="page" from="290" to="299" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<monogr>
+		<title level="m" type="main">High Performance Compilers for Parallel Computing</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Wolfe</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1996">1996</date>
+			<publisher>Addison-Wesley</publisher>
+			<pubPlace>Redwood City, CA</pubPlace>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

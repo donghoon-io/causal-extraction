@@ -1,0 +1,594 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">A Differentiable Partially Observable Generalized Linear Model with Forward-Backward Message Passing</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability  status="unknown">
+					<licence/>
+				</availability>
+				<date type="published" when="2024-02-07">7 Feb 2024</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Chengrui</forename><surname>Li</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Weihan</forename><surname>Li</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Yule</forename><surname>Wang</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Anqi</forename><surname>Wu</surname></persName>
+						</author>
+						<title level="a" type="main">A Differentiable Partially Observable Generalized Linear Model with Forward-Backward Message Passing</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2024-02-07">7 Feb 2024</date>
+						</imprint>
+					</monogr>
+					<idno type="arXiv">arXiv:2402.01263v2[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-28T23:08+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>The partially observable generalized linear model (POGLM) is a powerful tool for understanding neural connectivity under the assumption of existing hidden neurons. With spike trains only recorded from visible neurons, existing works use variational inference to learn POGLM meanwhile presenting the difficulty of learning this latent variable model. There are two main issues: (1) the sampled Poisson hidden spike count hinders the use of the pathwise gradient estimator in VI; and</p><p>(2) the existing design of the variational model is neither expressive nor time-efficient, which further affects the performance. For (1), we propose a new differentiable POGLM, which enables the pathwise gradient estimator, better than the score function gradient estimator used in existing works. For (2), we propose the forward-backward message-passing sampling scheme for the variational model. Comprehensive experiments show that our differentiable POGLMs with our forwardbackward message passing produce a better performance on one synthetic and two real-world datasets. Furthermore, our new method yields more interpretable parameters, underscoring its significance in neuroscience.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1.">Introduction</head><p>Understanding neural connectivity is a critical research question in neuroscience. The generalized linear model (GLM) <ref type="bibr" target="#b17">(Pillow et al., 2008)</ref> with its variants <ref type="bibr" target="#b10">(Linderman et al., 2016;</ref><ref type="bibr" target="#b18">Roudi et al., 2015;</ref><ref type="bibr">Li et al., 2024a)</ref> form a mainstream set of tools for inferring connectivity from neural populations. However, a nonnegligible problem in neural recording is that the recorded neurons are only a small part of the entire population in a certain target region of our interests.</p><p>A GLM for such an incomplete problem is referred to as a partially observable GLM (POGLM) <ref type="bibr" target="#b15">(Pillow &amp; Latham, 2007;</ref><ref type="bibr" target="#b4">Jimenez Rezende &amp; Gerstner, 2014;</ref><ref type="bibr" target="#b11">Linderman et al., 2017)</ref>, which considers both visible and hidden neurons.</p><p>The general goal of POGLM is to learn the model parameter set θ, especially the connectivity between both visible and hidden neurons given only the spike trains X from visible neurons, and the spike trains from hidden neurons Z is the latent variable in POGLM. Variational inference (VI) <ref type="bibr" target="#b1">(Blei et al., 2017)</ref> is the most commonly used method for solving such a latent variable model. In VI, the target is to maximize the observable data's evidence lower bound ELBO(X; θ, ϕ) =E q(Z|X;ϕ) [ln p(X, Z; θ) -ln q(Z|X; ϕ)] = ln p(X; θ) -KL(q(Z|X; ϕ)∥p(Z|X; θ))</p><p>⩽ ln p(X; θ)</p><p>(1) w.r.t. θ and ϕ, where p(X, Z; θ) is the generative model and q(Z|X; ϕ) is the variational model parameterized by ϕ approximating the posterior p(Z|X; θ). Maximizing Eq. 1 requires sampling hidden spike train Z from q(Z|X; ϕ) and computing the gradient estimator of ELBO(X; θ, ϕ) w.r.t. θ and ϕ.</p><p>However, results from existing works demonstrated the difficulties of solving such a complicated model. Particularly, two issues have caught our attention:</p><p>(1) A good way of deriving ∂ ELBO(X;θ,ϕ) ∂ϕ is via the pathwise gradient estimator <ref type="bibr" target="#b7">(Kingma &amp; Welling, 2013)</ref>, which will be hindered with a discrete Z. The only alternative is the score function gradient estimator which usually has higher variance than the pathwise gradient estimator <ref type="bibr" target="#b14">(Paisley et al., 2012;</ref><ref type="bibr" target="#b0">Bengio et al., 2013;</ref><ref type="bibr" target="#b19">Schulman et al., 2015)</ref>.</p><p>(2) The sampling scheme of the variational model Z ∼ q(Z|X; ϕ) in most of the existing works is a GLM on hidden neurons <ref type="bibr" target="#b4">(Jimenez Rezende &amp; Gerstner, 2014;</ref><ref type="bibr" target="#b5">Kajino, 2021;</ref><ref type="bibr">Li et al., 2024b)</ref>, which is only conditioned on history visible and sampled history hidden spikes. This design makes the sampling and inference procedure slow and omits the conditioning of hidden spikes on future visible spikes.</p><p>Given these issues, our paper aims to solve these two limitations in the existing works and study the POGLM more comprehensively. In Sec. 2, we will propose a new differentiable POGLM that enables the pathwise gradient estimator for VI. We will also introduce different variational distribution families for sampling hidden spikes, especially our newly proposed forward-backward message passing. In Sec. 3, we will conduct extensive comparisons between combinations of different inference methods (including the original POGLM, our newly proposed differentiable POGLM, and other intermediate models) × different variational sampling schemes on a synthetic dataset and two real-world neural datasets. The results will demonstrate the superiorities of our differentiable POGLM and our forward-backward message-passing sampling scheme.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.">Models</head><p>2.1. Background: POGLM Generative model. We start from the partially observable generalized linear model (POGLM) <ref type="bibr" target="#b15">(Pillow &amp; Latham, 2007;</ref><ref type="bibr" target="#b4">Jimenez Rezende &amp; Gerstner, 2014;</ref><ref type="bibr" target="#b11">Linderman et al., 2017)</ref> that studies the mutual interactions between neurons underlying the corresponding neural spike trains. Assume V of N neurons are visible and the remaining H = N -V neurons are hidden. We denote X ∈ N T ×V as the observed spike train recorded from V visible neurons across T time bins, and x t,v as the spike count generated by the v-th visible neuron in the t-th time bin. Z ∈ N T ×H as the latent spike train recorded from H hidden neurons across T time bins, and z t,h as the spike count generated by the h-th hidden neuron in the t-th time bin. The complete generative model p(X, Z; θ) is depicted in Fig. <ref type="figure" target="#fig_0">1</ref>(a) <ref type="bibr" target="#b17">(Pillow et al., 2008)</ref>. For a visible neuron v, its firing rate at time t is</p><formula xml:id="formula_0">f t,v =σ b v + V v ′ =1 w v←v ′ • L l=1 x t-l,v ′ ψ l + H h ′ =1 w v←h ′ • L l=1 z t-l,h ′ ψ l ,<label>(2)</label></formula><p>and its spike count is generated by</p><formula xml:id="formula_1">x t,v ∼ Poisson(f t,v ). (3) σ(•) is a non-linear function (e.g., Softplus); b V = [b 1 , b 2 , . . . , b V ] T ∈ R V is the background intensity vec- tor of the V neurons; W V ←V = [w v←v ′ ] V ×V ∈ R V ×V</formula><p>is the weight matrix representing the weights from visible neurons to visible neurons;</p><formula xml:id="formula_2">W V ←H = [w v←h ′ ] V ×H ∈ R V ×H</formula><p>is the weight matrix representing the weights from hidden neurons to visible neurons;</p><formula xml:id="formula_3">ψ = [ψ 1 , ψ 2 , . . . , ψ L ] T ∈ R L +</formula><p>is the pre-defined basis function summarizing history spikes from t -L to t -1. Similarly, for a hidden neuron h, its firing rate at time t is The forward-self, forward, and forwardbackward sampling scheme of the variational model q(Z|X; ϕ).</p><formula xml:id="formula_4">f t,h =σ b h + V v ′ =1 w h←v ′ • L l=1 x t-l,v ′ ψ l + H h ′ =1 w h←h ′ • L l=1 z t-l,h ′ ψ l ,<label>(4)</label></formula><formula xml:id="formula_5">z 1 z 2 z 3 x 1 x 2 x 3 z 1 z 2 z 3 x 1 x 2 x 3 z 1 z 2 z 3 x 1 x 2 x 3 (a) z 1 z 2 z 3 x 1 x 2 x 3 (b) (c)<label>(d</label></formula><p>and its spike count is generated by</p><formula xml:id="formula_6">z t,h ∼ Poisson(f t,h ) (5) with parameters b H = [b 1 , b 2 , . . . , b H ] T ∈ R H ; W H←V = [w h←v ′ ] H×V ∈ R H×V ; W H←H = [w h←h ′ ] H×H ∈ R H×H .</formula><p>Therefore, POGLM is a latent variable model whose learnable parameter set is θ = {b, W } where b and W can be presented in the form of block (partitioned) matrix/vector:</p><formula xml:id="formula_7">b = b V b H ∈ R N , W = W V ←V W V ←H W H←V W H←H ∈ R N ×N . (<label>6</label></formula><formula xml:id="formula_8">)</formula><p>Variational inference. Since POGLM is a latent variable model, the goal is to learn the model parameter θ while also inferring the latent variable Z. Given the complicated nature of POGLM (Fig. <ref type="figure" target="#fig_0">1</ref>(a)), there is no closed form posterior distribution p(Z|X; θ). Therefore, we need to choose a good variational model q(Z|X; ϕ) parameterized by ϕ to do variational inference (VI) <ref type="bibr" target="#b1">(Blei et al., 2017)</ref>. We will discuss different choices of the variational models in Sec. 2.3. Now, we use a simple homogeneous Poisson variational model for illustration. The firing rate of a hidden neuron at time t is given by</p><formula xml:id="formula_9">f t,h = σ(c h ),<label>(7)</label></formula><p>and the spike count is</p><formula xml:id="formula_10">z t,h ∼ Poisson(f t,h ). The variational parameter set is ϕ = {c H }, where c H = [c 1 , . . . , c H ] T .</formula><p>With a selected variational model q(Z|X; ϕ), VI can be adopted. We maximize the model's evidence lower bound ELBO(X; θ, ϕ) (Eq. 1) w.r.t. θ and ϕ, so that the learned θ could estimate the model's true parameter θ true and the variational distribution q(Z|X; ϕ) could approximate the unknown posterior distribution p(Z|X; θ) of the latent variable Z. Given the complicated form of the POGLM model (Fig. <ref type="figure" target="#fig_0">1</ref>(a)), there is still no closed form of ELBO (Eq. 1).</p><p>Hence, we need its numerical estimator</p><formula xml:id="formula_11">ELBO(X; θ, ϕ) = Êq(Z|X;ϕ) [ln p(X, Z; θ) -ln q(Z|X; ϕ)] = 1 K K k=1 ln p X, Z (k) ; θ -ln q Z (k) X; ϕ) ,<label>(8)</label></formula><p>where Z (k) K k=1 are K Monte Carlo samples from q(Z|X; ϕ). The derivative w.r.t. θ is simple (Appendix. A.1):</p><formula xml:id="formula_12">∂ ELBO(X; θ, ϕ) ∂θ ≈ ∂ ∂θ ELBO(X; θ, ϕ).<label>(9)</label></formula><p>Since Z ∈ N T ×H are discrete spike counts from the hidden neurons, the derivative w.r.t. ϕ at a particular value ϕ 0 requires the score function gradient estimator (Appendix. A.1):</p><formula xml:id="formula_13">∂ ELBO(X; θ, ϕ) ∂ϕ ≈ 1 K K k=1 ln p X, Z (k) ; θ -ln q Z (k) X; ϕ 0 ∂ ∂ϕ ln q Z (k) X; ϕ .<label>(10)</label></formula><p>However, previous literature shows that the score function gradient estimator for maximizing ELBO w.r.t. ϕ exhibits high variance <ref type="bibr" target="#b14">(Paisley et al., 2012;</ref><ref type="bibr" target="#b0">Bengio et al., 2013;</ref><ref type="bibr" target="#b7">Kingma &amp; Welling, 2013;</ref><ref type="bibr" target="#b19">Schulman et al., 2015)</ref>, and hence it could be better to seek a reparameterization trick for sampling Z (k) from q(Z|X; ϕ) so that pathwise gradient estimator can be applied. Given there is no reparameterization trick for Poisson distribution, we have to relax the discrete latent variable Z into a continuous variable and reformulate a differentiable POGLM as follows.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.2.">A Differentiable POGLM</head><p>Relaxation for differentiability. In this subsection, we formulate a differentiable POGLM via the Gumbel-Softmax distribution <ref type="bibr" target="#b3">(Jang et al., 2016;</ref><ref type="bibr" target="#b12">Maddison et al., 2016)</ref>. We first set a large enough upper-bound M so that z t,h ∈ {0, 1, . . . , M -1}. Practically, M doesn't need to be very large since the number of spikes in a short enough time bin is limited. Usually, we hope the number of spikes in each time bin is very small (most of them should be 0 or 1) so that the precision of the spike train can be preserved. Without loss of generality, we use M = 5 in our following experiments. Then, a categorical distribution can be used to approximate the corresponding Poisson distribution:</p><formula xml:id="formula_14">z t,h ∼ Cat(π(f t,h )),<label>(11)</label></formula><p>where</p><formula xml:id="formula_15">π(f t,h ) = 1 - M -1 m=1 f m t,h e ft,h m! , f 1 t,h e ft,h 1! , . . . , f M -1 t,h e ft,h (M -1)!<label>(12)</label></formula><p>expands the Poisson distribution truncated M . Then, we can use Gumbel-Softmax (GS) to relax the discrete z t,h into a soft one-hot version zt,h = (z t,h,0 , . . . , zt,h,M-1 ) ∼ GS(π(f t,h ); τ ), (13)</p><p>where zt,h is a soft one-hot vector over a Simplex ∆ M -1 :=</p><formula xml:id="formula_16">z ∈ [0, 1] M -1 m=0 z m = 1 . Specifically, zt,h,m = exp[(ln π m (f t,h ) + g t,h,m )/τ ] M -1 m ′ =0 exp[(ln π m ′ (f t,h ) + g t,h,m ′ )/τ ] ,<label>(14)</label></formula><p>where g t,h,m i.i.d.</p><p>∼ Gumbel(0, 1). In practice, we can sample g by sampling u from Uniform(0, 1) and computing g = -ln(-ln(u)). τ &gt; 0 is a temperature hyperparameter forcing zt,h to be a soft one-hot representation closing to a corner of the Simplex ∆ M -1 . When τ → 0, zt,h becomes the hard one-hot representation of the spike count z t,h . It is common to choose the temperature τ in Gumbel-Softmax from [0.1, 1]. If τ is too large, the relaxation will be too soft; if τ is too small, numerical issues could arise. In our model, τ is used to force the soft one-hot close to one corner of the simplex, so we tried τ ∈ {0.2, 0.5, 1} and found τ = 0.5 is an optimal choice that gives good and stable categorical approximation without numerical issue. We fix τ = 0.5 in this differentiable model in our experiments, which is a common moderate choice. More details about the Gumbel-Softmax distribution including its likelihood function are in <ref type="bibr" target="#b3">Jang et al. (2016)</ref>; <ref type="bibr" target="#b12">Maddison et al. (2016)</ref>.</p><p>Generative and variational model. Given the soft onehot zt,h,m , we next define the equivalent soft hidden spike count as</p><formula xml:id="formula_17">z t,h = M -1 m=0 m • zt,h,m .<label>(15)</label></formula><p>Now we are ready to define the complete differentiable generative model p X, Z; θ . Visible neurons' spikes X are generated with Eq. 2 (f t,v ) and Eq. 3 (Poisson) where z t,h in Eq. 2 is now defined by the above Eq. 15. Hidden variables Z are generated from Eq. 4 (f t,h ) and Eq. 13 (GS), instead of Eq. 4 and Eq. 5 (Poisson). Similarly the sampling process of Z in the variational model q Z|X; ϕ changes from Eq. 7 (f t,h ) and Eq. 5 (Poisson) to Eq. 7 and Eq. 13 (GS). Now, the complete spike train of this differentiable POGLM is X, Z where</p><formula xml:id="formula_18">Z ∈ ∆ M -1 T ×H ⫋ [0, 1] T ×H×M .</formula><p>Pathwise gradient estimator. With both the generative model and the variational model differentiable, the pathwise gradient estimator can be used for optimizing ϕ. Particularly, by the reparameterization trick in Eq. 14 abbreviated as Z|X; ϕ = r(G|X; ϕ) where G ∼ Gumbel(G; 0, 1), we have the transformation relationship q Z X; ϕ d Z = Gumbel(G; 0, 1) dG <ref type="bibr" target="#b19">(Schulman et al., 2015)</ref>. Then, the pathwise gradient estimator of the derivative of ELBO w.r.t.</p><formula xml:id="formula_19">ϕ is: ∂ ELBO(X; θ, ϕ) ∂ϕ ≈ ∂ ∂ϕ ELBO(X; θ, ϕ),<label>(16)</label></formula><p>and ELBO(X; θ, ϕ)</p><formula xml:id="formula_20">= 1 K K k=1 ln p X, Z(k) ; θ) -ln q Z(k) X; ϕ ,<label>(17)</label></formula><p>where</p><formula xml:id="formula_21">Z(k) = r(G (k) |X; ϕ) and G (k) K k=1 are K Monte Carlo samples from Gumbel(G; 0, 1). The detailed deriva- tion of this is shown in Appendix. A.1.</formula><p>Relax to general continuous distributions. In fact, the differentiable POGLM introduced above is already compatible with any continuous distributions that satisfy the following two requirements: (1) the distribution is parameterized by a single mean parameter, since the GLM structure provides a single firing rate f t,h representing the mean statistic of the (equivalent soft) spike count z t,h ; and (2) a reparameterization trick should exist for sampling such a distribution. For example, in the generative and variational models, we can assume a soft hidden spike count is from an exponential distribution</p><formula xml:id="formula_22">z t,h ∼ Exp(1/f t,h )<label>(18)</label></formula><p>with mean f t,h computed from Eq. 4 and 7, by sampling z t,h = -f t,h ln(1 -u), u ∼ Unif(0, 1).</p><p>(19) Compared with the GS distribution in which the equivalent soft hidden spike count is close to an integer in {0, 1, . . . , M -1}, z t,h from the exponential distribution can be any value in R ⩾0 . More details about the possible choices of the distributions are in Sec. 3 and Fig. <ref type="figure" target="#fig_2">3</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.3.">Sampling scheme of the variational model</head><p>So far, we have proposed the differentiable POGLM to resolve the first issue mentioned in Sec. 1. Now, we turn to the second issue-the choice of the variational model. Specifically, we need to design the formula for f t,h in the variational model. Clearly, the homogeneous one we introduced in Eq. 7 is oversimplified so that the variation distribution family of q(Z|X; ϕ) is very far from the posterior distribution p(Z|X; θ). A good choice of the variational distribution family that is much closer to the true posterior distribution is critical to the success of VI. Here, we discuss five candidates as follows:</p><p>• Homogeneous Poisson: f t,h = σ(c h ), ∀t ∈ {1, . . . , T }, and the variational parameter set is ϕ = {c H }, where c H = [c 1 , . . . , c H ] T . However, this is too simple to serve as a variational distribution family in practice.</p><p>• Inhomogeneous Poisson (mean-field): f t,h = σ(c t,h ), and ϕ = C T ×H ∈ R T ×H . Although the mean-field theory is widely applicable to a lot of latent variable models, it lacks the dependency on the visible spike train X. For POGLM, this learned ϕ is bonded to the training spike train p(Z train |X train ; θ) ≈ q(Z train |X train ; ϕ), but unable to be generalized to the test spike train p(Z test |X test ; θ). Besides, both homogeneous and inhomogeneous Poisson have no message passing between neurons, and hence are very unhelpful for learning the neural connection matrix W .</p><p>• Forward-self (Jimenez Rezende &amp; Gerstner, 2014; Kajino, 2021): A typical and intuitive way is to assume the true posterior distribution p(Z|X; θ) can be approximated by a variational distribution q(Z|X; ϕ) which is also a GLM w.r.t. Z where X is fixed (Fig. <ref type="figure" target="#fig_0">1</ref></p><formula xml:id="formula_23">(b)), i.e., f t,h =σ c h + V v ′ =1 a h←v ′ • L l=1 x t-l,v ′ ψ l + H h ′ =1 a h←h ′ • L l=1 z t-l,h ′ ψ l ,<label>(20)</label></formula><p>and ϕ = {c H , A}. Particularly,</p><formula xml:id="formula_24">A = O V ←V O V ←H A H←V A H←H ∈ R N ×N . (<label>21</label></formula><formula xml:id="formula_25">)</formula><p>The top two blocks O V ←V , O V ←H are all zeros since we don't need to sample the visible spike train X. A H←V and A H←H represent the visible-to-hidden and hidden-tohidden influences. To use Eq. 20, we need to sample from t = 1 to t = T sequentially, since the current sample z t,h relies on the previous samples Z t-L:t-1,1:H .</p><p>• Forward: Due to the low efficiency of the forward-self sampling process, an easier alternative approach is to eliminate the hidden-to-hidden block (i.e., the third term in Eq. 20). Then we get the forward message passing scheme (Fig. <ref type="figure" target="#fig_0">1(c</ref>)):</p><formula xml:id="formula_26">f t,h = σ c h + V v ′ =1 a h←v ′ • L l=1 x t-l,v ′ ψ l ,<label>(22)</label></formula><p>and ϕ = {c H , A}. Now,</p><formula xml:id="formula_27">A = O V ←V O V ←H A H←V O H←H ∈ R N ×N . (<label>23</label></formula><formula xml:id="formula_28">)</formula><p>The forward variational distribution can be sampled in a parallel style, since z t,h are no longer conditioned on each other. Note that eliminating the hidden-to-hidden block could omit the factor of hidden-to-hidden influences theoretically. But in fact, it is very challenging to learn the actual hidden-to-hidden influences W H←H practically given the long sequential sampling procedure, especially when V &gt; H under most realistic model assumptions.</p><p>• Forward-backward: Both of the previous two sampling schemes omit mimicking an important relationshipthe hidden-to-visible influences W V ←H in the generating process p(X, Z; θ). Therefore, we introduce the forwardbackward message passing scheme (Fig. <ref type="figure" target="#fig_0">1(d</ref>)), and ϕ = {c H , A}. Now,</p><formula xml:id="formula_29">f t,h =σ c n + V v ′ =1 a h←v ′ • L l=1 x t-l,v ′ ψ l + V v ′ =1 a v ′ ←h • L l=1 x t+l,v ′ ψ l ,<label>(24)</label></formula><formula xml:id="formula_30">A = O V ←V A V ←H A H←V O H←H ∈ R N ×N ,<label>(25)</label></formula><p>where the A V ←H block mimics the hidden-to-visible influences W V ←H in the generating process p(X, Z; θ), via including the contribution from future visible spikes X t+1:t+L,1:V into sampling the current z t,h (i.e., the third term in Eq. 24).</p><p>Fig. <ref type="figure" target="#fig_1">2</ref> visually compares different variational distributions, helping us understand the superiority of the forwardbackward sampling, which excels in approximating the true posterior distribution.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.">Experiments</head><p>For a comprehensive analysis and comparison, we consider the method combinations of different inference methods × different variational sampling schemes.</p><p>Inference methods. We consider seven inference methods. Each of them is identified by a distribution of the hidden spike and the gradient estimator used in VI.</p><p>• Poisson (Pois): This is the original POGLM (Eq. 2, 3, 4, 5, 7). This is named after the original Poisson distribution of the hidden spike train Z of the original POGLM. Since this is a discrete distribution, only the score function gradient estimator can be adopted in VI.</p><p>• Categorical (Cat): This is the first intermediate model between the original POGLM and the differentiable POGLM, where we don't use Gumbel-Softmax in Eq. 13 to approximate but keep the categorical distribution (Eq. 11). Similar to Poisson, only the score function gradient estimator can be adopted in VI.</p><p>• Gumbel-Softmax-score (GS-s): This is the differentiable POGLM with GS (Eq. 13) as the soft hidden spike count distributions, but we still use the score function gradient estimator (Eq. 10) when updating ϕ although this model is already differentiable. • Gumbel-Softmax-pathwise (GS-p): This is the differentiable POGLM with GS (Eq. 13) as the soft hidden spike count distributions, where we use the pathwise gradient estimator (Eq. 16) when updating ϕ. This is the inference method we expect to perform better than the previous three. To experiment with the generalization from GS to other single-parameter continuous distributions, we try the following three and use the pathwise gradient estimator.</p><p>• Exponential (Exp): Eq. 18. The probability density function (likelihood</p><formula xml:id="formula_31">) is P[z; f ] = 1 f exp (-f z). • Rayleigh (Ray): z t,h ∼ Ray 2 π f t,h . The probability density function is P[z; f ] = πz 2f 2 exp -πz 2 4f 2 . • Half-normal (HN): z t,h ∼ HN π 2 f t,h The probabil- ity density function is P[z; f ] = 2 πf exp -z 2 πf 2 .</formula><p>The aim of including the two intermediate models (Cat and GS-s) is to change the model from the original POGLM with Poisson as the hidden spike count distribution and the score function gradient estimator to the differentiable POGLM step-by-step with GS as the hidden spike count distribution and the pathwise gradient estimator. Through this controlled variable design, we can have a better understanding of the final differentiable POGLM with continuous soft hidden spike count distributions. Since we have no prior knowledge about which single parameter distribution is better, we try the three common ones: Exp, Ray, and HN. A visualization of these distributions is shown in Fig. <ref type="figure" target="#fig_2">3</ref>.</p><p>Variational sampling schemes. We consider three sampling schemes.</p><p>• Forward (F): The sampling scheme illustrated in Eq. 20 and Fig. <ref type="figure" target="#fig_0">1(c</ref>).</p><p>• Forward-self (FS): The sampling scheme illustrated in Eq. 22 and Fig. <ref type="figure" target="#fig_0">1(b</ref>).</p><p>• Forward-backward (FB): The sampling scheme illustrated in Eq. 24 and Fig. <ref type="figure" target="#fig_0">1(d)</ref>. The homogeneous and inhomogeneous Poisson will be ignored in the following experiments due to their oversimplicity or incompatibility. The original approach to solving POGLM can be viewed as the combination of Poisson × forward-self <ref type="bibr" target="#b15">(Pillow &amp; Latham, 2007;</ref><ref type="bibr" target="#b4">Jimenez Rezende &amp; Gerstner, 2014;</ref><ref type="bibr" target="#b11">Linderman et al., 2017)</ref>. Our newly proposed differentiable POGLM with GS and other continuous distributions combined with the FB message-passing scheme should be the optimal combinations we expect. For clarity, Appendix. A.2 provides a comprehensive summary of these method combinations.</p><p>Evaluation. Although we have different inference methods when evaluating log-likelihood (LL) on the test dataset, all inference methods are set back to the original POGLM form, where Poisson log-likelihood (Eq. 3 and Eq. 5) is adopted for a fair comparison. The LL metric can be used on both synthetic and real-world datasets. Furthermore, since we are also very concerned about the parameter recovery, as we illustrated in Sec. 1 that naively apply VI to solve the POGLM directly cannot obtain an ideal parameter recovery result due to the difficulty of the POGLM problem itself, we will compare the average absolute error of the estimated parameter on the synthetic dataset.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1.">Synthetic Dataset</head><p>The synthetic dataset aims to compare different method combinations comprehensively. With the known true parameters, we can validate that better performance corresponds to smaller parameter errors. We can also check the benefit of applying the pathwise gradient estimator.</p><p>Dataset. We randomly create 10 sets of parameters for generating the synthetic datasets, wherein each set w n←n ′ i.i.d.</p><p>∼ Unif(-2, 2) and b n i.i.d</p><p>∼ Unif(-0.5, 0.5). Each set corresponds to a trial, resulting in a total of 10 trials. The model consists of 5 neurons, with the first 3 being visible and the remaining 2 being hidden. For each trial, we generate 40 spike trains for training and 20 spike trains for testing. Each spike train has 100 time bins.</p><p>Experimental setup. The initial values for the linear weights and biases of the model used for learning are also randomly initialized as above. We utilize the Adam optimizer <ref type="bibr" target="#b6">(Kingma &amp; Ba, 2014)</ref> with a learning rate of 0.05. The optimization process runs for 20 epochs, and within each epoch, optimization is performed using 4 batches, each of size 10. The entire process is repeated 10 times with different random seeds for each trial, and the performance and the error bar are reported based on these repetitions.</p><p>Results. In Fig. <ref type="figure" target="#fig_3">4</ref>(a), we can see that for each sampling scheme, the test LL drops when we use categorical and then GS to approximate the discrete Poisson distribution. However, when we change the gradient estimator from the score function to the pathwise, the LL increases significantly for GS and exceeds the original Poisson. The LL keeps increasing when we change the distribution from GS to Exp, Ray, and HN. This implies that although the hidden spikes are generated from the Poisson distribution, the posterior distribution might not be Poisson, but a discrete distribution that is closer to a continuous distribution like the exponential in shape. From the view of different sampling schemes, FB becomes better than F and FS when a good inference method is used, e.g., GS-p or Exp. Without a good inference method, the forward sampling scheme performs better due to its simplicity. In summary, a differentiable POGLM using pathwise gradient estimator × the FB sampling scheme promises a better performance.</p><p>The weight error and bias error in Fig. <ref type="figure" target="#fig_3">4</ref>(a) quantitatively validate that a better LL corresponds to a smaller parameter error. Consistent with the LL bar plot, the weight error and bias error bar plots indicate that Exp, Ray, and HN are better than GS-p and better than the remaining. With a continuous distribution and the pathwise gradient estimator as a differentiable method, FB is the optimal sampling scheme.  vector of some selected method combinations versus the true one used for generating the dataset. The differences between these recovered weights and biases are mainly from the hidden related weight blocks and hidden biases.</p><p>In addition to the performance, we also compare the running time of different method combinations in Fig. <ref type="figure" target="#fig_3">4(a)</ref>. Due to the sequential dependency of the FS, the running time is significantly longer than F and FB. This implies the benefit of excluding the complicated "self" message-passing component in the variational model. Besides, it takes a bit longer to convert a discrete Poisson distribution to its hard (Cat) and soft (GS) approximating distribution. Fig. <ref type="figure" target="#fig_3">4</ref>(c) plots the loss curves of different inference methods using different sampling schemes. The loss curves of those differentiable inference methods (GS-p, Exp, Ray, and HN) are smoother than the others. The small error bars of these differentiable inference methods imply the smaller variance of the pathwise gradient estimator when updating the variational model parameter ϕ than that of the score function gradient estimator.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2.">Retinal Ganglion Cell (RGC) Dataset</head><p>This dataset aims to understand the performances of different method combinations on a real-world dataset, and the interpretability of the estimated model parameters.</p><p>Dataset. Next, we apply various method combinations to analyze a real neural spike train recorded from 27 basal ganglion neurons while a mouse is engaged in a visual task for approximately 20 minutes <ref type="bibr" target="#b16">(Pillow &amp; Scott, 2012)</ref>. Specifically, neurons 1-16 are OFF cells, while neurons 17-27 are ON cells.</p><p>Experimental setup. We partition the spike train into training and test sets, using the first 2/3 segment for training and the remaining 1/3 segment for testing. The original spike train is binned into spike count via 50 ms time bins. To facilitate the application of the stochastic gradient descent algorithm, we divide the entire sequence into 14400 pieces in total, each consisting of 100 time bins. Since we do not have prior knowledge of how many hidden neurons should be assumed, we initially train a fully observed GLM as a baseline. Subsequently, we assume the presence of H ∈ {1, 2, 3} hidden representative neurons and train the model using different method combinations. The optimization is performed using the Adam optimizer with a learning rate of 0.02. Each training procedure undergoes 20 epochs, employing a batch size of 32. We repeat the training and test process 10 times with different random seeds and report the performance and error bar.</p><p>Results. Similar to the synthetic dataset, we plot the test LL of different method combinations under 1, 2, and 3 hidden neurons in Fig. <ref type="figure" target="#fig_5">5</ref>. Besides, a fully observed GLM is also trained as a baseline for comparison. First of all, with the assumption of containing hidden neurons, the performances of different method combinations all become better, except for the Ray × FB. Second, differentiable inference methods are better than non-differentiable inference methods in general. Particularly, Exp × FB is significantly better than all other method combinations. Third, for most of the method combinations, increasing the number of hidden neurons improves the LL, especially for GS-p and Exp. In addition to knowing that the differentiable inference methods × FB are better than others, we are also curious about the interpretation of the learned model parameters. Take 1 hidden neuron as an example, Fig. <ref type="figure" target="#fig_6">6</ref> shows that, the learned one hidden representative by Exp × FB serves as a negative feedback regulating unit. Particularly, the weights from this hidden representative to all OFF cells are negative, and to all ON cells are positive; the weights from nearly all OFF cells to this hidden representative are positive, and from all OFF cells are negative. The signs of the weights from this hidden representative to visible neurons provide clear indications</p><p>A Differentiable POGLM with Forward-Backward Message Passing of the type of visible neurons. Similar but weaker results can also be obtained by GS-p but not by Poisson.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3.">The PVC-5 Dataset</head><p>This dataset aims to investigate the performance variation of different method combinations w.r.t. different numbers of hidden neurons.</p><p>Dataset. Finally, we apply different method combinations to a dataset obtained from the primary visual cortex (PVC-5) <ref type="bibr" target="#b2">(Chu et al., 2014)</ref> 1 . This dataset consists of recordings from the primary visual cortex (V1) of a macaque monkey over a 15-minute duration without the presentation of any stimuli. Three adjacent neurons were recorded through contact with an electrode.</p><p>Experimental setup. Similarly to the RGC dataset, we train the model on the initial 7.5 minutes of data and evaluate the test log-likelihood on the subsequent 7.5 minutes. The original spike train is binned into spike count via 20 ms time bins. The training set is divided into 225 pieces equally and the batch size for training is 25. Since there are only three visible neurons, we can try more numbers of hidden neurons H ∈ {1, . . . , 9} and understand the change of performance w.r.t. the number of hidden neurons, especially when H ≫ V . The optimization is performed using the Adam optimizer for 20 epochs with a learning rate of 0.1. We repeat the training and test process 10 times with different random seeds and report the performance and error bar.</p><p>Results. Fig. <ref type="figure" target="#fig_7">7</ref> shows the performance of different method combinations w.r.t. number of hidden neurons. No matter what method combination we choose, the optimal number of hidden neurons is no more than 3. This means assuming more hidden neurons might not guarantee an improvement of the performance but is likely to introduce redundancy and result in a dropped performance. With more hidden neurons, the performance of those non-differentiable inference methods becomes even worse than a fully observed GLM.</p><p>Among all method combinations, Exp × FB with less than 3 hidden neurons seems to be the best. GS-p (with all three sampling schemes) is more robust to different numbers of hidden neurons than other inference methods. Furthermore, the variance of the test LL of those differentiable inference methods is much smaller than that of those nondifferentiable inference methods, due to the benefit from 1 <ref type="url" target="https://crcns.org/data-sets/pvc/pvc-5">https://crcns.org/data-sets/pvc/pvc-5</ref> using the pathwise gradient estimator.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.">Related Works</head><p>Some previous works consider the POGLM in its point process form, i.e., a generalized multivariate partially observable Hawkes process, in which spike trains are not binned into spike count but keep the form of spiking event timestamps. For example, Zhou &amp; Sun (2021); <ref type="bibr" target="#b20">Shelton et al. (2018)</ref>; <ref type="bibr" target="#b13">Mei et al. (2019)</ref> treated the problem as missing data (missing all the spiking data from hidden neurons); Kajino (2021) proposed a differentiable point process model to enable the use of the pathwise gradient estimator.</p><p>Through the point process, however, the data structure that stores the spike timestamps is usually not ideal <ref type="bibr" target="#b21">(Xu, 2018)</ref>.</p><p>The detailed reasons are illustrated in Appendix. A.4. In this paper, we only focus on POGLM, i.e., pre-binned spike count trains, and more detailed discussions regarding the relationship between the (discrete) GLM and the (continuous) generalized Hawkes process can be found in Appendix. A.4.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.">Conclusion</head><p>In this paper, we propose a differentiable version of the partially observable generalized linear model (POGLM), in which the pathwise gradient estimator becomes applicable when doing variational inference (VI). Due to the inexpressivity and low sampling efficiency of the existing forward-self sampling scheme, we propose the new forwardbackward message-passing sampling scheme, enhance the message passing from hidden neurons to visible neurons, and result in a better variational model for VI. Comprehensive comparisons between different method combinations on one synthetic and two real-world shows that a differentiable inference method with the forward-backward sampling scheme could produce a higher likelihood on the test set and better parameter recovery.</p><p>Note that the relaxation from the Gumbel-Softmax distribution to general continuous distributions loses the meaning of Z as representing spike count, but can produce better performance. It is interesting but challenging to investigate whether a general continuous distribution is closer to the true posterior distribution than the discrete Poisson distribution. This limitation is a big topic that could be a future direction.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Appendix</head><p>A.1. Gradient estimators of ELBO</p><p>Here we provide detailed derivations for the gradient estimators w.r.t. θ and ϕ of ELBO(X; θ, ϕ). The derivative w.r.t. θ is:</p><formula xml:id="formula_32">∂ ELBO(X; θ, ϕ) ∂θ = 1 |N T ×H | Z∈N T ×H q(Z|X; ϕ) ∂ ∂θ [ln p(X, Z; θ) -ln q(Z|X; ϕ)] ≈ 1 K K k=1 ∂ ∂θ ln p X, Z (k) ; θ -ln q Z (k) X; ϕ = ∂ ∂θ ELBO(X; θ, ϕ).<label>(26)</label></formula><p>The score function gradient estimator (i.e., Eq. 10) of the derivative of ELBO w.r.t. ϕ at a particular value ϕ 0 is:</p><formula xml:id="formula_33">∂ ELBO(X; θ, ϕ) ∂ϕ = 1 |N T ×H | Z∈N T ×H ∂ ∂ϕ q(Z|X; ϕ) [ln p(X, Z; θ) -ln q(Z|X; ϕ 0 )] + q(Z|X; ϕ 0 ) ∂ ∂ϕ [ln p(X, Z; θ) -ln q(Z|X; ϕ)] = 1 |N T ×H | Z∈N T ×H</formula><p>[ln p(X, Z; θ) -ln q(Z|X; ϕ 0 )] q(Z|X; ϕ) ∂ ∂ϕ ln q(Z|X; ϕ)</p><formula xml:id="formula_34">- 1 |N T ×H | Z∈N T ×H ∂ ∂ϕ q(Z|X; ϕ) ≈ 1 K K k=1 ln p X, Z (k) ; θ -ln q Z (k) X; ϕ 0 ∂ ∂ϕ ln q Z (k) X; ϕ -0.<label>(27)</label></formula><p>The pathwise gradient estimator (i.e., Eq. 16) of the derivative of ELBO w.r.t. ϕ is:</p><formula xml:id="formula_35">∂ ELBO(X; θ, ϕ) ∂ϕ = ∂ ∂ϕ Z q Z X; ϕ ln p X, Z; θ -ln q Z X; ϕ 0 d Z = ∂ ∂ϕ Z Gumbel(G; 0, 1) [ln p (X, r(G|X; ϕ); θ) -ln q(r(G|X; ϕ)|X; ϕ)] dG ≈ ∂ ∂ϕ K k=1 ln p X, r G (k) X; ϕ ; θ -ln q r G (k) X; ϕ X; ϕ = ∂ ∂ϕ ELBO(X; θ, ϕ).<label>(28)</label></formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.2. Method combinations</head><p>We summarize different method combinations in this subsection.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.2.1. GENERATIVE PROCEDURE</head><p>For the firing rate f t,v of a visible neuron v and the firing rate f t,h of a hidden neuron h at time t:</p><formula xml:id="formula_36">   f t,v = σ b v + V v ′ =1 w v←v ′ • L l=1 x t-l,v ′ ψ l + H h ′ =1 w v←h ′ • L l=1 z t-1,h ′ ψ l , f t,h = σ b h + V v ′ =1 w h←v ′ • L l=1 x t-l,v ′ ψ l + H h ′ =1 w h←h ′ • L l=1 z t-1,h ′ ψ l . (29) The parameter set is θ = {b, W }, where b = b V b H ∈ R N and W = W V ←V W V ←H W H←V W H←H ∈ R N ×N . For visible neurons, x t,n ∼ Poisson(f t,n ). A.2.2. VARIATIONAL SAMPLING SCHEMES • Homogeneous Poisson f t,h = σ(c h ).<label>(30)</label></formula><p>The variational parameter set is</p><formula xml:id="formula_37">ϕ = {c H }. • Inhomogeneous Poisson f t,h = σ(c t,h ).<label>(31)</label></formula><p>The variational parameter set is ϕ = {C T ×H }.</p><p>• Forward (F)</p><formula xml:id="formula_38">f t,h = σ c h + V v ′ =1 a h←v ′ • L l=1 x t-l,v ′ ψ l .<label>(32)</label></formula><p>The variational parameter set is ϕ = {c H , A}, where</p><formula xml:id="formula_39">A = O V ←V O V ←H A H←V O H←H ∈ R N ×N .</formula><p>• Forward-self (FS)</p><formula xml:id="formula_40">f t,h = σ c h + V v ′ =1 a h←v ′ • L l=1 x t-l,v ′ ψ l + H h ′ =1 a h←h ′ • L l=1 z t-l,h ′ ψ l .<label>(33)</label></formula><p>The variational parameter set is ϕ = {c H , A}, where</p><formula xml:id="formula_41">A = O V ←V O V ←H A H←V A H←H ∈ R N ×N .</formula><p>• Forward-backward (FB)</p><formula xml:id="formula_42">f t,h = σ c n + V v ′ =1 a h←v ′ • L l=1 x t-l,v ′ ψ l + V v ′ =1 a v ′ ←h • L l=1 x t+l,v ′ ψ l<label>(34)</label></formula><p>The variational parameter set is ϕ = {c H , A}, where </p><formula xml:id="formula_43">A = O V ←V A V ←H A H←V O H←H ∈ R N ×N . A.2.3. HIDDEN SPIKE DISTRIBUTIONS</formula><formula xml:id="formula_44">[z; f ] = f z e -z z! ✗ categorical (Cat) z ∼ Cat(π(f )) P[z; f ] = π(f ) z ✗ Gumbel-Softmax (GS) zt,h ∼ GS(π(f t,h ); τ ) Eq. 36 bellow ✓ exponential (Exp) z ∼ Exp 1 f P[z; f ] = 1 f exp (-f z) ✓ Rayleigh (Ray) z ∼ Ray 2 π f P[z; f ] = πz 2f 2 exp -πz 2 4f 2 ✓ Half-normal (HN) z ∼ HN π 2 f P[z; f ] = 2 πf exp -z 2 πf 2 ✓</formula><p>In the above table, we used the function π to truncate a Poisson distribution to a categorical distribution,</p><formula xml:id="formula_45">π(f ) = 1 - M -1 m=1 f m e f m! , f 1 e f 1! , . . . , f M -1 e f (M -1)! . (<label>35</label></formula><formula xml:id="formula_46">)</formula><p>The GS likelihood is Figure <ref type="figure">9</ref>. The learned weight matrix and bias vector of all method combinations under different numbers of hidden neurons on the RGC dataset.</p><formula xml:id="formula_47">P[ z; f ] = Γ(M )τ M -1 m-1 m=0 π(f ) m zτ m M -1 m=0 π(f ) m zτ+1 m<label>(36)</label></formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.4. Point Process</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.4.1. THE GENERALIZED HAWKES PROCESS AS THE POINT PROCESS VERSION OF A GLM</head><p>A generalized multivariate Hawkes process (GMHP) is a temporal point process (right-continuous) governed by the conditional intensity function</p><formula xml:id="formula_48">λ * n (t) = σ b n + tn&lt;t w n←ni • ψ(t -t i )<label>(37)</label></formula><p>where n indexes for N neurons. (t i , n i ) is the arrival time and neuron index of the i-th event in the history (spike) sequences ordered by arrival time t i , i.e., t 1 &lt; t 2 &lt; • • • &lt; t. λ * n (t) is conditioned on the spike sequences before time t: {(t n , d n ) tn&lt;t }. b n ∈ R is the background intensity of the n-th neuron, w n←n ′ ∈ R is the connection weights from the n ′ -th neuron to the n-th neuron, and ψ(•) is the kernel function, which usually integrates to 1. σ is a nonlinear function. Also, note that λ * n (t) is a left continuous function. For preserving the causal relationship, we also need</p><formula xml:id="formula_49">ψ(t) = 0, ∀t ⩽ 0. Let θ = {b, W } = [b 1 , . . . , b N ] T , (w n←n ′ ) N ×N )</formula><p>denote the parameter set we estimate. The data likelihood (probability density function) of a spike train in the format of a continuous timestamps sequence</p><formula xml:id="formula_50">X = {(t i , n i )} I i=1 within a specific observation period [0, T ] is P(X ; θ) = I n=i λ * ni (t i ) • exp - N n=1 T 0 λ * n (t) dt<label>(38)</label></formula><p>Relationship between conditional intensity and arrival interval. For any temporal point process (not discretized), the number of events happening between t and t + ∆t follows the Poisson distribution</p><formula xml:id="formula_51">X ∼ P t+∆t t λ * (s) ds = P(Λ(t + τ ) -Λ(t))</formula><p>where Λ(t) := Therefore, modeling the intensity function is equivalent to modeling the arrival interval.</p><p>Sampling/Simulation. We introduce two equivalent sampling algorithms: Ogata's thinning and the First-come-first-serve (FCFS). The probability density of the next event happening at time t + τ of neuron n is In general, the integration in the complete-data likelihood does not have an analytical solution. A general solution is Monte Carlo integration, despite being suboptimal. A better choice is the quadrature rule, such as the Simpson rule. However, no matter what numerical techniques we use, we lose the continuous property of the process itself. Besides, the data structure that stores the spikes is usually not ideal. First, computing the log-likelihood of a point process requires sequential searching on lists of timestamps, which is more complicated than a direct matrix multiplication used in binned spike train data. Second, sampling hidden spike timestamps requires sorting, which is extremely time-consuming. Furthermore, the integration term in the log-likelihood function usually has no closed-form expression and hence still needs time discretization. Therefore, it is more convenient to discretize the point process data into binned spike count at the very beginning rather than deal with sequences of continuous timestamps. Therefore, it is more convenient to discretize the process rather than deal with continuous timestamps. </p><formula xml:id="formula_52">f (τ, n) = N n ′ =1</formula><p>Now, we show that this likelihood converges to the form in the continuous case when the width of the time bin ∆t → 0.</p><p>When taking the limit ∆t → 0, x s,n can either be 0 or 1. Therefore, Since (∆t) N is a constant, we divide the above equation by (∆t) N and just get the probability density, which is identical to Eq. 38 in the continuous case. Therefore, solving the discretized problem is equivalent to solving the original continuous problem, as long as ∆t is small enough. And the solution converges to the continuous solution as ∆t → 0. In fact, the procedure shown in Eq. 43 is applicable to any point process and its discretized version.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>)Figure 1 .</head><label>1</label><figDesc>Figure 1. (a): The generative model of the complete POGLM p(X, Z; θ). (b), (c), (d):The forward-self, forward, and forwardbackward sampling scheme of the variational model q(Z|X; ϕ).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 .</head><label>2</label><figDesc>Figure 2. An example of comparison among different variational distributions q(Z|X; ϕ) with the true posterior p(Z|X; θ) (black dots). There is one visible neuron and one hidden neuron. Two visible spikes from the visible neuron happen at the dashed lines. Different dotted curves represent the approximated log-likelihood of one hidden spike happening at different time bins. Only the forward-backward recapitulates the true distribution. The forward and forward-self miss the uprising trends before the two observed spikes, due to lack of a back-propagated message.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 3 .</head><label>3</label><figDesc>Figure 3. A visualization of different choices of the soft hidden spike count distribution, under firing rate f = 0.5 and f = 1.0. Most of z from GS approximating the original Poisson distribution are close to integer points, but the three continuous distributions (Exp, Ray, and HN) are not.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 4 .</head><label>4</label><figDesc>Figure 4. (a): The test log-likelihood (LL) on the test set, the weight error, the bias error, and the running time of different method combinations. (b): An example of the learned weight matrix and bias vector compared with the true of selected method combinations. Visualization of all method combinations is in Fig. 8 in Appendix. A.3 (c): The learning curves of different method combinations.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head></head><label></label><figDesc>Fig. 4(b)  visualizes the recovered weight matrix and bias</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Figure 5 .</head><label>5</label><figDesc>Figure 5. The test log-likelihood (LL) of different method combinations under H ∈ {1, 2, 3} hidden neurons. The dashed black line represents the test LL of the fully observed GLM as the baseline.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>Figure 6 .</head><label>6</label><figDesc>Figure 6. The learned weight matrix of selected method combinations. Visualization of all method combinations is in Fig. 9 in Appendix. A.3.</figDesc><graphic coords="7,315.02,479.59,61.25,61.25" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head>Figure 7 .</head><label>7</label><figDesc>Figure 7. The curves of the test log-likelihood (LL) v.s. the number of hidden neurons H, for different method combinations.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head>Figure 8 .</head><label>8</label><figDesc>Figure 8. The learned weight matrix and bias vector compared with the true of all method combinations on one trial of the synthetic dataset.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_9"><head>t 0 λ</head><label>0</label><figDesc>* (s) ds is the compensator. If ∆t → 0, t+∆t t λ * (s) ds ≈ λ * (t)∆tThe relationship between the intensity function λ * (t) and the next (starts from current time t) time interval τ distribution (PDF) isf (τ ) = λ * (t + τ )an event happens at t+τ, in the interval (t,t+τ ), probability=λ * (t + τ )e -t+τ t λ * (s) ds CDF is F (τ ) = 1 -e -t+τ t λ * (s) ds</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_10"><head></head><label></label><figDesc>Now, we introduce the discretized version. denote the discretized spike, where S = T ∆t is the total number of time bins. Then x s,n represents the number of spikes of neuron n in the time interval ((s -1)∆t, s∆t). Then the discretized GMHP becomes the generalized linear model (GLM): x s,d ∼ P(λ * s,n ∆t) where P denotes the Poisson distribution, andλ * s,n = b n + x s ′ ,n ′ &gt;0,s ′ &lt;s x s ′ ,n ′ w n←n ′ ψ((s -s ′ )∆t) = b n + N n ′ =1 w n←n ′ L l=1 x s-l,n ′ ψ l ,(41)where λ * s,d is still parameterized by θ and ψ T = [ψ(∆t), . . . , ψ(L∆t), ]. The complete-data likelihood is ∆t) xs,n e -λ * s,n ∆tx s,n ! .</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>Table 1 .</head><label>1</label><figDesc>Different distributions of hidden spike, used in the generative model and the variational model. For simplicity, we omit the subscript of z, z = (z0, . . . , zM-1), and f indexing the hidden neuron and time bin.</figDesc><table><row><cell>distribution</cell><cell>sample</cell><cell>likelihood</cell><cell>can use pathwise</cell></row><row><cell>Poisson (Pois)</cell><cell>z ∼ Poisson(f )</cell><cell>P</cell><cell></cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>School of Computational Science &amp; Engineering, Georgia Institute of Technology, Atlanta, USA. Correspondence to: Chengrui Li &lt;cnlichengrui@gatech.edu&gt;, Anqi Wu &lt;anqiwu@gatech.edu&gt;.</p></note>
+		</body>
+		<back>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Impact Statements</head><p>This paper presents work whose goal is to advance the field of Machine Learning. There are many potential societal consequences of our work, none of which we feel must be specifically highlighted here.</p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<title level="m" type="main">Estimating or propagating gradients through stochastic neurons for conditional computation</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Léonard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Courville</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1308.3432</idno>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Variational inference: A review for statisticians</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">M</forename><surname>Blei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Kucukelbir</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">D</forename><surname>Mcauliffe</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of the American statistical Association</title>
+		<imprint>
+			<biblScope unit="volume">112</biblScope>
+			<biblScope unit="issue">518</biblScope>
+			<biblScope unit="page" from="859" to="877" />
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Multi-electrode recordings of ongoing activity and responses to parametric stimuli in macaque v1</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Chu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">F</forename><surname>Chien</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Hung</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">CRCNS.org</title>
+		<imprint>
+			<biblScope unit="volume">10</biblScope>
+			<biblScope unit="issue">K0J1012</biblScope>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<author>
+			<persName><forename type="first">E</forename><surname>Jang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Gu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Poole</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1611.01144</idno>
+		<title level="m">Categorical reparameterization with gumbel-softmax</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Stochastic variational learning in recurrent spiking networks</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Jimenez Rezende</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Gerstner</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Frontiers in computational neuroscience</title>
+		<imprint>
+			<biblScope unit="volume">8</biblScope>
+			<biblScope unit="page">38</biblScope>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">A differentiable point process with its application to spiking neural networks</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Kajino</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="5226" to="5235" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<monogr>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">P</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ba</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Adam</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1412.6980</idno>
+		<title level="m">A method for stochastic optimization</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<title level="m" type="main">Auto-encoding variational bayes</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">P</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1312.6114</idno>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">One-hot generalized linear model for switching brain state discovery</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">H</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Rodgers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Choi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Wu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Forward χ 2 divergence based variational importance sampling</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Wu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Bayesian latent structure discovery from multi-neuron recordings</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Linderman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">P</forename><surname>Adams</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">W</forename><surname>Pillow</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in neural information processing systems</title>
+		<imprint>
+			<biblScope unit="volume">29</biblScope>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Bayesian inference for latent hawkes processes</title>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">W</forename><surname>Linderman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">M</forename><surname>Blei</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<monogr>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">J</forename><surname>Maddison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Mnih</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><forename type="middle">W</forename><surname>Teh</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1611.00712</idno>
+		<title level="m">The concrete distribution: A continuous relaxation of discrete random variables</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Imputing missing events in continuous-time event streams</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Mei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Qin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Eisner</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="4475" to="4485" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<author>
+			<persName><forename type="first">J</forename><surname>Paisley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Blei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Jordan</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1206.6430</idno>
+		<title level="m">Variational bayesian inference with stochastic search</title>
+		<imprint>
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Neural characterization in partially observed populations of spiking neurons</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Pillow</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Latham</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">20</biblScope>
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Fully bayesian inference for neural models with negative-binomial spiking</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Pillow</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Scott</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in neural information processing systems</title>
+		<imprint>
+			<biblScope unit="page">25</biblScope>
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Spatio-temporal correlations and visual signalling in a complete neuronal population</title>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">W</forename><surname>Pillow</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Shlens</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Paninski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Sher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">M</forename><surname>Litke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Chichilnisky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">P</forename><surname>Simoncelli</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Nature</title>
+		<imprint>
+			<biblScope unit="volume">454</biblScope>
+			<biblScope unit="issue">7207</biblScope>
+			<biblScope unit="page" from="995" to="999" />
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Multi-neuronal activity and functional connectivity in cell assemblies</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Roudi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Dunn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Hertz</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Current opinion in neurobiology</title>
+		<imprint>
+			<biblScope unit="volume">32</biblScope>
+			<biblScope unit="page" from="38" to="44" />
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Gradient estimation using stochastic computation graphs</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Schulman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Heess</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Weber</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Abbeel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in neural information processing systems</title>
+		<imprint>
+			<biblScope unit="volume">28</biblScope>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Hawkes process inference with missing data</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Shelton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Qin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Shetty</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="volume">32</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<monogr>
+		<title level="m" type="main">Poppy: a point process toolbox based on pytorch</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Xu</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1810.10122</idno>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Multivariate hawkes processes for incomplete biased data</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Sun</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2021 IEEE International Conference on Big Data (Big Data)</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="968" to="977" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

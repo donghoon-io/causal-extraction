@@ -1,0 +1,1012 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">A Fast Compiler for NetKAT</title>
+				<funder>
+					<orgName type="full">DIKU</orgName>
+				</funder>
+				<funder ref="#_ucppsGT #_WKX4zMz">
+					<orgName type="full">Office of Naval Research</orgName>
+				</funder>
+				<funder ref="#_n59bSB7 #_rUtTC87 #_aNUTqGz #_V84HPrv #_t8QB9mB #_yuhTaVd">
+					<orgName type="full">National Science Foundation</orgName>
+				</funder>
+				<funder>
+					<orgName type="full">Fujitsu Labs</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability  status="unknown">
+					<licence/>
+				</availability>
+				<date type="published" when="2015-06-24">24 Jun 2015</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Steffen</forename><surname>Smolka</surname></persName>
+							<email>smolka@cs.cornell.edu</email>
+						</author>
+						<author>
+							<persName><forename type="first">Spiridon</forename><surname>Eliopoulos</surname></persName>
+							<affiliation key="aff2">
+								<orgName type="department">Work performed at</orgName>
+								<orgName type="institution">Cornell University</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Nate</forename><surname>Foster</surname></persName>
+							<email>jnfoster@cs.cornell.edu</email>
+						</author>
+						<author>
+							<persName><forename type="first">Arjun</forename><surname>Guha</surname></persName>
+						</author>
+						<author>
+							<affiliation key="aff0">
+								<orgName type="institution">Cornell University</orgName>
+								<address>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff1">
+								<orgName type="institution">Cornell University</orgName>
+								<address>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">A Fast Compiler for NetKAT</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2015-06-24">24 Jun 2015</date>
+						</imprint>
+					</monogr>
+					<idno type="arXiv">arXiv:1506.06378v2[cs.PL]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-14T18:10+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<textClass>
+				<keywords>
+					<term>D.3.4 [Programming Languages]: Processors-Compilers Software-defined networking</term>
+					<term>domain-specific languages</term>
+					<term>NetKAT</term>
+					<term>Frenetic</term>
+					<term>Kleene Algebra with tests</term>
+					<term>virtualization</term>
+					<term>binary decision diagrams</term>
+				</keywords>
+			</textClass>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>High-level programming languages play a key role in a growing number of networking platforms, streamlining application development and enabling precise formal reasoning about network behavior. Unfortunately, current compilers only handle "local" programs that specify behavior in terms of hop-by-hop forwarding behavior, or modest extensions such as simple paths. To encode richer "global" behaviors, programmers must add extra state-something that is tricky to get right and makes programs harder to write and maintain. Making matters worse, existing compilers can take tens of minutes to generate the forwarding state for the network, even on relatively small inputs. This forces programmers to waste time working around performance issues or even revert to using hardware-level APIs.</p><p>This paper presents a new compiler for the NetKAT language that handles rich features including regular paths and virtual networks, and yet is several orders of magnitude faster than previous compilers. The compiler uses symbolic automata to calculate the extra state needed to implement "global" programs, and an intermediate representation based on binary decision diagrams to dramatically improve performance. We describe the design and implementation of three essential compiler stages: from virtual programs (which specify behavior in terms of virtual topologies) to global programs (which specify network-wide behavior in terms of physical topologies), from global programs to local programs (which specify behavior in terms of single-switch behavior), and from local programs to hardware-level forwarding tables. We present results from experiments on real-world benchmarks that quantify performance in terms of compilation time and forwarding table size.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1.">Introduction</head><p>High-level languages are playing a key role in a growing number of networking platforms being developed in academia and industry. There are many examples: VMware uses nlog, a declarative language based on Datalog, to implement network virtualization <ref type="bibr" target="#b18">[19]</ref>; SDX uses Pyretic to combine programs provided by different participants at Internet exchange points <ref type="bibr" target="#b12">[13,</ref><ref type="bibr" target="#b24">25]</ref>; PANE uses NetCore to allow end-hosts to participate in network management decisions <ref type="bibr" target="#b8">[9,</ref><ref type="bibr" target="#b23">24]</ref>; Flowlog offers tierless abstractions based on Datalog <ref type="bibr" target="#b25">[26]</ref>; Maple allows packet-processing functions to be specified directly in Haskell or Java <ref type="bibr" target="#b30">[33]</ref>; OpenDaylight's group-based policies describe the state of the network in terms of applicationlevel connectivity requirements <ref type="bibr">[29]</ref>; and ONOS provides an "intent framework" that encodes constraints on end-to-end paths <ref type="bibr">[28]</ref>.</p><p>These results stem from a few key insights. First, to compile local programs, we exploit a novel intermediate representation based on binary decision diagrams (BDDs). This representation avoids the combinatorial explosion inherent in approaches based on forwarding tables and allows our compiler to leverage well-known techniques for representing and transforming BDDs. Second, to compile global programs, we use a generalization of symbolic automata <ref type="bibr" target="#b26">[27]</ref> to handle the difficult task of generating the state needed to correctly implement features such as regular forwarding paths. Third, to compile virtual programs, we exploit the additional expressiveness provided by the global compiler to translate programs on a virtual topology into programs on the underlying physical topology.</p><p>We have built a full working implementation of our compiler in OCaml, and designed optimizations that reduce compilation time and the size of the generated forwarding tables. These optimizations are based on general insights related to BDDs (sharing common structures, rewriting naive recursive algorithms using dynamic programming, using heuristic field orderings, etc.) as well as domain-specific insights specific to SDN (algebraic optimization of NetKAT programs, per-switch specialization, etc.). To evaluate the performance of our compiler, we present results from experiments run on a variety of benchmarks. These experiments demonstrate that our compiler provides improved performance, scales to networks with tens of thousands of switches, and easily handles complex features such as virtualization.</p><p>Overall, this paper makes the following contributions:</p><p>• We present the first complete compiler pipeline for NetKAT that translates local, global, and virtual programs into forwarding tables for SDN switches.</p><p>• We develop a generalization of BDDs and show how to implement a local SDN compiler using this data structure as an intermediate representation.</p><p>• We describe compilation algorithms for virtual and global programs based on graph algorithms and symbolic automata.</p><p>• We discuss an implementation in OCaml and develop optimizations that reduce running time and the size of the generated forwarding tables.</p><p>• We conduct experiments that show dramatic improvements over other compilers on a collection of benchmarks and case studies.</p><p>The next section briefly reviews the NetKAT language and discusses some challenges related to compiling SDN programs, to set the stage for the results described in the following sections.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.">Overview</head><p>NetKAT is a domain-specific language for specifying and reasoning about networks <ref type="bibr" target="#b3">[4,</ref><ref type="bibr" target="#b10">11]</ref>. It offers primitives for matching and modifying packet headers, as well combinators such as union and sequential composition that merge smaller programs into larger ones.</p><p>NetKAT is based on a solid mathematical foundation, Kleene Algebra with Tests (KAT) <ref type="bibr" target="#b19">[20]</ref>, and comes equipped with an equational reasoning system that can be used to automatically verify many properties of programs <ref type="bibr" target="#b10">[11]</ref>.</p><p>NetKAT enables programmers to think in terms of functions on packets histories, where a packet (pk ) is a record of fields and a history (h) is a non-empty list of packets. This is a dramatic departure from hardware-level APIs such as OpenFlow, which require thinking about low-level details such as forwarding table rules, matches, priorities, actions, timeouts, etc. NetKAT fields f include standard packet headers such as Ethernet source and destination addresses, VLAN tags, etc., as well as special fields to indicate the port (pt) and switch (sw) where the packet is located in the network. For </p><formula xml:id="formula_0">[[p + q]] h [[p]] h ∪ [[q]] h [[p • q]] h ([[p]] • [[q]]) h [[p * ]] h i F i h where F 0 h {h} and F i+1 h ([[p]] • F i ) h [[dup]</formula><p>] (pk ::h) {pk ::(pk ::h)} brevity, we use src and dst fields in examples, though our compiler implements all of the standard fields supported by OpenFlow <ref type="bibr" target="#b22">[23]</ref>.</p><p>NetKAT syntax and semantics. Formally, NetKAT is defined by the syntax and semantics given in Figure <ref type="figure" target="#fig_1">1</ref>. Predicates a describe logical predicates on packets and include primitive tests f =n, which check whether field f is equal to n, as well as the standard collection of boolean operators. This paper focuses on tests that match fields exactly, although our implementation supports generalized tests, such as IP prefix matches. Programs p can be understood as packet-processing functions that consume a packet history and produce a set of packet histories. Filters a drop packets that do not satisfy a; modifications f ←n update the f field to n; unions p + q copy the input packet and process one copy using p, the other copy using q, and take the union of the results; sequences p • q process the input packet using p and then feed each output of p into q (the • operator is Kleisli composition); iterations p * behave like the union of p composed with itself zero or more times; and dups extend the trajectory recorded in the packet history by one hop.</p><p>Topology encoding. Readers who are familiar with Frenetic <ref type="bibr" target="#b9">[10]</ref>, Pyretic <ref type="bibr" target="#b24">[25]</ref>, or NetCore <ref type="bibr" target="#b23">[24]</ref>, will be familiar with the basic details of this functional packet-processing model. However, unlike these languages, NetKAT can also model the behavior of the entire net-work, including its topology. For example, a (unidirectional) link from port pt 1 on switch sw 1 to port pt 2 on switch sw 2, can be encoded in NetKAT as follows:</p><formula xml:id="formula_1">dup • sw=sw 1 • pt=pt 1 • sw←sw 2 • pt←pt 2 • dup</formula><p>Applying this pattern, the entire topology can be encoded as a union of links. Throughout this paper, we will use the shorthand [sw 1:pt 1 ] [sw 2:pt 2 ] to indicate links, and assume that dup and modifications to the switch field occur only in links.</p><p>Local programs. Since NetKAT can encode both the network topology and the behavior of switches, a NetKAT program describes the end-to-end behavior of a network. One simple way to write NetKAT programs is to define predicates that describe where packets enter (in) and exit (out) the network, and interleave steps of processing on switches (p) and topology (t):</p><formula xml:id="formula_2">in • (p • t) * • p • out</formula><p>To execute the program, only p needs to be specified-the physical topology implements in, t, and out. Because no switch modifications or dups occur in p, it can be directly compiled to a collection of forwarding tables, one for each switch. Provided the physical topology is faithful to the encoding specified by in, t, and out, a network of switches populated with these forwarding tables will behave like the above program. We call such a switch program p a local program because it describes the behavior of the network in terms of hop-by-hop forwarding steps on individual switches.</p><p>Global programs. Because NetKAT is based on Kleene algebra, it includes regular expressions, which are a natural and expressive formalism for describing paths through a network. Ideally, programmers would be able to use regular expressions to construct forwarding paths directly, without having to worry about how those paths were implemented. For example, a programmer might write the following to forward packets from port 1 on switch sw 1 to port 1 on switch sw 2, and from port 2 on sw 1 to port 2 on sw 2, assuming a link connecting the two switches on port 3:</p><formula xml:id="formula_3">pt=1 • pt←3 • [sw 1:pt 3 ] [sw 2:pt 3 ] • pt←1 + pt=2 • pt←3 • [sw 1:pt 3 ] [sw 2:pt 3 ] • pt←2</formula><p>Note that this is not a local program, since is not written in the general form given above and instead combines switch processing and topology processing using a particular combination of union and sequential composition to describe a pair of overlapping forwarding paths. To express the same behavior as a local NetKAT program or in a language such as Pyretic, we would have to somehow write a single program that specifies the processing that should be done at each intermediate step. The challenge is that when sw 2 receives a packet from sw 1, it needs to determine if that packet originated at port 1 or 2 of sw 1, but this can't be done without extra information. For example, the compiler could add a tag to packets at sw 1 to track the original ingress and use this information to determine the processing at sw 2. In general, the expressiveness of global programs creates challenges for the compiler, which must generate explicit code to create and manipulate tags. These challenges have not been met in previous work on NetKAT or other SDN languages.</p><p>Virtual programs. Going a step further, NetKAT can also be used to specify behavior in terms of virtual topologies. To see why this is a useful abstraction, suppose that we wish to implement pointto-point connectivity between a given pair of hosts in a network with dozens of switches. One could write a global program that explicitly forwards along the path between these hosts. But this would be tedious for the programmer, since they would have to enumerate all of the intermediate switches along the path. A better approach is to express the program in terms of a virtual "big switch" topology whose ports are directly connected to the hosts, and where the relationship between ports in the virtual and physical networks is specified by an explicit mapping-e.g., the top of Figure <ref type="figure">3</ref> depicts a big switch virtual topology. The desired functionality could then be specified using a simple local program that forwards in both directions between ports on the single virtual switch:</p><formula xml:id="formula_4">p (pt=1 • pt←2) + (pt=2 • pt←1)</formula><p>This one-switch virtual program is evidently much easier to write than a program that has to reference dozens of switches. In addition, the program is robust to changes in the underlying network. If the operator adds new switches to the network or removes switches for maintenance, the program remains valid and does not need to be rewritten. In fact, this program could be ported to a completely different physical network too, provided it is able to implement the same virtual topology. Another feature of virtualization is that the physical-virtual mapping can limit access to certain switches, ports, and even packets that match certain predicates, providing a simple form of language-based isolation <ref type="bibr" target="#b13">[14]</ref>. In this example, suppose the physical network has hundreds of connected hosts. Yet, since the virtualphysical mapping only exposes two ports, the abstraction guarantees that the virtual program is isolated from the hosts connected to the other ports. Moreover, we can run several isolated virtual networks on the same physical network, e.g., to provide different services to different customers in multi-tenant datacenters <ref type="bibr" target="#b18">[19]</ref>.</p><p>Of course, while virtual programs are a powerful abstraction, they create additional challenges for the compiler since it must generate physical paths that implement forwarding between virtual ports and also instrument programs with extra bookkeeping information to keep track of the locations of virtual packets traversing the physical network. Although virtualization has been extensively studied in the networking community <ref type="bibr" target="#b2">[3,</ref><ref type="bibr" target="#b6">7,</ref><ref type="bibr" target="#b18">19,</ref><ref type="bibr" target="#b24">25]</ref>, no previous work fully describes how to compile virtual programs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Pattern Action pt←2</head><p>pol A pt←2 Compilation pipeline. This paper presents new algorithms for compiling NetKAT that address the key challenges related to expressiveness and performance just discussed. Figure <ref type="figure">3</ref>  These three stages are designed to work well together-e.g., the fabric constructed by the virtual compiler is expressed in terms of regular paths, which are translated to local programs by the global compiler, and the local and global compilers both use FDDs as an intermediate representation. However, the individual compiler stages can also be used independently. For example, the global compiler provides a general mechanism for compiling forwarding paths specified using regular expressions to SDN switches. We have also been working with the developers of Pyretic to improve performance by retargeting its backend to use our local compiler.</p><p>The next few sections present these stages in detail, starting with local compilation and building up to global and virtual compilation.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.">Local Compilation</head><p>The foundation of our compiler pipeline is a translation that maps local NetKAT programs to OpenFlow forwarding tables. Recall that a local program describes the hop-by-hop behavior of individual switches-i.e. it does not contain dup or switch modifications.</p><p>Compilation via forwarding tables. A simple approach to compiling local programs is to define a translation that maps primitive constructs to forwarding tables and operators such as union and sequential composition to functions that implement the analogous operations on tables. For example, the current NetKAT compiler translates the modification pt←2 to a forwarding table with a single rule that sets the port of all packets to 2 (Figure <ref type="figure" target="#fig_3">2</ref> (a)), while it translates the predicate dst=A to a flow table with two rules: the first matches packets where dst=A and leaves them unchanged and the second matches all other packets and drops them (Figure <ref type="figure" target="#fig_3">2 (b)</ref>).</p><p>To compile the sequential composition of these programs, the compiler combines each row in the first table with the entire second table, retaining rules that could apply to packets produced by the  row (Figure <ref type="figure" target="#fig_3">2 (c</ref>)). In the example, the second table has a single rule that sends all packets to port 2. The first rule of the first table matches packets with destination A, thus the second table is transformed to only send packets with destination A to port 2. However, the second rule of the first table drops all packets, therefore no packets ever reach the second table from this rule.</p><p>To compile a union, the compiler computes the pairwise intersection of all patterns to account for packets that may match both tables. For example, in Figure <ref type="figure" target="#fig_3">2 (d)</ref>, the two sub-programs forward traffic to hosts A and B based on the dst header. These two sub-programs do not overlap with each other, which is why the table in the figure appears simple. However, in general, the two programs may overlap. Consider compiling the union of the forwarding program, in Figure <ref type="figure" target="#fig_3">2</ref> (d) and the monitoring program in Figure <ref type="figure" target="#fig_3">2</ref> (e). The monitoring program sends SSH packets and packets with dst=A to port 3. The intersection will need to consider all interactions between pairs of rules-an O(n 2 ) operation. Since a NetKAT program may be built out of several nested programs and compilation is quadratic at each step, we can easily get a tower of squares or exponential behavior.</p><p>Approaches based on flow tables are attractive for their simplicity, but they suffer several serious limitations. One issue is that tables are not an efficient way to represent packet-processing functions since each rule in a table can only encode positive tests on packet headers. In general, the compiler must emit sequences of prioritized rules to encode operators such as negation or union. Moreover, the algorithms that implement these operators are worstcase quadratic, which can cause the compiler to become a bottleneck on large inputs. Another issue is that there are generally many equivalent ways to encode the same packet-processing function as a forwarding table. This means that a straightforward computation of fixed-points, as is needed to implement Kleene star, is not guaranteed to terminate. Binary decision diagrams. To avoid these issues, our compiler is based on a novel representation of packet-forwarding functions using a generalization of binary decision diagrams (BDDs) <ref type="bibr" target="#b0">[1,</ref><ref type="bibr" target="#b5">6]</ref>. To briefly review, a BDD is a data structure that encodes a boolean function as a directed acyclic graph. The interior nodes encode boolean variables and have two outgoing edges: a true edge drawn as a solid line, and a false edge drawn as a dashed line. The leaf nodes encode constant values true or false. Given an assignment to the variables, we can evaluate the expression by following the appropriate edges in the graph. An ordered BDD imposes a total order in which the variables are visited. In general, the choice of variable-order can have a dramatic effect on the size of a BDD and hence on the run-time of BDD-manipulating operations. Picking an optimal variable-order is NP-hard, but efficient heuristics often work well in practice. A reduced BDD has no isomorphic subgraphs and every interior node has two distinct successors. A BDD can be reduced by repeatedly applying these two transformations:</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Syntax</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Booleans b</head><formula xml:id="formula_5">::= | ⊥ Contexts Γ ::= • | Γ, (f, n) : b Actions a ::= {f1 ←n1, . . . , f k ←n k } Diagrams d ::= {a1, . . . , a k } Constant | (f =n ? d1 : d2) Conditional Semantics [[{f1 ←n1, . . . , f k ←n k }]] (pk ::h) {pk [f1 := n1] • • • [f k := n k ]::h} [[{a1, . . . , a k }]] (pk ::h) [[a1]] (pk ::h) ∪ • • • ∪ [[a k ]] (pk ::h) [[(f =n ? d1 : d2)]] (pk ::h) [[d1]] (pk ::h) if pk .f = n [[d2]] (pk ::h) otherwise Well Formedness Γ (f, n) • (f , n) NIL f f Γ, (f , n ) : b (f , n) LT f = f n n Γ, (f , n ) : ⊥ (f , n) EQ Γ d Γ {a1, . . . , a k } CONSTANT Γ (f , n) Γ, (f , n) : d1 Γ, (f , n) : ⊥ d2 Γ (f =n ? d1 : d2) CONDITIONAL</formula><p>• If two subgraphs are isomorphic, delete one by connecting its incoming edges to the isomorphic nodes in the other, thereby sharing a single copy of the subgraph.</p><p>• If both outgoing edges of an interior node lead to the same successor, eliminate the interior node by connecting its incoming edges directly to the common successor node.</p><p>Logically, an interior node can be thought of as representing an IF-THEN-ELSE expression. 1 For example, the expression:</p><formula xml:id="formula_6">(a ? (c ? 1 : (d ? 1 : 0)) : (b ? (c ? 1 : (d ? 1 : 0)) : 0)) represents a BDD for the boolean expression (a ∨ b) ∧ (c ∨ d).</formula><p>This notation makes the logical structure of the BDD clear while abstracting away from the sharing in the underlying graph representation and is convenient for defining BDD-manipulating algorithms.</p><p>In principle, we could use BDDs to directly encode NetKAT programs as follows. We would treat packet headers as flat, n-bit vectors and encode NetKAT predicates as n-variable BDDs. Since NetKAT programs produce sets of packets, we could represent them in a relational style using BDDs with 2n variables. However, there are two issues with this representation:</p><p>• Typical NetKAT programs modify only a few headers and leave the rest unchanged. The BDD that represents such a program would have to encode the identity relation between most of its input-output variables. Encoding the identity relation with 1 We write conditionals as (a ? b : c), in the style of the C ternary operator.</p><p>BDDs requires a linear amount of space, so even trivial programs, such as the identity program, would require large BDDs.  <ref type="figure" target="#fig_5">4a</ref> and<ref type="figure" target="#fig_5">4b</ref> show FDDs for a program that forwards HTTP packets to hosts 10.0.0.1 and 10.0.0.2 at ports 1 and 2 respectively. The diagrams have interior nodes that match on headers and leaf nodes corresponding to the actions used in the program.</p><p>To generalize ordered BDDs to FDDs, we assume orderings on fields and values, both written , and lift them to tests f =n lexicographically:</p><formula xml:id="formula_7">f1 =n1 f2 =n2 (f1 f2) ∨ (f1 = f2 ∧ n1 n2)</formula><p>We require that tests be arranged in ascending order from the root. For reduced FDDs, we stipulate that they must have no isomorphic subgraphs and that each interior node must have two unique successors, as with BDDs, and we also require that the FDD must not contain redundant tests and modifications. For example, if the test dst=10.0.0.1 is true, then dst=10.0.0.2 must be false. Accordingly, an FDD should not perform the latter test if the former succeeds. Similarly, because NetKAT's union operator (p + q) is associative, commutative, and idempotent, to broadcast packets to both ports 1 and 2 we could either write pt←1 + pt←2 or pt←2 + pt←1. Likewise, repeated modifications to the same header are equivalent to just the final modification, and modifications to different headers commute. Hence, updating the dst header to 10.0.0.1 and then immediately re-updating it to 10.0.0.2 is the same as updating it to 10.0.0.2. In our implementation, we enforce the conditions for ordered, reduced FDDs by representing actions as d1 + d2 {a11, . . . , a 1k } + {a21, . . . , a 2l } {a11, . . . , a 1k } ∪ {a21, . . . , a 2l } (f =n ? d11 : d12) + {a21, . . . a 2l } (f =n ? d11 + {a21, . . . a 2l } : d12 + {a21, . . . a 2l })</p><formula xml:id="formula_8">(f1 =n1 ? d11 : d12) + (f2 =n2 ? d21 : d22)    (f1 =n1 ? d11 + d21 : d12 + d22) if f1 = f2 and n1 = n2 (f1 =n1 ? d11 + d22 : d12 + (f2 =n2 ? d21 : d22))</formula><p>if f1 = f2 and n1 n2 (f1 =n1 ? d11 + (f2 =n2 ? d21 : d22) : d12 + (f2 =n2 ? d21 : d22)) if f1 f2 (omitting symmetric cases) L sets of sets of modifications, and by using smart constructors that eliminate isomorphic subgraphs and contradictory tests. Figure <ref type="figure" target="#fig_6">5</ref> summarizes the syntax, semantics, and well-formedness conditions for FDDS formally. Syntactically, an FDD d is either a constant diagram specified by a set of actions {a1, . . . , a k }, where an action a is a finite map {f1 ←n1, . . . , f k ←n k } from fields to values such that each field occurs at most once; or a conditional diagram (f =n ? d1 : d2) specified by a test f =n and two subdiagrams. Semantically, an action a denotes a sequence of modifications, a constant diagram {a1, . . . , a k } denotes the union of the individual actions, and a conditional diagram (f =n ? d1 : d2) tests if the packet satisfies the test and evaluates the true branch (d1) or false branch (d2) accordingly. The well-formedness judgments Γ (f, n) and Γ d ensure that tests appear in ascending order and do not contradict previous tests to the same field. The context Γ keeps track of previous tests and boolean outcomes.</p><formula xml:id="formula_9">d | f =n {a1, . . . , a k } | f =n (f =n ? {a1, . . . , a k } : {}) (f1 =n1 ? d11 : d12) | f =n          (f =n ? d11 : {}) if f = f1 and n = n1 (d12) | f =n if f = f1 and n = n1 (f =n ? (f1 =n1 ? d11 : d12) : {}) if f f1 (f1 =n1 ? (d11) | f =n : (d12) | f =n ) otherwise d1 • d2 a • {a1, . . . , a k } {a • a1, . . . , a • a k } a • (f =n ? d1 : d2)      a • d1 if f ←n ∈ a a • d2 if f ←n ∈ a ∧ n = n (f =n ? a • d1 : a • d2) otherwise {a1, . . . , a k } • d a1 • d + . . . + a k • d (f =n ? d11 : d12) • d2 (d11 • d2) | f =n +(d12 • d2) | f =n ¬d ¬ {} {{}} ¬ {a1, . . . , a k } {} where k ≥ 1 ¬(f =n ? d1 : d2) (f =n ? ¬d1 : ¬d2) d * d * fix (λd . {{}} + d • d )</formula><formula xml:id="formula_10">[[false]] {} L[[f ←n]] {{f ←n}} L[[true]] {{}} L[[f =n]] (f =n ? {{}} : {}) L[[¬p]] ¬L[[p]] L[[p1 + p2]] L[[p1]] + L[[p2]] L[[p * ]] L[[p]] * L[[p1 • p2]] L[[p1]] • L[[p2]]</formula><p>Local compiler. Now we are ready to present the local compiler itself, which goes in two stages. The first stage translates NetKAT source programs into FDDs, using the simple recursive translation given in Figures <ref type="figure" target="#fig_7">6</ref> and<ref type="figure" target="#fig_8">7</ref>. The NetKAT primitives true, false, and f ←n all compile to simple constant FDDs. Note that the empty action set {} drops all packets while the singleton action set {{}} containing the identity action {} copies packets verbatim. NetKAT tests f =n compile to a condi-tional whose branches are the constant diagrams for true and false respectively. NetKAT union, sequence, negation, and star all recursively compile their sub-programs and combine the results using corresponding operations on FDDs, which are given in Figure <ref type="figure" target="#fig_7">6</ref>.</p><p>The FDD union operator (d1 + d2) walks down the structure of d1 and d2 and takes the union of the action sets at the leaves. However, the definition is a bit involved as some care is needed to preserve well-formedness. In particular, when combining multiple conditional diagrams into one, one must ensure that the ordering on tests is respected and that the final diagram does not contain contradictions. Readers familiar with BDDs may notice that this function is simply the standard "apply" operation (instantiated with union at the leaves). The sequential composition operator (d1 • d2) merges two packet-processing functions into a single function. It uses auxiliary operations d | f =n and d | f =n to restrict a diagram d by a positive or negative test respectively. We elide the sequence operator on atomic actions (which behaves like a right-biased merge of finite maps) and the negative restriction operator (which is similar to positive restriction, but not identical due to contradictory tests) to save space. The first few cases of the sequence operator handle situations where a single action on the left is composed with a diagram on the right. When the diagram on the right is a conditional, (f =n ? d1 : d2), we partially evaluate the test using the modifications contained in the action on the left. For example, if the left-action contains the modification f ←n, we know that the test will be true, whereas if the left-action modifies the field to another value, we know the test will be false. The case that handles sequential composition of a conditional diagram on the left is also interesting. It uses restriction and union to implement the composition, reordering and removing contradictory tests as needed to ensure well formedness. The negation ¬d operator is defined in the obvious way. Note that because negation can only be applied to predicates, the leaves of the diagram d are either {} or {{}}. Finally, the FDD Kleene star operator d * is defined using a straightforward fixed-point computation. The well-formedness conditions on FDDs ensures that a fixed point exists. The soundness of local compilation from NetKAT programs to FDDs is captured by the following theorem:</p><formula xml:id="formula_11">Theorem 1 (Local Soundness). If L[[p]] = d then [[p]] h = [[d]] h.</formula><p>Proof. Straightforward induction on p.</p><p>The second stage of local compilation converts FDDs to forwarding tables. By design, this transformation is mostly straightforward: we generate a forwarding rule for every path from the root to a leaf, using the conjunction of tests along the path as the pattern and the actions at the leaf. For example, the FDD in Figure <ref type="figure" target="#fig_9">8</ref> has four paths from the root to the leaves so the resulting forwarding table has four rules. The left-most path is the highest-priority rule and the right-most path is the lowest-priority rule. Traversing paths from left to right has the effect of traversing true-branches before their associated false-branches. This makes sense, since the only way to encode a negative predicate is to partially shadow a negative-rule with a positive-rule. For example, the last rule in the figure cannot encode the test proto =http. However, since that rule is preceded by a pattern that tests proto=http, we can reason that the proto field is not HTTP in the last rule. If performed naively, this strategy could create a lot of extra forwarding rules-e.g., the table in Figure <ref type="figure" target="#fig_9">8</ref> has two drop rules, even though one of them completely shadows the other. In section 6, we discuss optimizations that eliminate redundant rules, exploiting the FDD representation.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.">Global Compilation</head><p>Thus far, we have seen how to compile local NetKAT programs into forwarding tables using FDDs. Now we turn to the global compiler, which translates global programs into equivalent local programs.</p><p>In general, the translation from global to local programs requires introducing extra state, since global programs may use regular expressions to describe end-to-end forwarding paths-e.g., recall the example of a global program with two overlapping paths from Section 2. Put another way, because a local program does not contain dup, the compiler can analyze the entire program and generate an equivalent forwarding table that executes on a single switch, whereas the control flow of a global program must be made explicit so execution can be distributed across multiple switches. More formally, a local program encodes a function from packets to sets of packets, whereas a global program encodes a function from packets to sets of packet-histories.</p><p>To generate the extra state needed to encode the control flow of a global, distributed execution into a local program, the global compiler translates programs into finite state automata. To a first approximation, the automaton can be thought of as the one for the regular expression embedded in the global program, and the instrumented local program can be thought of as encoding the states and transitions of that automaton in a special header field. The actual construction is a bit more complex for several reasons. First, we cannot instrument the topology in the same way that we instrument switch terms. Second, we have to be careful not to introduce extra states that may lead to duplicate packet histories being generated. Third, NetKAT programs have more structure than ordinary regular expressions, since they denote functions on packet histories rather than sets of strings, so a more complicated notion of automaton-a symbolic NetKAT automaton-is needed.</p><p>At a high-level, the global compiler proceeds in several steps:</p><p>• It compiles the input program to an equivalent symbolic automaton. All valid paths through the automaton alternate between switch-processing states and topology-processing states, which enables executing them as local programs.</p><p>• It introduces a program counter by instrumenting the automaton to keep track of the current automaton state in the pc field.</p><p>• It determinizes the NetKAT automaton using an analogue of the subset construction for finite automata.</p><p>• It uses heuristic optimizations to reduce the number of states.</p><p>• It merges all switch-processing states into a single switch state and all topology-processing states into a single topology state.</p><p>The final result is a single local program that can be compiled using the local compiler. This program is equivalent to the original global program, modulo the pc field, which records the automaton state.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">NetKAT Automata</head><p>In prior work, some of the authors introduced NetKAT automata and proved the analogue of Kleene's theorem: programs and automata have the same expressive power <ref type="bibr" target="#b10">[11]</ref>. This allows us to use automata as an intermediate representation for arbitrary NetKAT programs. This section reviews NetKAT automata, which are used in the global compiler, and then presents a function that constructs an automaton from an arbitrary NetKAT program.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Definition 1 (NetKAT Automaton).</head><p>A NetKAT automaton is a tuple (S, s0, , δ), where:</p><p>• S is a finite set of states,</p><p>• s0 ∈ S is the start state,</p><p>• : S → Pk → P(Pk) is the observation function, and • δ : S → Pk → P(Pk × S) is the continuation function.</p><p>A NetKAT automaton is said to be deterministic if δ maps each packet to a unique next state at every state, or more formally if</p><formula xml:id="formula_12">| s : S | (pk , s ) ∈ δ s pk | ≤ 1</formula><p>for all states s and packets pk and pk . The inputs to NetKAT automata are guarded strings drawn from the set Pk • (Pk • dup) * • Pk. That is, the inputs have the form</p><formula xml:id="formula_13">pk in • pk 1 • dup • pk 2 • dup • • • pk n • dup • pk out</formula><p>where n ≥ 0. Intuitively, such strings represent packet-histories through a network: pk in is the input state of a packet, pk out is the output state, and the pk i are the intermediate states of the packet that are recorded as it travels through the network.</p><p>To process such a string, an automaton in state s can either accept the trace if n = 0 and pk out ∈ s pk in , or it can consume one packet and dup from the start of the string and transition to state s if n &gt; 0 and (pk1, s ) ∈ δ s pk in . In the latter case, the automaton yields a residual trace:</p><formula xml:id="formula_14">pk 1 • pk 2 • dup • • • pk n • dup • pk out</formula><p>Note that the "output" pk 1 of state s becomes the "input" to the successor state s . More formally, acceptance is defined as: Next, we define a function that builds an automaton A(p) from an arbitrary NetKAT program p such that (pk out ::pk n :: . . . ::</p><formula xml:id="formula_15">accept s (pk in • pk out ) ⇔ pk out ∈ s pk in accept s (pk in • pk 1 • dup • w) ⇔ (pk 1 ,s ) ∈ δ s pk in accept s (pk 1 • w) p E[[p]] : Pol D[[p]] : P(Pol × L × Pol) a a ∅ f ←n f ←n ∅ dup false { true, , true } q + r E[[q]] + E[[r]] D[[q]] ∪ D[[r]] q • r E[[q]] • E[[r]] D[[q]] • r ∪ E[[q]] • D[[r]] q * E[[q]] * E[[q * ]] • D[[q]] • q *</formula><formula xml:id="formula_16">pk 1 ) ∈ [[p]] pkin ⇔ accept A(p) s0 (pk in • pk 1 • dup • . . . • pk out )</formula><p>The construction is based on Antimirov partial derivatives for regular expressions <ref type="bibr" target="#b4">[5]</ref>. We fix a set of labels L, and annotate each occurrence of dup in the source program p with a unique label ∈ L.</p><p>We then define a pair of functions:</p><formula xml:id="formula_17">• E[[•]] : Pol → Pol and • D[[•]] : Pol → P(Pol × L × Pol)</formula><p>Intuitively ] simultaneously using a simple recursive algorithm defined in Figure <ref type="figure" target="#fig_10">9</ref>. The definition makes use of the following abbreviations,</p><formula xml:id="formula_18">D[[p]] • q { d, , k • q | d, , k ∈ D[[p]]} q • D[[p]] { q • d, , k | d, , k ∈ D[[p]]}</formula><p>which lift sequencing to sets of triples in the obvious way.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>The next lemma characterizes E[[p]] and D[[p]</head><p>], using the following notation to reconstruct programs from sets of triples: Proof. By structural induction on p. Claims (bd) are trivial. Claim (a) can be proved purely equationally using only the NetKAT axioms and the KAT-DENESTING rule from <ref type="bibr" target="#b3">[4]</ref>.</p><formula xml:id="formula_19">D[[p]] d, ,k ∈D[[p]] d • dup • k Lemma 1 (Characterization of E[[•]] and D[[•]]).</formula><p>Lemma 1 (d) allows us to write k to refer to the unique continuation of dup . By convention, we let k0 denote the "initial continuation," namely p.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Definition 2 (Program Automaton). The NetKAT automaton A(p)</head><p>for a program p is defined as (S, s0, , δ) where</p><p>• S is the set of labels occurring in p, plus the initial label 0.</p><p>• s0 0</p><formula xml:id="formula_20">• pk {pk | pk ∈ [[E[[k ]]]] pk } • δ pk {(pk , ) | d, , k ∈ D[[k ]] ∧ pk ∈ [[d]] pk }</formula><p>Theorem 2 (Program Automaton Soundness). For all programs p, packets pk and histories h, we have</p><formula xml:id="formula_21">h ∈ [[p]] pk in ⇔ accept s0 (pk in •pk 1 •dup•• • ••pk n •dup•pk out )</formula><p>where h = pkout ::pkn::</p><formula xml:id="formula_22">• • • :: pk 1 .</formula><p>Proof. We first strengthen the claim, replacing pkin with an arbitrary history pkin ::h , s0 with an arbitrary label ∈ S, and p with k . We then proceed by induction on the length of the history, using Lemma 1 for the base case and induction step.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Local Program Generation</head><p>With a NetKAT automaton A(p) for the global program p in hand, we are now ready to construct a local program. The main idea is to make the state of the global automaton explicit in the local program by introducing a new header field pc (represented concretely using VLANs, MPLS tags, or any other unused header field) that keeps track of the state as the packet traverses the network. This encoding enables simulating the automaton for the global program using a single local program (along with the physical topology). We also discuss determinization and optimization, which are important for correctness and performance.</p><p>Program counter. The first step in local program generation is to encode the state of the automaton into its observation and transition functions using the pc field. To do this, we use the same structures as are used by the local compiler, FDDs. Recall that the observation function maps input packets to output packets according to</p><formula xml:id="formula_23">E[[k ]],</formula><p>which is a dup-free NetKAT program. Hence, we can encode the observation function for a given state as a conditional FDD that tests whether pc is and either behaves like the FDD for E[[k ]] or false. We can encode the continuation function δ as an FDD in a similar fashion, although we also have to set the pc to each successor state s . This symbolic representation of automata using FDDs allows us to efficiently manipulate automata despite the large size of their "input alphabet", namely |Pk × Pk|. In our implementation we introduce the pc field and FDDs on the fly as automata are constructed, rather than adding them as a post-processing step, as is described here for ease of exposition.</p><p>Determinization. The next step in local program generation is to determinize the NetKAT automaton. This step turns out to be critical for correctness-it eliminates extra outputs that would be produced if we attempted to directly implement a nondeterministic NetKAT automaton. To see why, consider a program of the form p + p. Intuitively, because union is an idempotent operation, we expect that this program will behave the same as just a single copy of p. However, this will not be the case when p contains a dup: each occurrence of dup will be annotated with a different label. Therefore, when we instrument the program to track automaton states, it will create two packets that are identical expect for the pc field, instead of one packet as required by the semantics. The solution to this problem is simply to determinize the automaton before converting it to a local program. Determinization ensures that every packet trace induces a unique path through the automaton and prevents duplicate packets from being produced. Using FDDs to represent the automaton symbolically is crucial for this step: it allows us to implement a NetKAT analogue of the subset construction efficiently.</p><p>Optimization. One practical issue with building automata using the algorithms described so far is that they can use a large number of states-one for each occurrence of dup in the program-and determinization can increase the number of states by an exponential factor. Although these automata are not wrong, attempting to compile them can lead to practical problems since extra states will trigger a proliferation of forwarding rules that must be installed on switches. Because switches today often have limited amounts of memory-often only a few thousand forwarding rules-reducing the number of states is an important optimization. An obvious idea is to optimize the automaton using (generalizations of) textbook minimization algorithms. Unfortunately this would be prohibitively expensive since deciding whether two states are equal is a costly operation in the case of NetKAT automata. Instead, we adopt a simple heuristic that works well in practice and simply merge states that are identical. In particular, by representing the observation and transition functions as FDDs, which are hash consed, testing equality is cheap-simple pointer comparisons.</p><p>Local Program Extraction. The final step is to extract a local program from the automaton. Recall from Section 2 that, by definition, links are enclosed by dups on either side, and links are the only NetKAT terms that contain dups or modify the switch field. It follows that every global program gives rise to a bipartite NetKAT automaton in which all accepting paths alternate between "switch states" (which do not modify the switch field) and "link states" (which forward across links and do modify the switch field), beginning with a switch state. Intuitively, the local program we want to extract is simply the union of of the and δ FDDs of all switch states (recall Lemma 1 (a)), with the link states implemented by the physical network. Note however, that the physical network will neither match on the pc nor advance the pc to the next state (while the link states in our automaton do). To fix the latter, we observe that any link state has a unique successor state. We can thus simply advance the pc by two states instead of one at every switch state, anticipating the missing pc modification in link states. To address the former, we employ the equivalence</p><formula xml:id="formula_24">[sw 1:pt 1 ] [sw 2:pt 2 ] ≡ sw =1 • pt =1 • t • sw =2 • pt =2</formula><p>It allows us to replace links with the entire topology if we modify switch states to match on the appropriate source and destination locations immediately before and after transitioning across a link. After modifying the and δ FDDs accordingly and taking the union of all switch states as described above, the resulting FDD can be passed to the local compiler to generate forwarding tables. The tables will correctly implement the global program provided the physical topology (in, t, out) satisfies the following:</p><formula xml:id="formula_25">• p ≡ in • p • out, i.e.</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>the global program specifies end-to-end forwarding paths</head><p>• t implements at least the links used in p.</p><p>• t • in ≡ false ≡ out • t, i.e. the in and out predicates should not include locations that are internal to the network.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.">Virtual Compilation</head><p>The third and final stage of our compiler pipeline translates virtual programs to physical programs. Recall that a virtual program is one that is defined over a virtual topology. Network virtualization can make programs easier to write by abstracting complex physical topologies to simpler topologies and also makes programs portable across different physical topologies. It can even be used to multiplex several virtual networks onto a single physical network-e.g., in multi-tenant datacenters <ref type="bibr" target="#b18">[19]</ref>.</p><p>To compile a virtual program, the compiler needs to know the mapping between virtual switches, ports, and links and their counterparts at the physical level. The programmer supplies a virtual program v , a virtual topology t, sets of ingress and egress locations for t, and a relation R between virtual and physical ports. The relation R must map each physical ingress to a virtual ingress, and conversely for egresses, but is otherwise unconstrained-e.g., it need not be injective or even a function. <ref type="foot" target="#foot_0">2</ref> The constraints on ingresses and egresses ensures that each packet entering the physical network lifts uniquely to a packet in the virtual network, and similarly for packets editing the virtual network. During execution of the virtual program, each packet can be thought of as having two locations, one in the virtual network and one in the physical network; R defines which pairs of locations are consistent with each other. For simplicity, we assume the virtual program is a local program. If it is not, the programmer can use the global compiler to put it into local form.</p><p>Overview. To execute a virtual program on a physical network, possibly with a different underlying topology, the compiler must (i) instrument the program to keep track of packet locations in the virtual topology and (ii) implement forwarding between locations that are adjacent in the virtual topology using physical paths. To achieve this, the virtual compiler proceeds as follows:</p><p>1. It instruments the program to use the virtual switch (vsw) and virtual port (vpt) fields that track of the location of the packet in the virtual topology.</p><p>2. It constructs a fabric: a NetKAT program that updates the physical location of a packet when its virtual location changes and vice versa, after each step of processing to restore consistency with respect to the virtual-physical relation, R.</p><p>3. It assembles the final program by combining v with the fabric, eliminating the vsw and vpt fields, and compiling the result using the global compiler.</p><p>Most of the complexity arises in the second step because there may be many valid fabrics (or there may be none). However, this step is independent of the virtual program. The fabric can be computed once and for all and then be reused as the program changes. Fabrics can be generated in several ways-e.g., to minimize a costs such as path length or latency, maximize disjointness, etc.</p><p>Instrumentation. To keep track of a packet's location in the virtual network, we introduce new packet fields vsw and vpt for the virtual switch and the virtual port, respectively. We replace all occurrences of the sw or pt field in the program v and the virtual topology t with vsw and vpt respectively using a simple textual substitution. Packets entering the physical network must be lifted to the virtual network. Hence, we replace in with a program that matches on all physical ingress locations I and initializes vsw and vpt in accordance with R:</p><formula xml:id="formula_26">in (sw ,pt)∈I (vsw ,vpt) R (sw ,pt) sw=sw • pt=pt • vsw←vsw • vpt←vpt</formula><p>Recall that we require R to relate each location in I to at most one virtual ingress, so the program lifts each packet to at most one ingress location in the virtual network. The vsw and vpt fields are only used to track locations during the early stages of virtual compilation. They are completely eliminated in the final assembly. Hence, we will not need to introduce additional tags to implement the resulting physical program.</p><p>Fabric construction. Each packet can be thought of as having two locations: one in the virtual topology and one in the underlying physical topology. After executing in , the locations are consistent according to the virtual-physical relation R. However, consistency can be broken after each step of processing using the virtual program v or virtual topology t. To restore consistency, we construct   which F has to restore consistency. The F-edges must be labeled with concrete paths through the physical topology, as there may exist several paths implementing the necessary multi-step transportation from the source node to the target node.</p><p>In general, there may be many fabrics possible and the choice of different F-edges correspond to fabrics with different characteristics, such as minimizing hop counts, maximizing disjoint paths, and so on. Our compiler implements several simple strategies. For example, given a metric φ on paths (such as hop count), our greedy strategy starts at the ingresses and adds a node whenever it is reachable through an edge e rooted at a node u already selected, and e is (i) any V-player edge or (ii) the F-player edge with path π minimizing φ among all edges and their paths rooted at u.</p><p>After a fabric is selected, it is straightforward to encode it as a NetKAT term. Every F-edge [lv, lp] → [lv, l p ] in the graph is encoded as a NetKAT term that matches on the locations lv and lp, forwards along the corresponding physical path from lp to l p , and then resets the virtual location to lv. Resetting the virtual location is semantically redundant but will make it easy to eliminating the vsw and vpt fields. We then take fin to be the union of all F -INedges, and fout to be the union of all F -OUT-edges. NetKAT's global abstractions play a key role, providing the building blocks for composing multiple overlapping paths into a unified fabric.</p><p>End-to-end Compilation. After the programs in , fin , and fout , are calculated from R, we assemble the physical program q, defined above. However, one last potential problem remains: although the virtual compiler adds instrumentation to update the physical switch and port fields, the program still matches and updates the virtual switch (vsw) and virtual port (vpt). However, note that by construction of q, any match on the vsw or vpt field is preceded by a modification of those fields on the same physical switch. Therefore, all matches are automatically eliminated during FDD generation, and only modifications of the vsw and vpt fields remain. These can be safely erased before generating flow tables as the global compiler inserts a program counter into q that plays double-duty to track both the physical location and the virtual location of a packet. Hence, we only need a single tag to compile virtual programs!</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.">Evaluation</head><p>To evaluate our compiler, we conducted experiments on a diverse set of real-world topologies and benchmarks. In practice, our compiler is a module that is used by the Frenetic SDN controller to map NetKAT programs to flow tables. Whenever network events occur, e.g., a host connects, a link fails, traffic patterns change, and so on, the controller may react by generating a new NetKAT program. Since network events may occur rapidly, a slow compiler can easily be a bottleneck that prevents the controller from reacting quickly to network events. In addition, the flow tables that the compiler generates must be small enough to fit on the available switches. Moreover, as small tables can be updated faster than large tables, table size affects the controller's reaction time too.</p><p>Therefore, in all the following experiments we measure flowtable compilation time and flow-table size. We apply the compiler to programs for a variety of topologies, from topology designs for very large datacenters to a dataset of real-world topologies. We highlight the effect of important optimizations to the fundamental FDD-based algorithms. We perform all experiments on 32-core, 2.6 GHz Intel Xeon E5-2650 machines with 64GB RAM. <ref type="foot" target="#foot_1">3</ref> We repeat all timing experiments ten times and plot their average. Fat trees. A fat-tree <ref type="bibr" target="#b1">[2]</ref> is a modern datacenter network design that uses commodity switches to minimize cost. It provides several redundant paths between hosts that can be used to maximize available bandwidth, provide backup paths, and so on. A fat-tree is organized into pods, where a k-pod fat-tree topology can support up to k 3 4 hosts. A real-world datacenter might have up to 48 pods <ref type="bibr" target="#b1">[2]</ref>. Therefore, our compiler should be able to generate forwarding programs for a 48-pod fat tree relatively quickly.</p><p>Figure <ref type="figure" target="#fig_14">12a</ref> shows how the time needed to generate all flow tables varies with the number of pods in a fat-tree. <ref type="foot" target="#foot_2">4</ref> The graph shows that we take approximately 30 seconds to produce tables for 48-pod fat trees (i.e., 27,000 hosts) and less than 120 seconds to generate programs for 60-pod fat trees (i.e., 54,000 hosts).</p><p>This experiment shows that the compiler can generate tables for large datacenters. But, this is partly because the fat-tree forwarding algorithm is topology-dependent and leverages symmetries to minimize the amount of forwarding rules needed. Many real-world topologies are not regular and require topology-independent forwarding programs. In the next section, we demonstrate that our compiler scales well with these topologies too.</p><p>Topology Zoo. The Topology Zoo <ref type="bibr" target="#b17">[18]</ref> is a dataset of a few hundred real-world network topologies of varying size and structure. For every topology in this dataset, we use destination-based routing to connect all nodes to each other. In destination-based routing, each switch filters packets by their destination address and forwards them along a spanning-tree rooted at the destination. Since each switch must be able to forward to any destination, the total number of rules must be O(n 2 ) for an n-node network.    Figure <ref type="figure" target="#fig_14">12b</ref> shows how the running time of the compiler varies across the topology zoo benchmarks. The curves are not as smooth as the curve for fat-trees, since the complexity of forwarding depends on features of network topology. Since the topology zoo is so diverse, this is a good suite to exercise the switch specialization optimization that dramatically reduces compile time.</p><p>A direct implementation builds of the local compiler builds one FDD for the entire network and uses it to generate flow tables for each switch. However, since several FDD (and BDD) algorithms are fundamentally quadratic, it helps to first specialize the program for each switch and then generate a small FDD for each switch in the network (switch specialization). Building FDDs for several smaller programs is typically much faster than building a single FDD for the entire network. As the graph shows, this optimization has a dramatic effect on all but the smallest topologies.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>SDX.</head><p>Our experiments thus far have considered some quite large forwarding programs, but none of them leverage software-defined networking in any interesting way. In this section, we report on our performance on benchmarks from a recent SIGCOMM paper <ref type="bibr" target="#b12">[13]</ref> that proposes a new application of SDN.</p><p>An Internet exchange point (IXP) is a physical location where networks from several ISPs connect to each other to exchange traffic. Legal contracts between networks are often implemented by routing programs at IXPs. However, today's IXPs use baroque protocols the needlessly limit the kinds of programs that can be implemented. A Software-defined IXP (an "SDX" <ref type="bibr" target="#b12">[13]</ref>) gives participants fine-grained control over packet-processing and peering using a high-level network programming language. The SDX prototype uses Pyretic <ref type="bibr" target="#b24">[25]</ref> to encode policies and presents several examples that demonstrate the power of an expressive network programming language.</p><p>We build a translator from Pyretic to NetKAT and use it to evaluate our compiler on SDXs own benchmarks. These benchmarks simulate a large IXP where a few hundred peers apply programs to several hundred prefix groups. The dashed lines in Figure <ref type="figure" target="#fig_14">12c</ref> reproduce a graph from the SDX paper, which shows how compilation time varies with the number of prefix groups and the number of participants in the SDX. 5 The solid lines show that our compiler is orders of magnitude faster. Pyretic takes over 10 minutes to compile the largest benchmark, but our compiler only takes two seconds.</p><p>Although Pyretic is written in Python, which is a lot slower than OCaml, the main problem is that Pyretic has a simple table-based compiler that does not scale (Section 2). In fact, the authors of SDX 5 We get nearly the same numbers as the SDX paper on our hardware. had to add several optimizations to get the graph depicted. Despite these optimizations, our FDD-based approach is substantially faster.</p><p>The SDX paper also reports flow-table sizes for the same benchmark. At first, our compiler appeared to produce tables that were twice as large as Pyretic. Naturally, we were unhappy with this result and investigated. Our investigation revealed a bug in the Pyretic compiler, which would produce incorrect tables that were artificially small. The authors of SDX have confirmed this bug and it has been fixed in later versions of Pyretic. We are actively working with them to port SDX to NetKAT to help SDX scale further.</p><p>Classbench. Lastly, we compile ACLs generated using Classbench <ref type="bibr" target="#b29">[32]</ref>. These are realistic firewall rules that showcase another optimization: it is often possible to significantly compress tables by combining and eliminating redundant rules.</p><p>We build an optimizer for the flow-table generation algorithm in Figure <ref type="figure" target="#fig_9">8</ref>. Recall that that we generate flow-tables by converting every complete path in the FDD into a rule. Once a path has been traversed, we can remove it from the FDD without harm. However, naively removing a path may produce an FDD that is not reduced. Our optimization is simple: we remove paths from the FDD as they are turned into rules and ensure that the FDD is reduced at each step. When the last path is turned into a rule, we are left with a trivial FDD. This iterative procedure prevents several unnecessary rules from being generated. It is possible to implement other canonical optimizations. But, this optimization is unique because it leverages properties of reduced FDDs. Figure <ref type="figure" target="#fig_17">13a</ref> shows that this approach can produce 30% fewer rules on average than a direct implementation of flow-table generation. We do not report running times for the optimizer, but it is negligible in all our experiments.</p><p>Global compiler. The benchmarks discussed so far only use the local compiler. In this section, we focus on the global compiler. Since the global compiler introduces new abstractions, we can't apply it to existing benchmarks, such as SDX, which use local programs. Instead, we need to build our own benchmark suite of global programs. To do so, we build a generator that produces global programs that describe paths between hosts. Again, an nnode topology has O(n 2 ) paths. We apply this generator to the Topology Zoo, measuring compilation time and table size:</p><p>• Compilation time: since the global compiler leverages FDDs, we can expect automaton generation to be fast. However, global compilation involves other steps such as determinization and localization and their effects on compilation time may matter. Figure <ref type="figure" target="#fig_17">13c</ref> shows how compilation time varies with the total number of rules generated. This graph does grow faster than local compilation time on the same benchmark (the red, dashed  <ref type="figure" target="#fig_14">12b</ref>). Switch-specialization, which dramatically reduces the size of FDDs and hence compilation time, does not work on global programs. Therefore, it makes most sense to compare this graph to local compilation with a single FDD.</p><p>• Table size: The global compiler has some optimizations to eliminate unnecessary states, which produces fewer rules. However, it it does not fully minimize NetKAT automata thus it may produce more rules than equivalent local programs. Figure <ref type="figure" target="#fig_17">13b</ref> shows that on the topology zoo, global routing produces tables that are no more than twice as large as local routing.</p><p>We belive these results are promising: we spent a lot of time tuning the local compiler, but the global compiler is an early prototype with much room for improvement.</p><p>Virtualization case study. Finally, we present a small case study that showcases the virtual compiler on a snapshot of the AT&amp;T backbone network circa 2007-2008. This network is part of the Topology Zoo and shown in Figure <ref type="figure" target="#fig_18">14</ref>. We construct a "one big switch" virtual network and use it to connect five nodes (highlighted in green) to each other: To map the virtual network to the physical network, we generate three different fabrics: (a) a fabric that minimizes the total number of links used across the network, (b) a fabric that minimizes the number of hops between hosts, and (c) a fabric that minimizes the physical length of the path between hosts. In the figure, the links utilized by each of these fabrics is highlighted in red.</p><p>The three fabrics give rise to three very different implementations of the same virtual program. Note that the program and the fabric are completely independent of each other and can be updated independently. For example, the operator managing the physical network could change the fabric to implement a new SLA, e.g. move from minimum-utilization to shortest-paths. This change requires no update to the virtual program; the network would witness performance improvement for free. Similarly, the virtual network operator could decide to implement a new firewall policy in the virtual network or change the forwarding behavior. The old fabric would work seamlessly with this new virtual program without intervention by the physical network operator. In principle, our compiler could even be used repeatedly to virtualize virtual networks.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7.">Related Work</head><p>A large body of work has explored the design of high-level languages for SDN programming <ref type="bibr" target="#b7">[8,</ref><ref type="bibr" target="#b18">19,</ref><ref type="bibr" target="#b23">24,</ref><ref type="bibr" target="#b24">25,</ref><ref type="bibr">28,</ref><ref type="bibr">29,</ref><ref type="bibr" target="#b30">33]</ref>. Our work is unique in its focus on the task of engineering efficient compilers that scale up to large topologies as well as expressive global and virtual programs.</p><p>An early paper by Monsanto et al. proposed the NetCore language and presented an algorithm for compiling programs based on forwarding tables <ref type="bibr" target="#b23">[24]</ref>. Subsequent work by Guha et al. developed a verified implementation of NetCore in the Coq proof assistant <ref type="bibr" target="#b11">[12]</ref>. Anderson et al. developed NetKAT as an extension to NetCore and proposed a compilation algorithm based on manipulating nested conditionals, which are essentially equivalent to forwarding tables. The correctness of the algorithm was justified using NetKAT's equational axioms, but didn't handle global programs or Kleene star. Concurrent NetCore <ref type="bibr" target="#b27">[30]</ref> grows NetCore with features that target next-generation SDN-switches. The original Pyretic paper implemented an "reactive microflow interpreter" and not a compiler <ref type="bibr" target="#b24">[25]</ref>. However later work developed a compiler in the style of NetCore. SDX uses Pyretic to program Internet exchange points <ref type="bibr" target="#b12">[13]</ref>. CoVisor develops incremental algorithms for maintaining forwarding table in the presence of changes to programs composed using NetCore-like operators <ref type="bibr" target="#b14">[15]</ref>. Recent work by Jose et al. developed a compiler based on integer linear programming for next-generation switches, each with multiple, programmable forwarding tables <ref type="bibr" target="#b15">[16]</ref>.</p><p>A number of papers in the systems community have proposed mechanisms for implementing virtual network programs. An early workshop paper by Casado proposed the idea of network virtualization and sketched an implementation strategy based on a hypervisor <ref type="bibr" target="#b6">[7]</ref>. Our virtual compiler extends this basic strategy by introducing a generalized notion of a fabric, developing concrete algorithms for computing and selecting fabrics, and showing how to compose fabrics with virtual programs in the context of a high-level language. Subsequent work by Koponen et al. described VMware's NVP platform, which implements hypervisor-based virtualization in multi-tenant datacenters <ref type="bibr" target="#b18">[19]</ref>. Pyretic <ref type="bibr" target="#b24">[25]</ref>, CoVisor <ref type="bibr" target="#b14">[15]</ref>, and OpenVirteX <ref type="bibr" target="#b2">[3]</ref> all support virtualization-the latter at three different levels of abstraction: topology, address, and control application. However, none of these papers present a complete description of algorithms for computing the forwarding state needed to implement virtual networks.</p><p>The FDDs used in our local compiler as well as our algorithms for constructing NetKAT automata are inspired by Pous's work on symbolic KAT automata <ref type="bibr" target="#b26">[27]</ref> and work by some of the authors on a verification tool for NetKAT <ref type="bibr" target="#b10">[11]</ref>. The key differences between this work and ours is that they focus on verification of programs whereas we develop compilation algorithms. BDDs have been used for verification for several decades <ref type="bibr" target="#b0">[1,</ref><ref type="bibr" target="#b5">6]</ref>. In the context of networks, BDDs and BDD-like structures have been used to optimize access control policies <ref type="bibr" target="#b20">[21]</ref>, TCAMs <ref type="bibr" target="#b21">[22]</ref>, and to verify <ref type="bibr" target="#b16">[17]</ref> data plane configurations, but our work is the first to use BDDs to compile network programs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="8.">Conclusion</head><p>This paper describes the first complete compiler for the NetKAT language. It presents a suite of tools that leverage BDDs, graph algorithms, and symbolic automata to efficiently compile programs in the NetKAT language down to compact forwarding tables for SDN switches. In the future, we plan to investigate whether richer constructs such as stateful and probabilistic programs can be implemented using our techniques, how classic algorithms from the automata theory literature can be adapted to optimize global programs, how incremental algorithms can be incorporated into our compiler, and how the compiler can assist in performing graceful dynamic updates to network state.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Syntax</head><label></label><figDesc>Naturals n ::= 0 | 1 | 2 | . . . Fields f ::= f1 | • • • | f k Packets pk ::= {f1 = n1, • • • , f k = n k } Histories h ::= pk | pk ::h Predicates a, b ::= true Identity | false Drop | f =n Test | a + b Disjunction | a • b Conjunction | ¬a Negation Programs p, q ::= a Filter | f ←n Modification | p + q Union | p • q Sequencing | p * Iteration | dup Duplication Semantics [[p]] ∈ History → P(History) [[true]] h {h} [[false]] h {} [[f =n]] (pk ::h) {pk ::h} if pk .f = n {} otherwise [[¬a]] h {h} \ ([[a]] h)[[f ←n]] (pk ::h) {pk [f := n]::h}</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: NetKAT syntax and semantics.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>1 ActionFigure 3 :</head><label>13</label><figDesc>Figure 3: NetKAT compiler pipeline.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: Compiling using forwarding tables.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head></head><label></label><figDesc>dst proto.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Figure 4 :</head><label>4</label><figDesc>Figure 4: Two ordered FDDs for the same program.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>Figure 5 :</head><label>5</label><figDesc>Figure 5: Forwarding decision diagrams: syntax, semantics, and well formedness.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head>Figure 6 :</head><label>6</label><figDesc>Figure 6: Auxiliary definitions for local compilation to FDDs.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head>Figure 7 :</head><label>7</label><figDesc>Figure 7: Local compilation to FDDs.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_9"><head>Figure 8 :</head><label>8</label><figDesc>Figure 8: Forwarding table generation example.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_10"><head>Figure 9 :</head><label>9</label><figDesc>Figure 9: Auxiliary definitions for NetKAT automata construction.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_11"><head></head><label></label><figDesc>For all programs p, we have the following:(a) p ≡ E[[p]] + D[[p]]. (b) E[[p]] is a local program. (c) For all d, , k ∈ D[[p]],d is a program. (d) For all labels in p, there exist unique programs d and k such that d, , k ∈ D[[p]].</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_12"><head></head><label></label><figDesc>Routing on k-pod fat-trees. Destination-based routing on topology zoo.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_13"><head></head><label></label><figDesc>Time needed to compile SDX benchmarks.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_14"><head>Figure 12 :</head><label>12</label><figDesc>Figure 12: Experimental results: compilation time.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_16"><head></head><label></label><figDesc>Compilation time for global programs.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_17"><head>Figure 13 :</head><label>13</label><figDesc>Figure 13: Experimental results: forwarding table compression and global compilation.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_18"><head>Figure 14 :</head><label>14</label><figDesc>Figure 14: Three fabrics optimizing different metrics</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head></head><label></label><figDesc>Table size overhead for global programs.</figDesc><table /></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_0"><p>Actually, we can relax this condition slightly and allow physical ingresses to map to zero or one virtual ingresses-if a physical ingress has no corresponding representative in the virtual network, then packets arriving at that ingress will not be admitted to the virtual network.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="3" xml:id="foot_1"><p>Our compiler is single-threaded and doesn't leverage multicore.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="4" xml:id="foot_2"><p>This benchmark uses the switch-specialization optimization, which we describe in the next section.</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><p>Acknowledgments. The authors wish to thank the anonymous ICFP '15 reviewers, <rs type="person">Dexter Kozen</rs>, <rs type="person">Shriram Krishnamurthi</rs>, <rs type="person">Konstantinos Mamouras</rs>, <rs type="person">Mark Reitblatt</rs>, <rs type="person">Alexandra Silva</rs>, and members of the <rs type="institution">Cornell PLDG</rs> and <rs type="funder">DIKU</rs> COPLAS seminars for insightful comments and helpful suggestions. We also wish to thank the developers of GNU Parallel <ref type="bibr" target="#b28">[31]</ref> for developing tools used in our experiments. Our work is supported by the <rs type="funder">National Science Foundation</rs> under grants <rs type="grantNumber">CNS-1111698</rs>, <rs type="grantNumber">CNS-1413972</rs>, <rs type="grantNumber">CNS-1413985</rs>, <rs type="grantNumber">CCF-1408745</rs>, <rs type="grantNumber">CCF-1422046</rs>, and <rs type="grantNumber">CCF-1253165</rs>; the <rs type="funder">Office of Naval Research</rs> under grants <rs type="grantNumber">N00014-12-1-0757</rs> and <rs type="grantNumber">N00014-15-1-2177</rs>; and a gift from <rs type="funder">Fujitsu Labs</rs>.</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funding" xml:id="_n59bSB7">
+					<idno type="grant-number">CNS-1111698</idno>
+				</org>
+				<org type="funding" xml:id="_rUtTC87">
+					<idno type="grant-number">CNS-1413972</idno>
+				</org>
+				<org type="funding" xml:id="_aNUTqGz">
+					<idno type="grant-number">CNS-1413985</idno>
+				</org>
+				<org type="funding" xml:id="_V84HPrv">
+					<idno type="grant-number">CCF-1408745</idno>
+				</org>
+				<org type="funding" xml:id="_t8QB9mB">
+					<idno type="grant-number">CCF-1422046</idno>
+				</org>
+				<org type="funding" xml:id="_yuhTaVd">
+					<idno type="grant-number">CCF-1253165</idno>
+				</org>
+				<org type="funding" xml:id="_ucppsGT">
+					<idno type="grant-number">N00014-12-1-0757</idno>
+				</org>
+				<org type="funding" xml:id="_WKX4zMz">
+					<idno type="grant-number">N00014-15-1-2177</idno>
+				</org>
+			</listOrg>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>a fabric comprising programs fin and fout from the virtual and physical topologies and R, and insert it into the program:</p><p>In this program, v and t alternate with fout and fin in processing packets, thereby breaking and restoring consistency repeatedly. Intuitively, it is the job of the fabric to keep the virtual and physical locations in sync. This process can be viewed as a two-player game between a virtual player V (embodied by v and t) and a fabric player F (embodied by fout and fin ). The players take turns moving a packet across the virtual and the physical topology, respectively. Player V wins if the fabric player F fails to restore consistency after a finite number of steps; player F wins otherwise. Constructing a fabric now amounts to finding a winning strategy for F.</p><p>We start by building the game graph G = (V, E) modeling all possible ways that consistency can be broken by V or restored by F. Nodes are pairs of virtual and physical locations, [lv, lp], where a location is a 3-tuple comprising a switch, a port, and a direction that indicates if the packet entering the port (I) leaving the port (O). The rules in Figure <ref type="figure">10</ref> determine the edges of the game graph:</p><p>There are two ways to do so: either V moves packets across a virtual switch (V -POL) or across a virtual link (V -TOPO). In the inference rules, we write →v to denote a single hop in the virtual topology: • The edge [lv, lp] → [lv, l p ] exists if F can move packets from lp to l p . When F makes a move, it must restore physical-virtual consistency (the R relation in the premise of F -POL and F -TOPO). To do so, it may need to take several hops through the physical network (written as → + p ). • In addition, F may leave a packet at their current location, if the location is already consistent (F -LOOP-IN and F -LOOP-OUT). Note that these force a packet located at physical location (sw, pt, O) to leave through port pt eventually. Intuitively, once the fabric has committed to emitting the packet through a given port, it can only delay but not withdraw that commitment.</p><p>Although these rules determine the complete game graph, all packets enter the network at an ingress location (determined by the in predicate). Therefore, we can restrict our attention to only those nodes that are reachable from the ingress (reachable nodes in Figure <ref type="figure">11</ref>). In the resulting graph G = (V, E), every path represents a possible trajectory that a packet processed by q may take through the virtual and physical topology.</p><p>In addition to removing unreachable nodes, we must remove fatal nodes, which are the nodes where F is unable to restore consistency and thus loses the game. F -FATAL says that any state from which F is unable to move to a non-fatal state is fatal. In particular, this includes states in which F cannot move to any other state at all. V -FATAL says that any state in which V can move to a fatal state is fatal. Intuitively, we define such states to be fatal since we want the fabric to work for any virtual program the programmer may write. Fatal states can be removed using a simple backwards traversal of the graph starting from nodes without outgoing edges. This process may remove ingress nodes if they turn out to be fatal. This happens if and only if there exists no fabric that can always restore consistency for arbitrary virtual programs. Of course, this case can only arise if the physical topology is not bidirectional.</p><p>Fabric selection. If all ingress nodes withstand pruning, the resulting graph encodes exactly the set of all winning strategies for F, i.e. the set of all possible fabrics. A fabric is a subgraph of G that contains the ingress, is closed under all possible moves by the virtual program, and contains exactly one edge out of every state in</p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Binary decision diagrams</title>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">B</forename><surname>Akers</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Trans. Comput</title>
+		<imprint>
+			<biblScope unit="volume">27</biblScope>
+			<biblScope unit="issue">6</biblScope>
+			<biblScope unit="page" from="509" to="516" />
+			<date type="published" when="1978-06">June 1978</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">A scalable, commodity, data center network architecture</title>
+		<author>
+			<persName><forename type="first">Mohammad</forename><surname>Al-Fares</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alex</forename><surname>Loukissas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amin</forename><surname>Vahdat</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">SIGCOMM</title>
+		<imprint>
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<monogr>
+		<title level="m" type="main">OpenVirteX: Make your virtual SDNs programmable</title>
+		<author>
+			<persName><forename type="first">Ali</forename><surname>Al-Shabibi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marc</forename><forename type="middle">De</forename><surname>Leenheer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matteo</forename><surname>Gerola</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ayaka</forename><surname>Koshibe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guru</forename><surname>Parulkar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Elio</forename><surname>Salvadori</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bill</forename><surname>Snow</surname></persName>
+		</author>
+		<editor>HotSDN</editor>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">NetKAT: Semantic foundations for networks</title>
+		<author>
+			<persName><forename type="first">Carolyn</forename><surname>Jane Anderson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nate</forename><surname>Foster</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arjun</forename><surname>Guha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jean-Baptiste</forename><surname>Jeannin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dexter</forename><surname>Kozen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Cole</forename><surname>Schlesinger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Walker</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">POPL</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Partial derivatives of regular expressions and finite automaton constructions</title>
+		<author>
+			<persName><forename type="first">Valentin</forename><surname>Antimirov</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Theoretical Computer Science</title>
+		<imprint>
+			<biblScope unit="volume">155</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="291" to="319" />
+			<date type="published" when="1996">1996</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Graph-based algorithms for boolean function manipulation</title>
+		<author>
+			<persName><forename type="first">Randal</forename><forename type="middle">E</forename><surname>Bryant</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Trans. Comput</title>
+		<imprint>
+			<biblScope unit="volume">35</biblScope>
+			<biblScope unit="issue">8</biblScope>
+			<biblScope unit="page" from="677" to="691" />
+			<date type="published" when="1986-08">August 1986</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<monogr>
+		<title level="m" type="main">Virtualizing the network forwarding plane</title>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>Casado</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Teemu</forename><surname>Koponen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rajiv</forename><surname>Ramanathan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Scott</forename><surname>Shenker</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+			<publisher>PRESTO</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<title level="m" type="main">Hierarchical policies for software defined networks</title>
+		<author>
+			<persName><forename type="first">Andrew</forename><forename type="middle">D</forename><surname>Ferguson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arjun</forename><surname>Guha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chen</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rodrigo</forename><surname>Fonseca</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shriram</forename><surname>Krishnamurthi</surname></persName>
+		</author>
+		<editor>HotSDN</editor>
+		<imprint>
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Participatory networking: An api for application control of sdns</title>
+		<author>
+			<persName><forename type="first">Andrew</forename><forename type="middle">D</forename><surname>Ferguson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arjun</forename><surname>Guha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chen</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rodrigo</forename><surname>Fonseca</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shriram</forename><surname>Krishnamurthi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">SIGCOMM</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Frenetic: A Network Programming Language</title>
+		<author>
+			<persName><forename type="first">Nate</forename><surname>Foster</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rob</forename><surname>Harrison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><forename type="middle">J</forename><surname>Freedman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Monsanto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jennifer</forename><surname>Rexford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alec</forename><surname>Story</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Walker</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICFP</title>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">A coalgebraic decision procedure for NetKAT</title>
+		<author>
+			<persName><forename type="first">Nate</forename><surname>Foster</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dexter</forename><surname>Kozen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthew</forename><surname>Milano</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexandra</forename><surname>Silva</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Laure</forename><surname>Thompson</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">POPL</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Machine-verified network controllers</title>
+		<author>
+			<persName><forename type="first">Arjun</forename><surname>Guha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mark</forename><surname>Reitblatt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nate</forename><surname>Foster</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">PLDI</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">SDX: A software defined internet exchange</title>
+		<author>
+			<persName><forename type="first">Arpit</forename><surname>Gupta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Laurent</forename><surname>Vanbever</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Muhammad</forename><surname>Shahbaz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sean</forename><surname>Donovan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Brandon</forename><surname>Schlinker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nick</forename><surname>Feamster</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jennifer</forename><surname>Rexford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Scott</forename><surname>Shenker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Russ</forename><surname>Clark</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ethan</forename><surname>Katz-Bassett</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">SIGCOMM</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<monogr>
+		<title level="m" type="main">Splendid isolation: A slice abstraction for software-defined networks</title>
+		<author>
+			<persName><forename type="first">Stephen</forename><surname>Gutz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alec</forename><surname>Story</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Cole</forename><surname>Schlesinger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nate</forename><surname>Foster</surname></persName>
+		</author>
+		<editor>HotSDN</editor>
+		<imprint>
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Co-Visor: A compositional hypervisor for software-defined networks</title>
+		<author>
+			<persName><forename type="first">Xin</forename><surname>Jin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jennifer</forename><surname>Gossels</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jennifer</forename><surname>Rexford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Walker</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NSDI</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Compiling packet programs to reconfigurable switches</title>
+		<author>
+			<persName><forename type="first">Lavanya</forename><surname>Jose</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lisa</forename><surname>Yan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">George</forename><surname>Varghese</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nick</forename><surname>Mckeown</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NSDI</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Veriflow: Verifying network-wide invariants in real time</title>
+		<author>
+			<persName><forename type="first">Ahmed</forename><surname>Khurshid</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xuan</forename><surname>Zou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wenxuan</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthew</forename><surname>Caesar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">Brighten</forename><surname>Godfrey</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NSDI</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">The internet topology zoo</title>
+		<author>
+			<persName><forename type="first">Simon</forename><surname>Knight</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hung</forename><forename type="middle">X</forename><surname>Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nickolas</forename><surname>Falkner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rhys</forename><surname>Bowden</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthew</forename><surname>Roughan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Journal on Selected Areas in Communications</title>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Network virtualization in multi-tenant datacenters</title>
+		<author>
+			<persName><forename type="first">Teemu</forename><surname>Koponen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Keith</forename><surname>Amidon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Balland</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martín</forename><surname>Casado</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anupam</forename><surname>Chanda</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bryan</forename><surname>Fulton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jesse</forename><surname>Gross</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Igor</forename><surname>Ganichev</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Natasha</forename><surname>Gude</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Paul</forename><surname>Ingram</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ethan</forename><surname>Jackson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Lambeth</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Romain</forename><surname>Lenglet</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shih-Hao</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amar</forename><surname>Padmanabhan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Justin</forename><surname>Pettit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ben</forename><surname>Pfaff</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rajiv</forename><surname>Ramanathan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Scott</forename><surname>Shenker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alan</forename><surname>Shieh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeremy</forename><surname>Stribling</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pankaj</forename><surname>Thakkar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dan</forename><surname>Wendlandt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexander</forename><surname>Yip</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ronghua</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NSDI</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Kleene algebra with tests</title>
+		<author>
+			<persName><forename type="first">Dexter</forename><surname>Kozen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Transactions on Programming Languages and Systems</title>
+		<imprint>
+			<biblScope unit="volume">19</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="427" to="443" />
+			<date type="published" when="1997-05">May 1997</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">XEngine: A fast and scalable XACML policy evaluation engine</title>
+		<author>
+			<persName><forename type="first">Alex</forename><forename type="middle">X</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fei</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeehyun</forename><surname>Hwang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tao</forename><surname>Xie</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Measurement and Modeling of Computer Systems (SIG-METRICS)</title>
+		<imprint>
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">TCAM Razor: A systematic approach towards minimizing packet classifiers in TCAMs</title>
+		<author>
+			<persName><forename type="first">Alex</forename><forename type="middle">X</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chad</forename><forename type="middle">R</forename><surname>Meiners</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eric</forename><surname>Torng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">TON</title>
+		<imprint>
+			<biblScope unit="volume">18</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="490" to="500" />
+			<date type="published" when="2010-04">April 2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">OpenFlow: Enabling innovation in campus networks</title>
+		<author>
+			<persName><forename type="first">Nick</forename><surname>Mckeown</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tom</forename><surname>Anderson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hari</forename><surname>Balakrishnan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guru</forename><surname>Parulkar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Larry</forename><surname>Peterson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jennifer</forename><surname>Rexford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Scott</forename><surname>Shenker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jonathan</forename><surname>Turner</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">SIGCOMM CCR</title>
+		<imprint>
+			<date type="published" when="2008">2008</date>
+			<biblScope unit="volume">38</biblScope>
+			<biblScope unit="page" from="69" to="74" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">A compiler and run-time system for network programming languages</title>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Monsanto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nate</forename><surname>Foster</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rob</forename><surname>Harrison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Walker</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">POPL</title>
+		<imprint>
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Composing software-defined networks</title>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Monsanto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joshua</forename><surname>Reich</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nate</forename><surname>Foster</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jennifer</forename><surname>Rexford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Walker</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NSDI</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Tierless programming and reasoning for softwaredefined networks</title>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Nelson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><forename type="middle">D</forename><surname>Ferguson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">G</forename><surname>Michael</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shriram</forename><surname>Scheer</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Krishnamurthi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NSDI</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Symbolic algorithms for language equivalence and Kleene Algebra with Tests</title>
+		<author>
+			<persName><forename type="first">Damien</forename><surname>Pous</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">POPL</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Concurrent netcore: From policies to pipelines</title>
+		<author>
+			<persName><forename type="first">Cole</forename><surname>Schlesinger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Greenberg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Walker</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICFP</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<monogr>
+		<author>
+			<persName><forename type="first">O</forename><surname>Tange</surname></persName>
+		</author>
+		<title level="m">GNU parallel -the command-line power tool. ;login: The USENIX Magazine</title>
+		<imprint>
+			<date type="published" when="2011-02">Feb 2011</date>
+			<biblScope unit="volume">36</biblScope>
+			<biblScope unit="page" from="42" to="47" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">ClassBench: A packet classification benchmark</title>
+		<author>
+			<persName><forename type="first">David</forename><forename type="middle">E</forename><surname>Taylor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jonathan</forename><forename type="middle">S</forename><surname>Turner</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">TON</title>
+		<imprint>
+			<biblScope unit="volume">15</biblScope>
+			<biblScope unit="page" from="499" to="511" />
+			<date type="published" when="2007-06">June 2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Maple: Simplifying SDN programming using algorithmic policies</title>
+		<author>
+			<persName><forename type="first">Andreas</forename><surname>Voellmy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junchang</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><forename type="middle">Richard</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bryan</forename><surname>Ford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Paul</forename><surname>Hudak</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">SIGCOMM</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

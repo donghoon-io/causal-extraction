@@ -1,0 +1,528 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Breaking Band: A Breakdown of High-performance Communication</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability  status="unknown">
+					<licence/>
+				</availability>
+				<date type="published" when="2020-02-07">7 Feb 2020</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Rohit</forename><surname>Zambre</surname></persName>
+							<email>rzambre@uci.edu</email>
+						</author>
+						<author>
+							<persName><forename type="first">Megan</forename><surname>Grodowitz</surname></persName>
+							<email>megan.grodowitz@arm.com</email>
+						</author>
+						<author>
+							<persName><forename type="first">Aparna</forename><surname>Chandramowlishwaran</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Pavel</forename><surname>Shamis</surname></persName>
+							<email>pavel.shamis@arm.com</email>
+						</author>
+						<author>
+							<affiliation key="aff0">
+								<orgName type="institution" key="instit1">EECS</orgName>
+								<orgName type="institution" key="instit2">University of California</orgName>
+								<address>
+									<settlement>Irvine</settlement>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff1">
+								<orgName type="institution" key="instit1">EECS</orgName>
+								<orgName type="institution" key="instit2">University of California</orgName>
+								<address>
+									<settlement>Irvine New York</settlement>
+									<region>NY</region>
+									<country>USA USA, 10 pages</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Breaking Band: A Breakdown of High-performance Communication</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2020-02-07">7 Feb 2020</date>
+						</imprint>
+					</monogr>
+					<idno type="DOI">10.1145/3337821.3337910</idno>
+					<idno type="arXiv">arXiv:2002.02563v1[cs.DC]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-21T21:21+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<textClass>
+				<keywords>
+					<term>analytical modeling</term>
+					<term>performance analysis</term>
+					<term>what-if analysis</term>
+					<term>breakdown</term>
+					<term>high-performance communication</term>
+					<term>Arm-based server</term>
+					<term>Thun-derX2</term>
+					<term>InfiniBand</term>
+				</keywords>
+			</textClass>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>The critical path of internode communication on large-scale systems is composed of multiple components. When a supercomputing application initiates the transfer of a message using a high-level communication routine such as an MPI_Send, the payload of the message traverses multiple software stacks, the I/O subsystem on both the host and target nodes, and network components such as the switch. In this paper, we analyze where, why, and how much time is spent on the critical path of communication by modeling the overall injection overhead and end-to-end latency of a system. We focus our analysis on the performance of small messages since fine-grained communication is becoming increasingly important with the growing trend of an increasing number of cores per node. The analytical models present an accurate and detailed breakdown of time spent in internode communication. We validate the models on Arm ThunderX2-based servers connected with Mellanox InfiniBand. This is the first work of this kind on Arm. Alongside our breakdown, we describe the methodology to measure the time spent in each component so that readers with access to precise CPU timers and a PCIe analyzer can measure breakdowns on systems of their interest. Such a breakdown is crucial for software developers, system architects, and researchers to guide their optimization efforts. As researchers ourselves, we use the breakdown to simulate the impacts and discuss the likelihoods of a set of optimizations that target the bottlenecks in today's high-performance communication.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">INTRODUCTION</head><p>"To measure is to know. "</p><p>-Lord Kelvin</p><p>Internode communication is the crux of supercomputing. We can classify the various components involved in sending a message into one of three categories: CPU, I/O, or network fabric, as shown in Figure <ref type="figure" target="#fig_0">1</ref>. Software stacks on the CPU include the Message Passing Interface (MPI) and the communication protocol processing in the underlying communication frameworks. I/O encompasses subsystems on the processor chip such as PCI Express (PCIe). Network components are the high-performance interconnect's switches and physical wire. Each of these components on the critical path of communication poses an opportunity for optimization. However, blindly optimizing all of the components is impractical considering the technical challenges associated with each and the wide variety of use cases. For example, the latency of sending a large message is driven by the time spent in the network components. Hence, optimizing the software stack for this case would be a futile effort. On the other hand, the time spent in the software stack during the propagation of a small message is a considerable portion of the overall latency and, hence, optimizing the time spent in the CPU would be beneficial. Therefore, it is important to understand where to focus our optimization efforts.</p><p>With the apparent end of Moore's law, the architectures of recent servers are now featuring a large number of cores per node <ref type="bibr" target="#b10">[11,</ref><ref type="bibr" target="#b14">15]</ref>, a trend that is likely to continue moving forward <ref type="bibr" target="#b24">[25]</ref>. Furthermore, other on-node resources such as memory, translation lookaside buffers, and network-hardware registers are not growing at the same rate. Since developers desire to solve the same problem faster on newer machines, they need to rely on strong scalability with the decreasing amount of memory per core (assuming a static split with a process per core). At the limits of strong scaling lies fine-grained communication, that is, each core participates in communication, eliminating the need to synchronize with the cores on a node. Since each core communicates independently of the others, the size of the messages involved in communication is small. Hence, we focus our analysis on the communication performance of small messages since it is a critical factor in overall performance. CPU, I/O, and network equally contribute to the communication performance of small messages; the times spent in each of the categories are on the same order of magnitude on state-of-the-art systems (we demonstrate this in § 6). Hence, optimizations of each category's constituents would be beneficial. This raises the question: how much will optimizing component X improve the overall communication performance? The answer to this question can guide the research and engineering efforts of software developers, system architects, and the HPC community at large. Typically, one measures the limits of a system's communication performance using injection-rate and latency tests. But such measurements do not inform the researcher where time is being spent or why the performance of one version of the system varies from that of another.</p><p>In this paper, we answer the posed question by analyzing the time spent in state-of-the-art software and system components during the transmission of messages. We classify the components into two levels: low and high. Low-level components include those that are not exposed to a typical end-user of an HPC system. These include the low-level communication framework (e.g. Verbs), the I/O subsystem (e.g. PCIe), and network components (e.g. Mellanox InfiniBand fiber). High-level components include programming model frameworks such as MPI.</p><p>Contributions and findings. This paper makes the following contributions.</p><p>(1) Detailed breakdown. As a first step to answer the posed question, we construct analytical models of the overall injection overhead and end-to-end latency of a system. Our models explain where and why time is spent during the transmission of a message. By attributing times to the models' constituents using precise CPU timers and traces from a PCIe analyzer, we show how much time is spent in low-level ( § 4) and high-level ( § 5) components, and thus present a detailed breakdown of highperformance communication. Our analytical models estimate the observed performance within a 5% margin of error on Arm ThunderX2. This work is the first of its kind on Arm. We use the breakdown to provide key insights in § 6. (2) Measurement methodology. We present a detailed methodology to measure the overhead of each component such as the PCIe wire, the interconnect's wire, etc. Researchers with access to a similar analysis infrastructure described in § 3 can then measure overheads for components of their interest using our methodology. (3) Simulated optimizations. Finally, we answer the aforementioned question in § 7 through a what-if analysis. We discuss the impact and likelihood of a set of optimizations that target the CPU, I/O, and network components of high-performance communication. Mechanisms of a high-performance interconnect. From a CPU programmer's perspective, there exists a transmit queue (TxQ) and a completion queue (CQ). The user posts their message descriptor (MD) to the transmit queue, after which they poll on the CQ to confirm the completion of the posted message. The user could also request to be notified with an interrupt regarding the completion. However, the polling approach is latency-oriented since there is no context switch to the kernel in the critical path. The actual transmission of a message over the network occurs through coordination between the processor chip and the NIC using memory mapped I/O (MMIO) and direct memory access (DMA) reads and writes. We describe these steps below using Figure <ref type="figure" target="#fig_1">2</ref>.</p><p>(0) The user first enqueues an MD into the TxQ. The network driver then prepares the device-specific MD that contains headers for the NIC, and a pointer to the payload. (1) Using an 8-byte atomic write to a memory-mapped location, the CPU (the network driver) notifies the NIC that a message is ready to be sent. This is called ringing the DoorBell. The RC executes the DoorBell using a MWr PCIe transaction. (2) After the DoorBell ring, the NIC fetches the MD using a DMA read. A MRd PCIe transaction conducts the DMA read.</p><p>(3) The NIC will then fetch the payload from a registered memory region using another DMA read (another MRd TLP). Note that the virtual address has to be translated to its physical address before the NIC can perform DMA-reads. (4) Once the NIC receives the payload, it transmits the read data over the network. Upon a successful transmission, the NIC receives an acknowledgment (ACK) from the target-NIC. (5) Upon the reception of the ACK, the NIC will DMA-write (using a MWr TLP) a completion (64 bytes in Mellanox InfiniBand) to the CQ associated with the TxQ. The CPU will then poll for this completion to make progress.</p><p>In summary, the critical data path of each post entails one MMIO write, two DMA reads, and one DMA write. The DMA-reads translate to round-trip PCIe latencies which are expensive.</p><p>A faster way to send a message that eliminates the PCIe roundtrip latencies is Programmed I/O (PIO). With PIO, the CPU copies the MD as a part of the DoorBell. Thus, the NIC doesn't need to DMA-read the MD. Another feature for small payloads is inlining which means that the payload is a part of the MD. Hence, when the NIC receives the MD, it does not need to DMA-read the payload. Typically, communication frameworks, such as UCX, combine PIO with inlining. This eliminates both the DMA-reads (steps (2) and ( <ref type="formula">3</ref>)). In Mellanox InfiniBand, the PIO occurs in 64-byte chunks. Note that the CPU does more work in PIO (64-byte copy instead of an 8-byte write) and inlining (memcpy). However, the increase in CPU's work compared to the benefit gained from elimination of PCIe round-trip latencies is minimal.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">EVALUATION SETUP</head><p>To measure the breakdown of time spent in components we use a system of two nodes, node 1 and node 2, that are connected to each other using a high-performance interconnect. Node 1 plays the role of the initiator in our following experiments. We use the CPU's timers to measure the time spent in software. To measure the time spent in other components, we use traces from a PCIe analyzer. Note that one can use this analysis infrastructure for any CPU or interconnect of interest.</p><p>We choose a state-of-the-art ThunderX2-based (TX2) server (running at 2 GHz) for the nodes and TOP500-popular Mellanox In-finiBand <ref type="bibr" target="#b1">[2]</ref> as the high-speed interconnect. Specifically, we use ConnectX-4, a recent Mellanox InfiniBand adapter, and attach it to the node through a PCIe slot. A Lecroy PCIe analyzer sits just before the NIC on node 1, as shown in Figure <ref type="figure" target="#fig_2">3</ref>. The overhead of the PCIe analyzer is negligible as we did not observe any difference in performance with and without it. Larsen et al <ref type="bibr" target="#b15">[16]</ref> observe the same. The analyzer is a passive instrument that allows data to pass through fully unaltered <ref type="bibr">[1]</ref>.</p><p>For our software stack, we use the CH4 device of MPICH <ref type="bibr" target="#b20">[21]</ref> with Unified Communication (UCX) <ref type="bibr" target="#b22">[23]</ref> as the underlying communication framework. Specifically, we use UCX's rc_mlx5 transport which is UCX's implementation of the data-path operations, such as posting to the transmit queue and polling from the completion queue, for modern Mellanox InfiniBand adapters.</p><p>To measure time spent in the CPU, we instrument relevant code with UCX's UCS profiling infrastructure <ref type="bibr" target="#b3">[4]</ref>, which internally reads the cntvct_el0 register timer preceded by an isb for aarch64. The mean overhead of this infrastructure is 49.69 nanoseconds (a standard deviation of 1.48 for 1000 samples); we report software measurements in the rest of the paper after removing this overhead.</p><p>Each reported CPU or PCIe analyzer measurement is a mean of at least 100 samples. While measuring time of a component, we do not simultaneously measure time in any other component to minimize any effects of artificial slowdowns caused by the timer infrastructure. Hence, we do not require synchronized timers.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">BREAKDOWN OF THE LOWER LEVEL</head><p>In this section, we present a detailed breakdown of time spent in the low-level components. These include the low-level communication protocol (LLP), the I/O subsystem, and network components. The LLP software drives the I/O and network hardware. We first define terminology for time spent in each of the low-level components.</p><p>• LLP_post -LLP performing a PIO post of one 8-byte message.</p><p>• LLP_prog -LLP dequeuing one entry of the completion queue during the progress of an operation. • PCIe -payload traversing PCIe between RC and NIC.</p><p>• Wire -payload traversing the physical wire of the interconnect.</p><p>• Switch -overhead added by a network switch.</p><p>• Network -the total time in the interconnect (Wire + Switch).</p><p>• RC-to-MEM(xB) -RC writing an x-byte payload to memory.</p><p>We use UCX's low-level transport API, UC-Transports (UCT) for our LLP driver. It abstracts the capabilities of the various hardware architectures with minimal software overhead. The UCT driver runs the UCX perftest's injection-rate and ping-pong style latency microbenchmarks, namely the put_bw, and am_lat tests, with a single thread. The put test corresponds to RDMA-writes while the am * test corresponds to send-receive semantics. Each message is 8 bytes, the size of a double.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Breakdown of the LLP</head><p>The LLP implements the HW/SW interface required to transmit a message and confirm its completion. The network driver (software) invokes the NIC (hardware) directly after correctly preparing resources and registers needed by the NIC during an LLP_post. The following details the steps involved in an LLP_post.</p><p>(1) Prepare MD -this involves the time taken to write the control segment of the descriptor. It also involves a memcpy of the small payload when inlining is used. (2) A store memory barrier -this ensures that the MD is completely written before the CPU signals the NIC. This barrier is relevant only for a weak memory model (dmb st on aarch64). (3) DoorBell counter increment -the NIC reads a DoorBell counter to perform speculative reads. The CPU updates this counter before writing to the NIC.</p><p>(4) A store memory barrier -this ensures that the NIC sees the update to the DoorBell counter before any subsequent write to its device memory. (5) PIO copy -this is the CPU's write to the memory-mapped device memory instructing the NIC to transmit the message. Device memory is typically an uncached, buffered memory region that supports out-of-order writes. For the TX2-based server in our setup, we use Device-GRE memory for the memory-mapped location. Though there would be a store memory barrier (dsb st) after the PIO copy to flush the data to the NIC, we observed experientially that this flush is not necessary for the microarchitecture of the TX2-based server. The PIO copy of an 8-byte message is one 64-byte chunk in Mellanox InfiniBand (see § 2).</p><p>Similarly, the LLP reads the designated memory location (where the NIC DMA-writes its completions) during an LLP_prog, the progress of an operation. This progress operation constitutes a load memory barrier for aarch64's weak memory model to ensure that the read for a completion queue entry occurs before subsequent updates to data structures.</p><p>Measuring LLP and its breakdown. We measure LLP_post and LLP_prog by wrapping the UCS profiling infrastructure around the calls to uct_ep_put_short and uct_worker_progress. We use the same technique around the relevant regions of code in the implementation of uct_ep_put_short to measure the time in each of the categories of an LLP_post. While these categories are critical components of an LLP_post, they do not account for other miscellaneous time such as the function call overhead, branches to decide code path, etc. We compute this time by taking the difference of LLP_post and the sum of the times spent in the categories. Table <ref type="table" target="#tab_1">1</ref> reports the times for LLP_post, LLP_prog, and each category of LLP_post. Figure <ref type="figure" target="#fig_3">4</ref> shows the breakdown of LLP_post. Since the LLP_prog contains only one critical category (the load memory barrier), we don't show its breakdown.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Injection overhead</head><p>Injection is the insertion of a message into the network. The message is injected when the payload reaches the NIC. We study the case when the user is transmitting messages continuously since this represents a system's injection limit. Then, the system's injection overhead, Inj_overhead, is the time difference between messages arriving at the NIC. This Inj_overhead explains why all the messages in a burst do not reach the NIC at time zero. We first model the injection overhead of PIO posts for a small message, then measure the overhead according to the model, and finally validate it.</p><p>Modeling injection overhead. Since the depth of the transmit queue (TxQ) is finite, the user cannot post indefinitely. Polling the completion queue (CQ) serves as the dequeue semantic for the TxQ. Hence, the user must poll in between their posts to inject messages into the NIC. Say, the user polls after every p posts. If p = 1, the depth of the TxQ is not utilized and the post translates to a synchronous post, that is, the user will be able to post the next message only after the previous message has reached the target node (since the completion is generated only when the host NIC receives an ACK from the target NIC (see § 2)).</p><p>To remove the overhead of waiting for a previous message to complete, the user must choose a value of p such that the completion  for an earlier message is available during a poll. Such a value of p depends on the value of LLP_post and the time taken to generate a completion, дen_completion. From § 2, we can deduce that дen_completion = 2 × (PCIe + Network) + RC-to-MEM(64B)</p><p>since the PCIe wire and the interconnect's network fabric are traversed twice: first while transmitting the message to the target NIC, and second while receiving the ACK from the target NIC and writing the corresponding completion. A completion in InfiniBand is 64 bytes and hence, the RC conducts a 64-byte write to memory on behalf of the host NIC. Then, to remove the overhead of waiting for a previous message, the lower bound on p is p ≥ дen_completion/LLP_post</p><p>In our modeling of the injection overhead, we assume that the user meets this lower bound on p.</p><p>Typically, the API of the network driver allows the user to poll a batch of completions, reducing the overhead of expensive memory barriers and function calls <ref type="bibr" target="#b13">[14]</ref>. Say the user polls b number of completions in each batch. This means that the user can post only b posts in the next round of posts since only b entries have been dequeued from the TxQ. Note that b meets the lower bound mentioned above. Additionally, the user could perform some miscellaneous operations during the window of b posts or b polls. Let tot_misc demarcate the cumulative time spent in these other operations. Then, the overhead of the CPU to post a message is</p><formula xml:id="formula_0">CPU_time = b × LLP_post + b × LLP_prog + tot_misc b = LLP_post + LLP_prog + Misc</formula><p>where Misc = tot_misc/b is the miscellaneous overhead amortized for each message.</p><p>Hence, on average, messages arrive at the RC every CPU_time. Since PCIe supports multiple outstanding requests (see § 2), the RC initiates MWr PCIe transactions targeting the NIC as soon as it receives messages from the CPU. Considering that the RC is implemented with hardware logic, the time it takes to generate a transaction would be in the order of a few cycles. Hence, we ignore its contribution to the injection overhead. Note that the RC can generate transactions only if it has enough credits. Otherwise, it needs to wait for an UpdateFC DLLP from the NIC which would incur the overhead of the PCIe wire between the NIC and the RC (PCIe). Experientially, we observe that a single core does not exhaust the credits for MWr transactions. Hence, we do not model for the overheads imposed with exhausted credits in this paper.</p><p>Once the message leaves the RC, it incurs PCIe before arriving at the NIC. Hence, the injection overhead of a single message is Msg_inj_overhead = CPU_time + PCIe While Msg_inj_overhead describes the time taken by each message to reach the NIC, it is not the same as the injection overhead observed by the NIC, Inj_overhead, as we shall see next. When the system is issuing messages continuously, the CPU_time of the next message overlaps with the PCIe of the previous one (see Figure <ref type="figure" target="#fig_4">5</ref>). Hence, the time difference between the initiation of messages is CPU_time. This holds true for any relation of PCIe with CPU_time (assuming that PCIe is not long enough to exhaust the RC's credits). When PCIe &gt; CPU_time, PCIe of the next message can also overlap with PCIe of the previous one. Hence, from the perspective of the NIC, the time difference between the arrival of messages is the same as that between the initiation of messages, that is,</p><p>(1)</p><formula xml:id="formula_1">Inj_overhead = CPU_time = LLP_post + LLP_prog + Misc</formula><p>Next, we measure the constituents of Inj_overhead. In § 4.1, we reported the times measured for LLP_post and LLP_prog. To account for Misc, we first explain what occurs between consecutive posts in UCX's put_bw benchmark.</p><p>Every message in the benchmark generates a completion. However, the benchmark polls for one completion every 16 posts. Hence, eventually the finite depth of the TxQ is fully utilized after which an LLP_post results in a "busy" post, that is, an LLP_post fails since an LLP_prog must occur before the next successful LLP_post. Thus, in the average case, after every successful LLP_post, there occurs a busy post. Additionally, the benchmark records a timestamp and updates its injection-rate measurements after every LLP_post. Table <ref type="table" target="#tab_1">1</ref> reports the times for a "Busy post" and a "Measurement update" measured using the UCS profiling infrastructure wrapped around the relevant code paths; Misc = 56.58 nanoseconds.</p><p>Breakdown of injection overhead. The PCIe trace of the put_bw test shows the observed injection overhead of the system. Figure <ref type="figure" target="#fig_5">6</ref> shows a snippet of the PCIe trace after filtering for downstream (RC to NIC) transactions. The data in each downstream transaction is 64 bytes corresponding to the PIO post of an 8-byte payload. Every transaction is associated with a timestamp. This timestamp corresponds to the time when the PCIe analyzer observes the transaction. Since the PCIe analyzer is sitting just before the NIC, these timestamps correspond to the times at which the messages reach the NIC. Hence, calculating the delta of the timestamp of consecutive transactions would result in the observed Inj_overhead. Figure <ref type="figure" target="#fig_7">7</ref> shows the distribution of this overhead. The modeled injection overhead of 295.73 nanoseconds is within 5% of 282.33 nanoseconds, the mean observed injection overhead. Figure <ref type="figure" target="#fig_9">8</ref> shows a percentage breakdown of Inj_overhead.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">Latency</head><p>Latency is the total time incurred by a message starting from the time the host node initiates the transfer to the time of writing the payload in the destination buffer on the target node.</p><p>Modeling latency. We study the latency of a short message transmitted using send-receive semantics. The initiation of the transmission begins with an LLP_post, after which the message traverses the PCIe fabric and reaches the NIC. The NIC then transmits the message over the network fabric to reach the target node. On the target node, the NIC performs a MWr PCIe transaction, which traverses the PCIe wire and instructs the RC to write the payload into the target node's memory. Meanwhile the CPU on the target node has been polling for its posted receive to complete. The user can use its receive buffer only after a successful poll. Thus, for a payload of size, x, the time for latency is derived as follows, Latency = LLP_post+2(PCIe)+Network+RC-to-MEM(xB)+LLP_prog Now, we measure the individual components that contribute to Latency. The value of an LLP_post is the same as the one measured in § 4.2, that is, 175.42 nanoseconds.</p><p>Measuring PCIe. To measure PCIe, we first measure the roundtrip latency of the PCIe wire between the NIC and the RC. Since the PCIe analyzer sits just before the NIC, any transaction initiated by the NIC and the corresponding ACK DLLP from the RC will give us the start and end time of the required round-trip. For this purpose, we use the MWr transactions initiated by the NIC during the DMAwrite of completions. The timestamp in the MWr transaction is the start time of the round trip and that in the corresponding ACK DLLP is the end time. Dividing this round-trip value by two is PCIe (the size of this MWr transaction is the same as that of the PIO copy: 64 bytes). We measure PCIe to be 137.49 nanoseconds.</p><p>Measuring Network. One way to measure Network would be to first measure the time difference between when a PIO post reaches the NIC and when the NIC receives an ACK from the target node for that PIO post. Then, dividing that difference by two would correspond to Network since the difference entails a round-trip     Network latency. The timestamps on the PCIe trace of the pingpong style am_lat benchmark allow us to employ this method. A downstream 64-byte PCIe transaction corresponds to a ping and the next upstream 64-byte PCIe transaction corresponds to the ping's completion which is generated upon reception of the ACK. Doing so, we measured the value of Wire to be 274.81 nanoseconds for a direct NIC-to-NIC connection. If the NICs are connected via a switch, the overhead of Switch is 108 nanoseconds. We measured this by taking the difference between two latency measurements: one with a switch involved and one without.</p><p>Measuring RC-to-MEM(8B). To measure RC-to-MEM(8B), we utilize the timestamps on the PCIe trace data of the am_lat pingpong benchmark. As shown in Figure <ref type="figure" target="#fig_10">9</ref>, the time difference between an incoming pong and outgoing ping entails an RC-to-MEM(8B), two PCIes (one for the inbound pong and the other for the outbound ping), a LLP_prog (successful poll), and a LLP_post (the ping). Once we measure the pong-ping difference from the PCIe trace, we can compute the value of RC-to-MEM(8B) since we have measured the values of the other components. This way, we measured the value of RC-to-MEM(8B) to be 240.96 nanoseconds.</p><p>Plugging in our measured values (reported in Table <ref type="table" target="#tab_1">1</ref>) into the latency model of a short message transmitted with send-receive semantics, we have Latency = 1135.8 nanoseconds. † Max is not shown in the figure due to the large value.   Breakdown of latency. The observed latency from UCX's am_lat test is 1215 nanoseconds. The benchmark measures a roundtrip latency and then divides the measurement by two to report the latency. Since a measurement update occurs before the target responds with a pong, we need to deduct half of "Measurement update" from Table <ref type="table" target="#tab_1">1</ref> from the observed latency, which results in 1190.25 nanoseconds. The modeled latency is within 5% of this observed latency. Figure <ref type="figure" target="#fig_12">10</ref> shows a percentage breakdown of latency.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">BREAKDOWN OF THE HIGHER LEVEL</head><p>In this section, we present a breakdown of the time spent in the high-level components of high-performance communication. This comprises of the high-level communication protocols (HLP). The most commonly used programming model for large-scale parallel systems today is MPI <ref type="bibr" target="#b24">[25]</ref>. Hence, at the highest level of the software stack sits an MPI library that implements the MPI standard. Modern implementations, such as the CH4 device of MPICH, rely on abstract communication frameworks, such as UCX, so that the MPI libraries do not need to maintain separate critical paths for all interconnects.</p><p>UCX in turn is composed of multiple components such as UC-Transports (UCT) and UC-Protocols (UCP). UCT is the LLP that we analyze in § 4.1. UCP implements high-level communication protocols such as collectives, message fragmentation, etc. using the low transport-level capabilities exposed through UCT. MPI libraries then use UCP to implement the specifications of the MPI standard. We present a breakdown of time spent in the HLP for a communication-initiation operation such as MPI_Isend, and a communication-progress operation such as a successful (i.e. no busy waiting) MPI_Wait corresponding to an MPI_Irecv.</p><p>Measuring HLP and its breakdown. In an MPI_Isend, the MPI library first decides how to best execute the operation by checking if the data is contiguous, computing which communication interface to use, etc. Ultimately it will call into the UCP layer (ucp_tag_send_nb) which will eventually execute the LLP in the UCT layer (uct_ep_am_short). To measure the time spent in MPICH and UCP for an MPI_Isend, we first measure the total time of MPI_Isend, the total time of ucp_tag_send_nb inside MPICH, and the total time of uct_ep_am_short inside UCP by wrapping them with the UCS profiling infrastructure. We can then measure the time spent in MPICH and UCP by taking the differences of times between the upper and lower layers. For example, subtracting the total time of ucp_tag_send_nb from that of MPI_Isend gives us the time spent in MPICH.</p><p>Similarly, in an MPI_Wait, the MPI library executes its progress engine which ultimately calls into the UCP layer (ucp_worker_progress). UCP will then ensure progress on all outstanding operations that have posted by progressing the low-level UCT layer (uct_worker_progress). When an operation completes, UCT executes a registered callback into the upper UCP layer to update data structures that indicate the completion of the operation. Similarly, the UCP callback also executes a registered callback into the upper MPICH layer to indicate that the operation has completed. Note that these callbacks are executed before returning from uct_worker_progress. To measure the time spent in MPICH and UCP for an MPI_Wait, we measure the times spent in the registered MPICH and UCP callbacks in addition to measuring the total times of MPI_Wait, ucp_worker_progress, and uct_worker_progress. Since the UCP callback entails the MPICH callback, we can measure the time spent in the UCP callback alone by taking the difference between the total times spent in the callbacks. We can then measure the time spent in MPICH and UCP by taking the differences of times between the upper and lower layers and adding in the time for the upper layer's registered callback. For example, subtracting the total time of ucp_worker_progress from that of MPI_Wait and adding in the time of the MPICH callback gives us the time spent in MPICH.</p><p>Table <ref type="table" target="#tab_1">1</ref> reports the time spent in MPICH and UCP on top of the LLP's HW/SW interface for an MPI_Isend (26.56 nanoseconds in total), and a successful MPI_Wait for an MPI_Irecv (443.8 nanoseconds in total). Figure <ref type="figure" target="#fig_13">11</ref> shows their percentage breakdown.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">THE COMPLETE PICTURE</head><p>In this section, we first present a breakdown of the overall injection overhead and end-to-end latency including all the software, I/O,  and network components for send-receive communication. Then, analyzing the breakdown, we note a number of insightful findings.</p><p>Overall injection overhead. § 4.2 shows that the injection overhead observed by the NIC for a single core is governed by the rate at which the CPU can send messages to the RC. Equation 1 defines this injection overhead. CPU_time in § 4.2 involved only the overhead of the LLP; in this section, we add in the overheads of the HLP to complete the picture. We redefine CPU_time as follows.</p><p>(2)</p><formula xml:id="formula_2">CPU_time = Post + Post_prog + Misc</formula><p>where Post is the total time taken by the HLP and LLP to initiate an operation, and Post_prog is the total overhead imposed by both the HLP and LLP for the progress of a send-operation. Post is the sum of LLP_post and HLP_post, the time spent in the HLP during the initiation of a message. For our setup, HLP_post equals 26.56 nanoseconds, which implies Post equals 201.98 nanoseconds. Before attributing times to Post_prog and Misc, we delineate certain caveats.</p><p>First, UCP schedules the successful execution of LLP_post for busy posts (see § 4.2) during the progress of operations. Second, progress for a bunch of initiated operations is typically conducted with a batch-progress operation in the HLP such as MPI_Waitall. MPICH executes its progress engine until all the operations listed in MPI_Waitall complete. More important, UCP reduces the overhead of progress using unsignaled completions <ref type="bibr" target="#b13">[14]</ref>, which means the NIC DMA-writes a completion only every c operations to indicate the completion of all c operations (c = 64 in UCX). Hence, the overhead of progress is amortized over c operations.</p><p>The first caveat implies that the progress of some operations includes the overhead of initiation in the LLP. Since we already account for the successful posts of busy posts in Post, we deduct the cumulative LLP_posts corresponding to the busy posts from the total time of MPI_Waitall for analytical purposes. We do so by keeping track of the number of busy posts occurred before MPI_Waitall. Dividing the resulting total time by the number of operations progressed, we measure Post_prog to be 59.82 nanoseconds. Less than a nanosecond of Post_prog (due to the aforementioned amortization) occurs in the LLP; the rest occurs in the HLP (HLP_tx_prog).</p><p>We include the time incurred in busy posts under Misc. Using the tracked number of busy posts we can compute the total time spent in busy posts during an MPI_Isend-MPI_Waitall window. Dividing this total time by the number of operations in the window gives us an average of 3.17 nanoseconds per operation in Misc.</p><p>We use OSU Micro-Benchmark's <ref type="bibr" target="#b2">[3]</ref> message rate test ‡ to measure the observed injection overhead. By taking the inverse of the message rate, we measure the mean injection overhead to be 263.91 nanoseconds. The injection overhead computed with Equation 2 is 264.97 nanoseconds which is within 1% of the observed overhead. Figure <ref type="figure" target="#fig_14">12</ref> shows the breakdown of the overall injection overhead. ‡ We remove the send-receive sync after every window of posts for a clear analysis.  End-to-end latency. § 4.3 describes the constituents of Latency with minimal software involvement. To complete the picture, we add in the latencies of the HLP as follows.</p><formula xml:id="formula_3">Latency = HLP_post + LLP_post + 2(PCIe) + Network + RC-to-MEM(xB) + LLP_prog + HLP_rx_prog</formula><p>HLP_rx_prog refers to the overhead of progressing the reception of an incoming message with MPI (after it has been written to memory by the RC). We assume the initiation of the receive (such as MPI_Irecv) overlaps with the rest of the constituents and, hence, do not account for its time in the end-to-end latency.</p><p>HLP_rx_prog is the sum of the times spent in the registered callbacks of MPICH and UCP along with the remaining time spent in MPICH after ucp_worker_progress returns. Note that the latter is not the equivalent of the total time spent in MPICH for a successful MPI_Wait minus the time spent in the MPICH callback. MPI_Wait is a blocking call and incurs a portion of the 293.99 nanoseconds before even progressing UCP. MPICH internally loops on ucp_worker_progress until the operation is complete. Hence, we specifically measure the time spent in MPICH after a successful ucp_worker_progress and observe this time to be 36.89 nanoseconds. The value of HLP_rx_prog then is 224.66 nanoseconds. Adding in the values of LLP_prog, HLP_post, and HLP_rx_prog to the modeled latency in § 4.3, the end-to-end latency is 1387.02 nanoseconds. This is within 4% of the observed latency of 1336 nanoseconds measured by OSU Micro-Benchmark's point-to-point latency test. Figure <ref type="figure" target="#fig_15">13</ref> shows a detailed breakdown of this latency.</p><p>Insight 1. § 4.2 describes that the programmer cannot indefinitely initiate messages. Hence, the progress of a send operation serves as a "semantic bottleneck". Once the performance overheads imposed by this bottleneck is minimized through optimizations like unsignaled completions, Figure <ref type="figure" target="#fig_14">12</ref> shows that Post dominates (more than 70% of total) the overall injection overhead. Within Post, the LLP dominates as seen in "Initiation" of Figure <ref type="figure" target="#fig_3">14</ref>.</p><p>Insight 2. Figure <ref type="figure" target="#fig_4">15</ref> presents the overall percentage breakdown of the end-to-end latency of a small message in the three categories: CPU, I/O, and network. The constituents of the software and I/O categories contribute almost equally (within 4% of each other) to their respective total times. In the case of Network, the latency of Wire dominates the overall off-node time. Note that none of the three categories dominates the overall latency. However, we observe that the network fabric constitutes less than a third of the overall latency while CPU and I/O components together contribute towards 72.4% of the latency. Hence, most of the overhead in the transmission of a small message is incurred on the node. Insight 3. Figure <ref type="figure" target="#fig_16">16</ref> shows a high-level breakdown of the time spent on the node during the transmission of the message. The majority of this time occurs on the target node. Out of the time  on the target node, the majority occurs during I/O, the majority of which is comprised by the RC writing the payload to memory. On the contrary, software comprises the majority of the time spent on the initiator node. This is due to the use of Programmed I/O (see § 2) for short messages. Consequently, I/O on the initiator node comprises only of a PCIe transaction unlike that on the target node. Insight 4. Figure <ref type="figure" target="#fig_3">14</ref> shows that the HLP dominates the progress of both send and receive operations. The progress of a receive operation is 4.78× higher than that of a send operation.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7">SIMULATED OPTIMIZATIONS</head><p>In this section, we use the insights gained from the breakdown of the complete picture in § 6 to study the effects of optimizing the CPU, I/O, and network fabric components on the injection and latency of small message transfers. In the figures that follow, we aim to answer the following question: if we optimize component X by Y%, what is the corresponding reduction in injection overhead and latency? The horizontal axis of Figure <ref type="figure" target="#fig_17">17</ref> represents the degree of optimization for the component of interest. It consists of five evenly spaced reductions in overhead, starting from 10% (1.1× faster) to 90% (10× faster). The vertical axis represents the speedup in the overall injection or end-to-end latency as a result of reducing the component's overhead. Note that the components of our models are not concurrent, that is, their executions do not overlap. Hence, evaluating the impacts of reductions in overheads on benchmarks such an MPI stencil kernel through a distributed system simulator  (such as SimGrid <ref type="bibr" target="#b8">[9]</ref>) results in exactly the same linear speedups that we generate through a manual what-if analysis in Figure <ref type="figure" target="#fig_17">17</ref>. We organize our discussion into a set of relevant optimizations that target the different components. For each optimization we discuss their likelihood and evaluate their impact. We consider speedups more than 5% to be substantial.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7.1">On-node optimizations</head><p>In § 6 we learn that most of the time in the transmission of a small message is spent on the node. CPU and I/O components make for the on-node time. Below we discuss three relevant optimizations.</p><p>NIC integrated into a System-on-Chip (SoC). The idea of this optimization is that the NIC sits on the same die as that of the processor. The deployment of such a solution would be in the form of an SoC so that instead of interfacing with the CPU through the PCIe subsystem, the NIC would connect to the networkon-chip (NoC). Such a tight integration of the NIC and the CPU would eliminate a majority of the I/O subsystem's overhead, which accounts for the majority of the time in the latency of a small message. While integrated NICs are not commonplace in today's HPC systems, they are more than likely to become ubiquitous in the future given the potential of their impact. There have been multiple works <ref type="bibr" target="#b7">[8,</ref><ref type="bibr" target="#b16">17]</ref> that argue for and evaluate the performance of SoC-integrated NICs showing their benefits in terms of better performance and higher CPU availability for all message sizes. More recently, Arm-based supercomputers are on the rise <ref type="bibr" target="#b12">[13]</ref> since they allow HPC vendors to integrate their custom solutions (such as an integrated NIC) with Arm IP on SoCs. The Tofu interconnect D <ref type="bibr" target="#b4">[5]</ref> on Fujitsu's post-K machine is a prominent example of this optimization. With Tofu's NIC integrated into a post-K-node, the RDMA-write latency has been improved by nearly 400 nanoseconds.</p><p>Impact. "Integrated NIC" in Figure <ref type="figure" target="#fig_17">17c</ref> shows the impact of a solution that simply brings the NIC closer to the TX2-based SoC. While one can expect such a solution to eliminate most of the I/O overhead, we can observe over a 15% improvement in overall latency even with a modest 50% reduction in I/O time. In fact, a tightly integrated NIC allows for opportunities to reduce the involvement of the CPU in the LLP's HW/SW interface and thereby increase its availability for computational tasks. Recall that the reason for the use of PIO for small messages is expensive PCIe round-trip latencies with the communication-offloading approach (see § § 1 and 2). Since an integrated NIC would sit close to memory, round-trip latencies performed by the hardware logic of the NIC would most likely be faster than involving the CPU in PIO.</p><p>Improving the initiation of a message in LLP. This optimization deals with how writes to device memory occur in the microarchitecture of a processor. Ideally, writes to aarch64's Device memory <ref type="bibr" target="#b17">[18]</ref> should be as fast as writes to its Normal memory <ref type="bibr" target="#b17">[18]</ref>. Such an optimization is likely since the current difference between 64-byte writes to Normal and Device memory is more than 90%, hinting that there exists room for optimization. It would reduce the time spent in the PIO copy, which accounts for more than 50% of the time in LLP_post (see Figure <ref type="figure" target="#fig_3">4</ref>).</p><p>Impact. "PIO" in Figure <ref type="figure" target="#fig_17">17a</ref> and Figure <ref type="figure" target="#fig_17">17b</ref> shows the impact of improving the 64-byte PIO copy on the overall injection and end-to-end latency, respectively. A regular 64-byte memcpy on the TX2-based server takes less than a nanosecond as expected. If we modestly project the overhead of PIO to reduce to 15 nanoseconds (84% reduction), overall injection can improve by more than 25% and end-to-end latency can improve by more than 5%.</p><p>Reducing software overheads. This optimization deals with software engineering targeted to reduce overheads in the HLP. However, unlike the previous optimizations, it is unlikely that this optimization would reduce overheads by more than 50%. For example, the current implementation of MPICH is highly optimized <ref type="bibr" target="#b20">[21]</ref>, reducing the number of instructions by 76% from its previous implementation for an MPI_Isend. We conjecture that software optimizations would reduce overheads by less than 20%.</p><p>Impact. Figure <ref type="figure" target="#fig_17">17a</ref> and Figure <ref type="figure" target="#fig_17">17b</ref> show the what-if analysis for the different components in the HLP and LLP. The "HLP" and "LLP" lines in the figures reflect the upper bound on speedups that would result from optimizing the components that constitute the HLP and LLP, respectively. For both injection and latency, optimizing the progress of operations in the HLP (HLP_tx_prog and HLP_rx_prog) can achieve speedups close to HLP's upper bound. Similarly, optimizing LLP_post can achieve speedups close to LLP's upper bound. If we consider software overheads would be reduced at most by 20%, the upper bounds reflect a less than 5% speedup in the end-to-end latency. On the other hand, a 20% reduction in overhead in the HLP can speedup injection by up to 6.44% while that in the LLP can do so by up to 13.33%.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7.2">Off-node optimizations</head><p>Figure <ref type="figure" target="#fig_4">15</ref> shows that 27.6% of the end-to-end latency is spent on the interconnect's Wire and in the Switch. Our foresight is that the reduction in off-node overheads is less than likely and that the resulting speedups with off-node optimizations alone would not be substantial. We explain our foresight below.</p><p>The reduction in Wire's overhead is less than likely due to engineering complexities at the physical layer. In fact, it is possible that the latency will increase in future interconnects in order to accommodate for higher throughput. The conversion between the parallel PCIe signals and the serial signals on the interconnect's fiber transmission link occurs through SerDes (serializer/deserializer) integrated circuits. For throughputs higher than 100 Gb/s, the SerDes unit needs to be able to deliver higher throughput. While higher degrees of pulse amplitude modulation (PAM) deliver higher signal rates, they require more complex forward error correction (FEC), which increases the latency of the transmission in some cases by 300 nanoseconds <ref type="bibr" target="#b6">[7,</ref><ref type="bibr" target="#b11">12,</ref><ref type="bibr" target="#b23">24]</ref>.</p><p>The current latency of a high-performance interconnect's switch is already an order of magnitude lower than that of an Ethernet's switch <ref type="bibr" target="#b21">[22]</ref>. New technologies like GenZ forecast their switch latencies to be 30-50 nanoseconds <ref type="bibr" target="#b9">[10]</ref>. However, such low latencies are yet to be demonstrated. Only an optimistic reduction to 30 nanoseconds (72% overhead reduction) would correspond to a substantial speedup (5.45%) in end-to-end latency according to Figure <ref type="figure" target="#fig_17">17d</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="8">RELATED WORK</head><p>Prior research (described below) show the effects of optimizing certain components on the overall communication performance. We take an inverse approach that first explains the observed performance and then showcases the potential of optimizations. To the best of our knowledge, this paper's detailed breakdown encompassing all CPU, I/O, and network components is the first of its kind. Additionally, such work is the first for an Arm-based server.</p><p>Communication breakdown. Papadopoulou et al. <ref type="bibr" target="#b19">[20]</ref> present a detailed instruction breakdown of initiation and progress functions between UCP and UCT to identify engineering and abstraction overheads. Similarly, Raffenetti et al. <ref type="bibr" target="#b20">[21]</ref> analyze the overheads in the MPICH library using instruction analysis. Both reduce the number of instructions used in commonly used functions, resulting in higher communication performance. However, they only focus on one level of the stack. Our work spans both the MPICH and UCX stacks in addition to I/O and network components. Ajima et al. <ref type="bibr" target="#b4">[5]</ref> present a breakdown of an RDMA-write latency on the post-K system using simulation waveforms of hardware emulators. Our work presents a breakdown with measured times using our described methodology as opposed to instructions or simulations to explain the observed communication performance.</p><p>Relevance of I/O. Like us, several others also mention the bottlenecks imposed by PCIe in datacenter networking systems. Kalia et al. <ref type="bibr" target="#b13">[14]</ref> emphasize the need to consider the low-level details and features of Verbs and the PCIe subsystem while designing RDMAbased systems. In fact, R. Neugebauer et al. <ref type="bibr" target="#b18">[19]</ref> and Alian et al. <ref type="bibr" target="#b5">[6]</ref> contribute PCIe models to evaluate the impact of improvements to current I/O subsystems. We quantitatively compare the I/O overheads against those of CPU and network components. In addition to PCIe, we profile the time spent by the RC to write to memory. Unlike prior work, we use PCIe traces to validate software measurements.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="9">CONCLUSION</head><p>Our analytical models of the injection overhead and latency of high-performance communication on state-of-the-art components explain observed performance with a 5% margin of error. The models and their resulting breakdown give the reader insights into where, why, and how much time is spent during the transfer of small messages. As the importance of small, fine-grained communication is rising, we believe that such a breakdown can guide the efforts of software developers and system architects alike to address the bottlenecks present today. More importantly, researchers and engineers can identify bottlenecks on their own systems using our detailed methodology described in this paper.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: Components involved in the transmission of a message (on one end).</figDesc><graphic coords="2,53.80,86.60,247.15,65.56" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: PCIe transactions and mechanisms on sender node to transmit data over wire.</figDesc><graphic coords="2,317.96,86.60,252.20,96.10" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: Two-node setup with PCIe analyzer on node 1.</figDesc><graphic coords="3,317.96,86.60,247.15,51.04" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 4 :</head><label>4</label><figDesc>Figure 4: Breakdown of time in an LLP_post (MD: message descriptor; DBC: DoorBell counter).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 5 :</head><label>5</label><figDesc>Figure 5: Injection overhead observed by the NIC.</figDesc><graphic coords="5,317.96,86.60,247.16,53.13" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Figure 6 :</head><label>6</label><figDesc>Figure 6: PCIe trace of downstream PCIe transactions for UCX's RDMA-write injection-rate benchmark (put_bw).</figDesc><graphic coords="6,56.32,85.60,499.37,79.21" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head>Figure 7 :</head><label>7</label><figDesc>Figure 7: Distribution † of the observed injection overhead.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_9"><head>Figure 8 :</head><label>8</label><figDesc>Figure 8: Breakdown of injection overhead with the LLP.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_10"><head>Figure 9 :</head><label>9</label><figDesc>Figure 9: Measuring RC-to-MEM(xB) using the time delta between an inbound pong and outbound ping on node 1.</figDesc><graphic coords="6,317.96,189.57,247.15,126.89" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_11"><head></head><label></label><figDesc>Wire Switch RX PCIe RC-to-MEM(8B)</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_12"><head>Figure 10 :</head><label>10</label><figDesc>Figure 10: Breakdown of latency with the LLP.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_13"><head>Figure 11 :</head><label>11</label><figDesc>Figure 11: Breakdown of time in HLP.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_14"><head>Figure 12 :</head><label>12</label><figDesc>Figure 12: Breakdown of the overall injection overhead.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_15"><head>Figure 13 :</head><label>13</label><figDesc>Figure 13: Breakdown of the end-to-end latency.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_16"><head>Figure 16 :</head><label>16</label><figDesc>Figure 16: Breakdown of time spent on node.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_17"><head>Figure 17 :</head><label>17</label><figDesc>Figure 17: Simulated speedups in overall injection (a) and end-to-end latency (b, c, d) by reducing overheads of CPU, I/O, and network components (note the differences in y-axis scales).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 1 :</head><label>1</label><figDesc>Measured times of various components. Component Time (ns) Message descriptor setup 27.78 Barrier for message descriptor 17.33 Barrier for DoorBell counter 21.07 PIO copy (64 bytes) 94.25 Miscellaneous in LLP_post 14.99 LLP_post (total of above) 175.42 LLP_prog 61.63 Busy post 8.99 Measurement update 49.69 Misc in Inj_overhead (total of above) 58.68 PCIe for a 64-byte payload 137.49 Wire 274.81 Switch 108 Network (total of above) 382.81 RC-to-MEM(8B) 240.96 MPI_Isend in MPICH 24.37 MPI_Isend in UCP 2.19 Callback for a completed MPI_Irecv in MPICH 47.99 Successful MPI_Wait for MPI_Irecv in MPICH 293.29 Callback for a completed MPI_Irecv in UCP 139.78 Successful MPI_Wait for MPI_Irecv in UCP 150.51</figDesc><table /></figure>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>ACKNOWLEDGMENTS</head><p>We thank <rs type="person">Giri Chukkapalli</rs> and <rs type="person">Ham Prince</rs> from <rs type="person">Marvell Technology Group</rs>, <rs type="person">Yossi Itigin</rs> from <rs type="person">Mellanox Technologies</rs>, and <rs type="person">Pavan Balaji</rs> from <rs type="affiliation">Argonne National Laboratory</rs> for their aid and support.</p></div>
+			</div>			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title/>
+		<author>
+			<persName><forename type="first">Teledyne</forename><surname>Lecroy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Summit</forename></persName>
+		</author>
+		<ptr target="https://teledynelecroy.com/protocolanalyzer/pci-express/summit-t3-16-analyzer" />
+	</analytic>
+	<monogr>
+		<title level="j">Analyzer</title>
+		<imprint>
+			<biblScope unit="page" from="3" to="16" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<title level="m" type="main">Top 500 High Performance Computing Platform Interconnect</title>
+		<ptr target="http://www.mellanox.com/solutions/hpc/top500.php" />
+		<imprint>
+			<date type="published" when="2018-06-07">2018. June 7, 2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<monogr>
+		<title level="m" type="main">OSU Micro-Benchmarks 5</title>
+		<ptr target="http://mvapich.cse.ohio-state.edu/benchmarks/" />
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<title level="m" type="main">UCS profiling</title>
+		<ptr target="https://github.com/open/ucx/wiki/Profiling" />
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">The Tofu Interconnect D</title>
+		<author>
+			<persName><forename type="first">Yuichiro</forename><surname>Ajima</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2018 IEEE Intl. Conf. on Cluster Computing (CLUSTER)</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="646" to="654" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Simulating PCI-Express Interconnect for Future System Exploration</title>
+		<author>
+			<persName><forename type="first">Mohammad</forename><surname>Alian</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Intl. Symp. on Work. Char. (IISWC)</title>
+		<imprint>
+			<biblScope unit="page" from="168" to="178" />
+			<date type="published" when="2018">2018. 2018</date>
+			<publisher>IEEE</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<monogr>
+		<title level="m" type="main">FEC codes for 400 Gbps</title>
+		<author>
+			<persName><forename type="first">Sudeep</forename><surname>Bhoja</surname></persName>
+		</author>
+		<idno>802.3 bs. IEEE P802. 3bs 400</idno>
+		<imprint>
+			<date type="published" when="2014">2014. 2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Integrated network interfaces for high-bandwidth TCP/IP</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Nathan</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Binkert</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Sigplan Not</title>
+		<imprint>
+			<biblScope unit="volume">41</biblScope>
+			<biblScope unit="page" from="315" to="324" />
+			<date type="published" when="2006">2006. 2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Versatile, Scalable, and Accurate Simulation of Distributed Applications and Platforms</title>
+		<author>
+			<persName><forename type="first">Henri</forename><surname>Casanova</surname></persName>
+		</author>
+		<ptr target="http://hal.inria.fr/hal-01017319" />
+	</analytic>
+	<monogr>
+		<title level="j">J. Parallel and Distrib. Comput</title>
+		<imprint>
+			<biblScope unit="volume">74</biblScope>
+			<biblScope unit="page" from="2899" to="2917" />
+			<date type="published" when="2014-06">2014. June 2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<monogr>
+		<title level="m" type="main">Gen-Z: High-performance interconnect for the data-centric future</title>
+		<author>
+			<persName><forename type="first">Greg</forename><surname>Casey</surname></persName>
+		</author>
+		<ptr target="https://www.opencompute.org/files/OCP-GenZ-March-2018-final.pdf" />
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<title level="m" type="main">What public disclosures has Intel made about Knights Landing?</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Eric</surname></persName>
+		</author>
+		<ptr target="https://software.intel.com/en-us/articles/what-disclosures-has-intel-made-about-knights-landing" />
+		<imprint>
+			<date type="published" when="2014-06-07">2014. June 7, 2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Investigation of PAM-4/6/8 signaling and FEC for 100 Gb/s serial transmission</title>
+		<author>
+			<persName><forename type="first">Ali</forename><surname>Ghiasi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE P</title>
+		<imprint>
+			<biblScope unit="volume">802</biblScope>
+			<biblScope unit="page">40</biblScope>
+			<date type="published" when="2012">2012. 2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Evaluating the Arm Ecosystem for High Performance Computing</title>
+		<author>
+			<persName><forename type="first">Adrian</forename><surname>Jackson</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. of the Platform for Advanced Scientific Computing Conf</title>
+		<meeting>of the Platform for Advanced Scientific Computing Conf</meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Design Guidelines for High Performance {RDMA} Systems</title>
+		<author>
+			<persName><forename type="first">Anuj</forename><surname>Kalia</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2016 {USENIX} Annual Technical Conf. ({USENIX} {ATC} 16</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="437" to="450" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<title level="m" type="main">Cavium ThunderX2 Review and Benchmarks a Real Arm Server Option</title>
+		<author>
+			<persName><forename type="first">Patrick</forename><surname>Kennedy</surname></persName>
+		</author>
+		<ptr target="https://www.servethehome.com/cavium-thunderx2-review-benchmarks-real-arm-server-option/" />
+		<imprint>
+			<date type="published" when="2018-06-07">2018. June 7, 2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Reevaluation of PIO with write-combining buffers to improve I/O performance on cluster systems</title>
+		<author>
+			<persName><forename type="first">Steen</forename><surname>Larsen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NAS</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="345" to="346" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Performance measurement of an integrated NIC architecture with 10GbE</title>
+		<author>
+			<persName><forename type="first">Guangdeng</forename><surname>Liao</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">th IEEE Symp. on High Perf. Inter. IEEE</title>
+		<imprint>
+			<date type="published" when="2009">2009. 2009</date>
+			<biblScope unit="page" from="52" to="59" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<monogr>
+		<title level="m" type="main">ARMv8-A Memory types</title>
+		<author>
+			<persName><forename type="first">Arm</forename><surname>Ltd</surname></persName>
+		</author>
+		<ptr target="https://developer.arm.com/docs/100941/latest/memory-types" />
+		<imprint>
+			<date type="published" when="2019-06-07">2019. June 7, 2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Understanding PCIe performance for end host networking</title>
+		<author>
+			<persName><forename type="first">Rolf</forename><surname>Neugebauer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. of the 2018 Conf. of the ACM Special Interest Group on Data Communications</title>
+		<meeting>of the 2018 Conf. of the ACM Special Interest Group on Data Communications</meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="327" to="341" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">A performance study of UCX over InfiniBand</title>
+		<author>
+			<persName><forename type="first">Nikela</forename><surname>Papadopoulou</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. of the 17th IEEE/ACM Intl. Symp. on Cluster, Cloud and Grid Computing</title>
+		<meeting>of the 17th IEEE/ACM Intl. Symp. on Cluster, Cloud and Grid Computing</meeting>
+		<imprint>
+			<publisher>IEEE Press</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="345" to="354" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Why is MPI so slow?: Analyzing the fundamental limits in implementing mpi-3.1</title>
+		<author>
+			<persName><forename type="first">Ken</forename><surname>Raffenetti</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. of the Intl. Conf. for High Performance Computing, Networking, Storage and Analysis</title>
+		<meeting>of the Intl. Conf. for High Performance Computing, Networking, Storage and Analysis</meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page">62</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">It&apos;s Time for Low Latency</title>
+		<author>
+			<persName><surname>Stephen M Rumble</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">HotOS</title>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="volume">13</biblScope>
+			<biblScope unit="page" from="11" to="11" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">UCX: an open source framework for HPC network APIs and beyond</title>
+		<author>
+			<persName><forename type="first">Pavel</forename><surname>Shamis</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2015 IEEE 23rd Ann. Symp. on High-Perf. Inter</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="40" to="43" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">100Gb/s Single-lane SERDES Discussion</title>
+		<author>
+			<persName><forename type="first">Phil</forename><surname>Sun</surname></persName>
+		</author>
+		<idno>IEEE P802.3</idno>
+	</analytic>
+	<monogr>
+		<title level="m">New Ethernet Applications Ad Hoc</title>
+		<imprint>
+			<date type="published" when="2017">2017. 2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title/>
+		<author>
+			<persName><forename type="first">Rajeev</forename><surname>Thakur</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">MPI at Exascale. Proc. of SciDAC</title>
+		<imprint>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page" from="14" to="35" />
+			<date type="published" when="2010">2010. 2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

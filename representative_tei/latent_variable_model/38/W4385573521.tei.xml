@@ -1,0 +1,1381 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Towards Inter-character Relationship-driven Story Generation</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Anvesh</forename><surname>Rao</surname></persName>
+							<email>anvesh@cs.unc.edu</email>
+							<affiliation key="aff0">
+								<address>
+									<country>UNC Chapel Hill</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Faeze</forename><surname>Brahman</surname></persName>
+							<email>faezeb@allenai.org</email>
+							<affiliation key="aff1">
+								<orgName type="department">Allen Institute for Artificial Intelligence</orgName>
+							</affiliation>
+							<affiliation key="aff2">
+								<orgName type="department">Paul G</orgName>
+								<orgName type="institution" key="instit1">Allen School of Computer Science &amp; Engineering</orgName>
+								<orgName type="institution" key="instit2">University of Washington</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Snigdha</forename><surname>Chaturvedi</surname></persName>
+							<email>snigdha@cs.unc.edu</email>
+							<affiliation key="aff0">
+								<address>
+									<country>UNC Chapel Hill</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Towards Inter-character Relationship-driven Story Generation</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-28T23:05+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>In this paper, we introduce the task of modeling interpersonal relationships for story generation. For addressing this task, we propose Relationships as Latent Variables for Story Generation, (RELIST). RELIST generates stories sentence by sentence and has two major components -a relationship selector and a story continuer. The relationship selector specifies a latent variable to pick the relationship to exhibit in the next sentence and the story continuer generates the next sentence while expressing the selected relationship in a coherent way. Our automatic and human evaluations demonstrate that RELIST is able to generate stories with relationships that are more faithful to desired relationships while maintaining the content quality. The relationship assignments to sentences during inference brings interpretability to RELIST.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Interpersonal relationships between characters are, in many ways, the glue that holds a story together. Almost every story revolves around at least one, if not more, inter-character relationships. Despite the importance of relationships in stories <ref type="bibr" target="#b5">(Bochner et al., 1997)</ref>, only few studies in NLP have explored story generation from the perspective of character relationships. Recent story generation methods typically generate stories from a prompt <ref type="bibr" target="#b13">(Fan et al., 2018)</ref> or a planner detailing events or keywords of the story <ref type="bibr" target="#b27">(Martin et al., 2018;</ref><ref type="bibr" target="#b35">Rashkin et al., 2020;</ref><ref type="bibr" target="#b15">Goldfarb-Tarrant et al., 2020;</ref><ref type="bibr">Brahman et al., 2020)</ref>. While these methods can generate stories based on open-ended prompts and plans they can neither encode character relationships nor can they give explicit control over the characters and their relationships. In this paper, we introduce Relationship-driven Story Generation where given a prompt sentence and a set of inter-character relationships, the goal is to generate a story following the prompt sentence which exhibits the desired</p><p>The story starts with Amy going to the market. It starts to rain and Amy had forgotten her umbrella. Amy's friend Julia lends Amy her umbrella. Amy is approached by Wisk who pressures her for money <ref type="bibr">[...]</ref> </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Relationship Set</head><p>Julia &lt;positive&gt; Amy Wisk &lt;negative&gt; Amy</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Prompt Sentence</head><p>"The story starts with Amy going to the market." Story Amy Wisk Julia</p><p>Figure <ref type="figure">1</ref>: Example of relationship-driven story generation task: given a set of relationships and a prompt sentence, the goal is to generate a story continuing the prompt sentence and reflecting the input relationships.</p><p>Positive and negative relationships are highlighted.</p><p>relationships between the characters. While relationships can be described in many ways, following previous works <ref type="bibr" target="#b10">(Chaturvedi et al., 2016;</ref><ref type="bibr" target="#b38">Srivastava et al., 2016;</ref><ref type="bibr" target="#b37">Si et al., 2021)</ref>, we represent relationships using relationship polarity. Specifically, we summarize the overall interaction between pairs of characters as being positive, neutral or negative.</p><p>Figure <ref type="figure">1</ref> illustrates the task. Apart from the challenges of story generation in general, there are several challenges unique to the proposed task. The first challenge is of relationship selection. In a typical story, some sentences describe interpersonal relationships while others do not. For example, in the narrative shown in figure <ref type="figure">1</ref>, the first sentence after prompt sentence does not exhibit any relationship unlike the second and third sentences which express different relationships. Hence, the story generation model needs to decide when to exhibit which relationship based on the context. The second challenge is of story continuation. The way characters behave toward each other defines their relationships. Therefore, the model needs to generate events that naturally reflect the desired relationships while maintaining the overall coherence of the narrative. Both these challenges require the model to capture long-range dependencies across multiple sentences and characters. We approach these challenges by a modeling framework which treats relationships as latent variables. Our proposed model, RELIST, generates stories sentence by sentence where each sentence is associated with a latent variable that encodes which, if any, relationship is exhibited in the sentence. RELIST has two components: the relationship selector and the story continuer. The relationship selector explicitly handles the aforementioned when and which challenges. Specifically, before generating any sentence, the relationship selector selects which relationship (or no relationship) to be used for conditioning the next sentence's generation. The story continuer then generates a sentence which naturally reflects the selected relationship while ensuring logical continuation of the narrative. These components work together to produce a naturally coherent story and are trained jointly.</p><p>We define two automatic and reference-less metrics to measure relationship faithfulness, i.e. the models' ability to generate stories that are faithful to the input relationships. We assess the content quality and relationship faithfulness through automatic and human evaluations. Our results show that RELIST can express the desired relationships while maintaining fluency and coherence in the generated stories. We provide additional analyses where we leveraged our latent variable based design to get insight into the generation process. We summarize our contributions as follows:</p><p>• We present the first study on relationshipdriven story generation using interpersonal relationships as controllable parameters. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Related Work</head><p>Story generation was first approached with symbolic planning <ref type="bibr" target="#b32">(Pérez and Sharples, 2001;</ref><ref type="bibr" target="#b33">Porteous and Cavazza, 2009;</ref><ref type="bibr" target="#b36">Riedl and Young, 2010)</ref>. Since then, neural networks have gained more interest for story generation. Several of these methods generate stories using coarse-grained prompts or outlines <ref type="bibr" target="#b13">(Fan et al., 2018;</ref><ref type="bibr" target="#b41">Yao et al., 2019;</ref><ref type="bibr">Brahman et al., 2020;</ref><ref type="bibr" target="#b35">Rashkin et al., 2020;</ref><ref type="bibr" target="#b16">Guan et al., 2020)</ref> or event-based plans <ref type="bibr" target="#b27">(Martin et al., 2018;</ref><ref type="bibr" target="#b14">Fan et al., 2019;</ref><ref type="bibr" target="#b15">Goldfarb-Tarrant et al., 2020)</ref> Besides the development of plan through keywords or events, there are other elements that contribute to a good story. Characters <ref type="bibr">(Bamman et al., 2013a</ref><ref type="bibr">(Bamman et al., , 2014a;;</ref><ref type="bibr" target="#b7">Brahman et al., 2021;</ref><ref type="bibr" target="#b42">Zhang et al., 2019;</ref><ref type="bibr" target="#b0">Azab et al., 2019)</ref>, their sentiment trajectory <ref type="bibr">(Chaturvedi et al., 2017b)</ref> and relationships with others <ref type="bibr">(Kim and Klinger, 2019;</ref><ref type="bibr" target="#b17">Iyyer et al., 2016;</ref><ref type="bibr">Chaturvedi et al., 2017a)</ref> have been shown to be useful for story understanding, in general. For example, Si et al. ( <ref type="formula">2021</ref>) proposed using interpersonal relationships for predicting the best story continuation in first person dialogue-based stories. Characters have also been shown to be useful for language generation such as in dialogue systems for generating responses conditioned on character's persona <ref type="bibr" target="#b26">(Majumder et al., 2020</ref><ref type="bibr" target="#b25">(Majumder et al., , 2021;;</ref><ref type="bibr">Li et al., 2016b;</ref><ref type="bibr" target="#b29">Oraby et al., 2018)</ref>. Nevertheless, only a few works have modeled characters for story generation. Existing character-centric storytelling systems have conditioned generation on automatically learnt character embeddings <ref type="bibr" target="#b23">(Liu et al., 2020)</ref> or persona <ref type="bibr" target="#b9">(Chandu et al., 2019;</ref><ref type="bibr" target="#b43">Zhang et al., 2022)</ref>. We instead model characters through their interpersonal relationships.</p><p>Our work is also related to the problem of text generation conditioned on sentiment or emotions. <ref type="bibr" target="#b31">Peng et al. (2018)</ref> and <ref type="bibr" target="#b24">Luo et al. (2019)</ref> proposed controlling the sentiment for story ending generation. <ref type="bibr" target="#b39">Weber et al. (2020)</ref> proposed incorporating sentiment for the story in-filling task. <ref type="bibr">Brahman and Chaturvedi (2020)</ref> generate stories that adhere to desired emotional arcs for the protagonist. In story generation, Jhamtani and Berg-Kirkpatrick (2020) use latent "anchor words" in each sentence as a plan that generates the story. <ref type="bibr" target="#b40">Xie et al. (2021)</ref> employ variational autoencoders to generate stories with informative latent variables for more diverse and coherent story generation. RELIST provides control over relationships in story generation by considering relationship expressed in a sentence as a latent variable.</p><p>RELIST and its training procedure (Sec. 3.2).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Problem Statement</head><p>In the relationship-driven story generation task, given a prompt sentence and a set of interpersonal relationships, the goal is to generate a story following the prompt sentence which reflects the desired relationships. More formally, let x 0 be the prompt sentence, and R = {r j } K j=1 be a set of interpersonal relationships. Each r j is a triple in the form of Char 1 &lt;P &gt; Char 2 , where &lt;P &gt; ∈ {positive, neutral, negative} indicates the polarity of the relationship ("relationship polarity") between Char 1 and Char 2 . Given x 0 and R as inputs, the goal is to generate a story S = {x 1 ...x T } where x i is the i th sentence of the generated story. The generated story should include the specified characters and reflect their relationships in R while being narratively coherent and manifesting a natural progression.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Relationships as Latent Variables for Story Generation</head><p>We propose Relationships as Latent Variables for Story Generation (RELIST). RELIST generates stories sentence by sentence and views the relationship exhibited in a sentence as a latent variable.</p><p>RELIST is composed of two components, namely relationship selector and story continuer.</p><p>Given the story generated so far ("context"), the relationship selector decides whether, and if so, which relationship to express in the next sentence. The relationship expressed in each sentence, x i , is modeled as a discrete latent variable, z i . Since in a typical story, not all sentences express inter-character relationships, we introduce an additional value for z i describing a "null" relationship, ∅. Hence, z i ∈ R where R = {r j } K j=0 , r 0 = ∅ and in the generative process, z i is sampled from relationship selector before generating the next sentence. Formally, the relationship selector models p(z i |C &lt;i , R) which is the probability distribution of discrete random latent variable z i , over the interpersonal relationship set R. C &lt;i = {x 0 , x 1 , ...x i-1 } denotes the context or story so far. We parameterize this component using a classifier with parameters ϕ. Conditioning on the relationship selected by the relationship selector, the story continuer generates the next sentence of the story while maintaining coherence to the context. Formally, the story continuer models p(x i |z i , C &lt;i , R) which is used to sample the next sentence, x i given a relationship, z i , the context C &lt;i , and the set of interpersonal relationships, R.</p><p>To distinguish between the case when the sentence exhibits a relationship (z i ∈ R) and when it does not (z i = ∅), we use two distinct language models-"Relationship LM" and "Null LM", respectively. Collectively, the parameters of this component is represented as θ. Figure <ref type="figure" target="#fig_0">2</ref> shows our model architecture.</p><p>Training RELIST. In relationship-driven story generation, we aim to model p(S|x 0 , R). Using the chain rule, the likelihood can be written as:</p><formula xml:id="formula_0">P (S|x 0 , R) = T i=1 p(x i |C &lt;i , R)<label>(1)</label></formula><p>Using the discrete latent relationship variable z i , the likelihood can be rewritten as:</p><formula xml:id="formula_1">T i=1 K j=0 p θ (x i |z i = r j , C &lt;i , R)p ϕ (z i = r j |C &lt;i , R)</formula><p>(2) Here, ϕ and θ represent the parameters of the relationship selector and the story continuer respectively. The two components are trained jointly using Expectation Maximization <ref type="bibr" target="#b11">(Dempster et al., 1977)</ref>.</p><p>In the E-step, we estimate the expected posterior for the latent variables p(z i |x i , C &lt;i , R) (via the Bayes Rule) as:</p><formula xml:id="formula_2">p(z i |x i , C &lt;i , R) ∝ p θ (x i |z i , C &lt;i , R)p ϕ (z i |C &lt;i , R)</formula><p>(3) where, x i is a story sentence and z ∈ R. The expectation for latent variable assignments z i is estimated using parameter values (ϕ and θ) of the previous iteration. Using p(z i |x i , C &lt;i , R), we sample new updated assignments of z i for each sentence x i .</p><p>In the M-step, given the new latent variable assignments, we maximize the following log likelihoods to update the parameters ϕ and θ. Specifically, we train relationship selector by optimizing:</p><formula xml:id="formula_3">L(ϕ) = T i=1 log p ϕ (z i |C &lt;i , R)<label>(4)</label></formula><p>We train story continuer by optimizing:</p><formula xml:id="formula_4">L(θ) = T i=1 log p θ (x i |z i , C &lt;i , R)<label>(5)</label></formula><p>Implementation Details.</p><p>RELIST has three neural networks used in the relationship selector and the story continuer ("Relationship LM" and "Null LM"). Since there are varying number of relationships, the relationship selection task cannot be addressed using a simple classifier. We instead train a BERT model <ref type="bibr" target="#b12">(Devlin et al., 2019)</ref> to receive input as R [SEP] C and output the start and end pointers indicating the start and end tokens for the next relationship from the tokens in R. Thus, the model is able to choose from the relationship set or null by pointing to either of them. This setting is similar to how BERT was proposed for Question Answering. For the story continuer, we use decoder-only Transformers initialized with GPT-2medium <ref type="bibr" target="#b34">(Radford et al., 2019)</ref>. Specifically, the "Relationship LM" is trained to receive inputs as yR &lt;@&gt; C &lt;i &lt;@&gt; z i &lt;$&gt; where z i ∈ R and outputs the next sentence, x i . The "Null LM" is trained to receive inputs as R &lt;$&gt; C &lt;i and outputs the next sentence, x i . We initialize each of the three neural networks by training them on stories with sentences automatically annotated with relationships. For obtaining these annotations, we assign a relationship from R to each sentence in the story using the pipeline described in Sec. 4.1. The "Relationship LM" is trained on sentences x i which are annotated with some relationship z i ∈ R. The "Null LM" is trained on all sentences allowing it to learn fluency and coherence.</p><p>In practice, we delay updating θ (story continuer parameters) until warmup iterations of the E and M steps. 1 This is because a noisy relationship se-1 We found warmup = 1 and total EM cycles E = 3 to be helpful in improving the generation quality of LMs lector model (p ϕ (z i |C &lt;i , R)) influences story continuer (p θ (x i |z i , C &lt;i , R) from Equation <ref type="formula">3</ref>. This implies that sentences which do not correspond to any of the interpersonal relationships might be assigned to one of them (noisy latent variable assignments). Maximizing the objective of "Relationship LM" with the noisy latent variable assignments results in poor relationship faithfulness.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Experimental Setup</head><p>In this section we explain the dataset used for training and initialization of RELIST (Sec. 4.1) followed by baselines (Sec. 4.2) and evaluation measures (Sec. 4.3).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Dataset and Annotation Pipeline</head><p>We use the CMU Movie Summary Corpus <ref type="bibr">(Bamman et al., 2013b)</ref> for our experiments. It contains 42, 306 movie summaries as stories. Each story has on average 375 words. For our experiments, we need the stories labeled with interpersonal relationships. For this, we automatically annotate stories in the CMU Movie corpus with interpersonal relationships. We refer to this automatically annotated corpus as the silver labelled dataset and it is created using the following pipeline. First, we process the stories with the BookNLP <ref type="bibr">(Bamman et al., 2014b)</ref> <ref type="foot" target="#foot_1">foot_1</ref> toolkit to identify dependency parse labels and character mentions. Second, we identify sentences with two character mentions with the constraint that one of the character is the subject and the other is the object of the main verb. This constraint helps in capturing the interpersonal relationship and not the overall sentiment of a sentence. For example, "John and Beth lost all their money." has an overall negative sentiment but does not indicate a negative relationship between John and Beth. Third, we concatenate all sentences containing mentions of the same pair of characters as a global representation of their interactions. Finally, we obtain the overall relationship polarity for the character pair using the sentiment of the combined sentences. For this, we use the Sentiment Intensity Analyzer toolkit. <ref type="foot" target="#foot_2">3</ref> The toolkit returns intensity scores for "positive", "neutral" and "negative".</p><p>Using this pipeline, we annotate each story with the polarities of interpersonal relationships between all pairs of character mentions. We discard sto-ries for which we are unable to identify any interpersonal relationships. Our final silver labelled data contains 16, 886 stories (14, 712 train and 2, 174 test) with an average of 2 relationships per story. The dataset contain 31, 488 relationships in total. The distribution of polarities is "positive" 36.21%, "neutral" 18.78% and "negative" 45.01%. Appendix A.3 presents details about the quality assessment of this automatically annotated data</p><p>The silver labelled dataset can also be extended to obtain sentence-level relationship annotations. For this, sentences with two character mentions selected in the second step of the pipeline are annotated with their corresponding overall relationship polarity identified in the last step of the pipeline. Sentences not selected in the second step are annotated with ∅. This data is used to initialize the story continuer and the relationship selector in RELIST.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Baselines</head><p>We compare RELIST against the following story generation models. All baselines use the silver labelled dataset. Furthermore, the initialization process of the Language Models of RELIST also uses sentence level relationship annotation. Hence, for fair comparison we have also included a baseline (GPT-2 Planned) using this information. Fusion. <ref type="bibr" target="#b13">Fan et al. (2018)</ref> use a seq2seq architecture to generate stories conditioned on natural language prompts. To use this method, we concatenate natural language descriptions for the relationships and the first sentence of the story into a single prompt. The model is trained to continue the story conditioned on this prompt. Plan and Write (PW). <ref type="bibr" target="#b41">Yao et al. (2019)</ref> use two seq2seq architectures to first generate a plan from the title, and then generate the story from the plan. We adapt their model by concatenating the set of relationships and the prompt sentence as a plan and using it to generate the rest of the story. BART FT. BART <ref type="bibr" target="#b19">(Lewis et al., 2020)</ref> has shown success in story generation <ref type="bibr" target="#b15">(Goldfarb-Tarrant et al., 2020)</ref>. We finetune BART-large for our task using the concatenation of relationship set and the prompt sentence as input and rest of the story as output. GPT-2 FT. We additionally fine-tune a standard left-to-right LM, namely GPT-2-medium <ref type="bibr" target="#b34">(Radford et al., 2019)</ref>, to generate the story conditioned on the relationship set and the first sentence as prompt. GPT-2 Planned.</p><p>We also compare RELIST against a planner based GPT-2 model. This base-line includes two components: 1. a planner which generates a sequence of relationships corresponding to each sentence in the potential final story, given the input relationship set R (including ∅) and the first sentence. 2. a generator which generates the full story given the generated sequence of relationships. Both components are initialized with GPT-2-medium and finetuned using the sentencelevel annotations obtained in Section 4.1. RELIST-0. This is RELIST after initialization. The individual components are trained with the silver labelled data but there is no joint training after that.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">Evaluation Measures</head><p>We use automatic and human evaluation to assess the efficacy of our model. We evaluate how faithful are the generated stories w.r.t the input relationships and the content quality of the generated stories.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3.1">Automatic Evaluations</head><p>Relationship Faithfulness Metrics: Relationship faithfulness describes measures how faithfully the model generates stories that express the desired relationships in the input. To evaluate relationship faithfulness, we propose two reference-less automatic metrics:</p><p>1. Relationship Identification (RI): Ideally, stories generated from a relationship-faithful model should reflect the desired relationships. Therefore, in "Relationship Identification" metric, we compare relationships exhibited in the model-generated stories to the input relationships. For this, we run the annotation pipeline (Sec. 4.1) on the generated stories to identify relationships. We then compare the identified relationships to the corresponding input relationship sets and compute the following:</p><p>• %Exact: The percentage of relationships identified in the generated stories that exactly match with the input relationships. • %Unspec: The percentage of relationships identified in the generated stories that contain character pairs not specified in the input relationship set. Hence, these relationships do not reflect the desired ones. • %Incorrect: The percentage of relationships identified in the generated stories that contain correct character pairs but incorrect polarity of their relationships. • Average Relationships (AvgRel): Average number of identified relationships in the gen-erated stories 2. Polarity Classification (P-CLS): If the stories generated by a model accurately reflect the desired relationships, then they can be used for the 'inverse' task of identifying relationship polarities from the text of the stories. Such stories can be used to train a polarity classifier that takes as input a generated story and a character pair, and outputs the relationship polarity label between the characters. This polarity classifier can then be evaluated on a subset of 105 stories <ref type="bibr" target="#b38">(Srivastava et al., 2016)</ref> that are manually annotated with relationships. The classifier accuracy will indicate the goodness of its training data-how well the generated stories reflected the desired relationships. We define P-CLS as the accuracy of this classifier.</p><p>For training the polarity classifier, we finetune BERT-base <ref type="bibr" target="#b12">(Devlin et al., 2019)</ref> on stories generated by the model. We provide more training details in Appendix A.2. Content Quality Metrics: For automatic assessment of content quality, we use the standard n-gram overlap based metrics such as BLEU <ref type="bibr" target="#b30">(Papineni et al., 2002)</ref>, and ROUGE scores <ref type="bibr" target="#b22">(Lin, 2004)</ref>. For evaluating diversity of generation, we use Distinctn (n = 1, 2, 3) to measure the percentage of unique n-grams <ref type="bibr">(Li et al., 2016a)</ref>. Higher score implies higher lexical diversity.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3.2">Human Evaluations</head><p>We also conduct human evaluation of the generated stories using Amazon Mechanical Turk. We show workers a pair of stories generated from two different models using the same prompt sentence and relationship set as input. We then ask the workers to compare pair of stories based on three criteria: (1) content quality, (2) relationship faithfulness, and (3) overall. For each criteria, the workers have to pick the better story of the two or indicate that they are of equal quality. For the overall criteria, the workers are explicitly asked to consider both relationship faithfulness and content quality. Appendix A.4 contains detailed instructions.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Experimental Results</head><p>Here, we first report the automatic and human evaluation results, followed by ablations and analyses of RELIST.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1">Relationship Faithfulness</head><p>Table <ref type="table" target="#tab_2">1</ref> shows the results of automatic evaluation for relationship faithfulness. We observe that RELIST and RELIST-0 outperform other baselines by generating stories with higher %Exact and lower %Incorrect scores. BART-FT and GPT-2 FT tend to introduce unspecified relationships (high %Unspec) compared to other models but this is not necessarily an indicator of poor performance. They also generate higher %Incorrect relationships with comparable AvgRel showing that they have poor control over polarity of desired relationships as compared to RELIST.</p><p>By comparing GPT-2 FT and RELIST, we can infer that introduction of latent variables increases relationship faithfulness since that is the major difference between these models. Since RELIST LMs are parameterized by GPT-2 architecture and initialization, any performance due to Language Modeling in Relist will also be reflected in GPT2. However, we see significant improvement between the two, leading us to credit latent variables.</p><p>Comparing RELIST and RELIST-0 shows the effectiveness of iterative training after intialization with silver labelled data. Although RELIST-0 has high %Exact and low %Incorrect values, it generates significantly less number of relationships (low AvgRel). RELIST-0 suffers from what we call "Relationship collapse" problem where the relationship selector repeatedly picks the same relationship from the input. This results in generating fewer relationships in the story. On the other hand, RELIST achieves good %Exact and %Incorrect scores while having high AvgRel. The GPT-2 Planned is not sufficient for relationship faithfulness. This is because unlike RELIST's relationship selector, the first LM generates relationships without having access to prior generated sentences.</p><p>Table 1 also shows that RELIST achieves the highest P-CLS score. The polarity classification task is challenging because the training supervision for the polarity classifier is obtained from automatically annotated data but it is tested on human annotated data. As a result, most baselines are near random performance of 42.15<ref type="foot" target="#foot_3">foot_3</ref> , whereas RELIST achieves a higher P-CLS score of 50.32.</p><p>Overall, the results for relationship faithfulness demonstrate RELIST's superiority at generating stories expressing the desired relationships. Models %Exact (↑) %Unspec (↕) %Incorrect (↓) AvgRel (↑) P-CLS (↑) Fusion <ref type="bibr" target="#b13">(Fan et al., 2018)</ref> 28  <ref type="bibr" target="#b13">(Fan et al., 2018)</ref> 20 </p><formula xml:id="formula_5">↑) R-1 (↑) R-L (↑) Dist-1 (↑) Dist-2 (↑) Dist-3 (↑) Fusion</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2">Content Quality</head><p>Table <ref type="table" target="#tab_2">1</ref> shows the results of automatic evaluation for content quality. GPT-2 Planned, GPT-2 FT, BART FT, and RELIST are comparable in content quality. RELIST-0 suffers from coherence significantly. As mentioned before, it suffers from "Relationship collapse" where the model chooses the same relationship repeatedly. As a result, the story continuer faces a challenge in maintaining coherence while expressing the relationship in every sentence. RELIST's generated stories do not reflect this problem.The results for content quality and relationship faithfulness show that RELIST solves the task of relationship-driven story generation while maintaining fluency and coherence.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.3">Human Evaluation</head><p>Since automatic metrics do not evaluate all aspects of open-ended NLG <ref type="bibr" target="#b28">(Novikova et al., 2017)</ref>, We also conduct human evaluation for better evaluation of open-ended NLG. For this, we randomly sample 50 instances from test set described in Sec. 4.1, and use their relationship sets and prompt sentences to generate stories from RELIST and GPT-2 FT which is among the strongest baseline according to automatic evaluation. Each story pair was evaluated for relationship faithfulness, content quality and overall preference. The annotators read 100 stories in total. Human evaluation for this problem is particularly time consuming and laborious. It requires the annotators to thoroughly read two long stories, then compare them for relationship faithfulness based on the provided relationship set and content quality.</p><p>Table <ref type="table">2</ref> shows the results for each criteria. We see that RELIST is better than GPT-2 FT at relationship faithfulness. These results also validate the automatic metrics (RI and P-CLS) proposed for relationship faithfulness. While the difference between the two models in terms of content quality is not statistically significant, overall the judges preferred RELIST over GPT-2 FT.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.4">Ablation Study</head><p>Here, we perform ablation studies to investigate the contribution of each component of RELIST. Story Continuer. To investigate the contribution of relationship LM and null LM, we construct an ablated baseline RELIST-SLM where we use a single language model as the Story Continuer. This LM is trained to generate a sentence given a relationship or ∅. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>R Jonny &lt;positive&gt; Curtis Prompt</head><p>The film centers around Jonny Barkley, an ambitious, image -conscious businesswoman working for over-demanding boss Mary.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>GPT-2 FT</head><p>The film centers around Jonny Barkley, an ambitious, image -conscious businesswoman working for over-demanding boss Mary. Jonny's life is in turmoil when she is fired from her job, and she is forced to move to New York City, where she is working as a waitress. Jonny has a crush on her, but she doesn't know that she is pregnant. When she learns that Jonny is pregnant, she decides to take matters into her own hands. She goes to her boss's office to meet with him, and he tells her that he wants her to have an abortion. When Jonny refuses, the boss tells her to go to the [...] RELIST</p><p>The film centers around Jonny Barkley, an ambitious, image -conscious businesswoman working for over-demanding boss Mary. One day, Jonny is approached by Curtis, who wants to hire Jonny as his personal assistant. Curtis tells Jonny that he's been offered a job in New York City, but Jonny declines Curtis'offer. Jonny and Curtis go to a bar, where Jonny meets Curtis's ex-boyfriend. Jonny tells Curtis that he loves [...]</p><p>Table 4: In the example, unlike GPT-2 FT which makes no mention of "Curtis" and a unspecified relationship with "Jonny" and "Mary", RELIST faithfully described the input relationship "Jonny &lt;positive&gt; Curtis".</p><p>dation in both content quality and relationship faithfulness. With RELIST-SLM , relationship faithfulness becomes more challenging to obtain with about 11% lower %Exact, 14% higher %Incorrect and 12% lower P-CLS scores. Furthermore, In RELIST, Null LM has more freedom than Relationship LM in expressing content quality without any relationship constraints. Lack of this LM causes content quality to suffer in RELIST-SLM . This shows that both the LMs are necessary for the task of relationship-driven story generation. Relationship Selector.</p><p>To investigate the contribution of the relationship selector, we replace it with a random selector that randomly selects a relationship from R (including ∅). We call this baseline RELIST-RandSelect. From Table <ref type="table" target="#tab_3">3</ref>, we can observe that randomly picking relationships hurts both content quality and relationship faithfulness. Figure <ref type="figure" target="#fig_1">3</ref> plots the change in relationships (R ∈{R1, R2, ∅}) throughout the story with different relationship selectors. RELIST-RandSelect exhibits sharp and unnatural turns in relationships. This unnatural relationship flow impacts the story coherence negatively.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.5">Analysis</head><p>In this section, we conduct analyses to gain insights into the working of RELIST. Case Study. Table <ref type="table">4</ref> shows two stories generated by RELIST and GPT-2 FT for the same input relationship set and prompt sentence. The input requires the story to express a positive relation- ships between "Jonny" and "Curtis". However, GPT-2 FT does not make any mention of "Curtis" and instead introduces "Jonny"'s relationship with "Mary". RELIST continues the prompt sentence coherently while seamlessly introducing the relationship between "Jonny" and "Curtis" with accurate polarity ("love" implying positive relationship). More examples of generated stories can be found in the Appendix Tables <ref type="table" target="#tab_4">7, 8,</ref> and<ref type="table">9</ref>.</p><p>While generating stories, RELIST assigns a latent relationship to each generated sentence. Next, we analyze the latent variables assignments to get insights into the generation process of the model. N-grams of each polarities. We use the latent relationship assignments to analyze the word choices that RELIST makes to exhibit different relationships. For this, we consider the story sentences that had their latent relationship variable assigned as positive, neutral and negative, and analyze the commonly generated n-grams (n = {1, 2, 3}). We find that RELIST uses n-grams like "love", "help", and Table <ref type="table">5</ref>: Distribution of relationship polarities in the beginning and ending sentences, and the overall story. RELIST's stories are more likely to start with positive or negative than neutral relationships but they are equally likely to end in any of the three polarities.</p><p>"childhood friend" in sentences in which it exhibits positive relationships. Similarly, it uses "sees" and "meanwhile"; and "kill" and "death" in sentences in which it exhibits neutral and negative relationships respectively. This shows that using the latent variables, RELIST can generate sentences that effectively express different relationships. Table <ref type="table">6</ref> in Appendix shows more n-grams. Polarity analysis. We use the latent variables to investigate any patterns in RELIST's tendency to exhibit different relationship polarities. First, we consider examples from the test set which have exactly three characters. Then, for each example, we create six different relationship sets using the three characters by assigning all possible combinations of positive, neutral and negative relationships between them. We pair each of these relationship sets with the prompt for the test example and provide this input to RELIST to generate stories. Finally, We analyze the sequence of latent variable assignments from these generated stories. In Figure <ref type="figure" target="#fig_3">4</ref>, we provide a heat-map for RELIST's probability to transition from the polarity on the X-axis to the polarity on the Y -axis. Transitions from a polarity to itself are discounted. We observe that after relationship selector chooses one of positive, neutral and negative, it assigns the next sentence to ∅ most frequently than any other polarity (discounting self-transitions). This could be because ∅ sentences are imperative for a smooth transition between sentences that describe input relationships. Details regarding this analysis are presented in Appendix.</p><p>Table <ref type="table">5</ref> presents polarity distributions for the first and the last generated sentences, as well as the overall story. Not all relationships are equally likely to be picked by the relationship selector of RELIST. Stories generated by RELIST are likely to continue from the prompt sentence with positive (25.3%) or negative (24.7%). Also, despite RELIST's overall propensity to avoid neutral re- lationships (only 15.6%), it is as likely to end a story with this polarity (24.0%) than with positive (24.7%) or negative (21.0%).</p><p>Overall, the latent relationships of RELIST allows us to analyze relationship flows across the story, understand the vocabulary used to express different polarities and analyze the transition between relationships.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Conclusion</head><p>This paper presents a new perspective in story generation-from relationships. The proposed approach, RELIST, introduces relationships as latent variables for relationship-driven story generation. We jointly train the components of RELIST while addressing the major challenges of this task. RELIST outperforms baselines in generating coherent stories with desired relationships. Finally, we also observe how the latent variable based design of RELIST offers interpretability to the generation process without compromising its performance.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7">Acknowledgement</head><p>We thank the anonymous reviewers for their constructive feedback. This work was supported in part by NSF grant IIS-2047232.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Limitations</head><p>This work makes several assumptions about intercharacter relationships that potentially hurt its expressivity. For example the work assumes that relationships are undirected, static, and can be expressed through polarity. Another limitation is that it also assumes that a story sentence can only express one relationship at a time. this could be an interesting future direction to explore. Also, note that our annotation pipeline for obtaining silverlabels uses a sentiment classification model. These models generally lose performance as the number of labels increases which in turn affects the quality of (silver) annotation and the generation. Hence, increasing the number of latent variables or granularity of relationship polarity is challenging.</p><p>We hope that future work can address these issues and our work can be a starting point in this exciting direction.</p><p>intensity. NLTK version is 3.6.2. Positive or Negative polarity is decided based on which of the intensity score is higher. Neutral score is decided if positive and negative sentiments have equal intensity. For ROUGE, we use <ref type="url" target="https://pypi.org/project/rouge/">https://pypi.org/ project/rouge/</ref>. The version is 1.0.1. The fmeasure score is used in ROUGE-1 and ROUGE-f. We use BookNLP toolkit <ref type="url" target="https://github.com/dbamman/book-nlp">https://github.com/ dbamman/book-nlp</ref> for annotating our stories with charachter mentions and dependency parsing labels.</p><p>All results are based on a single batch of generated stories. P-CLS is an accuracy score averaged over three runs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.2 Training and Inference Details</head><p>Number of parameters: GPT-2-medium has 345 million parameters. BERT-base has 110 million parameters. BART-large has 406 million parameters.</p><p>GPU Details: We use a NVIDIA GeForce RTX 2080 Ti machine to train and infer all our models.</p><p>Polarity Classification (P-CLS): For training the polarity classifier, we finetune BERT-base <ref type="bibr" target="#b12">(Devlin et al., 2019)</ref> on stories generated by the model.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>It takes as input "Char1 and Char2 [SEP]</head><p>S" where S is the generated story, and identifies the polarity of the relationship between characters Char1 and Char2. The character pairs and the corresponding relationship polarity labels for training are obtained from the input relationships used to generate the story S.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.3 Quality of silver labelled dataset</head><p>To assess the quality of the silver labelled dataset, we compare our annotations to a subset of 105 stories from the CMU Movie corpus <ref type="bibr" target="#b38">(Srivastava et al., 2016)</ref> that are manually annotated with intercharacter relationships. We find that on an average 33.87% of automatically identified relationships are new. Among the remaining relationships which have matched character pairs with humanannotated data, 59.25% have the same and 40.74% have different polarity compared to human annotations. This shows that silver labelled data has reasonable quality to be used for initizaliation.We also experimented with a BERT-based sentiment classifier, trained on SST to identify polarity of the relationships in place of the Sentiment Intensity Analyzer toolkit. However, the toolkit gave us the best match with human-annotated data.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.4 Additional Human Evaluation Details</head><p>Figures <ref type="figure" target="#fig_4">5</ref> and<ref type="figure">6</ref> show the full set of instructions given to the participants. We filtered workers with those from US, UK or Canada and of them should have done at least 5000 HITs. We have neither asked nor are aware of any other demographic information regarding them.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.5 Dataset License Details</head><p>The dataset we have used was released under a Creative Commons Attribution-ShareAlike License. <ref type="foot" target="#foot_5">5</ref>Our research is consistent with the intended use. Proposed model trained on this dataset is for research use only, not commercial.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.6 Additional generation examples</head><p>Table <ref type="table">7</ref> shows example stories generated by RELIST and GPT-2 FT for the same input relationship set and prompt sentence. In the first example, GPT-2 FT makes no mentions of "Jacques" or "Cranston". In the story generated by RELIST, story continuer followed the prompt sentence naturally untill relationship selector chose "Jacques" and "Wisk"'s relationship, which was manifested by story continuer in a negative interaction ("kidnapping"). Thereafter it continued the plot maintaining coherence and "negative" polarity between "Jacques" and "Wisk". Tables <ref type="table" target="#tab_4">8</ref> and<ref type="table">9</ref> show more examples of GPT-2 FT and RELIST's generated stories.</p><p>&lt;positive&gt; love, help, friend, falls, friends, becomes, party, loves, marry, agrees, like, well, soon, still, fall love, best friend, old friend, united states, tries convince, agrees help, take care, falling love, true identity, still loves, childhood friend, comes back, fell love, confesses love, begins fall love &lt;neutral&gt; sees, meanwhile, gives, arrives, son, wants, years, room, daughter, relationship, meet, gives birth, manages get, wants marry, new life, goes meet, final scene, receives call, months later, gives birth son, two years later , home one day, three months later, decides get married &lt;negative&gt; kill, kills, killed, death, police, leave, tom, killing, fight, attempts, dead, gun, way tries kill, attempts kill, dead body, commits suicide, car accident, police officer, take revenge, one last, hotel room, becomes obsessed, decides leave, commit suicide, world war ii, decides take revenge Table <ref type="table">6</ref>: Words and phrases that show how RELIST effectively exhibits different relationship polarities. Fairfax, is a ruthless, South African criminal mastermind, prone to quoting Shakespeare, who is intent on collecting a series of four interlocking electronic devices that can somehow " shift the balance of power in the world. . GPT-2 FT Fairfax, is a ruthless, South African criminal mastermind, prone to quoting Shakespeare, who is intent on collecting a series of four interlocking electronic devices that can somehow " shift the balance of power in the world. " Wisk, the leader of Wisk's gang, is the mastermind behind the murder of a South African police officer. Wisk and his henchmen are planning to use the devices to steal a large amount of money from the South African government, which Wisk believes will be used to finance a coup d'etat in the country. The device is to be used as a weapon against the government, and Wisk intends to use it to steal the money. In order to do so, Wisk will have to use a combination of the device's electronic components, which are designed to work together, to create a device that will allow him to manipulate the government's actions. The devices are to be placed in the hands of the South Africans, who will then be able to use them to steal their money. The South Africans will then use the device to force Wisk to reveal the location of the stolen money to the police. The police will then attempt to arrest Wisk for the murder, but Wisk is able to escape with the money, and the police are able to arrest him. The film ends with Wisk being arrested by the police, and he is released on bail.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>RELIST</head><p>Fairfax, is a ruthless, South African criminal mastermind, prone to quoting Shakespeare, who is intent on collecting a series of four interlocking electronic devices that can somehow " shift the balance of power in the world. " Wisk, the leader of Wisk's crime syndicate, is the mastermind behind the recent death of his wife and son. Wisk is also the mastermind of the recent murder of his own son, who was killed in a car accident, and who is now in a coma. After Wisk's son's death, Wisk and his henchmen kidnap the son and take him to the police station where he is being held. The police arrive at the station and arrest Wisk for the murder of the son, but Wisk refuses to cooperate with the police. Wisk then kidnaps Jacques, the son of his boss, and takes him to his hideout, where Wisk's men are waiting for him. Wisk tells Jacques that he will kill him if he doesn't cooperate with him. Jacques tells Wisk that if he doesn't cooperate, Wisk will kill his son. Wisk says that he 'll kill him, but Jacques says that it's not enough just to kill him. When Wisk arrives at the hideout, he finds Wisk's men waiting outside. Wisk asks Jacques if he's going to kill Wisk. Jacques says no, but then Wisk grabs Jacques and holds him at gunpoint. Wisk orders Jacques to shoot him, but Jacques doesn't obey and instead shoots Wisk in the head, killing him. The film ends with Wisk, Jacques, and Wisk's son being taken to a hospital, where they are being treated for their injuries.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>R</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Henry &lt;positive&gt; Wayne Prompt</head><p>Legendary bank robber Henry Manning pushes his luck too far and ends up in prison, where he suffers a massive stroke. GPT-2 FT Legendary bank robber Henry Manning pushes his luck too far and ends up in prison, where he suffers a massive stroke. He is sent to a mental institution, where he is placed in solitary confinement. He is given the choice of either serving time or serving time in prison. He chooses the latter, and is given a chance to live his life as a free man. After serving his sentence, Manning is released from solitary confinement and returns to New York City to begin his life anew. He meets a young woman named Jane, and they begin to fall in love. However, Manning's life is in danger, and he is forced to choose between his love for Jane and his life in prison, or he will be sent to prison for life. The film ends with Manning being released from prison and returning to his old life.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>RELIST</head><p>Legendary bank robber Henry Manning pushes his luck too far and ends up in prison, where he suffers a massive stroke. Wayne, who has been in prison for 20 years, decides to help him by giving him a chance to redeem himself for his crime.</p><p>Table <ref type="table">7</ref>: Two examples of generated stories from RELIST and GPT-2 FT. The examples encapsulates strengths and weakness of the models. In first example neither "Jacques" or "Cranston" is present in GPT-2 FT generated story. RELIST missed "Cranston" but captured Jacques's relationship to Wisk via "kidnapping". In second example, GPT-2 FT generated a new character "Jane" and a new relationship over faithfully describing the input relationship like RELIST. R Amarilly &lt;negative&gt; Terry ; Mrs. &lt;positive&gt; Terry ; Amarilly &lt;positive&gt; Mrs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Prompt</head><p>Set in San Francisco during the early 1900s , the film revolves around Amarilly , the daughter of a widowed scrubwoman . GPT-2 FT Set in San Francisco during the early 1900s, the film revolves around Amarilly, the daughter of a widowed scrubwoman. Amarilly's mother, Mrs. Davenport, is a widower who lives with her mother's two children. Amarilly and her mother live in a dilapidated bungalow on the outskirts of San Francisco, where Amarilly works as a housekeeper. Amarillie's father is a wealthy businessman, and Amarilly has a son named Terry, who is the son of a wealthy widow. Terry's parents are both widows, and Terry is the only child of the wealthy widow's husband, who has a daughter named Amarilly. The film begins with the arrival of Amarilly at a boarding school, where she is introduced to the school's principal, Mr. Pritchett, and the school principal's daughter, Ms. Parnell. The principal, however, is not impressed with Amarilly, and tells her that she is not welcome in the school, and that she will be expelled from the school if she does not comply with the school rules. She also tells the principal that she doesn't want to be a part of the school and will not be allowed to participate in any activities that would interfere with her academic progress. The next day, the principal tells Amarilly that she has to leave the school immediately, and asks her to stay at the boarding school for a few days. When Amarilly arrives, she is greeted by the principal, who tells her to leave immediately. She does so, and is told that the school will be closed for the day, and she will have to return to school the next day. When she returns to school, she finds that the principal has told her that Amarilly is not allowed to enter the school. She goes to the principal and tells him that she wants to stay, but the principal does not believe her, and says that he will not allow her to attend the school unless she agrees to go with him. She leaves the school the following day, but when she returns, she discovers that her father has left her. She tells her father that he is going to take her back to San Francisco to live with him, but he refuses to let her go, saying that he does not want to see her again. She then goes to her father's house, where he tells her he is leaving for San Francisco and that he wants her to come with him to stay with him for the rest of her life. The following morning, Amarilly returns to her parents'house, and they tell her that they will not let her stay with them for the remainder of their lives. When they return to the house, they find that the house has been ransacked and that the only way to get out of the house is to find a way out of it. They go to the attic, where they find a large amount of money in the attic. They find the money, and discover that the money has been stolen from the house. They take the money to the RELIST Set in San Francisco during the early 1900s, the film revolves around Amarilly, the daughter of a widowed scrubwoman. She lives with her widowed mother and younger brother. Amarilly's mother is a widower, and Amarilly is the only child of her mother's deceased husband, who died in childbirth. When Amarilly's mother dies, Amarilly and her younger brother, Terry, move in with their mother's widowed father, who lives in the same house as her mother. Amarilly grows up to be a good -natured, kind -hearted young man, but her father is a cruel and cruel man, and he has no respect for Amarilly. The film begins with Amarilly's mother's death, and the film then moves to the present day, where Amarilly finds out that she is pregnant with Terry's child. Amarilly decides to take the baby with her, and she and Terry decide to have an abortion. After the abortion, Amarilly's mother dies, and she decides to go back to her mother's house and live with her father.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>R</head><p>Daya &lt;negative&gt; Loganathan ; Daya &lt;negative&gt; Satya ; Kiruba &lt;negative&gt; Satya Prompt Satya Narain and Kiruba are close friends living opposite each other in the neighbourhood. GPT-2 FT Satya Narain and Kiruba are close friends living opposite each other in the neighbourhood. Satya's father is a successful businessman. Kiruba's mother is a social worker. Satya and Satya fall in love, but Satya can't bear the thought of marrying Kiruba. He wants to marry Kiruba, but Kiruba refuses to marry Satya. When Satya asks Kiruba to marry him, Kiruba says that he doesn't want to marry anyone else, and that he's not interested in marrying anyone else. When Kiruba asks Satya to marry her, Satya tells him that he won't marry anybody else. He tells Satya that if he does, he 'll marry her. He then tells Kiruba that he wants to be married to Satya, but he ca nâ C™t marry her because of his love for her. After Satya leaves, he goes to Kiruba âC™s house and tells her that he loves her, and asks her to come to his house. She refuses, and he tells her to stay with him. He goes to her house, and she tells him she wants to go with him, and tells him to come with her. She tells him not to go, and says that she wants him to be with her, so that he can get married to her. The film ends with Satya getting married to a beautiful young woman named Kiruba in the middle of the night.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>RELIST</head><p>Satya Narain and Kiruba are close friends living opposite each other in the neighbourhood. One day, Satya and Daya get into a fight and Satya beats him up badly. Daya's father comes to Satya's house and tells him that he is going to take revenge on his son for what he has done. Satya goes to the police station and tells the truth to Daya. Daya's father beats up Satya's mother and he is arrested by the police. The next day, Satya's mother comes to the hospital and tells Satya that she is pregnant. Satya tells her that he doesn't want to see her again and that he wants to marry Kiruba. She tells him to go back to his house and tell his mother that he loves her. Satya then goes to Kiruba's house and asks him if he loves Kiruba. Kiruba replies that he doesn't love her. Satya's mother then tells Kiruba that she loves him and that she wants him to marry her. When Satya asks Kiruba why he doesn't love Kiruba, Kiruba says that he does not love her. Satya's mother then says that Kiruba does love her and asks her to marry him. At the end of the movie, Daya and his father come to meet Kiruba and ask him to come and live with them. </p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: Proposed model RELIST illustrated. RELIST has two components, the relationship selector and the story continuer, which jointly generate the story.</figDesc><graphic coords="3,313.23,70.85,204.09,150.29" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: An example of relationship flow across different models. R1 and R2 are two input relationships.</figDesc><graphic coords="8,333.43,328.17,163.71,103.00" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Positions</head><label></label><figDesc>Pos / Neu / Neg / ∅ Beginning 25.3 / 11.0 / 24.7/ 39.0 Ending 24.7 / 24.0 / 21.0/ 30.3 Overall 21.0 / 15.6 / 20.9/ 42.5</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 4 :</head><label>4</label><figDesc>Figure 4: Transition probabilities illustrating changes in latent relationships within a story. All relationship polarities are most likely to be changed to ∅. Self-transitions are discounted to analyze relationship change.</figDesc><graphic coords="9,341.07,70.84,148.43,134.72" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 5 :</head><label>5</label><figDesc>Figure 5: An screenshot of instructions for human evaluation on AMT</figDesc><graphic coords="14,70.86,375.46,453.56,300.14" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 1 :</head><label>1</label><figDesc>Automatic evaluation results for relationship faithfulness (top) and content quality (bottom). In relationship faithfulness, RELIST and RELIST-0 outperform all baselines. Low AvgRel of RELIST-0 indicates "Relationship collapse" whereas RELIST generates higher number of relationships with high %Exact. In content quality, RELIST is comparable to baselines.</figDesc><table><row><cell cols="2">PW (Yao et al., 2019) BART FT (Lewis et al., 2020) GPT-2 FT (Radford et al., 2019) GPT-2 Planned RELIST-0 RELIST</cell><cell>.84 21.73 28.93 29.27 22.51 22.45 28.77</cell><cell>28.40 26.68 30.22 27.76 26.14 26.22 27.84</cell><cell>26.71 25.36 28.24 26.38 25.36 25.15 26.44</cell><cell>80.32 81.93 83.49 82.51 82.13 81.87 83.38</cell><cell>93.38 94.57 93.87 94.33 93.13 92.75 95.21</cell><cell>99.01 99.38 99.63 99.69 99.25 99.06 99.54</cell></row><row><cell>Criteria</cell><cell cols="2">Preference Better/Worse/Tie (%)</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>Relationship Faithfulness</cell><cell cols="2">50.00  *  / 30.00 / 20.00</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>Content Quality Overall</cell><cell cols="2">41.67 / 43.33 / 15.00 48.33</cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table><note><p>* * / 33.33 / 18.33 Table 2: Human evaluation results for RELIST vs. GPT-2 FT. RELIST better expresses desired relationships and is overall preferred. * and * * denote the difference is significant with p &lt; 0.01 and p &lt; 0.07 via t-test.</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 3 :</head><label>3</label><figDesc>Table 3 presents automatic evaluation of content quality and relationship faithfulness. We observe that conflating relationship LM and null LM into a single model leads to performance degra-Ablation studies results for relationship faithfulness (top) and content quality (bottom).</figDesc><table><row><cell>Models RELIST-SLM RELIST-RandSelect RELIST</cell><cell cols="2">%Exact (↑) %Unspec (↕) %Incorrect (↓) AvgRel (↑) P-CLS (↑) 31.48 28.61 39.91 1.36 42.27 44.58 23.51 31.91 1.44 44.61 42.85 31.07 26.08 1.57 50.32</cell></row><row><cell cols="2">Models RELIST-SLM RELIST-RandSelect RELIST</cell><cell>BLEU (↑) R-1 (↑) R-L (↑) Dist-1 (↑) Dist-2 (↑) Dist-3 (↑) 22.51 27.21 24.74 81.64 93.86 99.25 21.05 26.85 25.51 80.69 92.28 99.25 28.77 27.84 26.44 83.38 95.21 99.54</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 8 :</head><label>8</label><figDesc>Additional Examples</figDesc><table /></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="3" xml:id="foot_0"><p>Relationship-driven Story GenerationIn this section, we first present a formal description of our task (Sec. 3.1) followed by model design of</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_1"><p>https://github.com/dbamman/book-nlp</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="3" xml:id="foot_2"><p>https://www.nltk.org/howto/sentiment. html</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="4" xml:id="foot_3"><p>Note that random performance ≈ 42 because of imbalanced polarity distribution as explained in Section 4.1</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" xml:id="foot_4"><p>Snigdha Chaturvedi, Mohit Iyyer, and Hal Daume III. 2017a. Unsupervised learning of evolving relationships between literary characters. In Proceedings of the AAAI Conference on Artificial Intelligence, volume 31. Snigdha Chaturvedi, Haoruo Peng, and Dan Roth. 2017b. Story comprehension for predicting what happens next. In Proceedings of the 2017 Conference on Empirical Methods in Natural Language Processing, pages 1603-1614, Copenhagen, Denmark. Association for Computational Linguistics.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="5" xml:id="foot_5"><p>http://www.cs.cmu.edu/ ark/personas/</p></note>
+		</body>
+		<back>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Ethical Considerations</head><p>We train our model on a publicly available movie summary dataset that might contain (potentially harmful) social biases. Since, we have not employed any bias removal methods, model might replicate any biases found in the training data such as generating setting of the story based on the names of characters provided as inputs. Models' generated stories might also contain violent and graphic content, especially but not exclusively corresponding to "negative" relationships. The dataset is only in one language-English.</p><p>We conduct human evaluations on Amazon Mechanical Turk. For fairly compensating the workers for their efforts, the authors did several rounds themselves to calculate average time to finish one HIT. Based on the HIT timings, the workers were paid $11/hr. No personal, sensitive or identifying information was collected.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A Appendix</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.1 Toolkits</head><p>We use NLTK toolkit Link: <ref type="url" target="https://www.nltk.org/">https://www.nltk. org/</ref> for computing BLEU scores and sentiment Then, Dan's parents show up, and they tell him that they're willing to let him go, because they know that he's going to die soon. Then, they show up at his house, and he tells them that he doesn't want them to kill him, because that's the only thing that he knows how to do, and that they won't be able to stop him from killing himself. He then tells them he's going to take them to his house, and that he 'll kill himself if they don't. They then go to Max's house, where they find that his parents are there. They tell them that they're not going to let them kill him, because that's the only way they can stop him. They then leave, and Dan and Max go back to the house, where they see that Max's parents are gone. They go to Dan's house, where Max's parents are waiting for them. Max tells them to go to his room, and they do, and then they go to the bathroom, where Dan is waiting for Max. He says that they're going to have to kill themselves, because they've never done it before, and they 'll never do it again. He then says that if they don't, then he's going to be the one to kill them, and that's what he wants them to do. The film ends with Dan's parents talking about how much they love him, and how much he's going to love them, and that's what they want him to do.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>R</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Katia &lt;negative&gt; Mikos Prompt</head><p>The plot involves a near invincible man, known only as Mikos, a dead Greek serial murderer, whose blood coagulates incredibly fast, but this gift has made him insanely homicidal. GPT-2 FT The plot involves a near invincible man, known only as Mikos, a dead Greek serial murderer, whose blood coagulates incredibly fast, but this gift has made him insanely homicidal. Mikos is the son of a wealthy Greek family, and his father is the head of the Greek mafia. Mikos'father is a wealthy businessman, and Mikos lives with his father's wife and two young daughters. When Mikos discovers that his father has been murdered, he decides to take revenge on his father. He kidnaps Mikos and takes him to the Greek underworld, where he is forced to fight his way out of the clutches of the mobsters. The film opens with Mikos fighting his way through the streets of the underworld. He is eventually captured by the police, and is taken to the police station, where Mikos confesses that he killed his father, and that he was the one who killed his mother. The police then arrest Mikos, and he is sentenced to life in prison. The next day, Mikos visits his father in prison, where his father tells him that he is going to kill him, but Mikos refuses, saying that he will never kill him. The scene then cuts to Mikos walking down the street, and the scene cuts back to the scene of the murder of his father and his wife.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>RELIST</head><p>The plot involves a near invincible man, known only as Mikos, a dead Greek serial murderer, whose blood coagulates incredibly fast, but this gift has made him insanely homicidal. Mikos kills Katia, the daughter of a Greek politician, in a fit of rage. Katia's body is found, and Mikos is convicted of the murder. He is sentenced to 15 years in prison for the murder of Katia's father. Mikos's sentence is that he will never see Katia again, and he will be sent to a mental institution. In prison, Mikos meets Katia's mother, who tells him that Katia is dead, and that she is the one who killed her father. Mikos tells Katia that he is going to kill her, but Katia doesn't believe him. The next day, Mikos goes to Katia's mother's house, where he finds her dead body. Katia tells Mikos that she will never forgive him for killing her father, and that if he does, she will kill him too. The film ends with Mikos and Katia walking down the street together. </p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Representing movie characters in dialogues</title>
+		<author>
+			<persName><forename type="first">Mahmoud</forename><surname>Azab</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noriyuki</forename><surname>Kojima</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jia</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rada</forename><surname>Mihalcea</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/K19-1010</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 23rd Conference on Computational Natural Language Learning (CoNLL)</title>
+		<meeting>the 23rd Conference on Computational Natural Language Learning (CoNLL)<address><addrLine>Hong Kong, China</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="99" to="109" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Learning latent personas of film characters</title>
+		<author>
+			<persName><forename type="first">David</forename><surname>Bamman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O'</forename><surname>Brendan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noah</forename><forename type="middle">A</forename><surname>Connor</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Smith</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 51st Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 51st Annual Meeting of the Association for Computational Linguistics</meeting>
+		<imprint>
+			<publisher>Sofia, Bulgaria. Association for Computational Linguistics</publisher>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="352" to="361" />
+		</imprint>
+	</monogr>
+	<note>Long Papers)</note>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Learning latent personas of film characters</title>
+		<author>
+			<persName><forename type="first">David</forename><surname>Bamman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O'</forename><surname>Brendan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noah</forename><forename type="middle">A</forename><surname>Connor</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Smith</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 51st Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 51st Annual Meeting of the Association for Computational Linguistics</meeting>
+		<imprint>
+			<publisher>Sofia, Bulgaria. Association for Computational Linguistics</publisher>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="352" to="361" />
+		</imprint>
+	</monogr>
+	<note>Long Papers)</note>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">2014a. A bayesian mixed effects model of literary character</title>
+		<author>
+			<persName><forename type="first">David</forename><surname>Bamman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ted</forename><surname>Underwood</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noah</forename><forename type="middle">A</forename><surname>Smith</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 52nd Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 52nd Annual Meeting of the Association for Computational Linguistics<address><addrLine>Baltimore, Maryland</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="370" to="379" />
+		</imprint>
+	</monogr>
+	<note>Long Papers)</note>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">2014b. A Bayesian mixed effects model of literary character</title>
+		<author>
+			<persName><forename type="first">David</forename><surname>Bamman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ted</forename><surname>Underwood</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noah</forename><forename type="middle">A</forename><surname>Smith</surname></persName>
+		</author>
+		<idno type="DOI">10.3115/v1/P14-1035</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 52nd Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 52nd Annual Meeting of the Association for Computational Linguistics<address><addrLine>Baltimore, Maryland</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="370" to="379" />
+		</imprint>
+	</monogr>
+	<note>Long Papers)</note>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<monogr>
+		<author>
+			<persName><forename type="first">Carolyn</forename><surname>Arthur P Bochner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lisa</forename><surname>Ellis</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Tillmann-Healy</surname></persName>
+		</author>
+		<title level="m">Relationships as stories. Handbook of personal relationships: Theory, research and interventions</title>
+		<imprint>
+			<date type="published" when="1997">1997</date>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page" from="307" to="324" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Modeling protagonist emotions for emotion-aware storytelling</title>
+		<author>
+			<persName><forename type="first">Faeze</forename><surname>Brahman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Snigdha</forename><surname>Chaturvedi</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.emnlp-main.426</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)</title>
+		<meeting>the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)</meeting>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="5277" to="5294" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">let your characters tell their story&quot;: A dataset for character-centric narrative understanding</title>
+		<author>
+			<persName><forename type="first">Faeze</forename><surname>Brahman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Meng</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oyvind</forename><surname>Tafjord</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chao</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mrinmaya</forename><surname>Sachan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Snigdha</forename><surname>Chaturvedi</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2021.findings-emnlp.150</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Findings of the Association for Computational Linguistics: EMNLP 2021</title>
+		<meeting><address><addrLine>Punta Cana, Dominican Republic</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="1734" to="1752" />
+		</imprint>
+	</monogr>
+	<note>Association for Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Cue me in: Contentinducing approaches to interactive story generation</title>
+		<author>
+			<persName><forename type="first">Faeze</forename><surname>Brahman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexandru</forename><surname>Petrusca</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Snigdha</forename><surname>Chaturvedi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 1st Conference of the Asia-Pacific Chapter of the Association for Computational Linguistics and the 10th International Joint Conference on Natural Language Processing</title>
+		<meeting>the 1st Conference of the Asia-Pacific Chapter of the Association for Computational Linguistics and the 10th International Joint Conference on Natural Language Processing<address><addrLine>Suzhou, China</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="588" to="597" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">my way of telling a story&quot;: Persona based grounded story generation</title>
+		<author>
+			<persName><forename type="first">Khyathi</forename><surname>Chandu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shrimai</forename><surname>Prabhumoye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ruslan</forename><surname>Salakhutdinov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alan</forename><forename type="middle">W</forename><surname>Black</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/W19-3402</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Second Workshop on Storytelling</title>
+		<meeting>the Second Workshop on Storytelling<address><addrLine>Florence, Italy</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="11" to="21" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Modeling evolving relationships between characters in literary novels</title>
+		<author>
+			<persName><forename type="first">Snigdha</forename><surname>Chaturvedi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shashank</forename><surname>Srivastava</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hal</forename><surname>Daume</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Iii</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Dyer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="volume">30</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Maximum likelihood from incomplete data via the EM algorithm</title>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">P</forename><surname>Dempster</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">M</forename><surname>Laird</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">B</forename><surname>Rubin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of the Royal Statistical Society: Series B</title>
+		<imprint>
+			<biblScope unit="volume">39</biblScope>
+			<biblScope unit="page" from="1" to="38" />
+			<date type="published" when="1977">1977</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">BERT: Pre-training of deep bidirectional transformers for language understanding</title>
+		<author>
+			<persName><forename type="first">Jacob</forename><surname>Devlin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming-Wei</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kenton</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kristina</forename><surname>Toutanova</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/N19-1423</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</title>
+		<title level="s">Long and Short Papers</title>
+		<meeting>the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies<address><addrLine>Minneapolis, Minnesota</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="4171" to="4186" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Hierarchical neural story generation</title>
+		<author>
+			<persName><forename type="first">Angela</forename><surname>Fan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mike</forename><surname>Lewis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yann</forename><surname>Dauphin</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/P18-1082</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 56th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 56th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Melbourne, Australia</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="889" to="898" />
+		</imprint>
+	</monogr>
+	<note>Long Papers)</note>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Strategies for structuring story generation</title>
+		<author>
+			<persName><forename type="first">Angela</forename><surname>Fan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mike</forename><surname>Lewis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yann</forename><surname>Dauphin</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/P19-1254</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 57th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 57th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Florence, Italy</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="2650" to="2660" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Content planning for neural story generation with aristotelian rescoring</title>
+		<author>
+			<persName><forename type="first">Seraphina</forename><surname>Goldfarb-Tarrant</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tuhin</forename><surname>Chakrabarty</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ralph</forename><surname>Weischedel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nanyun</forename><surname>Peng</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.emnlp-main.351</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)</title>
+		<meeting>the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)</meeting>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="4319" to="4338" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">A knowledge-enhanced pretraining model for commonsense story generation</title>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Guan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fei</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhihao</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaoyan</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Minlie</forename><surname>Huang</surname></persName>
+		</author>
+		<idno type="DOI">10.1162/tacl_a_00302</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Transactions of the Association for Computational Linguistics</title>
+		<imprint>
+			<biblScope unit="volume">8</biblScope>
+			<biblScope unit="page" from="93" to="108" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Feuding families and former Friends: Unsupervised learning for dynamic fictional relationships</title>
+		<author>
+			<persName><forename type="first">Mohit</forename><surname>Iyyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anupam</forename><surname>Guha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Snigdha</forename><surname>Chaturvedi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jordan</forename><surname>Boyd-Graber</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hal</forename><surname>Daumé</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Iii</forename></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/N16-1180</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2016 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</title>
+		<meeting>the 2016 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies<address><addrLine>San Diego, California</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="1534" to="1544" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Frowning Frodo, wincing Leia, and a seriously great friendship: Learning to classify emotional relationships of fictional characters</title>
+		<author>
+			<persName><forename type="first">Harsh</forename><surname>Jhamtani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Taylor</forename><surname>Berg-Kirkpatrick</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/N19-1067</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Findings of the Association for Computational Linguistics: EMNLP 2020</title>
+		<title level="s">Long and Short Papers</title>
+		<editor>
+			<persName><forename type="first">Evgeny</forename><surname>Kim</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Roman</forename><surname>Klinger</surname></persName>
+		</editor>
+		<meeting><address><addrLine>Minneapolis, Minnesota</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2019">2020. 2019</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="647" to="653" />
+		</imprint>
+	</monogr>
+	<note>Proceedings of the 2019 Conference of the North American Chapter</note>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">BART: Denoising sequence-to-sequence pre-training for natural language generation, translation, and comprehension</title>
+		<author>
+			<persName><forename type="first">Mike</forename><surname>Lewis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yinhan</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Naman</forename><surname>Goyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marjan</forename><surname>Ghazvininejad</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abdelrahman</forename><surname>Mohamed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Omer</forename><surname>Levy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Veselin</forename><surname>Stoyanov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luke</forename><surname>Zettlemoyer</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.acl-main.703</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 58th Annual Meeting of the Association for Computational Linguistics</meeting>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="7871" to="7880" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">2016a. A diversity-promoting objective function for neural conversation models</title>
+		<author>
+			<persName><forename type="first">Jiwei</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michel</forename><surname>Galley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Brockett</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianfeng</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bill</forename><surname>Dolan</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/N16-1014</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2016 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</title>
+		<meeting>the 2016 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies<address><addrLine>San Diego</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<biblScope unit="page" from="110" to="119" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Georgios Spithourakis, Jianfeng Gao, and Bill Dolan. 2016b. A persona-based neural conversation model</title>
+		<author>
+			<persName><forename type="first">Jiwei</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michel</forename><surname>Galley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Brockett</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/P16-1094</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 54th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 54th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Berlin, Germany</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="994" to="1003" />
+		</imprint>
+	</monogr>
+	<note>Long Papers)</note>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">ROUGE: A package for automatic evaluation of summaries</title>
+		<author>
+			<persName><forename type="first">Chin-Yew</forename><surname>Lin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Text Summarization Branches Out</title>
+		<meeting><address><addrLine>Barcelona, Spain</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2004">2004</date>
+			<biblScope unit="page" from="74" to="81" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">A character-centric neural model for automated story generation</title>
+		<author>
+			<persName><forename type="first">Danyang</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Juntao</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Meng-Hsuan</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ziming</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gongshen</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dongyan</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rui</forename><surname>Yan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="page" from="1725" to="1732" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Learning to control the fine-grained sentiment for story ending generation</title>
+		<author>
+			<persName><forename type="first">Fuli</forename><surname>Luo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Damai</forename><surname>Dai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pengcheng</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tianyu</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Baobao</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhifang</forename><surname>Sui</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xu</forename><surname>Sun</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/P19-1603</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 57th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 57th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Florence, Italy</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="6020" to="6026" />
+		</imprint>
+	</monogr>
+	<note>Association for Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Unsupervised enrichment of personagrounded dialog with background stories</title>
+		<author>
+			<persName><forename type="first">Prasad</forename><surname>Bodhisattwa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Taylor</forename><surname>Majumder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Julian</forename><surname>Berg-Kirkpatrick</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Harsh</forename><surname>Mcauley</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Jhamtani</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2021.acl-short.74</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing</title>
+		<meeting>the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing</meeting>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page" from="585" to="592" />
+		</imprint>
+	</monogr>
+	<note>Short Papers)</note>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Like hiking? you probably enjoy nature: Personagrounded dialog with commonsense expansions</title>
+		<author>
+			<persName><forename type="first">Prasad</forename><surname>Bodhisattwa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Harsh</forename><surname>Majumder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Taylor</forename><surname>Jhamtani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Julian</forename><surname>Berg-Kirkpatrick</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Mcauley</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.emnlp-main.739</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)</title>
+		<meeting>the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)</meeting>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="9194" to="9206" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Event representations for automated story generation with deep neural nets</title>
+		<author>
+			<persName><forename type="first">Lara</forename><surname>Martin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Prithviraj</forename><surname>Ammanabrolu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xinyu</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">William</forename><surname>Hancock</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shruti</forename><surname>Singh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Brent</forename><surname>Harrison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mark</forename><surname>Riedl</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="volume">32</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Why we need new evaluation metrics for NLG</title>
+		<author>
+			<persName><forename type="first">Jekaterina</forename><surname>Novikova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ondřej</forename><surname>Dušek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amanda</forename><forename type="middle">Cercas</forename><surname>Curry</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Verena</forename><surname>Rieser</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/D17-1238</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2017 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2017 Conference on Empirical Methods in Natural Language Processing<address><addrLine>Copenhagen, Denmark</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="2241" to="2252" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Controlling personality-based stylistic variation with neural natural language generators</title>
+		<author>
+			<persName><forename type="first">Shereen</forename><surname>Oraby</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lena</forename><surname>Reed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shubhangi</forename><surname>Tandon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">S</forename><surname>Sharath</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephanie</forename><surname>Lukin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marilyn</forename><surname>Walker</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/W18-5019</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 19th Annual SIGdial Meeting on Discourse and Dialogue</title>
+		<meeting>the 19th Annual SIGdial Meeting on Discourse and Dialogue<address><addrLine>Melbourne, Australia</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="180" to="190" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Bleu: a method for automatic evaluation of machine translation</title>
+		<author>
+			<persName><forename type="first">Kishore</forename><surname>Papineni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Salim</forename><surname>Roukos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Todd</forename><surname>Ward</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei-Jing</forename><surname>Zhu</surname></persName>
+		</author>
+		<idno type="DOI">10.3115/1073083.1073135</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 40th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 40th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Pennsylvania, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2002">2002</date>
+			<biblScope unit="page" from="311" to="318" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Towards controllable story generation</title>
+		<author>
+			<persName><forename type="first">Nanyun</forename><surname>Peng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marjan</forename><surname>Ghazvininejad</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jonathan</forename><surname>May</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kevin</forename><surname>Knight</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/W18-1505</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the First Workshop on Storytelling</title>
+		<meeting>the First Workshop on Storytelling<address><addrLine>New Orleans, Louisiana</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="43" to="49" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Mexica: A computer model of a cognitive account of creative writing</title>
+		<author>
+			<persName><forename type="first">Rafael</forename><surname>Pérez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ý</forename><surname>Pérez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mike</forename><surname>Sharples</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Experimental &amp; Theoretical Artificial Intelligence</title>
+		<imprint>
+			<biblScope unit="volume">13</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="119" to="139" />
+			<date type="published" when="2001">2001</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Controlling narrative generation with planning trajectories: the role of constraints</title>
+		<author>
+			<persName><forename type="first">Julie</forename><surname>Porteous</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marc</forename><surname>Cavazza</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Joint International Conference on Interactive Digital Storytelling</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2009">2009</date>
+			<biblScope unit="page" from="234" to="245" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Language models are unsupervised multitask learners</title>
+		<author>
+			<persName><forename type="first">Alec</forename><surname>Radford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeffrey</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rewon</forename><surname>Child</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Luan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dario</forename><surname>Amodei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ilya</forename><surname>Sutskever</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">OpenAI blog</title>
+		<imprint>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="issue">8</biblScope>
+			<biblScope unit="page">9</biblScope>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">PlotMachines: Outlineconditioned generation with dynamic plot state tracking</title>
+		<author>
+			<persName><forename type="first">Asli</forename><surname>Hannah Rashkin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yejin</forename><surname>Celikyilmaz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianfeng</forename><surname>Choi</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Gao</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.emnlp-main.349</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)</title>
+		<meeting>the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)</meeting>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="4274" to="4295" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Narrative planning: Balancing plot and character</title>
+		<author>
+			<persName><forename type="first">O</forename><surname>Mark</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Robert</forename><surname>Riedl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Young</forename><surname>Michael</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Artificial Intelligence Research</title>
+		<imprint>
+			<biblScope unit="volume">39</biblScope>
+			<biblScope unit="page" from="217" to="268" />
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Telling stories through multi-user dialogue by modeling character relations</title>
+		<author>
+			<persName><forename type="first">Man</forename><surname>Wai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Prithviraj</forename><surname>Si</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mark</forename><surname>Ammanabrolu</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Riedl</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 22nd Annual Meeting of the Special Interest Group on Discourse and Dialogue</title>
+		<meeting>the 22nd Annual Meeting of the Special Interest Group on Discourse and Dialogue</meeting>
+		<imprint>
+			<publisher>Singapore and Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="269" to="275" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Inferring interpersonal relations in narrative summaries</title>
+		<author>
+			<persName><forename type="first">Shashank</forename><surname>Srivastava</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Snigdha</forename><surname>Chaturvedi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tom</forename><surname>Mitchell</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="volume">30</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<monogr>
+		<title level="m" type="main">Generating narrative text in a switching dynamical system</title>
+		<author>
+			<persName><forename type="first">Noah</forename><surname>Weber</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Leena</forename><surname>Shekhar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Heeyoung</forename><surname>Kwon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Niranjan</forename><surname>Balasubramanian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nathanael</forename><surname>Chambers</surname></persName>
+		</author>
+		<idno>CoRR, abs/2004.03762</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Exploring story generation with multi-task objectives in variational autoencoders</title>
+		<author>
+			<persName><forename type="first">Zhuohan</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jey</forename><surname>Han Lau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Trevor</forename><surname>Cohn</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the The 19th Annual Workshop of the Australasian Language Technology Association</title>
+		<meeting>the The 19th Annual Workshop of the Australasian Language Technology Association</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="97" to="106" />
+		</imprint>
+	</monogr>
+	<note>Online. Australasian Language Technology Association</note>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Planand-write: Towards better automatic storytelling</title>
+		<author>
+			<persName><forename type="first">Lili</forename><surname>Yao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nanyun</forename><surname>Peng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ralph</forename><surname>Weischedel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kevin</forename><surname>Knight</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dongyan</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rui</forename><surname>Yan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="7378" to="7385" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">Generating character descriptions for automatic summarization of fiction</title>
+		<author>
+			<persName><forename type="first">Weiwei</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jackie</forename><surname>Chi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kit</forename><surname>Cheung</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joel</forename><surname>Oren</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="7476" to="7483" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">Persona-guided planning for controlling the protagonist&apos;s persona in story generation</title>
+		<author>
+			<persName><forename type="first">Zhexin</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiaxin</forename><surname>Wen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Guan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Minlie</forename><surname>Huang</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2022.naacl-main.245</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2022 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</title>
+		<meeting>the 2022 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies<address><addrLine>Seattle, United States</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="3346" to="3361" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

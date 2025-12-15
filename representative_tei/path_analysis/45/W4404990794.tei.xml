@@ -1,0 +1,1362 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">PATHS: A Hierarchical Transformer for Efficient Whole Slide Image Analysis</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability  status="unknown">
+					<licence/>
+				</availability>
+				<date type="published" when="2024-11-27">27 Nov 2024</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Zak</forename><surname>Buzzard</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Computer Science &amp; Technology</orgName>
+								<orgName type="institution">University of Cambridge</orgName>
+								<address>
+									<country key="GB">UK</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Konstantin</forename><surname>Hemker</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Computer Science &amp; Technology</orgName>
+								<orgName type="institution">University of Cambridge</orgName>
+								<address>
+									<country key="GB">UK</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Nikola</forename><surname>Simidjievski</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Computer Science &amp; Technology</orgName>
+								<orgName type="institution">University of Cambridge</orgName>
+								<address>
+									<country key="GB">UK</country>
+								</address>
+							</affiliation>
+							<affiliation key="aff1">
+								<orgName type="department">Department of Oncology</orgName>
+								<orgName type="laboratory">PBCI</orgName>
+								<orgName type="institution">University of Cambridge</orgName>
+								<address>
+									<country key="GB">UK</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Mateja</forename><surname>Jamnik</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Computer Science &amp; Technology</orgName>
+								<orgName type="institution">University of Cambridge</orgName>
+								<address>
+									<country key="GB">UK</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">PATHS: A Hierarchical Transformer for Efficient Whole Slide Image Analysis</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2024-11-27">27 Nov 2024</date>
+						</imprint>
+					</monogr>
+					<idno type="arXiv">arXiv:2411.18225v1[cs.CV]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-29T00:41+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Computational analysis of whole slide images (WSIs) has seen significant research progress in recent years, with applications ranging across important diagnostic and prognostic tasks such as survival or cancer subtype prediction. Many state-of-the-art models process the entire slide -which may be as large as 150,000 × 150,000 pixelsas a bag of many patches, the size of which necessitates computationally cheap feature aggregation methods. However, a large proportion of these patches are uninformative, such as those containing only healthy or adipose tissue, adding significant noise and size to the bag. We propose Pathology Transformer with Hierarchical Selection (PATHS), a novel top-down method for hierarchical weakly supervised representation learning on slide-level tasks in computational pathology. PATHS is inspired by the crossmagnification manner in which a human pathologist examines a slide, recursively filtering patches at each magnification level to a small subset relevant to the diagnosis. Our method overcomes the complications of processing the entire slide, enabling quadratic self-attention and providing a simple interpretable measure of region importance. We apply PATHS to five datasets of The Cancer Genome Atlas (TCGA), and achieve superior performance on slide-level prediction tasks when compared to previous methods, despite processing only a small proportion of the slide.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1.">Introduction</head><p>Whole slide images (WSIs) -high resolution scans of sliced biopsy sections -are the basis for pathologists to diagnose and analyse disease. Due to the importance and scale of this task, recent years have seen the development of a range of automated approaches to assist in processing and analysis, with particular success seen in the application of modern computer vision methods <ref type="bibr" target="#b9">[10]</ref>. However, the gigapixel scale of WSIs, coupled with their pyramidal structure, challenges the application of standard vision ar-chitectures such as convolutional neural networks <ref type="bibr" target="#b12">[13,</ref><ref type="bibr" target="#b27">27]</ref> and vision transformers <ref type="bibr" target="#b10">[11]</ref> at the slide level.</p><p>When pathologists inspect whole slide images, they usually do so in a top-down manner: identifying regions of interest and tissue architecture (such as areas of cancerous tissue) at low magnification before investigating these areas further at greater magnification. To inspect the entire slide at its maximum resolution would be unduly timeconsuming and largely uninformative, with only certain areas of the slide providing useful information. Conversely, most state-of-the-art deep learning methods process the slide in its entirety at high magnification, splitting the image into a large collection of small (e.g., 256 × 256px) patches, in the order of magnitude of 10,000 per slide <ref type="bibr" target="#b1">[2,</ref><ref type="bibr" target="#b9">10]</ref>. This incurs a high computational cost, and in many cases provides a large amount of uninformative data to the model, effectively creating a poor signal-to-noise ratio. Within this category, the most common approach is multiple instance learning (MIL), in which each slide is treated as a large unordered bag of patches that are processed using pre-trained computer vision models, and globally aggregated to produce slide-level representations <ref type="bibr" target="#b1">[2,</ref><ref type="bibr" target="#b14">15,</ref><ref type="bibr" target="#b15">16,</ref><ref type="bibr" target="#b21">22]</ref>. The global aggregation method must be efficient due to the scale of the bag; self-attention, for example, is infeasible, necessitating the use of less performant linear-time approximations <ref type="bibr" target="#b26">[26,</ref><ref type="bibr" target="#b31">31]</ref>. Past approaches to mitigating computational overheads include selecting only a small proportion of patches by random selection <ref type="bibr" target="#b30">[30]</ref> or manual clustering-based heuristic <ref type="bibr" target="#b13">[14]</ref>. However, such manual heuristics are suboptimal as they are error-prone and often inflexible. More recent work adapts hierarchical methods, which have seen success in the domain of computer vision, to WSIs <ref type="bibr" target="#b3">[4,</ref><ref type="bibr" target="#b5">6,</ref><ref type="bibr" target="#b20">21,</ref><ref type="bibr" target="#b34">34]</ref>. While more expressive than MIL, hierarchical methods nevertheless necessitate the pre-processing of the entire slide at its full magnification and require the use of self-supervision rather than task-specific training due to the large number of patches.</p><p>In this paper, we propose the Pathology Transformer with Hierarchical Selection (PATHS) -a top-down hierarchical model -as a novel weakly supervised approach Figure <ref type="figure">1</ref>. Overview of our novel method, PATHS, which predicts a patient's relative hazard level given a whole slide image using a topdown hierarchical process along the slide's pyramidal structure, mimicking the workflow of a pathologist. The prediction ŷ is made as a function of the slide-level features at each hierarchy level, F 1 , . . . , F n . to learning on WSIs, combining the effectiveness of hierarchical methods with the data efficiency of patch sampling (summarised in Figure <ref type="figure">1</ref>). Much like a pathologist, our model initially processes the slide at a low magnification, capturing high-level tissue structure, before an attention mechanism recursively identifies regions of importance. The regions of highest importance are magnified and the process is repeated, retaining information from lower magnifications in the form of a hierarchy. This enables the capture of information across a range of resolutions while avoiding the costly processing of the entire slide. We show that PATHS exhibits several desirable properties for slidelevel tasks in computational pathology:</p><p>• High accuracy on five WSI datasets, covering different cancer sites, achieving comparable or improved performance on a survival prediction task compared to state-ofthe-art methods. Our proposed dynamic patch selection and multi-resolution slide context drive this performance, reading in fewer uninformative slides at each magnification and thus improving the signal-to-noise ratio. • Computational efficiency by only processing a fraction of the slide at each magnification, leading to a speed-up exceeding a factor of ten in inference time at 10× magnification compared to MIL. • A clinically meaningful heuristic for patch selection that mimics the workflow of a pathologist. • Top-down patch selection can be used for debugging and validation. Explicit identification of regions of interest enables visualisation of the learned traversal through the WSI's hierarchical structure, and provides interpretable model behaviour.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.">Related Work</head><p>Multiple Instance Learning Whole slide images store scans of a slide at several magnifications, the highest of which corresponds to an image of up to 150,000 × 150,000px. Due to this large scale, multiple instance learning (MIL) <ref type="bibr" target="#b1">[2,</ref><ref type="bibr" target="#b15">16,</ref><ref type="bibr" target="#b30">30]</ref> is frequently used in computational pathology tasks. Multiple instance learning treats each slide as a large unordered bag of low-resolution patches (e.g., 256 × 256 px) at a fixed magnification level. General-purpose MIL approaches include ABMIL <ref type="bibr" target="#b14">[15]</ref>, which introduces an attention-based aggregation as a global weighted sum, where the per-patch weights are scalars produced as a learnable function of the patch feature. Given the success of self-attention in the domain of vision <ref type="bibr" target="#b10">[11,</ref><ref type="bibr" target="#b20">21]</ref>, several works have explored self-attention based MIL aggregation <ref type="bibr" target="#b26">[26]</ref>. However, in the context of computational pathology, the scale of the WSIs precludes the use of full self-attention, due to quadratic scaling with respect to the sequence length <ref type="bibr" target="#b29">[29]</ref>, forcing these methods to use less performant compromises such as linear-time approximations <ref type="bibr" target="#b31">[31]</ref> or cross-attention with a smaller set <ref type="bibr" target="#b4">[5]</ref>.</p><p>To mitigate the issues caused by the large scale of WSIs, related work has focused on reducing the bag size through random or heuristic-based sampling, or the clustering of patches into smaller bags <ref type="bibr" target="#b13">[14,</ref><ref type="bibr" target="#b30">30,</ref><ref type="bibr" target="#b32">32]</ref>. Graph neural networks have seen use as an aggregator of randomly sampled patches, accounting for spatial interactions <ref type="bibr" target="#b18">[19,</ref><ref type="bibr" target="#b35">35]</ref>. However, these non-parametric patch sampling methods risk missing important sections of the slide, and may fail to adequately represent large-scale features. More recently, Thandiackal et al. <ref type="bibr" target="#b28">[28]</ref> propose ZoomMIL, a crossmagnification MIL method which selects patches in a learnable manner through an adapted differentiable patch selection algorithm <ref type="bibr" target="#b7">[8]</ref>, removing the need for manual heuristics. The benefits of incorporating patch features from multiple magnification levels has been observed in other work, demonstrating the potential of this technique to improve slide-level representations in MIL <ref type="bibr" target="#b16">[17,</ref><ref type="bibr" target="#b17">18]</ref>. Regardless, these methods remain limited by the set-based nature of MIL, in which the overall structure of the slide, and spatial relationships between patches, are lost due to the discarding of positional information.</p><p>Hierarchical Methods Hierarchy-based image processing enables positional contextualisation of image patches and processing across multiple image scales, extending efficiently to large images <ref type="bibr" target="#b3">[4,</ref><ref type="bibr" target="#b20">21,</ref><ref type="bibr" target="#b34">34]</ref>. Rather than globally aggregating the image in one step, as in most MIL approaches, the grid of patches is repeatedly aggregated across spatially local steps. The resulting features form a hierarchy, where higher levels represent larger regions of the image, with the topmost level containing a single global feature.</p><p>In the context of computational pathology, Chen et al. <ref type="bibr" target="#b5">[6]</ref> propose Hierarchical Image Pyramid Transformer (HIPT), which improves expressivity over the standard set-based MIL methods, enabling the capture of macro-scale features and large cell structures in the slide. However, as training on entire slides in an end-to-end manner is computationally infeasible, training is split into several distinct stages, each corresponding to a single magnification and level of the hierarchy. Due to a lack of patch-level labels, all but the last stage must be pre-trained using a self-supervised method <ref type="bibr" target="#b2">[3]</ref>, which could lead to the inclusion of redundant visual information (such as scanning artefacts, background proportion, biopsy shape). More notably, however, these approaches operate in a bottom-up manner: the slide is initially processed as a grid of patches at the highest magnification (the bottom level of the hierarchy), with subsequent processing moving up the hierarchy to the lower magnification levels. This necessitates costly processing of a large number of patches per slide, likely including many of low relevance to the downstream task. We, therefore, propose a top-down approach, which retains the hierarchical structure, while iteratively selecting substantially smaller but important areas of the slide.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.">Method</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1.">Notation</head><p>Given a WSI X, let X m denote the collection of (square, non-overlapping) patches of size s × s at magnification m, indexed by position (u, v), so X m u,v ∈ R s×s×3 . Patches are processed by a pre-trained image encoder I, such that I(X m u,v ) ∈ R d for some dimension d. We consider an arbitrary weakly-supervised task, with the goal of modelling a distribution p(y | X) (e.g., survival prediction).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2.">Patch Selection</head><p>At each magnification level m we identify a small subset of patches Xm ⊆ X m to process. Unlike previous methods, which define Xm non-parametrically using random choice or manual heuristics <ref type="bibr" target="#b13">[14,</ref><ref type="bibr" target="#b30">30]</ref>, PATHS enables such a subset to be selected by the model during training. We achieve this by processing patches at n magnification levels m 1 &lt; m 2 &lt; • • • &lt; m n , which form a geometric sequence, m i+1 = M m i , to ensure patch alignment between levels. The model consists of n processors P 1 , P 2 , . . . , P n , the i th of which is dedicated to processing patches at magnification m i . P i additionally learns a scalar importance value α i u,v ∈ [0, 1] for each patch Xmi u,v , which models the relative importance of the patch, and provides a learnable heuristic for patch selection at the subsequent level:</p><formula xml:id="formula_0">Xm1 = X m1 Xmi+1 = MAGNIFY(FILTER( Xmi , α i )).<label>(1)</label></formula><p>FILTER retains only the K patches of highest importance, where K is a hyperparameter. MAGNIFY queries the WSI in the same location as these patches, but at the subsequent resolution, effectively 'zooming in' on the selected patches, then removing resultant patches which consist only of background. This process is visualised in Figure <ref type="figure">1</ref>.</p><p>As patch size (in pixels) is kept constant across each hierarchy level, magnification produces M 2 output patches for each input (or fewer when background is present). As a result, we have a fixed upper bound of</p><formula xml:id="formula_1">| Xmi | ≤ M 2 K (<label>2</label></formula><formula xml:id="formula_2">)</formula><p>for i &gt; 1. We use M = 2 in all experiments to enable a larger value of K. By choosing a low starting magnification m 1 , we also ensure that Xm1 = X m1 contains a small number of patches.</p><p>As the predicted values of α i change during training, this technique effectively exposes the model to a large number of distinct patches over the course of training (regardless of K), helping to avoid overfitting.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3.">Context</head><p>At higher magnification levels, only a small fraction of the slide's total area is visible to the model, making it beneficial to pass on information from prior magnification levels. We refer to this information as context, allowing the model to account for macro-scale slide properties when processing patches at high magnification, and employ it at both the patch-and slide-level. Hierarchical Context Patch-level hierarchical context informs the model of the nature of the tissue surrounding each patch. This allows the incorporation of high-level features, such as tumour size, into the representations of patches at high magnification.</p><p>For each patch X mi u,v at magnification m i , at each prior magnification level m j (j &lt; i) there is a unique 'parent' patch at position (u j , v j ) such that the slide area covered by patch X mj uj ,vj includes that of X mi u,v . We define the hierarchical context of a patch X mi u,v as the list of all patch embeddings from parent patches at previous magnification levels,</p><formula xml:id="formula_3">C X mi u,v = [I(X m1 u1,v1 ), . . . I(X mi-1 ui-1,vi-1 )].<label>(3)</label></formula><p>C provides context for an individual patch by representing the surrounding area of the slide. Slide-level Context In addition to hierarchical patch-level context, we find it beneficial to pass high-level global information between magnification levels. To achieve this, each processor P i produces a slide-level (but magnification specific) representation F i following global aggregation.</p><p>Then, rather than considering the final feature F n only, the final target prediction is modelled as a function of the slide context p(y | C slide ), where</p><formula xml:id="formula_4">C slide = [F 1 , . . . , F n ].<label>(4)</label></formula><p>In our experiments we carry out a simple summation reduction over the slide-level context, F = i F i , followed by a single linear layer to produce ŷ, leading to a residual model in which each processor after the first models an offset for the global feature. We leave exploration of more complex aggregation of the cross-magnification features C slide to future work.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.4.">Processor Architecture</head><p>Each processor P i consists of a contextualisation module, which incorporates hierarchical context into patch features, a transformer-based global aggregator, and an importance modelling module. Conditioned on the patches Xmi , and per-patch hierarchical context C( Xmi ), each processor produces an aggregated feature and importance predictions,</p><formula xml:id="formula_5">F i , α i = P i ( Xmi , C( Xmi )).</formula><p>(</p><formula xml:id="formula_6">)<label>5</label></formula><p>Recurrent unit</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Recurrent unit</head><p>Recurrent unit Contextualisation Module Figure <ref type="figure" target="#fig_0">2</ref> illustrates the architecture of the contextualisation module. At high magnification, each patch feature contains information localised to an extremely small section of the slide; contextualisation aims to adapt these features to incorporate macro-scale tissue information. For a patch X mi u,v , the contextualised feature Y mi u,v is defined as</p><formula xml:id="formula_7">Y mi u,v = I(X mi u,v ) + RNN(C(X mi u,v )),<label>(6)</label></formula><p>where RNN denotes a learnable recurrent neural network, which is applied sequentially to the hierarchical context list C(X mi u,v ). In this manner the RNN produces a feature offset which accounts for high-level properties of the tissue surrounding each patch, thus 'contextualising' the patch feature. Summation of the RNN output was chosen to enable easy representation of the identity function</p><formula xml:id="formula_8">Y mi u,v = I(X mi u,v ),</formula><p>for cases in which a patch's surrounding tissue is not of high relevance.</p><p>By sharing the weights of the RNN between all processors, this operation may be implemented efficiently: each processor carries out a single recurrent unit update step per patch, passing the resulting state to the corresponding patches at the subsequent magnification level.</p><p>Importance Modelling To enable patch selection, each processor P i implicitly learns scalar importance values α i for patches at magnification m i . This is achieved through a gating mechanism, in which a two-layer MLP followed by sigmoid activation (denoted IMP i ) is applied to the contextualised patch embeddings Ỹ mi , producing scalar weights. Each embedding is then scaled by its corresponding weight to produce the final set of features Zmi ,</p><formula xml:id="formula_9">Zmi u,v = α i u,v Ỹ mi u,v .<label>(7)</label></formula><p>These features are globally aggregated, causing the model to assign higher importance values to patches with greater information content, as observed in past work <ref type="bibr" target="#b11">[12,</ref><ref type="bibr" target="#b14">15,</ref><ref type="bibr" target="#b17">18]</ref>. Global Aggregation Following the success of self-attention based aggregation <ref type="bibr" target="#b4">[5,</ref><ref type="bibr" target="#b5">6,</ref><ref type="bibr" target="#b26">26]</ref>, the contextualised, importance scaled patch features Zmi are aggregated globally via a transformer decoder (denoted GLOBALAGG i ). We incorporate a two dimensional positional encoding (based on that of Vaswani et al. <ref type="bibr" target="#b29">[29]</ref>) due to the sparse distribution of patches across the slide's area. Aggregation produces the slide-level feature F i for magnification level i, which is added to the slide-level context C slide . Algorithm 1 summarises the procedure carried out by each processor P i , and the overall method for processing a slide X using PATHS is summarised in Algorithm 2 (for both, see Appendix A).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.">Experiments</head><p>Datasets The Cancer Genome Atlas (TCGA) provides public databases of documented cancer cases over a range of sites, including diagnostic whole-slide images among other data. We evaluate PATHS on the survival prediction task across five cancer types: IDC (invasive ductal carcinoma), CRC (colorectal cancer), CCRCC (clear cell renal cell carcinoma), PRCC (papillary renal cell carcinoma) and LUAD (lung adenocarcinoma), which we select due to their large size within TCGA and frequent use in past work. We crossvalidate our method across five folds for each dataset, using the same folds for each model. Baselines We compare PATHS to a number of state-of-theart weakly-supervised baselines: (HIPT) aggregates the entire slide in three vision transformer-based hierarchical stages. The bottom two stages are trained in a self-supervised manner using DINO <ref type="bibr" target="#b2">[3]</ref>. Due to its hierarchical nature, we consider this baseline an important comparison for our work.</p><p>• ZoomMIL <ref type="bibr" target="#b28">[28]</ref>: A MIL approach in which patches are selected from multiple magnifications via a differentiable zooming procedure. We configure ZoomMIL to sample the same number of patches as PATHS at each magnification for fair comparison (further details in Appendix B). While all models are evaluated on the same folds and datasets, the results for ABMIL, DeepAttnMISL, GCN-MIL, DS-MIL and HIPT use pre-calculated risk scores for these folds, as reported in <ref type="bibr" target="#b5">[6]</ref>. Setup It is common to process whole slide images at 10× or 20× magnification to capture the details of individual cells <ref type="bibr" target="#b4">[5,</ref><ref type="bibr" target="#b5">6,</ref><ref type="bibr" target="#b14">15,</ref><ref type="bibr" target="#b21">22]</ref>. In all experiments, we select 10× magnification as the bottom level of the hierarchy m n , and m 1 = 0.625× as the top, ensuring that Xm1 = X m1 is of tractable size of all slides, leading to five magnification levels. We also set K = 20, causing a fixed limit of M 2 K = 80 patches per slide at each magnification, a small fraction of the total (which may be as many as tens of thousands).</p><p>To train the model for survival prediction we use the censored negative log-likelihood training objective L N LL <ref type="bibr" target="#b33">[33]</ref> with α = 0.6. We quantise patient survival times into b buckets such that each bucket contains roughly an equal number of uncensored patients. The model outputs b logits, corresponding to the survival hazards for each bucket, from which L N LL may be computed. We set b = 4 in all experiments.</p><p>We evaluate using the censored concordance index metric (c-index), which measures the proportion of comparable patient pairs (those in which one can tell with certainty the order in which the events occurred) for which the model's survival prediction is concordant, as is standard. Random choice achieves a score of 0.5, while the best possible score is 1. All experiments were run on a single Nvidia A100 80GB GPU. See Appendix B for a complete list of hyperparameters. The code to reproduce the experiments is available at <ref type="url" target="https://github.com/zzbuzzard/PATHS">https://github.com/zzbuzzard/PATHS</ref>. Patch Embedding We pre-process all patches using a pretrained image encoder I, avoiding the heavy I/O and computation cost of reading and processing the patches during training. The results are stored as a two dimensional array of features, rather than an unordered bag as in MIL, to preserve positional information. Furthermore, unlike traditional MIL techniques, we must pre-process patches at several magnification levels, rather than at the highest magnification only: the total number of patches to be pre-processed per slide is n i=1 |X mi | rather than |X mn |. However, note that |X mn |, |X mn-1 |, . . . forms a geometric sequence, as each time magnification is reduced by a factor of M , the number of patches |X m | falls by a factor of M 2 . In the case of M = 2, which we use in all experiments, our method incurs a pre-processing overhead of a factor of</p><formula xml:id="formula_10">1 + 1 4 + • • • + 1 4 n-1 ≤ 4 3 .</formula><p>Note that this overhead is only re- In this work, we employ UNI <ref type="bibr" target="#b6">[7]</ref> as our patch encoder I. UNI is a recent vision transformer, pre-trained on a large dataset of WSI patches, excluding datasets used in our evaluation (such as TCGA) to prevent data contamination. Comparison to alternative encoders can be found in Appendix D.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.">Results</head><p>Table <ref type="table" target="#tab_1">1</ref> shows the performance of our model PATHS against several baselines on the survival prediction task. PATHS achieves the highest overall c-index across the five cancer subtypes, with the highest performance on four of the five datasets, despite processing only a small fraction of the slide. Compared to ABMIL, DeepAttnMISL, GCN-MIL, DS-MIL and HIPT, all of which process the entire slide as tens of thousands of patches at 20× magnification, PATHS processes just several hundred patches per slide. Despite this, we achieve a significant improvement in model accuracy, highlighting the benefit of processing a smaller number of more relevant patches. The improvement over ZoomMIL, which similarly filters the patches to a small subset per slide, demonstrates the advantage of PATHS over MIL architectures. Inference Speed When vision models are incorporated into practical tools for computational pathology, it is imperative to achieve low computational overhead and inference latency, since computational resources are often limited in a clinical setting. Whilst large-scale offline preprocessing of patch features enables fast training for 'full slide' methods (i.e., those which must process all tissue-containing patches at high magnification, such as ABMIL or HIPT), this workaround does not extend to inference time. When applied to a new slide in a clinical setting, the entire slide must first be loaded into memory and processed using the patch embedding network (which may be a large network, such as UNI), leading to significant latency even on high performance infrastructure. Figure <ref type="figure" target="#fig_1">3</ref> demonstrates that, by significantly reducing the number of patches required from each slide, PATHS significantly improves inference latency over full slide approaches. This is a key advantage of our method, as this preprocessing step is the dominant processing cost for both PATHS and full slide models at inference time, taking up over 99% of inference time in our experiments. Note that, even on state-of-the-art hardware and at just 10× magnification (while 20× is common), a minimal full slide approach takes over a minute to process a single new slide on average. It is reasonable to assume that latency will be significantly larger in practice, especially in the case of models running locally on clinical hardware to ensure patient confidentiality. Appendix C provides further details on the number of patches loaded by each approach (which is roughly proportional to inference latency) for a hardware-independent comparison of efficiency.</p><p>The main novelties of PATHS are the learnable patch selection module, combined with the patch-and slide-level context, allowing the propagation of cross-magnification information down the hierarchy. To investigate the contribution of each module to the overall performance of PATHS, we carry out an ablation study (Table <ref type="table" target="#tab_2">2</ref>) in which we evaluate several variants of our architecture on the five datasets used in Table <ref type="table" target="#tab_1">1</ref>.</p><p>Cross-magnification Context Improves Over MIL With both hierarchical and slide-level context removed, our model becomes similar to a single magnification MIL method. The drop in performance highlights the advantage of our method over MIL, although the score remains relatively strong across the datasets, likely due to the strength of transformer-based aggregation over a small set of extracted relevant patches. The addition of either hierarchical or slide-level context further improves performance, particularly that of slide-level context, demonstrating the benefit of incorporating cross-magnification information, as observed in other work <ref type="bibr" target="#b5">[6,</ref><ref type="bibr" target="#b16">17,</ref><ref type="bibr" target="#b17">18]</ref>. However, it should be noted that for the LUAD dataset, on which PATHS performs poorly, the removal of context leads to improved performance. As both ZoomMIL and HIPT also perform poorly on LUAD (Table <ref type="table" target="#tab_1">1</ref>), we hypothesise that cross-magnification information may be of low importance on this particular dataset and task, as evidenced by the strong performance of single magnification methods such as ABMIL.</p><p>Benefit of the Learned Sampling Heuristic Next, we investigate the significance of extracting patches based on the predicted importance α. This is achieved through the replacement of the importance MLP (IMP i ) with a random distribution α i u,v ∼ U [0, 1] at inference time, leading to the selection of random areas of the slide (although background patches are still excluded). Interestingly, this mod- ification leads to only a small reduction in performance. This result is supported by past work: Wulczyn et al. <ref type="bibr" target="#b30">[30]</ref> achieve reasonable performance in a multiple instance learning pipeline using just 16 random patches from each slide, which the authors argue are very likely to contain at least one relevant (e.g., tumorous) patch. Our method uses both a higher number of patches (at most 80 per level) and multiple magnification levels, greatly increasing the likelihood of capturing relevant information under random selection. However, random sampling foregoes the interpretability benefits of attentional sampling, which allow us to easily inspect model behaviour. Interpretability The quantification of patch importance (via α) enables model interpretability through the explicit identification of regions of interest. Figure <ref type="figure" target="#fig_2">4</ref> visualises the patches selected by PATHS on three CAMELYON17 <ref type="bibr" target="#b19">[20]</ref> slides, alongside manually annotated tumour regions. Note that PATHS was not trained on CAMELYON17, but instead applied in a zero-shot setting, following training on TCGA-BRCA.</p><p>The 'heat' value for each pixel is given by the sum of the encapsulating patch importances at each magnification level, with α i weighted by factor of 1/2 i to prevent excessive heat in the areas selected across all magnification levels. PATHS appears to correctly identify tumorous regions, and avoids adipose tissue and areas of low tissue densitydespite receiving only weak slide-level supervision. As a small and fixed number of patches (K = 20) are retained at each magnification level, it is to be expected that not all of the tumorous tissue is selected, and indeed that less relevant patches may be selected in the absence of tumour.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.">Discussion</head><p>State-of-the-art methods in computational pathology generally rely on processing entire whole slide images as thousands of patches at high magnification. In this work, we present an alternative approach, in which we filter the processed data to a small subset of relevant patches across several magnification levels. While the recent work of Thandiackal et al. <ref type="bibr" target="#b28">[28]</ref> explores a similar motivation, we approach this problem from the perspective of improving the efficiency of hierarchical processing, rather than extending MIL to multiple magnifications via learnable patch selection, leading to a more expressive and performant (non-MIL) model that views each patch in context. We note that, unlike ZoomMIL, our patch selection algorithm is not differentiable (due to the top-K operation within FILTER), but we do not find this necessary for strong performance, instead learning α via a gating mechanism. Despite processing strictly less data than most baselines we compare to, PATHS achieves superior performance on average across five large cancer datasets. While we evaluate on survival prediction tasks, PATHS is applicable to arbitrary weaklysupervised tasks and other large-scale image data.</p><p>Our ablation study (Table <ref type="table" target="#tab_2">2</ref>) demonstrates that incorporating data from multiple magnification levels, here in the form of context, is beneficial for performance. While high magnification patches allow the modelling of cellular-level features of the slide, patches at lower magnification provide convenient representations of higher-level features of the slide, such as the general organisation of the tissue. Our work therefore supports the hypothesis that performance may be improved through the incorporation of patches across magnification levels, as suggested by past work <ref type="bibr" target="#b16">[17,</ref><ref type="bibr" target="#b17">18]</ref>.</p><p>PATHS leverages UNI, which like most domain specific patch encoding models, was trained exclusively on patches at high magnification power (20×). However, PATHS requires the encoding of patches across a range of magnifications, including patches at very low magnification, and we therefore hypothesise that performance may be further improved using a cross-magnification pre-trained patch encoder.</p><p>Our results support the hypothesis that processing large numbers of patches is often unnecessary for achieving strong performance on practically relevant tasks such as survival prediction. In fact, by reducing the number of patches input to PATHS we obtained improved performance. It allows for the unimpeded use of a transformer architecture (usually restricted by huge sequence lengths), significantly lower memory requirements, faster training times, and an improved signal-to-noise ratio (by excluding patches of low relevance). However, the thin margin between random and attentional patch selection, as observed in Table <ref type="table" target="#tab_2">2</ref>, indicates room for improvement in this area, which we leave to future work.</p><p>The modelling of explicit important values α is an additional benefit of our approach, and highly relevant in a clinical setting. Despite receiving only weak slide-level supervision, PATHS is capable of identifying important (tumorous) areas of the slide. This capability allows for valuable insights into the model's behaviour, which may ultimately lead to better understanding of the disease.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7.">Conclusion</head><p>We provide strong evidence in this paper to suggest that the processing of entire whole slide images at full magnification is needlessly expensive. Through our design of a novel, patch efficient algorithm, we avoid many of the issues of processing entire slides (high computational cost, poor signal-to-noise ratio, very high latency in practice), improving both efficiency and accuracy. Finally, we demonstrate the benefit that patch contextualisation and slide-level context provide to our unconventional non-MIL approach, and we hope that our work inspires future work in this direction.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>PATHS: A Hierarchical Transformer for Efficient Whole Slide Image Analysis</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Supplementary Material</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. PATHS Algorithm</head><p>Algorithm 1 describes the algorithm carried out by each processor, and Algorithm 2 the overall PATHS algorithm applied to a slide X, in which PREDICT denotes the final linear layer whose output is the prediction ŷ.</p><p>Algorithm 1 Processing algorithm for patches at magnification m i 1: procedure P i ( Xmi , C( Xmi ))</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>2:</head><p>Ỹ mi ←-I( Xmi ) + RNN(C( Xmi ))</p><p>3:</p><formula xml:id="formula_11">α i ←-IMP i ( Ỹ mi ) 4:</formula><p>Zmi ←-α i ⊙ Ỹ mi 5:</p><formula xml:id="formula_12">F i ←-GLOBALAGG i ( Zmi ) 6:</formula><p>return (F i , α i ) 7: end procedure Algorithm 2 Overall PATHS slide processing algorithm 1: procedure PROCESS(X) 2:</p><p>Xm1 ←-X m1 3:</p><formula xml:id="formula_13">C slide ←-[ ] 4:</formula><p>for i = 1 to n do 5:</p><formula xml:id="formula_14">(F i , α i ) ←-P i ( Xmi , C( Xmi )) 6:</formula><p>Xmi+1 ←-MAGNIFY(FILTER( Xmi , α i )) return PREDICT(C slide ) 10: end procedure</p><p>We may formally define FILTER as</p><formula xml:id="formula_15">FILTER( Xm i , α i ) = Xm i u,v | (u, v) ∈ TOPK(α i ) ,</formula><p>where TOPK returns the patch coordinates (u1, v1), (u2, v2), . . . , (uK , vK ) of the top K values in α i . Note that, although Xm i is an indexed set, we use set notation for readability. We may formally define MAGNIFY as</p><formula xml:id="formula_16">MAGNIFY( Ũ m i ) = Xm i+1 u,v | u M , v M ∈ dom( Ũ m i ) ∧ HASTISSUE( Xm i+1 u,v ) ,</formula><p>where Ũ m i is the (indexed set) output of FILTER, dom extracts the index from its input (here, the patch coordinates contained in Ũ m i ), and HASTISSUE returns whether the input patch contains above a certain threshold of tissue, as identified using Otsu's method <ref type="bibr" target="#b23">[23]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Hyperparameters</head><p>Table <ref type="table" target="#tab_3">3</ref> gives the hyperparameters chosen for PATHS, and Table <ref type="table">4</ref> the hyperparameters chosen for ZoomMIL, which we choose to enable fair comparison between our methods. We initially used 40 epochs for ZoomMIL to match PATHS, but found that performance was improved when training for 100 as in the sample configuration. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Inference Speed Experiment Details</head><p>This section details the method used to produce Figure <ref type="figure" target="#fig_1">3</ref>.</p><p>ABMIL First, background patches are identified using Otsu's method <ref type="bibr" target="#b23">[23]</ref>, applied to a low resolution version of the WSI. The patches are then loaded sequentially and processed using UNI in batches of 256 on the GPU.</p><p>PATHS Patches are loaded sequentially, and processed with UNI in a single batch per magnification level (as there are a small number at each level). Otsu's method is used in the FILTER function to identify background patches.</p><p>In both cases, patches are loaded from disk using a single CPU thread, and pre-processing and model inference takes place on a single A100 GPU. In all experiments, loading and pre-processing the patches using UNI takes over 99% of the total time (and over 99.99% for the example MIL model), despite PATHS loading fewer patches. Figure <ref type="figure" target="#fig_4">5</ref> gives the corresponding number of patches loaded by each method, providing a measure of inference efficiency independent of hardware or image encoder. Table <ref type="table">4</ref>. ZoomMIL hyperparameters, shared between all datasets. We use their public implementation, adding support for survival prediction. The configuration was taken from the sample configuration provided in the repository, with K changed to match our configuration. † the ZoomMIL codebase only supports a batch size of 1 and hierarchy depth of 3. The magnifications 1.25×, 2.5×, 10× were chosen to match the configuration used for BRIGHT in the original paper <ref type="bibr" target="#b28">[28]</ref>.  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D. Choice of Image Encoder</head><p>Table <ref type="table">5</ref> compares the performance of PATHS for three different image encoders. To evaluate the importance of domain specific encoding for PATHS, we compare using UNI to using an Ima-geNet pre-trained ResNet50, and observe weaker performance in the latter case. We then compare two models trained specifically on WSI patches, a self-supervised vision transformer trained on a number of TCGA datasets at 20× magnification <ref type="bibr" target="#b5">[6]</ref> and UNI, a vision transformer trained on patches across many different tissue types, also at 20× <ref type="bibr" target="#b6">[7]</ref>. As discussed in Section 6, PATHS pro-cesses patches at magnifications strictly less than 20× in our experiments -between 0.625× and 10× -which are out of domain inputs for both models. Due to its larger scale, high-resolution fine-tuning, and exposure to a larger number of tissue types, UNI appears to create superior representations of these low magnification patches, leading to stronger performance. We therefore select UNI as our image encoder. However, we emphasise that performance of PATHS may be improved further through the use of an image encoder pre-trained on WSI patches at lower magnification.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E. Further Visualisations</head><p>Figure <ref type="figure">6</ref> shows an example heatmap of PATHS on TCGA-BRCA. Due to a lack of ground truth labels in TCGA, we display the predicted semantic segmentation alongside the PATHS heatmap. The prediction was computed using a U-Net model provided by tiatoolbox, pre-trained on the BCSS dataset (an annotated patch-level dataset derived from TCGA-BRCA) <ref type="bibr" target="#b0">[1,</ref><ref type="bibr" target="#b24">24,</ref><ref type="bibr" target="#b25">25]</ref>. Due to the computational cost of evaluating this model, which requires the extraction and processing of tens of thousands of patches at 20× magnification per slide, and lack of human annotated labels, we provide one such example only.</p><p>Figure <ref type="figure" target="#fig_3">7</ref> displays further examples from CAMELYON17 <ref type="bibr" target="#b19">[20]</ref>. Both figures use the PATHS model trained on TCGA-BRCA with seed 0, applied in-domain in Figure <ref type="figure">6</ref>, and zero-shot to CAME-LYON17 in Figure <ref type="figure" target="#fig_3">7</ref>.</p><p>Table <ref type="table">5</ref>. C-index performance of PATHS for three different choices of image encoder I: ResNet50 pre-trained on ImageNet (RN50) <ref type="bibr" target="#b8">[9,</ref><ref type="bibr" target="#b12">13]</ref>, a vision transformer trained in a self-supervised manner on WSI patches at 20x (SSL-ViT) <ref type="bibr" target="#b2">[3,</ref><ref type="bibr" target="#b5">6]</ref>, and UNI <ref type="bibr" target="#b6">[7]</ref>. The results highlight the insufficiency of ImageNet pre-trained patch encoders on pathology tasks, and the poor quality of the low magnification patch features produced by SSL-ViT.  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Image Encoder</head></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 2 .</head><label>2</label><figDesc>Figure 2. Architecture of the contextualisation module, which accounts for the hierarchical context of a patch X m u,v . The recurrent units are applied down the hierarchy, forming a tree-shaped RNN. In this example, m1 = 0.625 and M = 2.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 3 .</head><label>3</label><figDesc>Figure 3. Inference speed, including I/O, patch pre-processing using UNI (which dominates latency), and model inference of PATHS (orange) compared to ABMIL (blue) when applied to a single new WSI. The magnification levels shown correspond to those in our experiments (m5 = 10× = 1µm/pixel). As preprocessing dominates latency, the results for ABMIL are very close to those for other full slide baselines. Values were averaged over 50 TCGA-BRCA slides on a high performance A100 workstation, with standard error of the mean shown. The results clearly show the low latency of PATHS compared to methods which process the full slide, even for larger values of K.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 4 .</head><label>4</label><figDesc>Figure 4. Left: whole slide images from the CAMELYON17 dataset with human-annotated tumours regions marked in blue. Right: visualisation of the patches selected by PATHS across magnifications 0.625x through 10x, and their corresponding importance values. (a) and (b) show strong coverage of the tumorous regions at all magnifications, although (c) shows that PATHS may fail to identify micrometastases in some challenging cases.</figDesc><graphic coords="8,175.95,289.61,105.60,125.19" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>7 :C</head><label>7</label><figDesc>slide ←-C slide + [F i ]</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 5 .</head><label>5</label><figDesc>Figure 5. Number of patches loaded per slide for ABMIL (blue) compared to PATHS (orange) for various values of K. Values averaged over 50 slides from TCGA-BRCA, as with Figure 3. Unlike inference latency, this measure is not hardware dependent, and demonstrates clearly the exponential growth in the number of patches required by traditional MIL approaches compared to the linear number required by PATHS.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Figure 6 .Figure 7 .</head><label>67</label><figDesc>Figure 6. Left-to-right: whole slide image from TCGA-BRCA, predicted semantic segmentation, PATHS heatmap. We observe that PATHS appears to focus on tumorous regions.</figDesc><graphic coords="13,260.39,465.52,128.33,115.87" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0"><head></head><label></label><figDesc></figDesc><graphic coords="2,58.50,72.00,494.98,236.80" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 1 .</head><label>1</label><figDesc>C-index performance on the survival prediction task cross-validated over the same five folds, including sample standard deviation across folds. PATHS achieves superior performance on four out of five datasets, and the highest overall performance.</figDesc><table><row><cell>Architecture</cell><cell>IDC</cell><cell>CRC</cell><cell>CCRCC</cell><cell>PRCC</cell><cell>LUAD</cell><cell>Mean</cell></row><row><cell>ABMIL [15]</cell><cell>0.487 ± 0.079</cell><cell>0.566 ± 0.075</cell><cell>0.561 ± 0.074</cell><cell>0.671 ± 0.076</cell><cell>0.584 ± 0.054</cell><cell>0.574</cell></row><row><cell cols="2">DeepAttnMISL [32] 0.472 ± 0.023</cell><cell>0.561 ± 0.088</cell><cell>0.521 ± 0.084</cell><cell>0.472 ± 0.162</cell><cell>0.563 ± 0.037</cell><cell>0.518</cell></row><row><cell>GCN-MIL [19, 35]</cell><cell>0.534 ± 0.060</cell><cell>0.538 ± 0.049</cell><cell>0.591 ± 0.093</cell><cell cols="3">0.636 ± 0.066 0.592 ± 0.070 0.578</cell></row><row><cell>DS-MIL [17]</cell><cell>0.472 ± 0.020</cell><cell>0.470 ± 0.053</cell><cell>0.548 ± 0.057</cell><cell>0.654 ± 0.134</cell><cell>0.537 ± 0.061</cell><cell>0.536</cell></row><row><cell>HIPT [6]</cell><cell>0.634 ± 0.050</cell><cell>0.608 ± 0.088</cell><cell>0.642 ± 0.028</cell><cell>0.670 ± 0.065</cell><cell>0.538 ± 0.044</cell><cell>0.618</cell></row><row><cell>ZoomMIL [28]</cell><cell>0.588 ± 0.062</cell><cell>0.631 ± 0.065</cell><cell>0.647 ± 0.069</cell><cell>0.662 ± 0.076</cell><cell>0.551 ± 0.051</cell><cell>0.616</cell></row><row><cell>PATHS (ours)</cell><cell cols="5">0.636 ± 0.069 0.695 ± 0.097 0.677 ± 0.046 0.772 ± 0.036 0.545 ± 0.060</cell><cell>0.665</cell></row><row><cell cols="3">quired to accelerate training, and during inference only the</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="3">selected patches Xm are extracted from each level. This is</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="3">in contrast to past work, in which a new slide must be fully</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="3">patched and pre-processed before inference begins, incur-</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>ring high latency.</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 2 .</head><label>2</label><figDesc>Ablation study: in order to demonstrate the efficacy of patch contextualisation, slide-level context and attentional patch selection, we compare our model against several simpler variants on the survival prediction task across all datasets. We show that each module contributes to the overall performance.</figDesc><table><row><cell></cell><cell>Neither</cell><cell cols="2">Context mode Hierarchical only Slide-level only</cell><cell>Random patch selection</cell><cell>PATHS</cell></row><row><cell>IDC</cell><cell>0.607 ± 0.047</cell><cell>0.618 ± 0.048</cell><cell>0.641 ± 0.058</cell><cell>0.608 ± 0.080</cell><cell>0.636 ± 0.069</cell></row><row><cell>CRC</cell><cell>0.644 ± 0.058</cell><cell>0.641 ± 0.131</cell><cell>0.687 ± 0.085</cell><cell>0.699 ± 0.086</cell><cell>0.695 ± 0.097</cell></row><row><cell cols="2">CCRCC 0.642 ± 0.056</cell><cell>0.646 ± 0.051</cell><cell>0.670 ± 0.042</cell><cell>0.664 ± 0.010</cell><cell>0.677 ± 0.046</cell></row><row><cell>PRCC</cell><cell>0.705 ± 0.082</cell><cell>0.769 ± 0.028</cell><cell>0.727 ± 0.069</cell><cell>0.768 ± 0.047</cell><cell>0.772 ± 0.036</cell></row><row><cell cols="2">LUAD 0.573 ± 0.070</cell><cell>0.549 ± 0.071</cell><cell>0.557 ± 0.049</cell><cell>0.539 ± 0.073</cell><cell>0.545 ± 0.060</cell></row><row><cell>Mean</cell><cell>0.634</cell><cell>0.645</cell><cell>0.656</cell><cell>0.656</cell><cell>0.665</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 3 .</head><label>3</label><figDesc>PATHS hyperparameters, shared between all datasets.</figDesc><table><row><cell>Hyperparameter</cell><cell>Value</cell></row><row><cell>Learning rate</cell><cell>2e-5</cell></row><row><cell>Batch size</cell><cell>32</cell></row><row><cell>Epochs</cell><cell>40</cell></row><row><cell>Survival quantisation bins (b)</cell><cell>4</cell></row><row><cell>Censored data loss weight α</cell><cell>0.6</cell></row><row><cell>Image encoder</cell><cell>UNI [7]</cell></row><row><cell>Patch size</cell><cell>256</cell></row><row><cell>Patches extracted per level K</cell><cell>20</cell></row><row><cell>Magnification factor M</cell><cell>2</cell></row><row><cell>Hierarchy depth n</cell><cell>5 (from 0.625× to 10×)</cell></row><row><cell>Transformer aggregator dimension</cell><cell>128</cell></row><row><cell>Transformer aggregator heads</cell><cell>4</cell></row><row><cell>Transformer aggregator layers</cell><cell>2</cell></row><row><cell>IMP i hidden dimension</cell><cell>128</cell></row><row><cell>LSTM hidden dimension</cell><cell>256</cell></row></table></figure>
+		</body>
+		<back>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Structured crowdsourcing enables convolutional segmentation of histology images</title>
+		<author>
+			<persName><forename type="first">Mohamed</forename><surname>Amgad</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Habiba</forename><surname>Elfandy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hagar</forename><surname>Hussein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lamees</forename><forename type="middle">A</forename><surname>Atteya</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A T</forename><surname>Mai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lamia S Abo</forename><surname>Elsebaie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rokia</forename><forename type="middle">A</forename><surname>Elnasr</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Sakr</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S E</forename><surname>Hazem</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ahmed</forename><forename type="middle">F</forename><surname>Salem</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anas</forename><forename type="middle">M</forename><surname>Ismail</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Saad</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Bioinformatics</title>
+		<imprint>
+			<biblScope unit="volume">35</biblScope>
+			<biblScope unit="issue">18</biblScope>
+			<biblScope unit="page" from="3461" to="3467" />
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Multiple instance learning: A survey of problem characteristics and applications</title>
+		<author>
+			<persName><forename type="first">Marc-André</forename><surname>Carbonneau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Veronika</forename><surname>Cheplygina</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eric</forename><surname>Granger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ghyslain</forename><surname>Gagnon</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Pattern Recognition</title>
+		<imprint>
+			<biblScope unit="volume">77</biblScope>
+			<biblScope unit="page">2</biblScope>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Emerging properties in self-supervised vision transformers</title>
+		<author>
+			<persName><forename type="first">Mathilde</forename><surname>Caron</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hugo</forename><surname>Touvron</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ishan</forename><surname>Misra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hervé</forename><surname>Jégou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Julien</forename><surname>Mairal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Piotr</forename><surname>Bojanowski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Armand</forename><surname>Joulin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the International Conference on Computer Vision (ICCV)</title>
+		<meeting>the International Conference on Computer Vision (ICCV)</meeting>
+		<imprint>
+			<date type="published" when="2005">2021. 3, 5</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<author>
+			<persName><forename type="first">Joao</forename><surname>Carreira</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Skanda</forename><surname>Koppula</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Zoran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adria</forename><surname>Recasens</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Catalin</forename><surname>Ionescu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Olivier</forename><surname>Henaff</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Evan</forename><surname>Shelhamer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Relja</forename><surname>Arandjelovic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matt</forename><surname>Botvinick</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oriol</forename><surname>Vinyals</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2202.10890</idno>
+		<title level="m">Hierarchical perceiver</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page">3</biblScope>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Multimodal co-attention transformer for survival prediction in gigapixel whole slide images</title>
+		<author>
+			<persName><forename type="first">Richard</forename><forename type="middle">J</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming</forename><forename type="middle">Y</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei-Hung</forename><surname>Weng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tiffany</forename><forename type="middle">Y</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><forename type="middle">K</forename><surname>Drew</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Trevor</forename><surname>Williamson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maha</forename><surname>Manz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Faisal</forename><surname>Shady</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Mahmood</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV)</title>
+		<meeting>the IEEE/CVF International Conference on Computer Vision (ICCV)</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page">5</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Scaling vision transformers to gigapixel images via hierarchical self-supervised learning</title>
+		<author>
+			<persName><forename type="first">Richard</forename><forename type="middle">J</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chengkuan</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yicong</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tiffany</forename><forename type="middle">Y</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><forename type="middle">D</forename><surname>Trister</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Rahul</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Faisal</forename><surname>Krishnan</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Mahmood</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)</title>
+		<meeting>the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)</meeting>
+		<imprint>
+			<date type="published" when="2022">2022. 1, 3, 5, 6, 2</date>
+			<biblScope unit="page" from="16144" to="16155" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Towards a general-purpose foundation model for computational pathology</title>
+		<author>
+			<persName><forename type="first">Tong</forename><surname>Richard J Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming</forename><forename type="middle">Y</forename><surname>Ding</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillaume</forename><surname>Drew Fk Williamson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bowen</forename><surname>Jaume</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><forename type="middle">H</forename><surname>Shao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Muhammad</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Shaban</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Nature Medicine</title>
+		<imprint>
+			<biblScope unit="volume">6</biblScope>
+			<biblScope unit="page">3</biblScope>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Differentiable patch selection for image recognition</title>
+		<author>
+			<persName><forename type="first">Jean-Baptiste</forename><surname>Cordonnier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aravindh</forename><surname>Mahendran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexey</forename><surname>Dosovitskiy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dirk</forename><surname>Weissenborn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jakob</forename><surname>Uszkoreit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Unterthiner</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition</title>
+		<meeting>the IEEE/CVF Conference on Computer Vision and Pattern Recognition</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="2351" to="2360" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Imagenet: A large-scale hierarchical image database</title>
+		<author>
+			<persName><forename type="first">Jia</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Richard</forename><surname>Socher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Li-Jia</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Li</forename><surname>Fei-Fei</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE Conference on Computer Vision and Pattern Recognition</title>
+		<imprint>
+			<date type="published" when="2009">2009. 2009</date>
+			<biblScope unit="page" from="248" to="255" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Deep learning for whole slide image analysis: An overview</title>
+		<author>
+			<persName><forename type="first">Neofytos</forename><surname>Dimitriou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ognjen</forename><surname>Arandjelović</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><forename type="middle">D</forename><surname>Caie</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Frontiers in Medicine</title>
+		<imprint>
+			<biblScope unit="volume">6</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">An image is worth 16x16 words: Transformers for image recognition at scale</title>
+		<author>
+			<persName><forename type="first">Alexey</forename><surname>Dosovitskiy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lucas</forename><surname>Beyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexander</forename><surname>Kolesnikov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dirk</forename><surname>Weissenborn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaohua</forename><surname>Zhai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Unterthiner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mostafa</forename><surname>Dehghani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Minderer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Georg</forename><surname>Heigold</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sylvain</forename><surname>Gelly</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jakob</forename><surname>Uszkoreit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Neil</forename><surname>Houlsby</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ICLR</title>
+		<imprint>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page">2</biblScope>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Multimodal dynamics: Dynamical fusion for trustworthy multimodal classification</title>
+		<author>
+			<persName><forename type="first">Zongbo</forename><surname>Han</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fan</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junzhou</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Changqing</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianhua</forename><surname>Yao</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)</title>
+		<meeting>the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)</meeting>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="20707" to="20717" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Deep residual learning for image recognition</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Kaiming He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shaoqing</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Ren</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Sun</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE Conference on Computer Vision and Pattern Recognition (CVPR)</title>
+		<imprint>
+			<date type="published" when="2015">2016. 2015</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page">3</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Registration-enhanced multiple instance learning for cervical cancer whole slide image classification</title>
+		<author>
+			<persName><forename type="first">Qiming</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chengjiang</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Siqi</forename><surname>Zeng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhendong</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hufei</forename><surname>Duan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jingying</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Feiyang</forename><surname>Pan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yonghong</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wenting</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tian</forename><surname>Guan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">International Journal of Imaging Systems and Technology</title>
+		<imprint>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page">3</biblScope>
+			<date type="published" when="2024">22952. 2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Attention-based deep multiple instance learning</title>
+		<author>
+			<persName><forename type="first">Maximilian</forename><surname>Ilse</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jakub</forename><surname>Tomczak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 35th International Conference on Machine Learning</title>
+		<meeting>the 35th International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2006">2018. 1, 2, 5, 6</date>
+			<biblScope unit="page" from="2127" to="2136" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Deep multiple instance learning for digital histopathology</title>
+		<author>
+			<persName><forename type="first">Maximilian</forename><surname>Ilse</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Jakub</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Tomczak</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Handbook of Medical Image Computing and Computer Assisted Intervention</title>
+		<imprint>
+			<publisher>Academic Press</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page">2</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Dual-stream multiple instance learning network for whole slide image classification with self-supervised contrastive learning</title>
+		<author>
+			<persName><forename type="first">Bin</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yin</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kevin</forename><forename type="middle">W</forename><surname>Eliceiri</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)</title>
+		<imprint>
+			<date type="published" when="2008">2021. 2020. 3, 5, 6, 8</date>
+			<biblScope unit="page" from="14313" to="14323" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">A multi-resolution model for histopathology image classification and localization with multiple instance learning</title>
+		<author>
+			<persName><forename type="first">Jiayun</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wenyuan</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anthony</forename><forename type="middle">E</forename><surname>Sisk</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Huihui</forename><surname>Ye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">William</forename><forename type="middle">D</forename><surname>Wallace</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Speier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Corey</forename><forename type="middle">W</forename><surname>Arnold</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Computers in biology and medicine</title>
+		<imprint>
+			<biblScope unit="volume">131</biblScope>
+			<biblScope unit="page">104253</biblScope>
+			<date type="published" when="2008">2020. 3, 5, 6, 8</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Graph cnn for survival analysis on whole slide pathological images</title>
+		<author>
+			<persName><forename type="first">Ruoyu</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiawen</forename><surname>Yao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xinliang</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yeqing</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junzhou</forename><surname>Huang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Medical Image Computing and Computer-Assisted Intervention</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="page">6</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">1399 h&amp;e-stained sentinel lymph node sections of breast cancer patients: the camelyon dataset</title>
+		<author>
+			<persName><forename type="first">Geert</forename><surname>Litjens</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Bandi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ehteshami</forename><surname>Babak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oscar</forename><surname>Bejnordi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maschenka</forename><surname>Geessink</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Balkenhol</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Altuna</forename><surname>Bult</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Meyke</forename><surname>Halilovic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rob</forename><surname>Hermsen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rob</forename><surname>Van De Loo</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Vogels</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nikolas</forename><surname>Quirine F Manson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexi</forename><surname>Stathonikos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Paul</forename><surname>Baidoshvili</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Carla</forename><surname>Van Diest</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marcory</forename><surname>Wauters</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeroen</forename><surname>Van Dijk</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Van Der Laak</surname></persName>
+		</author>
+		<idno>giy065</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Gi-gaScience</title>
+		<imprint>
+			<biblScope unit="volume">7</biblScope>
+			<biblScope unit="issue">6</biblScope>
+			<biblScope unit="page">2</biblScope>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Swin transformer: Hierarchical vision transformer using shifted windows</title>
+		<author>
+			<persName><forename type="first">Ze</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yutong</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yue</forename><surname>Cao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Han</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yixuan</forename><surname>Wei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephen</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Baining</forename><surname>Guo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV)</title>
+		<meeting>the IEEE/CVF International Conference on Computer Vision (ICCV)</meeting>
+		<imprint>
+			<date type="published" when="2021">2021. 1, 2, 3</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">Ming</forename><forename type="middle">Y</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><forename type="middle">K</forename><surname>Drew</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tiffany</forename><forename type="middle">Y</forename><surname>Williamson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Richard</forename><forename type="middle">J</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matteo</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Faisal</forename><surname>Barbieri</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Mahmood</surname></persName>
+		</author>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Data-efficient and weakly supervised computational pathology on whole-slide images</title>
+	</analytic>
+	<monogr>
+		<title level="j">Nature Biomedical Engineering</title>
+		<imprint>
+			<biblScope unit="volume">5</biblScope>
+			<biblScope unit="page">5</biblScope>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">A threshold selection method from graylevel histograms</title>
+		<author>
+			<persName><forename type="first">Nobuyuki</forename><surname>Otsu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Systems, Man, and Cybernetics</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="62" to="66" />
+			<date type="published" when="1979">1979</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<author>
+			<persName><forename type="first">Johnathan</forename><surname>Pocock</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Simon</forename><surname>Graham</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Quoc</forename><forename type="middle">Dang</forename><surname>Vu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mostafa</forename><surname>Jahanifar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Srijay</forename><surname>Deshpande</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Giorgos</forename><surname>Hadjigeorghiou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Shephard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Raja</forename><surname>Muhammad Saad Bashir</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mohsin</forename><surname>Bilal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wenqi</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Epstein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fayyaz</forename><surname>Minhas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shan E Ahmed</forename><surname>Nasir M Rajpoot</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Raza</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">TIAToolbox as an end-to-end library for advanced tissue image analytics</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page">120</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Unet: Convolutional networks for biomedical image segmentation</title>
+		<author>
+			<persName><forename type="first">Olaf</forename><surname>Ronneberger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Philipp</forename><surname>Fischer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Brox</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Medical Image Computing and Computer-Assisted Intervention -MICCAI 2015</title>
+		<meeting><address><addrLine>Cham</addrLine></address></meeting>
+		<imprint>
+			<publisher>Springer International Publishing</publisher>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="234" to="241" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Transformer based correlated multiple instance learning for whole slide image classification</title>
+		<author>
+			<persName><forename type="first">Zhuchen</forename><surname>Shao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hao</forename><surname>Bian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yang</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yifeng</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiangyang</forename><surname>Ji</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">34</biblScope>
+			<date type="published" when="2005">2136-2147, 2021. 1, 2, 5</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<monogr>
+		<title level="m" type="main">Very deep convolutional networks for large-scale image recognition</title>
+		<author>
+			<persName><forename type="first">Karen</forename><surname>Simonyan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Zisserman</surname></persName>
+		</author>
+		<idno>CoRR, abs/1409.1556</idno>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Differentiable zooming for multiple instance learning on whole-slide images</title>
+		<author>
+			<persName><forename type="first">Kevin</forename><surname>Thandiackal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Boqi</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pushpak</forename><surname>Pati</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillaume</forename><surname>Jaume</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maria</forename><surname>Drew Fk Williamson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Orcun</forename><surname>Gabrani</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Goksel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">The European Conference on Computer Vision (ECCV)</title>
+		<imprint>
+			<date type="published" when="2022">2022. 3, 5, 6, 8, 2</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Attention is all you need</title>
+		<author>
+			<persName><forename type="first">Ashish</forename><surname>Vaswani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noam</forename><forename type="middle">M</forename><surname>Shazeer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Niki</forename><surname>Parmar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jakob</forename><surname>Uszkoreit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Llion</forename><surname>Jones</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aidan</forename><forename type="middle">N</forename><surname>Gomez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lukasz</forename><surname>Kaiser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Illia</forename><surname>Polosukhin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page">5</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Deep learning-based survival prediction for multiple cancer types using histopathology images</title>
+		<author>
+			<persName><forename type="first">Ellery</forename><surname>Wulczyn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><forename type="middle">F</forename><surname>Steiner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhaoyang</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Apaar</forename><surname>Sadhwani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongwu</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Isabelle</forename><surname>Flament-Auvigne</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Craig</forename><forename type="middle">H</forename><surname>Mermel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yun</forename><surname>Po-Hsuan Cameron Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martin</forename><forename type="middle">C</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Stumpe</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">PLOS ONE</title>
+		<imprint>
+			<biblScope unit="volume">15</biblScope>
+			<biblScope unit="issue">6</biblScope>
+			<biblScope unit="page" from="1" to="18" />
+			<date type="published" when="2007">2020. 1, 2, 3, 7</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Nyströmformer: A nyström-based algorithm for approximating self-attention. Proceedings of the</title>
+		<author>
+			<persName><forename type="first">Yunyang</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhanpeng</forename><surname>Zeng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rudrasis</forename><surname>Chakraborty</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mingxing</forename><surname>Tan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Glenn</forename><forename type="middle">Moo</forename><surname>Fung</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yin</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vikas</forename><surname>Singh</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI Conference on Artificial Intelligence. AAAI Conference on Artificial Intelligence</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="volume">35</biblScope>
+			<biblScope unit="page">2</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Whole slide images based cancer survival prediction using attention guided deep multiple instance learning networks</title>
+		<author>
+			<persName><forename type="first">Jiawen</forename><surname>Yao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xinliang</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jitendra</forename><surname>Jonnagaddala</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicholas</forename><forename type="middle">J</forename><surname>Hawkins</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junzhou</forename><surname>Huang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Medical image analysis</title>
+		<imprint>
+			<biblScope unit="volume">65</biblScope>
+			<biblScope unit="page">101789</biblScope>
+			<date type="published" when="2006">2020. 3, 5, 6</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Bias in Cross-Entropy-Based training of deep survival networks</title>
+		<author>
+			<persName><forename type="first">Gorgi</forename><surname>Shekoufeh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Zadeh</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Schmid</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Trans Pattern Anal Mach Intell</title>
+		<imprint>
+			<biblScope unit="volume">43</biblScope>
+			<biblScope unit="issue">9</biblScope>
+			<biblScope unit="page" from="3126" to="3137" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Nested hierarchical trans-former: Towards accurate, data-efficient and interpretable visual understanding</title>
+		<author>
+			<persName><forename type="first">Zizhao</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Han</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Long</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ting</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sercan</forename><forename type="middle">O</forename><surname>Arik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tomas</forename><surname>Pfister</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI Conference on Artificial Intelligence (AAAI)</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page">3</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Predicting lymph node metastasis using histopathological images based on multiple instance learning with deep graph convolution</title>
+		<author>
+			<persName><forename type="first">Yu</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fan</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuqi</forename><surname>Fang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hailing</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Niyun</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jun</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiarui</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sen</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xinjuan</forename><surname>Bjoern H Menze</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianhua</forename><surname>Fan</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Yao</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)</title>
+		<imprint>
+			<date type="published" when="2020">2020. 2020</date>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="page">6</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

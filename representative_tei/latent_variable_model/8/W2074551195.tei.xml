@@ -1,0 +1,1652 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Modeling Natural Images Using Gated MRFs</title>
+				<funder>
+					<orgName type="full">NSERC</orgName>
+				</funder>
+				<funder>
+					<orgName type="full">CIFAR</orgName>
+				</funder>
+				<funder>
+					<orgName type="full">Google</orgName>
+				</funder>
+				<funder>
+					<orgName type="full">CFI</orgName>
+				</funder>
+				<funder>
+					<orgName type="full">Microsoft</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Aurelio</forename><surname>Ranzato</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Volodymyr</forename><surname>Mnih</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Joshua</forename><forename type="middle">M</forename><surname>Susskind</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Geoffrey</forename><forename type="middle">E</forename><surname>Hinton</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">•</forename><forename type="middle">M</forename><surname>Ranzato</surname></persName>
+						</author>
+						<author>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Computer Science</orgName>
+								<orgName type="laboratory">Machine Perception Laboratory</orgName>
+								<orgName type="institution">University of Toronto</orgName>
+								<address>
+									<postCode>M5S 3G4</postCode>
+									<settlement>Toronto</settlement>
+									<region>ON</region>
+									<country key="CA">CANADA</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff1">
+								<orgName type="institution">University of California San Diego</orgName>
+								<address>
+									<addrLine>La Jolla</addrLine>
+									<postCode>92093</postCode>
+									<country key="US">U.S.A</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Modeling Natural Images Using Gated MRFs</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-14T17:30+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<textClass>
+				<keywords>
+					<term>gated MRF</term>
+					<term>natural images</term>
+					<term>deep learning</term>
+					<term>unsupervised learning</term>
+					<term>density estimation</term>
+					<term>energy-based model</term>
+					<term>Boltzmann machine</term>
+					<term>factored 3-way model</term>
+					<term>generative model</term>
+					<term>object recognition</term>
+					<term>denoising</term>
+					<term>facial expression recognition</term>
+				</keywords>
+			</textClass>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>This paper describes a Markov Random Field for real-valued image modeling that has two sets of latent variables. One set is used to gate the interactions between all pairs of pixels while the second set determines the mean intensities of each pixel. This is a powerful model with a conditional distribution over the input that is Gaussian with both mean and covariance determined by the configuration of latent variables, which is unlike previous models that were restricted to use Gaussians with either a fixed mean or a diagonal covariance matrix. Thanks to the increased flexibility, this gated MRF can generate more realistic samples after training on an unconstrained distribution of high-resolution natural images. Furthermore, the latent variables of the model can be inferred efficiently and can be used as very effective descriptors in recognition tasks. Both generation and discrimination drastically improve as layers of binary latent variables are added to the model, yielding a hierarchical model called a Deep Belief Network.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">INTRODUCTION</head><p>T HE study of the statistical properties of natural images has a long history and has influenced many fields, from image processing to computational neuroscience <ref type="bibr" target="#b0">[1]</ref>. In computer vision, for instance, ideas and principles derived from image statistics and from studying the processing stages of the human visual system have had a significant impact on the design of descriptors that are useful for discrimination. A common paradigm has emerged over the past few years in object and scene recognition systems. Most methods <ref type="bibr" target="#b1">[2]</ref> start by applying some well-engineered features, like SIFT <ref type="bibr" target="#b2">[3]</ref>, HoG <ref type="bibr" target="#b3">[4]</ref>, SURF <ref type="bibr" target="#b4">[5]</ref>, or PHoG <ref type="bibr" target="#b5">[6]</ref>, to describe image patches, and then aggregating these features at different spatial resolutions and on different parts of the image to produce a feature vector which is subsequently fed into a general purpose classifier, such as a Support Vector Machine (SVM). Although very successful, these methods rely heavily on human design of good patch descriptors and ways to aggregate them. Given the large and growing amount of easily available image data and continued advances in machine learning, it should be possible to exploit the statistical properties of natural images more efficiently by learning better patch descriptors and better ways of aggregating them. This will be particularly significant for data where human expertise is limited such as microscopic, radiographic or hyper-spectral imagery.</p><p>In this paper, we focus on probabilistic models of natural images which are useful not only for extracting representations that can subsequently be used for discriminative tasks <ref type="bibr" target="#b6">[7]</ref>, <ref type="bibr" target="#b7">[8]</ref>, <ref type="bibr" target="#b8">[9]</ref>, but also for providing adaptive priors that can be used for image restoration tasks <ref type="bibr" target="#b9">[10]</ref>, <ref type="bibr" target="#b10">[11]</ref>, <ref type="bibr" target="#b11">[12]</ref>. Thanks to their generative ability, probabilistic models can cope more naturally with ambiguities in the sensory inputs and have the potential to produce more robust features. Devising good models of natural images, however, is a challenging task <ref type="bibr" target="#b0">[1]</ref>, <ref type="bibr" target="#b11">[12]</ref>, <ref type="bibr" target="#b12">[13]</ref>, because images are continuous, high-dimensional and very highly structured.</p><p>Recent studies have tried to capture high-order dependencies by using hierarchical models that extract highly nonlinear representations of the input <ref type="bibr" target="#b13">[14]</ref>, <ref type="bibr" target="#b14">[15]</ref>. In particular, deep learning methods construct hierarchies composed of multiple layers by greedily training each layer separately using unsupervised algorithms <ref type="bibr" target="#b7">[8]</ref>, <ref type="bibr" target="#b15">[16]</ref>, <ref type="bibr" target="#b16">[17]</ref>, <ref type="bibr" target="#b17">[18]</ref>. These methods are appealing because 1) they adapt to the input data; 2) they recursively build hierarchies using unsupervised algorithms, breaking up the difficult problem of learning hierarchical non-linear systems into a sequence of simpler learning tasks that use only unlabeled data; 3) they have demonstrated good performance on a variety of domains, from generic object recognition to action recognition in video sequences <ref type="bibr" target="#b16">[17]</ref>, <ref type="bibr" target="#b17">[18]</ref>, <ref type="bibr" target="#b18">[19]</ref>.</p><p>In this paper we propose a probabilistic generative model of images that can be used as the front-end of a standard deep architecture, called a Deep Belief Network (DBN) <ref type="bibr" target="#b19">[20]</ref>. We test both the generative ability of this model and the usefulness of the representations that it learns for applications such as object recognition, facial expression recognition and image denoising, and we demonstrate stateof-the-art performance for several different tasks involving several different types of image.</p><p>Our probabilistic model is called a gated Markov Random Field (MRF) because it uses one of its two sets of latent variables to create an image-specific energy function that models the covariance structure of the pixels by switching in sets of pairwise interactions. It uses its other set of latent variables to model the intensities of the pixels <ref type="bibr" target="#b12">[13]</ref>. The DBN then uses several further layers of Bernoulli latent variables to model the statistical structure in the hidden activities of the two sets of latent variables of the gated MRF. By replicating features in the lower layers it is possible to learn a very good generative model of highresolution images and to use this as a principled framework for learning adaptive descriptors that turn out to be very useful for discriminative tasks.</p><p>In the reminder of this paper, we first discuss our new contributions with respect to our previous published work and then describe the model in detail. In sec. 2 we review other popular generative models of images and motivate the need for the model we propose, the gated MRF. In sec. 3, we describe the learning algorithm as well as the inference procedure for the gated MRF. In order to capture the dependencies between the latent variables of the gated MRF, several other layers of latent variables can be added, yielding a DBN with many layers, as described in sec. <ref type="bibr" target="#b3">4</ref>. Such models cannot be scaled in a simple way to deal with high-resolution images because the number of parameters scales quadratically with the dimensionality of the input at each layer. Therefore, in sec. 5 an efficient and effective weight-sharing scheme is introduced. The key idea is to replicate parameters across local neighborhoods that do not overlap in order to accomplish a twofold goal: exploit stationarity of images while limiting the redundancy of latent variables encoding features at nearby image locations. Finally, we present a thorough validation of the model in sec. 6 with comparisons to other models on a variety of image types and tasks.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1.1">Contributions</head><p>This paper is a coherent synthesis of previously unpublished results with the authors' previous work on gated MRFs <ref type="bibr" target="#b20">[21]</ref>, <ref type="bibr" target="#b8">[9]</ref>, <ref type="bibr" target="#b12">[13]</ref>, <ref type="bibr" target="#b21">[22]</ref> that has appeared in several recent conference papers and is intended to serve as the main reference on the topic, describing in a more organized and consistent way the major ideas behind this probabilistic model, clarifying the relationship between the mPoT and mcRBM models described below, and providing more details (including pseudo-code) about the learning algorithms and the experimental evaluations. We have included a subsection on the relation to other classical probabilistic models that should help the reader better understand the advantages of the gated MRF and the similarities to other well-known models. The paper includes empirical evaluations of the model on an unusually large variety of tasks, not only on an image denoising and generation tasks that are standard ways to evaluate probabilistic generative models of natural images, but also on three very different recognition tasks (scenes, generic object recognition, and facial expressions under occlusion). The paper demonstrates that the gated MRF can be used for a wide range of different vision tasks, and it should suggest many other tasks that can benefit from the generative power of the model.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">THE GATED MRF</head><p>In this section, we first review some of the most popular probabilistic models of images and discuss how their</p><formula xml:id="formula_0">x 1 x 2 PCA x 1 x 2 PPCA x 1 x 2 FA x 1 x 2 SC x 1 x 2 PoT x 1</formula><p>x 2 mPoT Fig. <ref type="figure">1</ref>. Toy illustration to compare different models. x-axis is the first pixel, y-axis is the second pixel of two-pixel images. Blue dots are a dataset of two-pixel images. The red dot is the data point we want to represent. The green dot is its (mean) reconstruction. The models are: Principal Component Analysis, Probabilistic PCA, Factor Analysis, Sparse Coding, Product of Student's t and mean PoT.</p><p>underlying assumptions limit their modeling abilities. This motivates the introduction of the model we propose. After describing our basic model and its learning and inference procedures, we show how we can make it hierarchical and how we can scale it up using parameter-sharing to deal with high-resolution images.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.1">Relation to Other Probabilistic Models</head><p>Natural images live in a very high dimensional space that has as many dimensions as number of pixels, easily in the order of millions and more. Yet it is believed that they occupy a tiny fraction of that space, due to the structure of the world, encompassing a much lower dimensional yet highly non-linear manifold <ref type="bibr" target="#b22">[23]</ref>. The ultimate goal of unsupervised learning is to discover representations that parameterize such a manifold, and hence, capture the intrinsic structure of the input data. This structure is represented through features, also called latent variables in probabilistic models.</p><p>One simple way to check whether a model extracts features that retain information about the input, is by reconstructing the input itself from the features. If reconstruction errors of inputs similar to training samples is lower than reconstruction errors of other input data points, then the model must have learned interesting regularities <ref type="bibr" target="#b23">[24]</ref>. In PCA, for instance, the mapping into feature space is a linear projection into the leading principal components and the reconstruction is performed by another linear projection. The reconstruction is perfect only for those data points that lie in the linear subspace spanned by the leading principal components. The principal components are the structure captured by this model.</p><p>Also in a probabilistic framework we have a mapping into feature, or latent variable, space and back to image space. The former is obtained by using the posterior distribution over the latent variables, p(h|x) where x is the input and h the latent variables, the latter through the conditional distribution over the input, p(x|h).</p><p>As in PCA one would reconstruct the input from the features in order to assess the quality of the encoding, while in a probabilistic setting we can analyze and compare different models in terms of their conditional p(x|h). We can sample the latent variables, h ∼ p(h|x) given an input image x, and then look at how well the image x can be reconstructed using p(x| h). Reconstructions produced in this way are typically much more like real data than true samples from the underlying generative model because the latent variables are sampled from their posterior distribution, p(h|x), rather than from their prior, p(h), but the reconstructions do provide insight into how much of the information in the image is preserved in the sampled values of the latent variables.</p><p>As shown in fig. <ref type="figure">1</ref>, most models such as Probabilistic Principal Component Analysis (PPCA) <ref type="bibr" target="#b24">[25]</ref>, Factor Analysis (FA) <ref type="bibr" target="#b25">[26]</ref>, Independent Component Analysis (ICA) <ref type="bibr" target="#b26">[27]</ref>, Sparse Coding (SC) <ref type="bibr" target="#b27">[28]</ref>, and Gaussian Restricted Boltzmann Machines (GRBM) <ref type="bibr" target="#b28">[29]</ref>, assume that the conditional distribution of the pixels p(x|h) is Gaussian with a mean determined by the latent variables and a fixed, imageindependent covariance matrix. In PPCA the mean of the distribution lies along the directions of the leading eigenvectors while in SC it is along a linear combination of a very small number of basis vectors (represented by black arrows in the figure). From a generative point of view, these are rather poor assumptions for modeling natural images because much of the interesting structure of natural images lies in the fact that the covariance structure of the pixels varies considerably from image to image. A vertical occluding edge, for example, eliminates the typical strong correlation between pixels on opposite sides of the edge.</p><p>This limitation is addressed by models like Product of Student's t (PoT) <ref type="bibr" target="#b29">[30]</ref>, covariance Restricted Boltzmann Machine (cRBM) <ref type="bibr" target="#b20">[21]</ref> and the model proposed by Karklin and Lewicki <ref type="bibr" target="#b13">[14]</ref> each of which instead assume a Gaussian conditional distribution with a fixed mean but with a full covariance determined by the states of the latent variables. Latent variables explicitly account for the correlation patterns of the input pixels, avoiding interpolation across edges while smoothing within uniform regions. The mean, however, is fixed to the average of the input data vectors across the whole dataset. As shown in the next section, this can yield very poor conditional models of the input distribution.</p><p>In this work, we extend these two classes of models with a new model whose conditional distribution over the input has both a mean and a covariance matrix determined by latent variables. We will introduce two such models, namely the mean PoT (mPoT) <ref type="bibr" target="#b12">[13]</ref> and the mean-covariance RBM (mcRBM) <ref type="bibr" target="#b8">[9]</ref>, which differ only in the choice of their distribution over latent variables. We refer to these models as gated MRF's because they are pair-wise Markov Random Fields (MRFs) with latent variables gating the couplings between input variables. Their marginal distribution can be interpreted as a mixture of Gaussians with an infinite (mPoT) or exponential (mcRBM) number of components, each with non-zero mean and full covariance matrix and Fig. <ref type="figure">2</ref>. In the first column, each image is zero mean. In the second column, the whole data set is centered but each image can have non-zero mean. First row: 8x8 natural image patches and contours of the empirical distribution of (tiny) two-pixel images (the x-axis being the first pixel and the y-axis the second pixel). Second row: images generated by a model that does not account for mean intensity with plots of how such model could fit the distribution of two-pixel images using mixture of Gaussians with components that can choose between two covariances. Third row: images generated by a model that has both "mean" and "covariance" hidden units and toy-illustration of how such model can fit the distribution of two-pixel images discovering the manifold of structured images (along the antidiagonal) using a mixture of Gaussians with arbitrary mean and only two covariances. tied parameters.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.2">Motivation</head><p>A Product of Student's t (PoT) model <ref type="bibr" target="#b30">[31]</ref> can be viewed as modelling image-specific, pair-wise relationships between pixel values by using the states of its latent variables. It is very good at representing the fact that two pixels have very similar intensities and no good at all at modelling what these intensities are. Failure to model the mean also leads to impoverished modelling of the covariances when the input images have non-zero mean intensity. The covariance RBM (cRBM) <ref type="bibr" target="#b20">[21]</ref> is another model that shares the same limitation since it only differs from PoT in the distribution of its latent variables: The posterior over the latent variables p(h|x) is a product of Bernoulli distributions instead of Gamma distributions as in PoT.</p><p>We explain the fundamental limitation of these models by using a simple toy example: Modelling two-pixel images using a cRBM with only one binary latent variable (see fig. <ref type="figure">2</ref>). This cRBM assumes that the conditional distribution over the input p(x|h) is a zero-mean Gaussian with a covariance that is determined by the state of the latent variable. Since the latent variable is binary, the cRBM can be viewed as a mixture of two zero-mean full covariance Gaussians. The latent variable uses the pairwise relationship between pixels to decide which of the two covariance matrices should be used to model each image. When the input data is pre-processed by making each image have zero mean intensity (the plot of the empirical histogram is shown in the first row and first column), most images lie near the origin because most of the times nearby pixels are strongly correlated. Less frequently we encounter edge images that exhibit strong anti-correlation between the pixels, as shown by the long tails along the anti-diagonal line. A cRBM could model this data by using two Gaussians (second row and first column): one that is spherical and tight at the origin for smooth images and another one that has a covariance elongated along the anti-diagonal for structured images.</p><p>If, however, the whole set of images is normalized by subtracting from every pixel the mean value of all pixels over all images (first row and second column), the cRBM fails at modelling structured images (second row and second column). It can fit a Gaussian to the smooth images by discovering the direction of strong correlation along the main diagonal, but it is very likely to fail to discover the direction of anti-correlation, which is crucial to represent discontinuities, because structured images with different mean intensity appear to be evenly spread over the whole input space.</p><p>If the model has another set of latent variables that can change the means of the Gaussian distributions in the mixture (as explained more formally below and yielding the mPoT and mcRBM models), then the model can represent both changes of mean intensity and the correlational structure of pixels (see last row). The mean latent variables effectively subtract off the relevant mean from each datapoint, letting the covariance latent variable capture the covariance structure of the data. As before, the covariance latent variable needs only to select between two covariance matrices.</p><p>In fact, experiments on real 8x8 image patches confirm these conjectures. Fig. <ref type="figure">2</ref> shows samples drawn from PoT and mPoT. The mPoT model (and similarly mcRBM <ref type="bibr" target="#b8">[9]</ref>) is better at modelling zero mean images and much better at modelling images that have non-zero mean intensity. This will be particularly relevant when we introduce a convolutional extension of the model to represent spatially stationary high-resolution images (as opposed to small image patches), since it will not be possible to independently normalize overlapping image patches.</p><p>As we shall see in sec. 6.1, models that do not account for mean intensity cannot generate realistic samples of natural images since samples drawn from the conditional distribution over the input have expected intensity that is constant everywhere regardless of the value of the latent variables. In the model we propose instead there is a set of latent variables whose role is to bias the average mean intensity differently in different regions of the input image. Combined with the correlational structure provided by the covariance latent variables, this produces smooth images that have sharp boundaries between regions of different mean intensity.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.3">Energy Functions</head><p>We start the discussion assuming the input is a small vectorized image patch, denoted by x ∈ R D , and the latent variables are denoted by the vector h p ∈ {0, 1} N . First, we consider a pair-wise MRF defined in terms of an energy function E. The probability density function is related to E by: p(x, h p ) = exp(-E(x, h p ))/Z, where Z is an (intractable) normalization constant which is called the partition function. The energy is:</p><formula xml:id="formula_1">E(x, h p ) = 1 2 i,j,k t ijk x i x j h p k (1)</formula><p>The states of the latent variables, called precision hidden units, modulate the pair-wise interactions t ijk between all pairs of input variables x i and x j , with i, j = 1..D. Similarly to Sejnowski <ref type="bibr" target="#b31">[32]</ref>, the energy function is defined in terms of 3-way multiplicative interactions. Unlike previous work by Memisevic and Hinton <ref type="bibr" target="#b32">[33]</ref> on modeling image transformations, here we use this energy function to model the joint distribution of the variables within the vector x. This way of allowing hidden units to modulate interactions between input units has far too many parameters. For real images we expect the required lateral interactions to have a lot of regular structure. A hidden unit that represents a vertical occluding edge, for example, needs to modulate the lateral interactions so as to eliminate horizontal interpolation of intensities in the region of the edge. This regular structure can be approximated by writing the 3-dimensional tensor of parameters t as a sum of outer products:</p><formula xml:id="formula_2">t ijk = f C<label>(1) if C</label></formula><p>(2)</p><p>jf P f k , where f is an index over F deterministic factors, C (1) and C (2) ∈ R D×F , and P ∈ R F ×N . Since the factors are connected twice to the same image through matrices C (1) and C (2) , it is natural to tie their weights further reducing the number of parameters, yielding the final parameterization</p><formula xml:id="formula_3">t ijk = f C if C jf P f k .</formula><p>Thus, taking into account also the hidden biases, eq. 1 becomes:</p><formula xml:id="formula_4">E(x, h p ) = 1 2 F f =1 ( N k=1 P f k h p k )( D i=1 C if x i ) 2 - N k=1 b p k h p k<label>(2)</label></formula><p>which can be written more compactly in matrix form as:</p><formula xml:id="formula_5">E(x, h p ) = 1 2 x T Cdiag(P h p )C T x -b pT h p<label>(3)</label></formula><p>where diag(v) is a diagonal matrix with diagonal entries given by the elements of vector v. This model can be interpreted as an instance of an RBM modeling pairwise interactions between the input pixels 1 and we dub it covariance RBM (cRBM) <ref type="bibr" target="#b20">[21]</ref>, <ref type="bibr" target="#b8">[9]</ref> 2 since it models the covariance structure of the input through the "precision" latent variables h p . The hidden units remain conditionally independent given the states of the input units and their binary states can be sampled using:</p><formula xml:id="formula_6">p(h p k = 1|x) = σ - 1 2 F f =1 P f k ( D i=1 C if x i ) 2 + b p k<label>(4)</label></formula><p>1. More precisely, this is an instance of a semi-restricted Boltzmann machine <ref type="bibr" target="#b33">[34]</ref>, <ref type="bibr" target="#b34">[35]</ref>, since only hidden units are "restricted", i.e. lack lateral interactions.</p><p>2. This model should not be confused with the conditional RBM <ref type="bibr" target="#b35">[36]</ref>.</p><p>where σ is the logistic function σ(v) = 1/ 1 + exp(-v) .</p><p>Given the states of the hidden units, the input units form an MRF in which the effective pairwise interaction weight between x i and x j is</p><formula xml:id="formula_7">1 2 f k P f k h p k C if C jf .</formula><p>Therefore, the conditional distribution over the input is:</p><formula xml:id="formula_8">p(x|h p ) = N (0, Σ), with Σ -1 = Cdiag(P h p )C T (5)</formula><p>Notice that the covariance matrix is not fixed, but is a function of the states of the precision latent variables h p . In order to guarantee positive definiteness of the covariance matrix we need to constrain P to be non-negative and add a small quadratic regularization term to the energy function <ref type="foot" target="#foot_0">3</ref> , here ignored for clarity of presentation.</p><p>As described in sec. 2.2, we want the conditional distribution over the pixels to be a Gaussian with not only its covariance but also its mean depending on the states of the latent variables. Since the product of a full covariance Gaussian (like the one in eq. 5) with a spherical nonzero mean Gaussian is a non-zero mean full covariance Gaussian, we simply add the energy function of cRBM in eq. 3 to the energy function of a GRBM <ref type="bibr" target="#b28">[29]</ref>, yielding:</p><formula xml:id="formula_9">E(x, h m , h p ) = 1 2 x T Cdiag(P h p )C T x -b pT h p + 1 2 x T x -h m W T x -b mT h m -b xT x<label>(6)</label></formula><p>where h m ∈ {0, 1} M are called "mean" latent variables because they contribute to control the mean of the conditional distribution over the input:</p><formula xml:id="formula_10">p(x|h m , h p ) = N Σ(W h m + b x ), Σ ,<label>(7)</label></formula><p>with</p><formula xml:id="formula_11">Σ -1 = Cdiag(P h p )C T + I</formula><p>where I is the identity matrix, W ∈ R D×M is a matrix of trainable parameters and b x ∈ R D is a vector of trainable biases for the input variables. The posterior distribution over the mean latent variables is <ref type="foot" target="#foot_1">4</ref> :</p><formula xml:id="formula_12">p(h m k = 1|x) = σ( D i=1 W ik x i + b m k )<label>(8)</label></formula><p>The overall model, whose joint probability density function is proportional to exp(-E x, h m , h p ) , is called a mean covariance RBM (mcRBM) <ref type="bibr" target="#b8">[9]</ref> and is represented in fig. <ref type="figure" target="#fig_0">3</ref>.</p><p>The demonstration in fig. <ref type="figure" target="#fig_1">4</ref> is designed to illustrate how the mean and precision latent variables cooperate to represent the input. Through the precision latent variables the model knows about pair-wise correlations in the image.  For instance, it knows that the pixels in the lower part of the image in fig. <ref type="figure" target="#fig_1">4</ref>-A are strongly correlated; these pixels are likely to take the same value, but the precision latent variables do not carry any information about which value this is. Then, very noisy information about the values of the individual pixels in the lower part of the image, as those provided by the mean latent variables, would be sufficient to reconstruct the whole region quite well, since the model knows which values can be smoothed. Mathematically, the interaction between mean and precision latent variables is expressed by the product between Σ (which depends only on h p ) and W h m + b x in the mean of the Gaussian distribution of eq. 7. We can repeat the same argument for the pixels in the top right corner and for those in the middle part of the image as well. Fig. <ref type="figure" target="#fig_1">4</ref>-C illustrates this concept, while fig. <ref type="figure" target="#fig_1">4-D</ref> shows that flipping the sign of the reconstruction of the mean latent variables flips the sign of the overall reconstruction as expected. Information about intensity is propagated over each region thanks to the pair-wise dependencies captured by the precision hidden units. Fig. <ref type="figure" target="#fig_1">4</ref>-B shows the same using the actual mean intensity produced by the mean hidden units (top). The reconstruction produced by the model using the whole set of hidden units is very close to the input image, as can be seen in the bottom part of fig. <ref type="figure" target="#fig_1">4-B</ref>.</p><p>In a mcRBM the posterior distribution over the latent variables p(h|x) is a product of Bernoullis as shown in eq. 8 and 4. This distribution is particularly easy to use in a standard DBN <ref type="bibr" target="#b19">[20]</ref> where each layer is trained using a binary-binary RBM. Binary latent variables, however, are not very good at representing different real-values of the mean intensity or different levels of contrast across an edge. A binary latent variable can represent a probability of 0.71 that a binary feature is present, but this is not at all the same as representing that a real-valued intensity is 0.71 and definitely not 0.70 or 0.72. In our previous work <ref type="bibr" target="#b20">[21]</ref> we showed that by combining many binary variables with shared weights and offset biases we can closely approximate continuous Gamma units, however. This issue can be addressed in several other ways, by either normalizing the input data x, or by normalizing the input in the energy function <ref type="bibr" target="#b8">[9]</ref>, or by changing the distribution of the latent variables.</p><p>In our experiments, we tried a few distributions 5 and found that Bernoulli variables for the mean hiddens and Gamma variables for the precision hiddens gave the best generative model. The resulting model, dubbed mean PoT (mPoT), is a slight modification of mcRBM. The energy is:</p><formula xml:id="formula_13">E(x, h m , h p ) = 1 2 x T Cdiag(P h p )C T x + 1 T (h p + (1 -γ) log h p ) + 1 2 x T x -h m W T x -b mT h m -b xT x (9)</formula><p>where 1 is a vector of 1's, γ ∈ R + and h p is a positive vector of real valued variables <ref type="bibr" target="#b30">[31]</ref>. In mPoT the posterior distribution over the precision hiddens is:</p><formula xml:id="formula_14">p(h p j |x) = Γ(γ, 1 + 1 2 f P f j ( i C if x i ) 2 ) (<label>10</label></formula><formula xml:id="formula_15">)</formula><p>where Γ is the Gamma distribution with expected value:</p><formula xml:id="formula_16">E[h p j |x] = γ 1 + 1 2 f P f j ( i C if x i ) 2 (11)</formula><p>Compared to eq. 4, we see that the operations required to compute the expectations are very similar, except for the non-linear transformation on the pooled squared filter outputs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.4">Relation to Line Processes and Sparse Coding</head><p>Let us consider the energy function of eq. 2 assuming that P is set to identity and the biases are all large and positive. The energy penalizes those images x that yield large filter responses (because of the positive sign of the energy function) <ref type="bibr" target="#b36">[37]</ref>. Without latent variables that have the possibility of turning off, the model would discover the minor components of the data <ref type="bibr" target="#b37">[38]</ref>, i.e. the filter weights would represent the directions of the minor components or linear combinations of those directions. The introduction of latent variables makes the model highly non-linear, causing it to learn filters with heavy-tailed output distributions. In the rare event of a non-smooth image (e.g., an edge in a certain location and orientation), a large filter output will cause the corresponding latent variable to turn off so that the increase in energy is equal to the bias rather than 5. An extensive evaluation of different choices of latent variable distributions is not explored here, and it is subject of future study. quadratic in the filter output value. This leads to sparse filter outputs that are usually close to zero but occasionally much larger. By default hidden units are all "on" because the input is not typically aligned with the oriented filters, but when an input x matches a filter, the corresponding hidden unit turns "off" thus representing the violation of a smoothness constraint.</p><p>In other words, images are assumed to be almost always smooth, but rare violations of this constraint are allowed by using auxiliary (latent) variables that act like switches. This idea was first proposed by Geman and Geman <ref type="bibr" target="#b38">[39]</ref> and later revisited by many others <ref type="bibr" target="#b39">[40]</ref>, <ref type="bibr" target="#b40">[41]</ref>. Like the Gaussian Scale Mixture model <ref type="bibr" target="#b9">[10]</ref>, our model uses hidden variables that control the modeled covariance between pixels, but our inference process is simpler because the model is undirected. Also, all parameters of our model are learned.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.5">Notes on the Modelling Choice</head><p>As stated in sec. 2.2, the main motivation for the model we propose is to define a conditional distribution over the input p(x|h m , h p ) which is a multivariate Gaussian with both mean and covariance determined by the state of latent variables. In order to achieve this, we have defined an energy function of the type:</p><formula xml:id="formula_17">E = 1 2 x T Σ -1 h p x + W h m</formula><p>x, where we denote with Σ h p and W h m matrices that depend on h p and h m , respectively. Two questions naturally arise. First, would the model work as well if we tie the set of latent variables that control the mean and covariance? And second, are there other formulations of energy functions that define multivariate Gaussian conditional distributions?</p><p>The answer to the first question is negative for a model of natural images since the statistics of the covariance structure is heavy tailed (nearby pixels are almost always strongly correlated) while the statistics of the mean intensity is not. This affects the statistics of the mean and covariance latent variables as well. The former is typically much sparser than the latter, therefore, tying both sets of latent variables would constrain the model in an unnatural way.</p><p>The answer to the second question is positive instead. The alternative would be the following energy function:</p><formula xml:id="formula_18">E = 1 2 (x -W h m ) T Σ -1 h p (x -W h m ).</formula><p>The advantage of this formulation is that the parameters defining the mean are defined in the image domain and, therefore, are much easier to interpret. The mean parameters directly define the mean of the Gaussian distribution, while in our formulation the mean of the Gaussian distribution is given by a product, Σ h p W h m , see eq. 7. The fundamental disadvantage of this formulation is that inference of the latent variables becomes inefficient since the energy function has multiplicative interactions between latent variables which make them conditionally dependent given the input. Lengthy iterative procedures would be required to compute a sample from p(h m |x) and p(h p |x).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">LEARNING ALGORITHM</head><p>The models described in the previous section can be reformulated by integrating out the latent variables over their domain. In the case of mPoT, for instance, we have that the free energy</p><formula xml:id="formula_19">F(x) = -log h p h m exp(-E(x, h m , h p )) is: F(x) = N j=1 log(1 + 1 2 F f =1 P f j ( D i=1 C if x i ) 2 ) + D i=1 1 2 x 2 i - D i=1 b x i x i - M k=1 log(1 + e i W ik xi+b m k ) (12)</formula><p>making the marginal distribution, p(x) ∝ exp(-F(x)), a product of experts <ref type="bibr" target="#b41">[42]</ref>.</p><p>Let us denote a generic parameter of the model with θ ∈ {C, P, γ, W, b x , b m }. We learn the parameters by stochastic gradient ascent in the log likelihood. We can write the likelihood in terms of the joint energy E or in terms of the free energy F. In both cases, maximum likelihood requires us to compute expectations over the model distributions. These can be approximated with Monte Carlo sampling algorithms. When using E the most natural sampling algorithm is Gibbs sampling (alternating the sampling from p(h m |x) and p(h p |x) to p(x|h m , h p )), while Hybrid Monte Carlo (HMC) <ref type="bibr" target="#b42">[43]</ref> is a better sampling algorithm when using F since x ∈ R D and F is differentiable. It is beyond the scope of this work to analyze and compare different sampling methods. Our preliminary experiments showed that training with HMC yielded models that produce better visually looking samples, and therefore, we will now describe the algorithm in terms F only.</p><p>The update rule for gradient ascent in the likelihood is:</p><formula xml:id="formula_20">θ ← θ + η &lt; ∂F ∂θ &gt; model -&lt; ∂F ∂θ &gt; data (<label>13</label></formula><formula xml:id="formula_21">)</formula><p>where &lt;&gt; denotes expectation over samples from the model or the training data. While it is straightforward to compute the value and the gradient of the free energy with respect to θ, computing the expectations over the model distribution is intractable because we would need to run the HMC sampler for a very long time, discarding and reinitializing the momentum auxiliary variables many times <ref type="bibr" target="#b42">[43]</ref>.</p><p>We approximate that with Fast Persistent Contrastive Divergence (FPCD) <ref type="bibr" target="#b43">[44]</ref>. We run the sampler for only one step 6 starting at the previous sample drawn from the model and using as parameters the sum of the original parameters and a small perturbation vector which adapts rapidly but also decays towards zero rapidly. The perturbation vector repels the system from its current state by raising the energy of that state and it therefore encourages samples to explore the input space rapidly even when the learning rate for the model parameters is very small (see <ref type="bibr" target="#b43">[44]</ref> for more details). The learning algorithm loops over batches of training samples and: (1) it computes &lt; ∂F ∂θ &gt; at the training samples, (2) it generates "negative" samples by 6. One step of HMC is composed of a randomly chosen initial momentum and 20 "leap-frog steps" that follow a dynamical simulation. If the sum of the kinetic and potential energy rises by ∆ due to inaccurate simulation of the dynamics, the system is returned to the initial state with probability 1 -exp(-∆). The step size of the simulation is adjusted to keep the rejection rate at 10%. Energy function given by eq. 12.</p><p>running HMC for just one set of 20 leap-frog steps (using the slightly perturbed parameter vector in the free energy function), (3) it computes &lt; ∂F ∂θ &gt; at the negative samples, and (4) it updates the parameters using eq. 13 (see algorithm in fig. <ref type="figure" target="#fig_2">5</ref>).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">LEARNING A DBN</head><p>In their work, Hinton et al. <ref type="bibr" target="#b19">[20]</ref> trained DBNs using a greedy layer-wise procedure, proving that this method, if done properly, creates a sequence of lower bounds on the log likelihood of the data, each of which is better than the previous bound. Here, we follow a similar procedure. First, we train a gated MRF to fit the distribution of the input. Then, we use it to compute the expectation of the first layer latent variables conditioned on the input training images. Second, we use these expected values as input to train the second layer of latent variables 7 . Once the second layer is trained, we use it to compute expectations of the second layer latent variables conditioned on the second layer input to provide inputs to the third layer, and so on. The difficult problem of learning a hierarchical model with several layers 7. It would be more correct to use stochastically sampled values as the "data", but using the expectations reduces noise in the learning and works almost as well. Also, the second layer RBM expects input values in the interval [0, 1] when using the expectations of Bernoulli variables. Therefore, when we use the precision units of mPoT, we divide the expectation of eq. 11 by γ. A more elegant solution is to change the conditional distribution in the second layer RBM to Gamma. However, the simple rescaling worked well in our experiments. of latent variables is thus decomposed into a sequence of much simpler learning tasks.</p><p>Let us consider the i-th layer of the deep model in isolation. Let us assume that the input to that layer consists of a binary vector denoted by h i-1 ∈ {0, 1} Ni-1 . This is modeled by a binary RBM which is also defined in terms of an energy function:</p><formula xml:id="formula_22">E(h i-1 , h i ) = -h i-1 T W i h i -b i-1 T h i-1 -b i T h i (14)</formula><p>where W i ∈ R Ni-1×Ni is the i-th layer parameter matrix and b i ∈ R Ni is the i-th layer vector of biases. In a RBM, all input variables are conditionally independent given the latent variables and vice versa; so:</p><formula xml:id="formula_23">p(h i k = 1|h i-1 ) = σ( Ni-1 j=1 W i jk h i-1 j + b i k ), k = 1..N i (15) p(h i-1 j = 1|h i ) = σ( Ni k=1 W i jk h i k + b i-1 j ), j = 1..N i-1 (16)</formula><p>Therefore, in the higher layers both computing the posterior distribution over the latent variables and computing the conditional distribution over the input variables is very simple and it can be done in parallel.</p><p>Learning higher layer RBMs is done using the FPCD algorithm as before, except that HMC is replaced with Gibbs sampling (i.e. samples from the model are updated by sampling from p(h i |h i-1 ) followed by p(h i-1 |h i )). The pseudo-code of the overall algorithm is given in fig. <ref type="figure" target="#fig_2">5</ref>.</p><p>Once the model has been trained it can be used to generate samples. The sampling procedure <ref type="bibr" target="#b19">[20]</ref> consists of generating a sample from the topmost RBM, followed by back-projection to image space through the chain of conditional distributions for each layer given the layer above. For instance, in the model shown in fig. <ref type="figure" target="#fig_3">6</ref> one generates from the top RBM by running a Gibbs sampler that alternates between sampling h 2 and h 3 . In order to draw an unbiased sample from the deep model, we then map the second layer sample produced in this way through the conditional distributions p(h m |h 2 ) and p(h p |h 2 ) to sample the mean and precision latent variables. These sampled values then determine the mean and covariance of a Gaussian distribution over the pixels, p(x|h m , h p ).</p><p>Given an image, an inexact but fairly accurate way to infer the posterior distribution of the latent variables in the deep model consists of propagating the input through the chain of posterior distributions for each of the greedily learned individual models (i.e. the mPoT or the subsequent RBMs). For each of these models separately, this corresponds to exact inference because, for each separate model, the latent variables are conditionally independent given the "data" variables used for that individual model so no iteration is required. Unfortunately, when the individual models are composed to form a deep belief net, this way of inferring the lower level variables is no longer correct, as explained in <ref type="bibr" target="#b19">[20]</ref>. Fortunately, however, the variational bound on the likelihood that is improved as each layer is added assumes this form of incorrect inference so Afterwards, a second layer is added using as input the expectation of the first layer latent variables. This layer is trained to fit the distribution of its input. The procedure is repeated again for the third layer. After training, inference of the top level representation is well approximated by propagating the expectation of the latent variables given their input starting from the input image (see dashed arrows). Generation is performed by first using a Monte Carlo method to sample from the "layer-3" model, and then using the conditional over the input at each layer given the sample at the layer above to backproject in image space (see continuous line arrows).</p><p>the learning ensures that it works well. Referring to the deep model in fig. <ref type="figure" target="#fig_3">6</ref>, we perform inference by computing p(h m |x) and p(h p |x), followed by p(h 2 |h m , h p ), followed by p(h 3 |h 2 ). Notice that all these distributions are factorial and can be computed without any iteration (see eq. 8, 10 and 15).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">SCALING TO HIGH-RESOLUTION IMAGES</head><p>The gated MRF described in the previous sections does not scale well to high-resolution images because each latent variable is connected to all input pixels. Since the number of latent variables scales as the number of input variables, the number of parameters subject to learning scales quadratically with the size of the input making learning infeasibly slow. We can limit the number of parameters by making use of the fact that correlations between pixels usually decay rapidly with distance <ref type="bibr" target="#b44">[45]</ref>. In practice, gated MRFs that learn filters on large image patches discover spatially localized patterns. This suggests the use of local filters that connect each latent variable to only a small set of nearby pixels, typically a small square image patch. Both "precision" filters C and "mean" filters W can benefit from locality, and P can also be made local by connecting each latent variable to only a small local subset of filter outputs.</p><p>In addition to locality, we can exploit stationarity to further reduce the number of parameters since (on average) different locations in images have the same statistical properties. This suggests that we should parameterize by replicating each learned filter across all possible locations. This dramatically reduces the number of parameters but, unfortunately, it makes the values of the latent variables highly redundant. Convolutional models <ref type="bibr" target="#b45">[46]</ref>, <ref type="bibr" target="#b10">[11]</ref>  Squares are filters, gray planes are channels and circles are latent variables. Left: illustration of how input channels are combined into a single output channel. Input variables at the same spatial location across different channels contribute to determine the state of the same latent variable. Input units falling into different tiles (without overlap) determine the state of nearby units in the hidden layer (here, we have only two spatial locations). Right: illustration of how filters that overlap with an offset contribute to hidden units that are at the same output spatial location but in different hidden channels. In practice, the deep model combines these two methods at each layer to map the input channels into the output channels.</p><p>in the image, the representation will be about k times overcomplete 8 . Like other recent papers <ref type="bibr" target="#b46">[47]</ref>, <ref type="bibr" target="#b47">[48]</ref>, we propose an intermediate solution that yields a better trade-off between compactness of the parameterization and compactness of the latent representation: Tiling <ref type="bibr" target="#b12">[13]</ref>, <ref type="bibr" target="#b21">[22]</ref>. Each local filter is replicated so that it tiles the image without overlaps with itself (i. e. it uses a stride that is equal to the diameter of the filter). This reduces the spatial redundancy of the latent variables and allows the input images to have arbitrary size without increasing the number of parameters. To reduce tiling artifacts, different filters typically have different spatial phases so the borders of the different local filters do not all align. In our experiments, we divide the filters into sets with different phases. Filters in the same set are applied to the same image locations (to tile the image), while filters in different sets have a fixed diagonal offset, as shown in fig. <ref type="figure" target="#fig_3">6</ref>. In our experiments we only experimented with diagonal offsets but presumably better schemes could be employed, where the whole image is evenly tiled but at the same time the number of overlaps between filter borders is minimized.</p><p>At any given layer, the model produces a threedimensional tensor of values of its latent variables. Two dimensions of this tensor are the dimensions of the 2-D image and the third dimension, which we call a "channel" corresponds to filters with different parameters. The left panel of fig. <ref type="figure" target="#fig_4">7</ref> shows how each unit is connected to all patches centered at its location, across different input channels. The right panel of fig. <ref type="figure" target="#fig_4">7</ref> shows instead that output channels are generated by stacking filter outputs produced by different filters at nearby locations.</p><p>When computing the first layer hidden units we stack the precision and the mean hidden units in such a way that units taking input at the same image locations are placed at the same output location but in different channels. Therefore, each second layer RBM hidden unit models 8. In the statistics literature, a convolutional weight-sharing scheme is called a homogeneous field while a locally connected one that does not tie the parameters of filters at every location is called inhomogeneous field.</p><p>cross-correlations among mean and precision units at the first hidden layer.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">EXPERIMENTS</head><p>In this section we first evaluate the mPoT gated MRF as a generative model by: a) interpreting the filters learned after training on an unconstrained distribution of natural images, b) by drawing samples from the model and c) by using the model on a denoising task 9 . Second, we show that the generative model can be used as a way of learning features by interpreting the expected values of its latent variables as features representing the input. In both cases, generation and feature extraction, the performance of the model is significantly improved by adding layers of binary latent variables on the top of mPoT latent variables. Finally, we show that the generative ability of the model can be used to fill in occluded pixels in images before recognition. This is a difficult task which cannot be handled well without a good generative model of the input data.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.1">Modeling Natural Images</head><p>We generated a dataset of 500,000 color images by picking, at random locations, patches of size 16x16 pixels from images of the Berkeley segmentation dataset 10 . Images were preprocessed by PCA whitening retaining 99% of variance, for a total of 105 projections 11 . We trained a model with 1024 factors, 1024 precision hiddens and 256 mean hiddens using filters of the same size as the input. P was initialized with a sparse connectivity inducing a two-dimensional topography when filters in C are laid out on a grid, as shown in fig. <ref type="figure" target="#fig_5">8</ref>. Each hidden unit takes as input a neighborhood of filter outputs that learn to extract similar features. Nearby hidden units in the grid use neighborhoods that overlap. Therefore, each precision hidden unit is not only invariant to the sign of the input, because filter outputs are squared, but also it is invariant to a whole subspace of local distortions (that are learned since both C and P are learned). Roughly 90% of the filters learn to be balanced in the R, G, and B channels even though they were randomly initialized. They could be described by localized, orientation-tuned Gabor functions. The colored filters generally have lower spatial frequency and they naturally cluster together in large blobs.</p><p>The figure also shows some of the filters representing the mean intensities (columns of matrix W ). These features are more complex, with color Gabor filters and on-center off-surround patterns. These features have different effects than the precision filters (see also fig. <ref type="figure" target="#fig_1">4</ref>). For instance, a precision filter that resembles an even Gabor is responsible for encouraging interpolation of pixel values along the edge and discouraging interpolation across the edge, while a   mean filter resembling a similar Gabor specifies the initial intensity values before the interpolation. The most intuitive way to test a generative model is to draw samples from it <ref type="bibr" target="#b48">[49]</ref>. After training, we then run HMC for a very long time starting from a random image. The bottom right part of Fig. <ref type="figure" target="#fig_5">8</ref> shows that mPoT is actually able to generate samples that look much more like natural images than samples generated by a PoT model, which only models the pair-wise dependencies between pixels or a GRBM model, which only models the mean intensities. The mPoT model succeeds in generating noisy texture patches, smooth patches, and patches with long elongated structures that cover the whole image.</p><p>More quantitatively, we have compared the different models in terms of their log-probability on a hold out dataset of test image patches using a technique called annealed importance sampling <ref type="bibr" target="#b49">[50]</ref>. Tab. 1 shows great improvements of mPoT over both GRBM and PoT. However, the estimated log-probability is lower than a mixture of Gaussians (MoG) with diagonal covariances and the same number of parameters as the other models. This is consistent with previous work by Theis et al. <ref type="bibr" target="#b50">[51]</ref>. We interpret this result with caution since the estimates for GRBM, PoT and mPoT can have a large variance due to the noise introduced by the samplers, while the log-probability of the MoG is calculated exactly. This conjecture is confirmed by the results reported in the rightmost column showing the exact log-probability ratio between the same test images and Gaussian noise with the same covariance 12 . This ratio is indeed larger for mPoT than MoG suggesting inaccuracies in the former estimation. The table also reports results of mPoT models trained by using cheaper but less accurate approximations to the maximum likelihood gradient, namely Contrastive Divergence <ref type="bibr" target="#b51">[52]</ref> and Persistent Contrastive Divergence <ref type="bibr" target="#b52">[53]</ref>. The model trained with FPCD yields a higher likelihood ratio as expected <ref type="bibr" target="#b43">[44]</ref>.</p><p>We repeated the same data generation experiment using the extension of mPoT to high-resolution images, by training on large patches (of size 238x238 pixels) picked at random locations from a dataset of 16,000 gray-scale natural images that were taken from ImageNet <ref type="bibr" target="#b53">[54]</ref>  13 . The model was trained using 8x8 filters divided into four sets with different spatial phases. Each set tiles the image with a diagonal offset of two pixels from the previous set. Each set consists of 64 covariance filters and 16 mean filters. Parameters were learned using the algorithm described in sec. 3, but setting P to identity.</p><p>The first two rows of fig. 9 compare samples drawn from PoT with samples drawn from mPoT and show that the latter ones exhibit strong structure with smooth regions separated by sharp edges while the former ones lack any sort of long range structure. Yet, mPoT samples still look rather artificial because the structure is fairly primitive and repetitive. We then made the model deeper by adding two layers on the top of mPoT.</p><p>All layers are trained by using FPCD but, as training proceeds, the number of Markov chain steps between weight updates is increased from 1 to 100 at the topmost layer in order to obtain a better approximation to the maximum likelihood gradient. The second hidden layer has filters of size 3x3 that also tile the image with a diagonal offset of one. There are 512 filters in each set. Finally, the third layer has filters of size 2x2 and it uses a diagonal offset of one; there are 2048 filters in each set. Every layer performs spatial subsampling by a factor equal to the size of the filters used. This is compensated by an increase in the number of channels which take contributions from the 12. The log probability ratio is exact since the intractable partition function cancels out. This quantity is equal to the difference of energies.</p><p>13. Categories are: tree, dog, cat, vessel, office furniture, floor lamp, desk, room, building, tower, bridge, fabric, shore, beach and crater. filters that are applied with a different offset, see fig. <ref type="figure" target="#fig_4">7</ref>. This implies that at the top hidden layer each latent variable receives input from a very large patch in the input image. With this choice of filter sizes and strides, each unit at the topmost layer affects a patch of size 70x70 pixels. Nearby units in the top layer represent very large (overlapping) spatial neighborhoods in the input image.</p><p>After training, we generate from the model by performing 100,000 steps of blocked Gibbs sampling in the topmost RBM (using eq. 15 and 16) and then projecting the samples down to image space as described in sec. 4. Representative samples are shown in the third row of fig. <ref type="figure" target="#fig_6">9</ref>. The extra hidden layers do indeed make the samples look more "natural": not only are there smooth regions and fairly sharp boundaries, but also there is a generally increased variety of structures that can cover a large extent of the image. These are among the most realistic samples drawn from models trained on an unconstrained distribution of high-resolution natural images. Finally, the last row of fig. <ref type="figure" target="#fig_6">9</ref> shows the evolution of the sampler. Typically, Markov chains slowly and smoothly evolve morphing one structure into another. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.2">Denoising</head><p>The most commonly used task to quantitatively validate a generative model of natural images is image denoising, assuming homogeneous additive Gaussian noise of known variance <ref type="bibr" target="#b9">[10]</ref>, <ref type="bibr" target="#b10">[11]</ref>, <ref type="bibr" target="#b36">[37]</ref>, <ref type="bibr" target="#b57">[58]</ref>, <ref type="bibr" target="#b11">[12]</ref>. We restore images by maximum a-posteriori (MAP) estimation. In the log domain, this amounts to solving the following optimization problem: arg min x λ||y -x|| 2 + F(x; θ), where y is the observed noisy image, F(x; θ) is the mPoT energy function (see eq. 12), λ is an hyper-parameter which is inversely proportional to the noise variance and x is an estimate of the clean image. In our experiments, the optimization is performed by gradient descent.</p><p>For images with repetitive texture, generic prior models usually offer only modest denoising performance compared to non-parametric models <ref type="bibr" target="#b44">[45]</ref>, such as non-local means (NLM) <ref type="bibr" target="#b54">[55]</ref> and BM3D <ref type="bibr" target="#b56">[57]</ref> which exploit "image selfsimilarity" in order to denoise. The key idea is to compute a weighted average of all the patches within the test image that are similar to the patch that surrounds the pixel whose value is being estimated, and the current stateof-the-art method for image denoising <ref type="bibr" target="#b57">[58]</ref> adapts sparse coding to take that weighted average into account. Here, we adapt the generic prior learned by mPoT in two simple ways: 1) first we adapt the parameters to the denoised test image (mPoT+A) and 2) we add to the denoising loss an extra quadratic term pulling the estimate close to the denoising result of the non-local means algorithm <ref type="bibr" target="#b54">[55]</ref> (mPoT+A+NLM). The first approach is inspired by a large body of literature on sparse coding <ref type="bibr" target="#b58">[59]</ref>, <ref type="bibr" target="#b57">[58]</ref> and consists of a) using the parameters learned on a generic dataset of natural images to denoise the test image and b) further adapting the parameters of the model using only the test image denoised at the previous step. The second approach simply consists of adding an additional quadratic term to the function subject to minimization, which becomes λ||y -x|| 2 + F(x; θ) + γ||x N LM -x|| 2 , where x N LM is the solution of NLM algorithm.</p><p>Table <ref type="table" target="#tab_2">2</ref> summarizes the results of these methods comparing them to the current state-of-the-art methods on widely used benchmark images at an intermediate level of noise. At lower noise levels the difference between these methods becomes negligible while at higher noise levels parametric methods start outperforming non-parametric ones.</p><p>First, we observe that adapting the parameters and taking into account image self-similarity improves performance (over both baselines, mPoT+A and NLM). Second, on this task a gated MRF with mean latent variables is no better than a model that lacks them, like FoE <ref type="bibr" target="#b10">[11]</ref> (which is a convolutional version of PoT) 14 . Mean hiddens are crucial when generating images in an unconstrained manner, but are not needed for denoising since the observation y already provides (noisy) mean intensities to the model (a similar argument applies to inpainting). Finally, the performance of the adapted model is still slightly worse than the best denoising method.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.3">Scene Classification</head><p>In this experiment, we use a classification task to compare SIFT features with the features learned by adding a second layer of Bernoulli latent variables that model the distribution of latent variables of an mPoT generative model. The task is to classify the natural scenes in the 15 scene dataset <ref type="bibr" target="#b1">[2]</ref> into one of 15 categories. The method of reference on this dataset was proposed by Lazebnik et al. <ref type="bibr" target="#b1">[2]</ref> and it can be summarized as follows: 1) densely compute SIFT descriptors every 8 pixels on a regular grid, 2) perform K-Means clustering on the SIFT descriptors, 3) compute histograms of cluster ids over regions of the image at different locations and spatial scales, and 4) use an SVM with an intersection kernel for classification.</p><p>We use a DBN with an mPoT front-end to mimic this pipeline. We treat the expected value of the latent variables as features that describe the input image. We extract first and second layer features (using the model that produced the generations in the bottom of fig. <ref type="figure" target="#fig_6">9</ref>) from a regular grid with a stride equal to 8 pixels. We apply K-Means to learn a dictionary with 1024 prototypes and then assign each feature to its closest prototype. We compute a spatial pyramid with 2 levels for the first layer features ({h m , h p }) and a spatial pyramid with 3 levels for the second layer features (h 2 ). Finally, we concatenate the resulting representations and train an SVM with an intersection kernel for classification. Lazebnik et al. <ref type="bibr" target="#b1">[2]</ref> reported an accuracy of 81.4% using SIFT while we obtained an accuracy of 81.2%, which is not significantly different.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.4">Object Recognition on CIFAR 10</head><p>The CIFAR 10 dataset <ref type="bibr" target="#b59">[60]</ref> is a hand-labeled subset of a much larger dataset of 80 million tiny images <ref type="bibr" target="#b60">[61]</ref>, see <ref type="bibr">14.</ref> The difference of performance between Tiled PoT and convolutional PoT, also called Field of Experts, is not statistically significant on this task.  The training set has 5000 samples per class, the test set has 1000 samples per class. The low resolution and extreme variability make recognition very difficult and a traditional method based on features extracted at interest-points is unlikely to work well. Moreover, extracting features from such images using carefully engineered descriptors like SIFT <ref type="bibr" target="#b2">[3]</ref> or GIST <ref type="bibr" target="#b61">[62]</ref> is also likely to be suboptimal since these descriptors were designed to work well on higher resolution images. We use the following protocol. We train a gated MRF on 8x8 color image patches sampled at random locations, and then we apply the algorithm to extract features convolutionally over the whole 32x32 image by extracting features on a 7x7 regularly spaced grid (stepping every 4 pixels). Then, we use a multinomial logistic regression classifier to recognize the object category in the image. Since our model is unsupervised, we train it on a set of two million images from the TINY dataset that does not overlap with the labeled CIFAR 10 subset in order to further improve generalization <ref type="bibr" target="#b19">[20]</ref>, <ref type="bibr" target="#b62">[63]</ref>, <ref type="bibr" target="#b63">[64]</ref>. In the default set up we learn all parameters of the model, we use 81 filters in W to encode the mean, 576 filters in C to encode covariance constraints and we pool these filters into 144 units through matrix P . P is initialized with a two-dimensional topography that takes 3x3 neighborhoods of filters with a stride equal to 2. In total, at each location we extract 144+81=225 features. Therefore, we represent a 32x32 image with a 225x7x7=11025 dimensional descriptor.</p><p>Table <ref type="table" target="#tab_3">3</ref> shows some comparisons. First, we assess whether it is best to model just the mean intensity, or just the covariance or both in 1), 2) and 4). In order to make a fair comparison we used the same feature dimensionality. The covariance part of the model produces features that are more discriminative, but modelling both mean and covariance further improves generalization. In 2) and 3) we show that increasing the number of filters in C while keeping the same feature dimensionality (by pooling more with matrix P ) also improves the performance. We can allow for a large number of features as long as we pool later into a more compact and invariant representation. Entries 4), 5) and 6) show that adding an extra layer on the top (by training a binary RBM on the 11025 dimensional feature) improves generalization. Using three stages and 8192 features we achieved the best performance of 71.0%.</p><p>We also compared to the more compact 384 dimensional representation produced by GIST and found that our features are more discriminative, as shown in table 4. Previous results using GRBMs <ref type="bibr" target="#b59">[60]</ref> reported an accuracy of 59.6% using whitened data while we achieve 68.2%. Their result improved to 64.8% by using unprocessed data and by finetuning, but it did not improve by using a deeper model. Our performance improves by adding other layers showing that these features are more suitable for use in a DBN. The current state-of-the-art result on this dataset is 80.5% <ref type="bibr" target="#b64">[65]</ref> and it employs a much bigger network and perturbation of the input to improve generalization.  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.5">Recognition of Facial Expressions</head><p>In these experiments we study the recognition of facial expressions under occlusion in the Toronto Face Database (TFD) <ref type="bibr" target="#b65">[66]</ref>. This is the largest publicly available dataset of faces to date, created by merging together 30 preexisting datasets <ref type="bibr" target="#b65">[66]</ref>. It has about 100,000 images that are unlabeled and more than 4,000 images that are labeled with seven facial expressions, namely: anger, disgust, fear, happiness, sadness, surprise and neutral. Faces were preprocessed by: detection and alignment of faces using the Machine Perception Toolbox <ref type="bibr" target="#b66">[67]</ref>, followed by down-sampling to a common resolution of 48x48 pixels. We choose to predict facial expressions under occlusion because this is a particularly difficult problem: The expression is a subtle property of faces that requires good representations of detailed local features, which are easily disrupted by occlusion.</p><p>Since the input images have fairly low resolution and the statistics across the images are strongly non-stationary (because the faces have been aligned), we trained a deep model without weight-sharing. The first layer uses filters of size 16x16 centered at grid-points that are four pixels apart, with 32 covariance filters and 16 mean filters at each grid-point. At the second layer we learn a fullyconnected RBM with 4096 latent variables each of which  is connected to all of the first layer features. Similarly, at the third and fourth layer we learn fully connected RBMs with 1024 latent variables, and at the fifth layer we have an RBM with 128 hidden units. The deep model was trained entirely generatively on the unlabeled images without using any labeled instances <ref type="bibr" target="#b63">[64]</ref>. The discriminative training consisted of training a linear multi-class logistic regression classifier on the top level representation without using back-propagation to jointly optimize the parameters across all layers.</p><p>Fig. <ref type="figure" target="#fig_9">12</ref> shows samples randomly drawn from the generative model. Most samples resemble plausible faces of different individuals with a nice variety of facial expressions, poses, and lighting conditions. Nearest neighbor analysis, using Euclidean distance, reveals that these samples are not just copies of images in the training set: Each sample exhibits regularities derived from many different training cases.</p><p>In the first experiment, we train a linear classifier on the features produced by each layer and we predict the facial expression of the images in the labeled set. Each input image is processed by subtracting from each pixel the mean intensity in that image then dividing by the standard deviation of the pixels in that image. The features at successive hidden layers give accuracies of 81.6%, 82.1%, 82.5%, and 82.4%. Each higher layer is a RBM with 4096 hidden units. These accuracies should be compared to: 71.5% achieved by a linear classifier on the raw pixels, 76.2% achieved by a Gaussian SVM on the raw pixels, 74.6% achieved by a sparse coding method <ref type="bibr" target="#b67">[68]</ref>, and 80.2% achieved by the method proposed by Dailey et al. <ref type="bibr" target="#b68">[69]</ref> which employs a large Gabor filter bank followed by PCA and a linear classifier, using cross-validation to select the number of principal components. The latter method and its variants <ref type="bibr" target="#b69">[70]</ref> are considered a strong baseline in the literature. Table <ref type="table" target="#tab_5">5</ref> reports also a direct comparison to a DBN with a GRBM at the first layer and to a DBN with a PoT at the first layer using the same number of parameters and weight sharing scheme. mPoT outperforms its competitors on this task. The accuracies reported on the table are an average over 5 random training/test splits of the data with 80% of the images used for training and the rest for test. Facial identities of subjects in training and test sets are disjoint.</p><p>In the next experiment, we apply synthetic occlusions only to the labeled images. The occlusions are shown in fig. <ref type="figure" target="#fig_10">13</ref>, they block: 1) eyes, 2) mouth, 3) right half, 4) bottom half, 5) top half, 6) nose and 7) 70% of the pixels at random. Before extracting the features, we use the generative model to fill-in the missing pixels, assuming knowledge of which pixels are occluded. In order to fill-in we initialize the missing pixels at zero and propagate the occluded image through the four layers using the sequence of posterior expectations. Then we reconstruct from the top layer representation using the sequence of conditional expectations in the generative direction. The last step of the reconstruction consists of using the mPoT model to fill in only the missing pixels by conditioning on both the known pixels and the first-layer hidden variables which gives a Gaussian distribution for the missing pixels <ref type="bibr" target="#b11">[12]</ref>. This whole up and down process is repeated a few times with the number of times being determined by the fillingin performance (in terms of PSNR) on a validation set of unlabeled images. Fig. <ref type="figure" target="#fig_11">14</ref> shows the filling process. The latent representation in the higher layers is able to capture longer range structure and it does a better job at filling-in the missing pixels 15 . After missing pixels are imputed, the model is used to extract features from the restored images as before.</p><p>The results reported in fig. <ref type="figure" target="#fig_12">15</ref> show that the deep model is generally more robust to these occlusions, even compared to other methods that know which pixels are missing and try to compensate for occlusion. In these figures, we compare to a Gaussian SVM on the raw images, a Gaussian SVM on linearly interpolated images, a Gabor-based approach <ref type="bibr" target="#b68">[69]</ref> on linearly interpolated images and a sparse coding approach on the unoccluded part of the input images <ref type="bibr" target="#b67">[68]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7">SUMMARY AND FUTURE WORK</head><p>Gated MRFs are higher-order MRFs that can be more easily described as MRFs with latent variables. The joint distribution is a product of potentials that either take pairs of variables (one input and one "mean" latent variable) or triplets of variables (two inputs and one "precision" latent variable). For every configuration of latent variables (and there are exponentially many if these are binary, for instance) the model describes the input with a multi-variate Gaussian distribution with a certain mean and covariance matrix. The conditional distribution over the input induces a soft-partitioning of the input space (one for each configuration of latent variables) with hyper-ellipses that can fit much more precisely the input distribution than using hyper-spheres (like in PPCA <ref type="bibr" target="#b24">[25]</ref> or GRBM <ref type="bibr" target="#b28">[29]</ref>) or hyperellipses centered at the origin (like in PoT <ref type="bibr" target="#b29">[30]</ref>).</p><p>We have described a probabilistic generative model that can be used for a large variety of applications in both low-level and high-level vision. In both cases, better performance is achieved by making the model hierarchical which is easily done by using the latent variables of the 15. A similar experiment using a similar DBN was also reported by Lee et al. <ref type="bibr" target="#b16">[17]</ref> in fig. <ref type="figure" target="#fig_3">6</ref> of their paper. Our generation is more realistic probably thanks to the better modeling of the first layer mPoT. gated MRF as the first layer of a DBN that uses Bernoulli variables for all subsequent layers. The ability of the model to generate realistic samples can be used to assess the quality of learning and to intuitively see what information is captured or lost during training.</p><p>For high-level vision tasks such as object or scene recognition, the latent variables of the model can be used as image descriptors. These descriptors offer several advantages over engineered descriptors. They can adapt to the input domain by leveraging large amounts of unlabeled data (as done in this work) but they can also be tuned to the task at hand by back-propagating the discriminative error through the feature extractor. Feature extraction in the hierarchical model is computationally efficient and is equivalent to feed-forward propagation in a neural network with a peculiar first layer composed of mean units that act as linear filters followed by a logistic non-linearity and precision units that pool the squared outputs of many linear filters. This contrasts with inference in directed graphical models which typically requires iteration, or inaccurate variational approximations 16 . Generating unbiased samples from a directed model is typically much simpler than generating from our model, but for computer vision, efficient inference is far more important than efficient generation.</p><p>The main drawbacks of our model are that exact maximum likelihood learning is intractable and so computationally expensive Markov Chain Monte Carlo methods have to be used during training. This increases the number of hyper-parameters that have to be set and makes the training slow and hard to monitor. Consequently, the assessment of whether our model is preferable to others seems to be application-dependent since we must consider the tradeoff between the computational cost of training and the efficiency of inference at test time.</p><p>Although our model generates quite good samples of natural images, these samples still exhibit rather simplistic structure and are very limited in the types of texture they contain. The gated MRF can be extended in several ways to address these issues by a) modifying the form of the energy function to better embed our prior knowledge of natural image statistics and to better model texture and long range dependencies (e.g., learning multi-scale representations), b) improving the model at the higher layers of the hierarchy (e.g., replacing RBMs with gated RBMs that are the analogue of the model here described but for binary input variables) and c) exploiting image self-similarity by designing mixed parametric and non-parametric models to more naturally represent repetitive texture. Finally, a very promising research avenue is to extend the model to video sequences in which the temporal regularities created by smoothly changing viewing transformations should make it far easier to learn to model depth, three-dimensional transformations and occlusion <ref type="bibr" target="#b70">[71]</ref>. <ref type="bibr" target="#b15">16</ref>. Feedforward inference in our hierarchical generative model can be viewed as a type of variational approximation that is only exactly correct for the top layer, but the inference for the lower layers is a very good approximation because of the way they are learned <ref type="bibr" target="#b19">[20]</ref>.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Fig. 3 .</head><label>3</label><figDesc>Fig. 3. Graphical model representation (with only three input variables): There are two sets of latent variables (the mean and the precision units) that are conditionally independent given the input pixels and a set of deterministic factor nodes that connect triplets of variables (pairs of input variables and one precision unit).</figDesc><graphic coords="5,310.97,186.98,191.29,61.48" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Fig. 4 .</head><label>4</label><figDesc>Fig. 4. A) Input image patch. B) Reconstruction performed using only mean hiddens (i.e. W h m + b x ) (top) and both mean and precision hiddens (bottom) (that is multiplying the patch on the top by the image-specific covariance Σ = Cdiag(P h p )C T + I -1 , see mean of Gaussian in eq. 7). C) Reconstructions produced by combining the correct image-specific covariance as above with the incorrect, handspecified pixel intensities shown in the top row. Knowledge about pair-wise dependencies allows a blob of high or low intensity to be spread out over the appropriate region. D) Reconstructions produced like in C) showing that precision hiddens do not account for polarity (nor for the exact intensity values of regions) but only for correlations.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Fig. 5 .</head><label>5</label><figDesc>Fig. 5. Pseudo-code of learning algorithm for DBN using FPCD.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Fig. 6 .</head><label>6</label><figDesc>Fig. 6. Outline of a deep generative model composed of three layers. The first layer applies filters that tile the input image with different offsets (squares of different color are filters with different parameters). The filters of this layer are learned on natural images.Afterwards, a second layer is added using as input the expectation of the first layer latent variables. This layer is trained to fit the distribution of its input. The procedure is repeated again for the third layer. After training, inference of the top level representation is well approximated by propagating the expectation of the latent variables given their input starting from the input image (see dashed arrows). Generation is performed by first using a Monte Carlo method to sample from the "layer-3" model, and then using the conditional over the input at each layer given the sample at the layer above to backproject in image space (see continuous line arrows).</figDesc><graphic coords="8,287.06,53.14,239.11,116.56" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Fig. 7 .</head><label>7</label><figDesc>Fig. 7. A toy illustration of how units are combined across layers.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Fig. 8 .</head><label>8</label><figDesc>Fig. 8. Top: Precision filters (matrix C) of size 16x16 pixels learned on color image patches of the same size. Matrix P was initialized with a local connectivity inducing a two dimensional topographic map. This makes nearby filters in the map learn similar features. Bottom left: Random subset of mean filters (matrix W ). Bottom right (from top to bottom): independent samples drawn from the training data, mPoT, GRBM and PoT.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>Fig. 9 .</head><label>9</label><figDesc>Fig. 9. Top row: Three representative samples generated by PoT after training on an unconstrained distribution of high-resolution grayscale natural images. Second row: Representative samples generated by mPoT. Third row: Samples generated by a DBN with three hidden layers, whose first hidden layer is the gated MRF used for the second row. Bottom row: as in the third row, but samples (scanned from left to right) are taken at intervals of 50,000 iterations from the same Markov chain. All samples have approximate resolution of 300x300 pixels.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head>Fig. 10 .</head><label>10</label><figDesc>Fig. 10. Denoising of "Barbara" (detail). From left to right: original image, noisy image (σ = 20, PSNR=22.1dB), denoising of mPoT (28.0dB), denoising of mPoT adapted to this image (29.2dB) and denoising of adapted mPoT combined with non-local means (30.7dB).</figDesc><graphic coords="12,311.36,191.08,189.30,149.36" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head>Fig. 11 .</head><label>11</label><figDesc>Fig. 11. Example of images in the CIFAR 10 dataset. Each column shows samples belonging to the same category.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_9"><head>Fig. 12 .</head><label>12</label><figDesc>Fig. 12. Top: Samples generated by a five-layer deep model trained on faces. The top layer has 128 binary latent variables and images have size 48x48 pixels. Bottom: comparison between six samples from the model (top row) and the Euclidean distance nearest neighbor images in the training set (bottom row).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_10"><head>Fig. 13 .</head><label>13</label><figDesc>Fig. 13. Example of conditional generation performed by a fourlayer deep model trained on faces. Each column is a different example (not used in the unsupervised training phase). The topmost row shows some example images from the TFD dataset. The other rows show the same images occluded by a synthetic mask (on the top) and their restoration performed by the deep generative model (on the bottom).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_11"><head>Fig. 14 .</head><label>14</label><figDesc>Fig. 14. An example of restoration of unseen images performed by propagating the input up to first, second, third, fourth layer, and again through the four layers and re-circulating the input through the same model for ten times.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_12"><head>Fig. 15 .</head><label>15</label><figDesc>Fig. 15. Expression accuracy on the TFD dataset when both training and test labeled images are subject to 7 types of occlusion.</figDesc><graphic coords="14,287.06,53.14,239.10,131.91" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>TABLE 1</head><label>1</label><figDesc>Log-probability estimates of test natural images x, and exact log-probability ratios between the same test images x and random images n.</figDesc><table><row><cell>Model</cell><cell>log p(x)</cell><cell>log p(x)/p(n)</cell></row><row><cell>MoG</cell><cell>-85</cell><cell>68</cell></row><row><cell>GRBM FPCD</cell><cell>-152</cell><cell>-3</cell></row><row><cell>PoT FPCD</cell><cell>-101</cell><cell>65</cell></row><row><cell>mPoT CD</cell><cell>-109</cell><cell>82</cell></row><row><cell>mPoT PCD</cell><cell>-92</cell><cell>98</cell></row><row><cell>mPoT FPCD</cell><cell>-94</cell><cell>102</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>TABLE 2</head><label>2</label><figDesc>Denoising performance using σ = 20 (PSNR=22.1dB).</figDesc><table><row><cell></cell><cell>Barb.</cell><cell>Boats</cell><cell>Fgpt.</cell><cell>House</cell><cell>Lena</cell><cell>Peprs.</cell></row><row><cell>mPoT</cell><cell>28.0</cell><cell>30.0</cell><cell>27.6</cell><cell>32.2</cell><cell>31.9</cell><cell>30.7</cell></row><row><cell>mPoT+A</cell><cell>29.2</cell><cell>30.2</cell><cell>28.4</cell><cell>32.4</cell><cell>32.0</cell><cell>30.7</cell></row><row><cell>mPoT+A+NLM</cell><cell>30.7</cell><cell>30.4</cell><cell>28.6</cell><cell>32.9</cell><cell>32.4</cell><cell>31.0</cell></row><row><cell>FoE [11]</cell><cell>28.3</cell><cell>29.8</cell><cell>-</cell><cell>32.3</cell><cell>31.9</cell><cell>30.6</cell></row><row><cell>NLM [55]</cell><cell>30.5</cell><cell>29.8</cell><cell>27.8</cell><cell>32.4</cell><cell>32.0</cell><cell>30.3</cell></row><row><cell>GSM [56]</cell><cell>30.3</cell><cell>30.4</cell><cell>28.6</cell><cell>32.4</cell><cell>32.7</cell><cell>30.3</cell></row><row><cell>BM3D [57]</cell><cell>31.8</cell><cell>30.9</cell><cell>-</cell><cell>33.8</cell><cell>33.1</cell><cell>31.3</cell></row><row><cell>LSSC [58]</cell><cell>31.6</cell><cell>30.9</cell><cell>28.8</cell><cell>34.2</cell><cell>32.9</cell><cell>31.4</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>TABLE 3</head><label>3</label><figDesc>Test and training (in parenthesis) recognition accuracy on the CIFAR 10 dataset. The numbers in italics are the feature dimensionality at each stage.</figDesc><table><row><cell>Method</cell><cell>Accuracy %</cell></row><row><cell>1) mean (GRBM): 11025</cell><cell>59.7 (72.2)</cell></row><row><cell>2) cRBM (225 factors): 11025</cell><cell>63.6 (83.9)</cell></row><row><cell>3) cRBM (900 factors): 11025</cell><cell>64.7 (80.2)</cell></row><row><cell>4) mcRBM: 11025</cell><cell>68.2 (83.1)</cell></row><row><cell>5) mcRBM-DBN (11025-8192)</cell><cell>70.7 (85.4)</cell></row><row><cell>6) mcRBM-DBN (11025-8192-8192)</cell><cell>71.0 (83.6)</cell></row><row><cell>7) mcRBM-DBN (11025-8192-4096-1024-384)</cell><cell>59.8 (62.0)</cell></row><row><cell cols="2">fig. 11. These images were downloaded from the web and</cell></row><row><cell cols="2">down-sampled to a very low resolution, just 32x32 pixels.</cell></row><row><cell cols="2">The CIFAR 10 subset has ten object categories, namely air-</cell></row><row><cell cols="2">plane, car, bird, cat, deer, dog, frog, horse, ship, and truck.</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>TABLE 4</head><label>4</label><figDesc>Test recognition accuracy on the CIFAR 10 dataset produced by different methods. Features are fed to a multinomial logistic regression classifier for recognition.</figDesc><table><row><cell>Method</cell><cell>Accuracy %</cell></row><row><cell>384 dimens. GIST</cell><cell>54.7</cell></row><row><cell>10,000 linear random projections</cell><cell>36.0</cell></row><row><cell>10K GRBM(*), 1 layer, ZCA'd images</cell><cell>59.6</cell></row><row><cell>10K GRBM(*), 1 layer</cell><cell>63.8</cell></row><row><cell>10K GRBM(*), 1layer with fine-tuning</cell><cell>64.8</cell></row><row><cell>10K GRBM-DBN(*), 2 layers</cell><cell>56.6</cell></row><row><cell>11025 mcRBM 1 layer, PCA'd images</cell><cell>68.2</cell></row><row><cell>8192 mcRBM-DBN, 3 layers, PCA'd images</cell><cell>71.0</cell></row><row><cell>384 mcRBM-DBN, 5 layers, PCA'd images</cell><cell>59.8</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>TABLE 5 TFD</head><label>5</label><figDesc></figDesc><table><row><cell cols="5">: Facial expression classification accuracy using features</cell></row><row><cell cols="4">trained without supervision.</cell><cell></cell></row><row><cell>Method</cell><cell>layer 1</cell><cell>layer 2</cell><cell>layer 3</cell><cell>layer 4</cell></row><row><cell>raw pixels</cell><cell>71.5</cell><cell>-</cell><cell>-</cell><cell>-</cell></row><row><cell>Gaussian SVM</cell><cell>76.2</cell><cell>-</cell><cell>-</cell><cell>-</cell></row><row><cell>Sparse Coding</cell><cell>74.6</cell><cell>-</cell><cell>-</cell><cell>-</cell></row><row><cell>Gabor PCA</cell><cell>80.2</cell><cell>-</cell><cell>-</cell><cell>-</cell></row><row><cell>GRBM</cell><cell>80.0</cell><cell>81.5</cell><cell>80.3</cell><cell>79.5</cell></row><row><cell>PoT</cell><cell>79.4</cell><cell>79.3</cell><cell>80.6</cell><cell>80.2</cell></row><row><cell>mPoT</cell><cell>81.6</cell><cell>82.1</cell><cell>82.5</cell><cell>82.4</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="3" xml:id="foot_0"><p>In practice, this term is not needed when the dimensionality of h p is larger than x.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="4" xml:id="foot_1"><p>Notice how the mean latent variables compute a non-linear projection of a linear filter bank, akin to the most simplified "simple-cell" model of area V1 of the visual cortex, while the precision units perform an operation similar to the "complex-cell" model because rectified (squared) filter outputs are non-linearly pooled to produce their response. In this model, simple and complex cells perform their operations in parallel (not sequentially). If, however, we equate the factors used by the precision units to simple cells, we recover the standard model in which simple cells send their squared outputs to complex cells.</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>ACKNOWLEDGMENTS</head><p>The research was funded by grants from <rs type="funder">NSERC</rs>, <rs type="funder">CFI</rs> and <rs type="funder">CIFAR</rs> and by gifts from <rs type="funder">Google</rs> and <rs type="funder">Microsoft</rs>.</p></div>
+			</div>
+			<listOrg type="funding">
+			</listOrg>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0" />			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Statistical modeling of photographic images</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>Simoncelli</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Handbook of Image and Video Processing</title>
+		<imprint>
+			<date type="published" when="2005">2005</date>
+			<biblScope unit="page" from="431" to="441" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Beyond bags of features: Spatial pyramid matching for recognizing natural scene categories</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Lazebnik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Schmid</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ponce</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE Conference on Computer Vision and Pattern Recognition</title>
+		<imprint>
+			<date type="published" when="2006-06">June 2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Distinctive image features from scale-invariant keypoints</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Lowe</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IJCV</title>
+		<imprint>
+			<date type="published" when="2004">2004</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Histograms of oriented gradients for human detection</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Dalal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Triggs</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE Conference on Computer Vision and Pattern Recognition</title>
+		<imprint>
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Surf: Speeded up robust features</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Bay</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Ess</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Tuytelaars</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Van Gool</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Computer Vision and Image Understanding</title>
+		<imprint>
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Representing shape with a spatial pyramid kernel</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bosch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Zisserman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Munoz</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">CIVR</title>
+		<imprint>
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<monogr>
+		<author>
+			<persName><forename type="first">A</forename><surname>Hyvarinen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Karhunen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Oja</surname></persName>
+		</author>
+		<title level="m">Independent Component Analysis</title>
+		<imprint>
+			<publisher>John Wiley &amp; Sons</publisher>
+			<date type="published" when="2001">2001</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Reducing the dimensionality of data with neural networks</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Hinton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">R</forename><surname>Salakhutdinov</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Science</title>
+		<imprint>
+			<biblScope unit="volume">313</biblScope>
+			<biblScope unit="issue">5786</biblScope>
+			<biblScope unit="page" from="504" to="507" />
+			<date type="published" when="2006">2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Modeling pixel means and covariances using factorized third-order boltzmann machines</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Ranzato</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Hinton</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE Conference on Computer Vision and Pattern Recognition</title>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Scale mixtures of gaussians and the statistics of natural images</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Wainwright</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Simoncelli</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2000">2000</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Fields of experts: A framework for learning image priors</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Roth</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Black</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE Conference on Computer Vision and Pattern Recognition</title>
+		<imprint>
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">A generative perspective on mrfs in low-level vision</title>
+		<author>
+			<persName><forename type="first">U</forename><surname>Schmidt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Roth</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE Conference on Computer Vision and Pattern Recognition</title>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Generating more realistic images using gated mrf&apos;s</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Ranzato</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Mnih</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Hinton</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Emergence of complex cell properties by learning to generalize in natural scenes</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Karklin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Lewicki</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Nature</title>
+		<imprint>
+			<biblScope unit="volume">457</biblScope>
+			<biblScope unit="page" from="83" to="86" />
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">A two-layer ica-like model estimated by score matching</title>
+		<author>
+			<persName><forename type="first">U</forename><surname>Koster</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Hyvarinen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ICANN</title>
+		<imprint>
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Extracting and composing robust features with denoising autoencoders</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Vincent</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Larochelle</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Manzagol</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference in Machine Learning</title>
+		<imprint>
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Convolutional deep belief networks for scalable unsupervised learning of hierarchical representations</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Grosse</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Ranganath</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">Y</forename><surname>Ng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. International Conference in Machine Learning</title>
+		<meeting>International Conference in Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">What is the best multi-stage architecture for object recognition</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Jarrett</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Kavukcuoglu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Ranzato</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Lecun</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference in Computer Vision</title>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Learning hierarchical spatiotemporal features for action recognition with independent subspace analysis</title>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Le</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Yeung</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Ng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE Conference on Computer Vision and Pattern Recognition</title>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">A fast learning algorithm for deep belief nets</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Hinton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Osindero</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y.-W</forename><surname>Teh</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Neural Computation</title>
+		<imprint>
+			<biblScope unit="volume">18</biblScope>
+			<biblScope unit="page" from="1527" to="1554" />
+			<date type="published" when="2006">2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Factored 3-way restricted boltzmann machines for modeling natural images</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Ranzato</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Krizhevsky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Hinton</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Conference in Artificial Intelligence and Statistics</title>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">On deep generative models with applications to recognition</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Ranzato</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Susskind</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Mnih</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Hinton</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE Conference on Computer Vision and Pattern Recognition</title>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">How does the brain solve visual object recognition?</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Dicarlo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Zoccolan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">N C</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Neuron</title>
+		<imprint>
+			<biblScope unit="volume">73</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="415" to="434" />
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<monogr>
+		<title level="m" type="main">Unsupervised learning of feature hierarchies</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Ranzato</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">Ph.D. thesis</note>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Probabilistic principal component analysis</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">E</forename><surname>Tipping</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">M</forename><surname>Bishop</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of the Royal Statistical Society, Series B</title>
+		<imprint>
+			<biblScope unit="volume">61</biblScope>
+			<biblScope unit="page" from="611" to="622" />
+			<date type="published" when="1999">1999</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Maximum likelihood estimation and factor analysis</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Young</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Psychometrika</title>
+		<imprint>
+			<biblScope unit="volume">6</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="49" to="53" />
+			<date type="published" when="1940">1940</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<monogr>
+		<title level="m" type="main">Maximum likelihood and covariant algorithms for independent component analysis</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Mackay</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1999">1999</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Sparse coding with an overcomplete basis set: a strategy employed by v1?</title>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">A</forename><surname>Olshausen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">J</forename><surname>Field</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Vision Research</title>
+		<imprint>
+			<biblScope unit="volume">37</biblScope>
+			<biblScope unit="page" from="3311" to="3325" />
+			<date type="published" when="1997">1997</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Exponential family harmoniums with an application to information retrieval</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Rosen-Zvi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Hinton</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Learning sparse topographic representations with products of student-t distributions</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Hinton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Osindero</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Energy-based models for sparse overcomplete representations</title>
+		<author>
+			<persName><forename type="first">Y</forename><forename type="middle">W</forename><surname>Teh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Osindero</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><forename type="middle">E</forename><surname>Hinton</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">JMLR</title>
+		<imprint>
+			<biblScope unit="volume">4</biblScope>
+			<biblScope unit="page" from="1235" to="1260" />
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Higher-order boltzmann machines</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Sejnowski</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AIP Conf. proc., Neural networks for computing</title>
+		<imprint>
+			<date type="published" when="1986">1986</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Learning to represent spatial transformations with factored higher-order boltzmann machines</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Memisevic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Hinton</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Neural Computation</title>
+		<imprint>
+			<biblScope unit="volume">22</biblScope>
+			<biblScope unit="page" from="1473" to="1492" />
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">A new learning algorithm for mean field boltzmann aachines</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><forename type="middle">E</forename><surname>Hinton</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Int. Conf. Artificial Neural Networks</title>
+		<imprint>
+			<date type="published" when="2002">2002</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Modeling image patches with a directed hierarchy of markov random fields</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Osindero</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><forename type="middle">E</forename><surname>Hinton</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Modeling human motion using binary latent variables</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Taylor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Hinton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Roweis</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">What makes a good model of natural images?</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Weiss</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Freeman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE Conference on Computer Vision and Pattern Recognition</title>
+		<imprint>
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Products of gaussians and probabilistic minor component analysis</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Williams</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Agakov</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Neural Computation</title>
+		<imprint>
+			<biblScope unit="volume">14</biblScope>
+			<biblScope unit="page" from="1169" to="1182" />
+			<date type="published" when="2002">2002</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Stochastic relaxation, gibbs distributions, and the bayesian restoration of images</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Geman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Geman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">PAMI</title>
+		<imprint>
+			<biblScope unit="volume">6</biblScope>
+			<biblScope unit="page" from="721" to="741" />
+			<date type="published" when="1984">1984</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">On the unification of line processes, outlier rejection, and robust statistics with applications in early vision</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Black</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Rangarajan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Int. Journal of Computer Vision</title>
+		<imprint>
+			<biblScope unit="volume">19</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="57" to="92" />
+			<date type="published" when="1996">1996</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Discovering multiple constraints that are frequently approximately satisfied</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Hinton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Teh</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Uncertainty and Artificial Intelligence</title>
+		<imprint>
+			<date type="published" when="2001">2001</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Products of experts</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Hinton</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. of the Ninth International Conference on Artificial Neural Networks</title>
+		<meeting>of the Ninth International Conference on Artificial Neural Networks</meeting>
+		<imprint>
+			<date type="published" when="1999">1999</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<monogr>
+		<title level="m" type="main">Bayesian learning for neural networks</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Neal</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1996">1996</date>
+			<publisher>Springer-Verlag</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">Using fast weights to improve persistent contrastive divergence</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Tieleman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Hinton</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference in Machine Learning</title>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">Internal statistics of a single natural image</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zontak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Irani</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE Conference on Computer Vision and Pattern Recognition</title>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<title level="a" type="main">Gradient-based learning applied to document recognition</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Lecun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Bottou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Haffner</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Proceedings of the IEEE</title>
+		<imprint>
+			<biblScope unit="volume">86</biblScope>
+			<biblScope unit="issue">11</biblScope>
+			<biblScope unit="page" from="2278" to="2324" />
+			<date type="published" when="1998">1998</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<monogr>
+		<title level="m" type="main">Emergence of complex-like cells in a temporal product network with local receptive fields</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Gregor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Lecun</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1006.0448</idno>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<analytic>
+		<title level="a" type="main">Tiled convolutional neural networks</title>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Le</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ngiam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Chia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Koh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Ng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<analytic>
+		<title level="a" type="main">Prior learning and gibbs reaction diffusion</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Mumford</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">PAMI</title>
+		<imprint>
+			<biblScope unit="page" from="1236" to="1250" />
+			<date type="published" when="1997">1997</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<monogr>
+		<title level="m" type="main">Evaluating probabilities under high-dimensional latent variable models</title>
+		<author>
+			<persName><forename type="first">I</forename><surname>Murray</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Salakhutdinov</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<analytic>
+		<title level="a" type="main">In all likelihood, deep belief is not enough</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Theis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Gerwinn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Sinz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Bethge</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Machine Learning Research</title>
+		<imprint>
+			<biblScope unit="volume">12</biblScope>
+			<biblScope unit="page" from="3071" to="3096" />
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b51">
+	<analytic>
+		<title level="a" type="main">On contrastive divergence learning</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">A</forename><surname>Carreira-Perpignan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><forename type="middle">E</forename><surname>Hinton</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Artificial Intelligence and Statistics</title>
+		<imprint>
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b52">
+	<analytic>
+		<title level="a" type="main">Training restricted boltzmann machines using approximations to the likelihood gradient</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Tieleman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference in Machine Learning</title>
+		<imprint>
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b53">
+	<analytic>
+		<title level="a" type="main">Imagenet: a large-scale hierarchical image database</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Socher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Fei-Fei</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE Conference on Computer Vision and Pattern Recognition</title>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b54">
+	<analytic>
+		<title level="a" type="main">A non local algorithm for image denoising</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Buades</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Coll</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Morel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE Computer Vision and Pattern Recognition</title>
+		<imprint>
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b55">
+	<analytic>
+		<title level="a" type="main">Image denoising using scale mixtures of gaussians in the wavelet domain</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Portilla</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Strela</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Wainwright</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Simoncelli</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Trans. Image Processing</title>
+		<imprint>
+			<biblScope unit="volume">12</biblScope>
+			<biblScope unit="issue">11</biblScope>
+			<biblScope unit="page" from="1338" to="1351" />
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b56">
+	<analytic>
+		<title level="a" type="main">Image denoising with block-matching and 3d filtering</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Dabov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Foi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Katkovnik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Egiazarian</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. SPIE Electronic Imaging</title>
+		<meeting>SPIE Electronic Imaging</meeting>
+		<imprint>
+			<date type="published" when="2006">2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b57">
+	<analytic>
+		<title level="a" type="main">Nonlocal sparse models for image restoration</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Mairal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Bach</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ponce</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Sapiro</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Zisserman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Int. Conference on Computer Vision</title>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b58">
+	<analytic>
+		<title level="a" type="main">Image denoising via learned dictionaries and sparse representation</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Elad</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Aharon</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE Conference on Computer Vision and Pattern Recognition</title>
+		<imprint>
+			<date type="published" when="2006">2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b59">
+	<monogr>
+		<title level="m" type="main">Learning multiple layers of features from tiny images</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Krizhevsky</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+		<respStmt>
+			<orgName>Dept. of Comp. Science, Univ. of Toronto</orgName>
+		</respStmt>
+	</monogr>
+	<note type="report_type">mSc Thesis</note>
+</biblStruct>
+
+<biblStruct xml:id="b60">
+	<analytic>
+		<title level="a" type="main">80 million tiny images: a large dataset for non-parametric object and scene recognition</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Torralba</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Fergus</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Freeman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">PAMI</title>
+		<imprint>
+			<biblScope unit="volume">30</biblScope>
+			<biblScope unit="page" from="1958" to="1970" />
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b61">
+	<analytic>
+		<title level="a" type="main">Modeling the shape of the scene: a holistic representation of the spatial envelope</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Oliva</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Torralba</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IJCV</title>
+		<imprint>
+			<biblScope unit="volume">42</biblScope>
+			<biblScope unit="page" from="145" to="175" />
+			<date type="published" when="2001">2001</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b62">
+	<analytic>
+		<title level="a" type="main">Unsupervised learning of invariant feature hierarchies with applications to object recognition</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Ranzato</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Boureau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Lecun</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE Conference on Computer Vision and Pattern Recognition</title>
+		<imprint>
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b63">
+	<analytic>
+		<title level="a" type="main">Self-taught learning: Transfer learning from unlabeled data</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Raina</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Battle</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Packer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Ng</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference in Machine Learning</title>
+		<imprint>
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b64">
+	<analytic>
+		<title level="a" type="main">Flexible, high performance convolutional neural networks for image classification</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Ciresan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">U</forename><surname>Meier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Masci</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Gambardella</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Schmidhuber</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IJCAI</title>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b65">
+	<analytic>
+		<title level="a" type="main">The Toronto face database</title>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">M</forename><surname>Susskind</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">K</forename><surname>Anderson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><forename type="middle">E</forename><surname>Hinton</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Tech. Rep</title>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+			<pubPlace>Toronto, ON, Canada</pubPlace>
+		</imprint>
+		<respStmt>
+			<orgName>Department of Computer Science, University of Toronto</orgName>
+		</respStmt>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b66">
+	<analytic>
+		<title level="a" type="main">A generative framework for real-time object detection and classification</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Fasel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Fortenberry</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Movellan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">CV Image Understanding</title>
+		<imprint>
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b67">
+	<analytic>
+		<title level="a" type="main">Robust face recognition via sparse representation</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wright</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Ganesh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Sastry</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Ma</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE Transactions on Pattern Analysis and Machine Intelligence</title>
+		<imprint>
+			<publisher>PAMI</publisher>
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b68">
+	<analytic>
+		<title level="a" type="main">Empath: A neural network that categorizes facial expressions</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Dailey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Cottrell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Adolphs</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Padgett</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Cognitive Neuroscience</title>
+		<imprint>
+			<biblScope unit="volume">14</biblScope>
+			<biblScope unit="page" from="1158" to="1173" />
+			<date type="published" when="2002">2002</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b69">
+	<analytic>
+		<title level="a" type="main">Dynamics of facial expression extracted automatically from video</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Littlewort</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Bartlett</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Fasel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Susskind</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Movellan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Computer Vision and Pattern Recognition Workshop</title>
+		<imprint>
+			<date type="published" when="2004">2004</date>
+			<biblScope unit="volume">5</biblScope>
+			<biblScope unit="page">80</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b70">
+	<analytic>
+		<title level="a" type="main">Learning structural descriptions of objects using equivariant capsules</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Hinton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Krizhevsky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Wang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Int. Conf. on Artificial Neural Networks</title>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

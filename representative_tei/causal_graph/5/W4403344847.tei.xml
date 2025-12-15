@@ -1,0 +1,2341 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Counterfactual Causal Inference in Natural Language with Large Language Models</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability  status="unknown">
+					<licence/>
+				</availability>
+				<date type="published" when="2024-10-08">8 Oct 2024</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Gaël</forename><surname>Gendron</surname></persName>
+							<email>gael.gendron@auckland.ac.nz</email>
+						</author>
+						<author>
+							<persName><forename type="first">Jože</forename><forename type="middle">M</forename><surname>Rožanec</surname></persName>
+							<email>joze.rozanec@ijs.si</email>
+						</author>
+						<author>
+							<persName><forename type="first">Michael</forename><surname>Witbrock</surname></persName>
+							<email>m.witbrock@auckland.ac.nz</email>
+						</author>
+						<author>
+							<persName><forename type="first">Gillian</forename><surname>Dobbie</surname></persName>
+							<email>g.dobbie@auckland.ac.nz</email>
+						</author>
+						<author>
+							<affiliation key="aff0">
+								<orgName type="institution" key="instit1">NAOInstitute</orgName>
+								<orgName type="institution" key="instit2">University of Auckland</orgName>
+								<orgName type="institution" key="instit3">Jožef Stefan Institute</orgName>
+								<address>
+									<country key="SI">Slovenia</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff1">
+								<orgName type="institution" key="instit1">NAOInstitute</orgName>
+								<orgName type="institution" key="instit2">University of Auckland</orgName>
+								<orgName type="institution" key="instit3">NAOInstitute</orgName>
+								<orgName type="institution" key="instit4">University of Auckland</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Counterfactual Causal Inference in Natural Language with Large Language Models</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2024-10-08">8 Oct 2024</date>
+						</imprint>
+					</monogr>
+					<idno type="arXiv">arXiv:2410.06392v1[cs.CL]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-14T18:31+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Causal structure discovery methods are commonly applied to structured data where the causal variables are known and where statistical testing can be used to assess the causal relationships. By contrast, recovering a causal structure from unstructured natural language data such as news articles contains numerous challenges due to the absence of known variables or counterfactual data to estimate the causal links. Large Language Models (LLMs) have shown promising results in this direction but also exhibit limitations. This work investigates LLM's abilities to build causal graphs from text documents and perform counterfactual causal inference. We propose an end-to-end causal structure discovery and causal inference method from natural language: we first use an LLM to extract the instantiated causal variables from text data and build a causal graph. We merge causal graphs from multiple data sources to represent the most exhaustive set of causes possible. We then conduct counterfactual inference on the estimated graph. The causal graph conditioning allows reduction of LLM biases and better represents the causal estimands. We use our method to show that the limitations of LLMs in counterfactual causal reasoning come from prediction errors and propose directions to mitigate them. We demonstrate the applicability of our method on real-world news articles.</p><p>Preprint. Under review.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Recovering the causal structure of events described in single or multiple text sources is an important problem for natural language understanding, analysis, and prediction. In particular, causal structure discovery from news articles can help build causal world models that can be used to understand the causal chains behind events, forecast future events, and create robust automated reasoning agents <ref type="bibr" target="#b45">[44,</ref><ref type="bibr" target="#b0">1]</ref>. This problem is not often tackled in natural language processing (NLP) because it requires solving multiple challenges considered open research problems in causality and NLP research. First, the text modality prevents the direct use of traditional structure discovery methods as the set of causal variables is not available and has to be discovered (a problem being recently tackled by the field of causal representation learning) <ref type="bibr" target="#b45">[44]</ref>. Second, real-world events have non-trivial structures prone to latent variables and feedback loops, typically excluded from most causal analyses using Direct Acyclic Graphs (DAGs) <ref type="bibr" target="#b1">[2]</ref>. Third, causal models provide a means to answer interventional and counterfactual queries, but real-world data prevents the ground truth from being directly accessible. This is the fundamental problem of causal inference <ref type="bibr" target="#b35">[34]</ref>: only one factual world can be observed. In addition, real-world events are often complex and multi-causal, greatly hindering the possibility of manually annotating a ground truth.</p><p>Large Language Models (LLMs) have demonstrated impressive abilities to solve tasks related to these problems, notably for understanding and summarising natural language <ref type="bibr" target="#b6">[7,</ref><ref type="bibr" target="#b3">4,</ref><ref type="bibr" target="#b4">5]</ref>. Recent work <ref type="bibr" target="#b22">[21]</ref> has also shown that LLMs can recover causal structures, although the authors do not apply it to text data. However, this ability is still debated as the LLM's performance can drop significantly when facing unfamiliar settings <ref type="bibr" target="#b21">[20]</ref>. Moreover, while being able to perform some causal reasoning tasks successfully <ref type="bibr" target="#b29">[28]</ref>, notably on commonsense causal reasoning <ref type="bibr" target="#b24">[23,</ref><ref type="bibr" target="#b55">54]</ref>, LLMs have shown limitations on tasks that require robust reasoning, such as arithmetic tasks in unfamiliar settings <ref type="bibr" target="#b50">[49]</ref>, or abstract reasoning <ref type="bibr" target="#b12">[13]</ref>. To explain this behavior difference, <ref type="bibr" target="#b54">[53]</ref> advanced that LLMs cannot discover new causal relationships but only recall ones already seen during training. Acknowledging this limitation, alternative approaches have been proposed using LLMs to extract causal relationships from text <ref type="bibr" target="#b44">[43,</ref><ref type="bibr" target="#b41">40]</ref>. However, such approaches do not formally test whether the extracted relationships are causal.</p><p>We investigate ways to overcome this restriction and propose an end-to-end causal structure discovery and counterfactual inference method from purely unstructured natural language text data. Our framework is divided into two steps: first, we use an LLM to generate the causal graph associated with a document, i.e., that describes the causal relationships between the events depicted in the text. Optionally, we merge causal graphs from multiple sources using a second LLM. Then, we use the built causal structure to perform an atomic intervention on the sequence of events and infer the consequences in this counterfactual scenario using an LLM (i.e., answer what if? questions). We show that our method can effectively extract causal relationships and propose plausible counterfactual worlds from real-world events.</p><p>Our contributions can be summarised as follows:</p><p>• We propose a method to perform causal structure discovery and counterfactual inference in an end-to-end and explainable way,</p><p>• We demonstrate its applicability on real-world events,</p><p>• We use our method to disentangle the steps required for counterfactual reasoning and highlight the limitations of LLMs. We show that LLMs can fail even when the full reasoning structure is given and that the bottleneck for performance comes from the prediction step. <ref type="foot" target="#foot_0">1</ref>2 Related Work</p><p>Causal Structure Discovery with LLMs Text data is often unstructured, high-dimensional, and large-scale. Causal variables may not be directly accessible from the text, and the causal relationships are typically vague and rare, with semantic ambiguity complicating analysis. These challenges greatly hinder the usability of traditional causal structure discovery methods and motivate using LLMs for causal structure discovery <ref type="bibr" target="#b24">[23,</ref><ref type="bibr" target="#b27">26]</ref>. <ref type="bibr" target="#b24">[23]</ref> have achieved promising results when using LLMs to infer the causal direction between two variables. Nevertheless, there is some evidence that LLMs, in many cases, repeat embedded causal knowledge <ref type="bibr" target="#b54">[53]</ref> and are susceptible to inferring causal relations from the order of two entities mentioned in a text <ref type="bibr" target="#b23">[22]</ref>. <ref type="bibr" target="#b22">[21]</ref> attempts to recover the full causal structure using a breadth-first search on a set of text variables. <ref type="bibr" target="#b17">[17]</ref> investigates whether LLMs can identify the cause and the effect between two natural language sentences. This line of work uses the LLM's inner knowledge to discover causal relationships between data points. However, recent work highlighted that LLMs do not conduct proper causal reasoning and mainly rely on domain knowledge and correlations <ref type="bibr" target="#b54">[53,</ref><ref type="bibr" target="#b21">20]</ref>. This approach differs from another line of work that uses the LLM as an information retrieval engine to extract causal relationships explicitly present in the data. For instance, <ref type="bibr" target="#b14">[15]</ref> uses LLMs to extract causal relationships from medical texts. Our approach combines both worlds as we use an LLM to retrieve causal relationships from text and then perform causal inference on the extracted model to assess the quality of the causal model. NATURAL <ref type="bibr" target="#b7">[8]</ref> is another method developed concurrently to our work using LLMs to perform causal inference. However, the method is based on the Potential Outcome Framework (POF) and computes the Average Treatment Effect (ATE) of a variable (i.e., outcome) under an intervention (i.e., a treatment). By contrast, our method is based on Structural Causal Models (SCMs) and includes a causal structure discovery step to represent complex causal relationships between observed variables. Our work also focuses on counterfactuals, while this method is suited to answer interventional queries.</p><p>Strategic Foresight Strategic Foresight aims to provide a structured approach to gathering information regarding plausible future scenarios and adequately preparing for change. It provides expert insights regarding trends and emerging issues that can be considered for strategic planning and policy-making. As such, it is being increasingly adopted in the public and private sectors <ref type="bibr" target="#b5">[6,</ref><ref type="bibr" target="#b40">39]</ref>. Among the most frequently used methods, we find scenario planning <ref type="bibr" target="#b9">[10]</ref>, which aims to foresee relevant scenarios based on trends and factors of influence to understand better how actions can influence the future <ref type="bibr" target="#b49">[48]</ref>. While the value of artificial intelligence for strategic foresight has been recognized, much of the work is still not automated <ref type="bibr" target="#b38">[37,</ref><ref type="bibr" target="#b2">3]</ref>. Scientific literature reports on using artificial intelligence for information scanning and analysis <ref type="bibr" target="#b34">[33,</ref><ref type="bibr" target="#b2">3]</ref>, to identify weak signals and trends <ref type="bibr" target="#b13">[14]</ref>, and extract actions and outcomes that can be mapped to causal decision diagrams <ref type="bibr" target="#b36">[35]</ref>. More recently, authors have proposed architectures that could automate strategic foresight. Nevertheless, the proposed architecture only considered a signal assessment module without explicit reference to testing causality among the extracted graph relationships <ref type="bibr" target="#b42">[41,</ref><ref type="bibr" target="#b43">42]</ref>. We aim to bridge this gap by identifying, extracting, and testing causal relationships reported in media news to construct a graph of causal relationships and use such a graph to build plausible future scenarios, providing expert insights for strategic planning and policy-making.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Counterfactual Inference with Large Language Models</head><p>This section describes our proposed method for causal structure discovery and causal inference from text. We build a modified version of the Structural Causal Model (SCM) <ref type="bibr" target="#b35">[34]</ref> to represent the described causal mechanisms. Following the SCM framework, we consider that the mechanisms can be represented as Directed Acyclic Graphs (DAGs). For every document D, we construct a DAG G = ⟨U, V, E⟩ where the observed nodes v ∈ V correspond to general depictions of the events in the text. Two nodes</p><formula xml:id="formula_0">(V i , V j ) ∈ V × V are connected by an edge E ij = (V i , V j ) ∈ E if a causal</formula><p>relationship between them is explicitly mentioned in the text data (according to an LLM). We also represent possible exogenous factors U ∈ U describing unobserved events having a causal influence on the observations. Nodes and edges also have features. Nodes correspond to causal variables and have a domain established during extraction and a current value from this domain. Confounders U are not assigned values because they are not observed. As we aim to use an LLM for inference, we also keep attributes in plain natural language: a description of the variable and additional contextual information. Edges also have a description attribute. For example, given this sentence: "The airlines companies have seen their revenues diminishing due to travel restrictions.", we can extract the following causal variables S and T , and their relationship: travel restrictions (S) → airlines revenues (T). Their domains can be, e.g., a boolean for S and a fixed set of categories for T (since we do not have access to the numerical values of the revenues). Their current values are written S = s o and T = t o . During counterfactual inference, we intervene to modify these values while the other attributes remain unchanged. For performance, we add contextual information to each node, i.e., background knowledge extracted from the text. In this example, the contextual information could be the country where the event takes place. The edge description can be, e.g., "travel restrictions diminish airlines companies revenues".</p><p>SCMs typically have a set of mapping functions F to infer the value of a variable V given its parents pa(•) (e.g., V ← f V (pa(V ))). Instead of using a set of predefined functions, we perform causal inference using an LLM. We also use it to compute the prior probability distribution of the confounders U . We discuss our method and the implications of using an LLM for inference in Section 3.2. We note a full causal model containing the causal graph G and all these attributes as M = ⟨G, LLM⟩. The instantiated model M(D) describes the model with the values of each variable extracted from the document D. We further note an intervention do(X = x) in this model as M X=x (D) or M(D, do(X = x)).</p><p>Our proposed method is divided into four stages. First, we extract the causal graph from a text document. If multiple documents are provided, we merge their respective causal graphs together. Then, we compute counterfactual worlds from the resulting causal graph. We use these counterfactuals to self-evaluate the causal graph. Section 3.1 describes the causal graph extraction step. Section 3.2 describes the counterfactual inference step. Evaluation is described in Sections 4.3 and 5. Figure <ref type="figure" target="#fig_0">1</ref> illustrates the complete pipeline.  (3) The resulting causal graph is edited using ablation, intervention, and prediction steps to build counterfactual instantiations. The LLM performs inference given the variables' parent values. <ref type="bibr" target="#b3">(4)</ref> The LLM self-evaluates the original and counterfactual graphs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Causal Structure Discovery from Natural Language</head><p>We prompt an LLM to read an input document and return its associated causal graph. The expected graph should contain the full set of observed causal variables, their relationships, and their attributes as described in the introduction of Section 3. We also ask the LLM to estimate the hidden variables affecting the observed events and how they are connected. Estimated hidden variables have the same attributes as the observed ones but do not have an observed value. Other works have studied ways to improve the quality of the generated causal graphs, e.g., via breadth-first search <ref type="bibr" target="#b22">[21]</ref>. However, to keep our pipeline efficient, we only consider a single forward pass with chain-of-thought prompting <ref type="bibr" target="#b48">[47]</ref>. We find that this simple choice is sufficient for our purpose. This is not surprising as the causal relationships to be found are explicitly described in the data and LLMs have been very successful at information retrieval tasks <ref type="bibr" target="#b3">[4,</ref><ref type="bibr" target="#b4">5,</ref><ref type="bibr" target="#b39">38]</ref>. We prompt the LLM to return its answer in JSON format. Still, it may not always provide an extractable response. To alleviate this issue, we allow the LLM to refine its answer several times if it cannot be parsed automatically. If multiple documents are provided, we merge the causal graphs together. We describe this optional step in Appendix A.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Counterfactual Causal Inference</head><p>Autoregressive LLMs are inference engines computing the conditional probability of an output token Y 0 given an input context C: P (Y 0 |C). When used for generation, they construct an output sequence Y = [Y 0 , . . . , Y N ] by computing P (Y i |Y i-1 , . . . , Y 0 , C) iteratively. Due to their extensive training on a massive amount of data, LLMs are good estimators of P (Y 0 |C) <ref type="bibr" target="#b3">[4]</ref>. However, LLMs are also prone to hallucinations when providing long answers: they deviate from the instructions or state false information <ref type="bibr" target="#b18">[18]</ref>. Indeed, estimating the true conditional distribution of the full output P (Y|C) is more challenging, especially when Y is long as it requires building a probability tree considering all possible values for the intermediate Y i . This tree can be approximated using beam search or heuristic-guided tree search algorithms <ref type="bibr" target="#b52">[51,</ref><ref type="bibr" target="#b47">46]</ref>. However, their performance is still dependent on the output length. We alleviate this problem by conditioning the inference query on the causal parents of the output, i.e. instead of providing the complete context C as an input of the LLM, we use the much smaller subset pa(Y) ⊂ C. Assuming knowledge of the causal graph, this choice can greatly reduce the size of the context window and mitigate hallucination. In the rest of this section, we assume that the LLM can provide a close estimate of the true conditional distribution P (Y|pa(Y)). We challenge this assumption in our experiments. We investigate LLMs' causal inference abilities in counterfactual settings given the estimated causal model M. Counterfactual queries answer the question: "How would variable Y change if we had X = x instead of X = x ′ ?". This question can be answered by performing abduction, intervention and prediction. The abduction step estimates the values of the exogenous factors U from the observed quantities: P (U |x ′ , y ′ ). The intervention step edits the causal graph with the do(X = x) operation. The prediction step computes the remaining variables from their parent values: P (Y |pa(Y )). The corresponding quantity is expressed as follows:</p><formula xml:id="formula_1">P (Y |do(x), x ′ , y ′ ) = u∈U P (Y |do(x), u)P (u|x ′ , y ′ )<label>(1)</label></formula><p>Figure <ref type="figure" target="#fig_2">2</ref> illustrates these steps. To be efficient, we approximate some of them. We sample a single u ∼ P (U |ch(U )) using the LLM. ch(•) represents the children of U . We perform the abduction and prediction steps only on the variables affected by the intervention, as shown in Figure <ref type="figure" target="#fig_2">2e</ref> where we use the LLM as described above to compute P (A|X, B, U ) and P (Y |A).  Here, X and U are known. B, A and Y should be predicted. (2e) However, to maintain efficiency, we consider a single possible value per exogenous factor and re-compute only the variables affected by the intervention: here B is unaffected and not re-computed.</p><p>4 Inference on Synthetic Data</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Experimental Setup</head><p>We verify the applicability of our method on synthetic data and use it to investigate the current limitations of LLMs on counterfactual reasoning tasks. Cladder is a synthetic dataset containing small self-contained causal graphs of three of four variables with no unobserved confounders <ref type="bibr" target="#b20">[19]</ref>.</p><p>Queries in Cladder test the causal capabilities of a model. We focus on the counterfactual subset. We extract the results for the counterfactuals queries (rung 3, det-counterfactual) <ref type="foot" target="#foot_1">2</ref> . Queries are divided into commonsense, nonsensical and anti-commonsense categories. Nonsensical queries are composed of abstract variables not conveying any semantic meaning. Anti-commonsense queries contain common concepts as variables but with fictive causal relationships. Figure <ref type="figure" target="#fig_4">3</ref> shows an example of anti-commonsense query from Cladder. We conduct experiments using LLaMA-3.1 <ref type="bibr" target="#b8">[9]</ref>, GPT-3.5 <ref type="bibr" target="#b33">[32]</ref>, GPT-4 (version 1106), GPT-4o and GPT-4o-mini <ref type="bibr" target="#b30">[29,</ref><ref type="bibr" target="#b31">30]</ref>. We query GPT models via the OpenAI API while we run LLaMA-3.1 locally on one GPU NVIDIA A100 using Ollama. We use Langchain to interface with the LLMs. We use the default hyperparameters of both models and allow 12 refinement steps to format the LLM answers properly. When the answer does not match the expected format, we add a parsing layer. The prompts used are given in Appendix B. Our framework is denoted Counterfactual-CI. We compare our method with baseline LLM models from <ref type="bibr" target="#b20">[19]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Evaluation Results</head><p>We compare the results using our framework against basic and causal prompting <ref type="bibr" target="#b20">[19]</ref>. To provide insights into the abilities and limitations of LLMs, we also create ablated models. These models, denoted with G gt are provided with the ground-truth graph (extracted by parsing the input query) and are only tasked to perform the counterfactual inference step. Table <ref type="table" target="#tab_1">1</ref> describes the obtained results. We do not include parsing errors in the computation of the results as we aim to study the abilities of the LLMs on causal inference tasks separately from their capacity to follow instructions and generate structured outputs. This is not an issue for most models as they only contain a small number of uniformly distributed errors (see Figure <ref type="figure">4</ref>). Most LLMs do not perform significantly better</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Example of Anti-Commonsense Counterfactual Query</head><p>Imagine a self-contained, hypothetical world with only the following conditions, and without any unmentioned factors or causal relationships: Unobserved confounders has a direct effect on drinking coffee and salary. Proximity to a college has a direct effect on drinking coffee. Drinking coffee has a direct effect on salary. Unobserved confounders is unobserved. We know that confounder active or close to a college causes drinking coffee. confounder active or drinking coffee causes high salary. We observed the person lives close to a college and confounder inactive.</p><p>Would the employee has a high salary if drinking coffee instead of not drinking coffee?</p><p>(a) Prompt in natural language. The correct answer is 'yes'.  than random guessing (50% accuracy). There is no consistent difference of accuracy between the three levels of commonsense, showing little bias towards prior knowledge. The best models are GPT-4-1106+Causal CoT and Counterfactual-CI-GPT-4o-G gt although their performance remains limited (around 10% better than random guessing). Our framework decomposes counterfactual reasoning into a sequence of atomic steps, allowing us to get insights into the LLMs' causal reasoning abilities. We observe an improvement of performance when the causal graph is given to the LLM. This is most noticeable with GPT-4o. It indicates that LLMs are not systematically able to recover the true causal structure even when no information is hidden. However, the improvements are often small, e.g. no improvement is observed for GPT-3.5, highlighting that the accuracy seldom depends on the access to the correct causal structure. Our framework ensures that the right causal factors are provided to the appropriate causal variables, i.e. the value of a variable is solely determined by the value of its parents or from an intervention. Therefore, the bottleneck in accuracy lies in the computation of the functions P (Y|pa(Y)). We provide an example of failure case illustrating this limitation in LLMs in Section 4.4.</p><p>We look deeper into Figure <ref type="figure">4</ref> and Table <ref type="table" target="#tab_2">2</ref>. Figure <ref type="figure">4</ref> shows the decomposition of the results between graph building and inference errors. Table <ref type="table" target="#tab_2">2</ref> further shows the Graph Edit Distances (GED) between the causal graphs built by the models and the ground-truth causal graphs. The GED counts the number of node and edge edits required to transform the first graph to the second. We can see in Figure <ref type="figure">4</ref> that most LLMs can accurately build a causal graph. Only LLaMA-3.1 shows a high number of errors during the causal graph generation. Moreover, Table <ref type="table" target="#tab_2">2</ref> shows that GPT-4o, GPT-4o-mini and GPT-3.5 require less than one modification in average to recover the true graph (GED metric). As the GED topology metric is very close to the GED, it indicates that a semantic difference is systematically associated with a structural difference. This is further confirmed by the observed difference between the GED topology and IoU-GED topology metrics.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">LLM Self-Evaluation</head><p>We ask the LLM to self-evaluate its generated factual and counterfactual graphs. Each sample in the dataset contains a context document a query. Thus, one factual graph corresponding to the context and a second counterfactual graph with the intervention are generated for each sample. We summarise each graph into text format and prompt the LLM to return a plausibility score for the chain of events and a confidence score for its prediction (prompts are given in Appendix B.4). Table <ref type="table" target="#tab_3">3</ref> shows the average LLM self-evaluation on the accuracy of the generated causal graphs. The models expectedly attribute a slightly lower plausibility to the counterfactual graphs. Models attributing a higher score also show a higher confidence. In addition, the models that obtain a higher accuracy in Table <ref type="table" target="#tab_1">1</ref> tend to attribute lower scores and confidence than their counterparts. We put these results in perspective with the evaluation on real-world graphs in Section 5.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.4">Example of Reasoning Failures</head><p>We show an example of failure case with GPT-4o for the example provided in Figure <ref type="figure" target="#fig_4">3</ref>. The model explanation is given below:</p><p>The target variable 'salary' is influenced by two parent causes: 'drinking coffee' and 'unobserved confounders'. Given that the person drinks coffee (true), we might expect the salary to be positively affected. However, the status of unobserved confounders is inactive, which suggests a lack of additional income influence. Thus, the overall effect results in a low salary.</p><p>Although the model generates the correct causal factual and counterfactual graphs (as shown in the figure), the inference step fails. The model answers 'low salary' instead of 'high salary'. The context specifies that 'confounder active or drinking coffee causes high salary' but the LLM makes a mistake and interprets it as a logical AND instead of a logical OR. This example illustrates the type of prediction error that is prevalent in the LLMs' reasoning. It can be compared with the LLM limitations in robust and abstract reasoning tasks <ref type="bibr" target="#b50">[49,</ref><ref type="bibr" target="#b12">13,</ref><ref type="bibr" target="#b21">20]</ref>. We extract 5,486 media events related to the "Price of Oil" from EventRegistry <ref type="bibr" target="#b26">[25]</ref>. These events, spanning the first quarters of 2015, 2020, 2022, and 2023, were selected based on geopolitical events highlighted by the U.S. Energy Information Administration and the Russo-Ukrainian War<ref type="foot" target="#foot_2">foot_2</ref> . We perform experiments using LLaMA-3.1 <ref type="bibr" target="#b8">[9]</ref> and GPT-4o <ref type="bibr" target="#b30">[29,</ref><ref type="bibr" target="#b31">30]</ref>. We provide early results on real-world news documents. Due to the unavailability of the ground truth, we focus our experiments on a handful of documents that we manually verify. of the variables and predicts a better economical situation. We emphasise that these results should be taken as an illustrative example only. We also observe that the two models return different values for the exogenous factor but reach the same conclusions.</p><formula xml:id="formula_2">G P T -4 -1 1 0 6 G P T -4 o G P T -4 o -m i n i G P T -3 . 5 L L a M A -3 . 1 G P T -4 o -G g t G P T -4 o -m i n i -G g t G P T -3 . 5 -G g t L L a M A -3 . 1 -G g t 0 500 1,</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2">Counterfactual Inference</head><p>As in Section 4.3, we ask the LLM to self-evaluate its generated graphs. We generate four causal graphs from a single document and, for each graph, we automatically build six counterfactual queries. We summarise each graph into text format and prompt the LLM to return a plausibility score for the chain of events and a confidence score for its prediction (prompts are given in Appendix B.4). We show the results in Table <ref type="table">5</ref>. The LLMs generally provide higher scores to the factual graph than to the counterfactuals. This is not surprising as the former are extracted from real data, closer to the LLMs' training distribution. However, they still give high scores to the built counterfactuals. GPT-4o is also more consistent on the factual graphs, with a lower standard deviation, highlighting consistency between graph generations. LLaMA-3.1 shows a high standard deviation for all results.</p><p>Table <ref type="table">5</ref>: Self-evaluation and confidence provided by the LLMs on the plausibility of the described set of events and their causal relationships for the document described in Appendix B. The average of three end-to-end runs is shown. GPT-4o gives higher scores and confidence than on the synthetic data despite the more complex causal structure. However, LLaMA-3.1 provides lower scores, particularly for the counterfactual graph. We hypothesise that lower scores are attributed to the counterfactual graphs because they break the causal reasoning chains via the intervention. It hints that the LLMs rely on commonsense clues and already observed reasoning chains from their training distribution to build their answers. This can be further observed in the explanations provided in Appendix B.4 and was described in the context of abstract reasoning by <ref type="bibr" target="#b12">[13]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Limitations</head><p>LLMs provide free-text answers that can be different from the format provided in the instructions. This poses challenges for building an end-to-end pipeline that requires using LLMs at multiple stages, as the responses can be difficult to parse automatically, and errors can accumulate. In our future work, we will include fine-tuning in our pipeline to mitigate this issue. Due to the high cost of running LLMs or accessing them through APIs, we only tested our method on synthetic data and short text snippets. We intend to apply it to larger amounts of data in the future. We also only consider DAG structures, whereas real-world events can contain feedback loops. We will integrate them into our future work. As the LLM discovers the causal structure, errors can be present, and confounders can be omitted. The counterfactual results depend on the causal graph to be accurate. In addition, our current approach for real-world data proxies ground-truth counterfactual data by retrieving such values from LLMs. Our future work will focus on verifying the accuracy of the intermediate steps and building ground-truth counterfactual data.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7">Conclusion and Broader Impact</head><p>We propose an end-to-end method for conducting causal structure discovery and counterfactual causal inference from unstructured natural language. We demonstrate the applicability of our method on real-world news events, showcasing the LLMs' abilities to perform causal discovery and inference not as a standalone model but as a part of a larger framework. Furthermore, our experiments show that LLMs can extract the causal structure of a piece of text but fail during the reasoning part. This expands previous findings on the limitations of LLMs on reasoning tasks <ref type="bibr" target="#b50">[49,</ref><ref type="bibr" target="#b12">13,</ref><ref type="bibr" target="#b21">20]</ref>.</p><p>This research is still in its infancy but has shown promising results for computing causal inference and leveraging LLMs. As the inference process is divided into several independent computations of causal variables given their parents, this configuration provides inherent interpretability and allows auditing an LLM's answer. Our future work will follow two lines of research. On one hand, as LLMs have been shown to perform better by using refinement techniques <ref type="bibr" target="#b50">[49,</ref><ref type="bibr" target="#b28">27,</ref><ref type="bibr" target="#b53">52,</ref><ref type="bibr" target="#b37">36]</ref>, our counterfactual self-evaluation method could be used to conduct Counterfactual Self-Learning: refine LLMs' answers to improve them and teach LLMs to reason more causally by providing them with counterfactual data <ref type="bibr" target="#b0">[1]</ref>. On the other hand, we aim to create a framework to build and test counterfactuals based on real values and validate whether LLM-extracted causal relationships hold. Doing so would avoid LLM hallucinations and counterfactual reasoning deficiencies similar to the ones shown in Section 4 and lead to robust causal reasoning, where every piece of information could be traced back to evidence from the real world. We expect that such a framework will have extensive applications in many domains, extending the use of causal reasoning to any domain where text is available. In particular, we expect that could lead to a greater automation of strategic foresight, democratizing and enabling a wider use of it to enhance decision-making at all societal levels.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A Graph Summarisation</head><p>When considering several documents, we build their corresponding causal graphs independently and then attempt to merge them. The problem of combining multiple causal graphs together is known as the Structural Causal Marginal problem <ref type="bibr" target="#b15">[16]</ref>. This is a challenging problem that we approach from two different angles. Considering two causal models M 1 and M 2 , we first generate embeddings for every node of the two graphs by extracting their representation generated by the last hidden layer of the LLM. The prompt of a node is a concatenation of all its attributes. We omit its current value because we want to generate a representation of the variable and not the current instance. Motivated by the success of Graph Neural Networks (GNNs) at aggregating neighborhood information in graphs <ref type="bibr" target="#b25">[24,</ref><ref type="bibr" target="#b46">45,</ref><ref type="bibr" target="#b51">50]</ref>, we also add to he prompt the attributes of its immediate neighbours and how they are connected via the edge attributes. Then, we use a clustering algorithm to find nodes that share similar latent representations. We select DBSCAN <ref type="bibr" target="#b10">[11]</ref>. Since it is a density-based algorithm, it allows use to restrict the sparsity of the clusters and cluster together nodes with only very close representations.</p><p>After extracting similar nodes, we consider two ways to combine graphs: summarisation and analogy. Summarisation implies considering similar nodes as a single node in the merged graph, inheriting the edges of all the nodes in the set. This approach is straightforward and allows reducing the number of nodes as the graph grows. However, assessing if two causal variables can be merged is a challenging problem. In particular, in the absence of a lot of observations (one text only shows one observation per variable), the merged causal graph can be easily falsified <ref type="bibr" target="#b15">[16]</ref>.</p><p>Analogy merging is inspired by the research on analogical reasoning <ref type="bibr" target="#b32">[31,</ref><ref type="bibr" target="#b11">12]</ref>. We view similarity between nodes representations as an indication that analog mechanisms are causing them. To represent an analogy, we do not modify the existing graphs but add a common unobserved ancestor between similar nodes to integrate the similarity information from the clustering process without making assumptions regarding the nature of their similarity. The merged graphs can share information via backdoor paths. Unlike summarisation, analogy does not remove nodes but adds more. However, this method does not introduce ways to falsify the graphs and preserve the mechanisms of the initial graphs. The two approaches are illustrated in Figure <ref type="figure">5</ref>.</p><formula xml:id="formula_3">X Y Z (a) Model M1 A Z B (b) Model M2 X Y Z A B (c) M (Summarisation) 12 X Y Z 1 U Z 2 A B (d) M (Analogy) 12</formula><p>Figure <ref type="figure">5</ref>: Illustration of graph merging process for two models M 1 and M 2 . We assume that the common variable Z is the same in the two graphs and should be combined. Figure <ref type="figure">5c</ref> shows the merged graph using summarisation: Z is shared by the two mechanisms. Figure <ref type="figure">5d</ref> shows the merged graph using analogy: the variables Z 1 and Z 2 from M 1 and M 2 remain separated but share a common ancestor.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B Prompts Used B.1 Causal Structure Discovery</head><p>Here is the system prompt used for causal discovery:</p><p>Your task is to summarise a text into a JSON dictionary of instantiated causal variables and the causal relationships between them. Variables should be as atomic and detailed as possible. Causal relationships should describe how the value of the first variable affects the value of the second. One sentence usually describes two or more variables and connects them. For each variable, the following questions should be answered: 'What are the causes of this variable's value? Is it fully explained by the available information or are some causes missing?' If some causes seem to be missing, create new (hidden) variables. Hidden variables represent missing information to fully explain the value of one or more observed variables. They cannot have incoming edges. Identify the major and minor variables and how they are connected.</p><p>Add the missing unknown variables when necessary. Follow carefully the instructions and write down your answer using only the given JSON format very strictly. The format is as follows: { "observed_nodes": [ { "node_id": (str) "0", "description": (str) "&lt;high-level short atomic description of causal variable 0&gt;", "type": (str) "&lt;variable type: e.g. bool, int, set element, range element&gt;", "values": (str) "&lt;set of possible values, if applicable&gt;", "current_value": (str) "&lt;current value&gt;", "context": (str) "&lt;contextual information type&gt; : &lt;value of the contextual information linked to the current instance&gt;" }, ... ], "hidden_nodes": [ { "node_id": (str) "h0", "description": (str) "&lt;high-level short atomic description of the hidden causal variable&gt;", "type": (str) "&lt;variable type: e.g. bool, int, set element, range element&gt;", "values": (str) "&lt;set of possible values, if applicable&gt;", "current_value": (str) "", # This field is left empty because the current value of the variable is unknown since the variable is hidden "context": (str) "&lt;contextual information type&gt; : &lt;value of the contextual information linked to the current instance&gt;" }, ... ], "observed_edges": [ { "source_node_id": (str) "0", "target_node_id": (str) "1", "description": (str) "&lt;high-level short atomic description of the causal relationship from variable 0 to 1&gt;", "details": (str) "&lt;detailed explanation of how the value of variable 0 affects the value of variable 1 in the text&gt;" }, ... ], "hidden_edges": [ { "source_node_id": (str) "h0", "target_node_id": (str) "1", "description": (str) "&lt;high-level short atomic description of the causal relationship from hidden variable 0 to 1&gt;", "details": (str) "&lt;detailed explanation of how the value of hidden variable 0 affects the value of variable 1 in the text&gt;" }, ... ] }</p><p>Here is the parameterised user prompt, specific for each instance. The {text} parameter is replaced by the input document.</p><p>Here is the input text: ''' {text} '''</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B.2 Graph Summarisation</head><p>When conducting graph summarisation, we do not use the LLM as a generative model but as an embedding model. We only provide node information using the following format. Texts in curly brackets represent variable parameters. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B.3 Counterfactual Inference</head><p>During inference, we provide parent variables to the LLM and prompt it to estimate the value of the target variable. Here is the system prompt:</p><p>Your task is to predict the value of the target variable given its description, type, possible values, and context, and the attributes and values of its parent causes and the relationships connecting them. The value of the target variable is fully determined by its direct list of causes. Reason step-by-step.</p><p>Start by describing the attributes of the target variable and explain in your own words its relationships with its parent causes, how the variables are linked, and how their values cause the value of the target. Then, predict the value of the target variable. Provide a confidence score as a float between 0 and 1. Follow strictly the provided format.</p><p>The user prompt provides information about the target variable. The format is as follows:</p><p>The target variable has the following attributes: {node attributes}.</p><p>It is caused by the following variables:</p><p>The list of parent is then provided. The ith parent variable is described as follows:</p><p>{i}. {parent attributes}. Its value is {parent value}. Its causal relationship with the target is described as follows: {edge attributes}</p><p>We generate the value of the intervened variable using an LLM. Here is the system prompt provided for this task:</p><p>Your task is to interpret the attributes of a variable and propose an alternative/counterfactual instantiation different from its current value. The variable is described by its description, type, possible values, current value, and context. The counterfactual value should be a plausible alternative instantiation of the variable given the context, type, description, and possible values.</p><p>Reason step-by-step. Start by describing the attributes of the variable and explain in your own words the reasons for the choice of the counterfactual value. Then, state the factual value and propose the new counterfactual value. Provide a confidence score as a float between 0 and 1. Follow strictly the provided format.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Here is the user prompt:</head><p>The variable has the following attributes: description: {description}, type: {type}, possible values: { values}, context: {context}. The current value is {current_value}. Propose a counterfactual value.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B.4 Evaluation</head><p>The evaluation of the causal factual and counterfactual models is performed by an LLM using the following prompts. Here is the system prompt:</p><p>Your task is to evaluate the plausibility of a set of events linked by causal relationships. The events are described by a high-level description and a value. The events are linked by causal relationships. The causal relationships are described by a high-level description. The overall plausibility of the set of events corresponds to the factorization of the plausibility of each event's occurrence given its causes. Reason step-by-step. Start by describing the events and the causal relationships. Explain in your own words the reasons for the plausibility of each event. Finally, provide an overall score for the plausibility of the sequence of events. Give an explanation describing your reasoning. Provide an overall confidence score as a float between 0 and 1. Follow strictly the provided format.</p><p>The user prompt describes the events in the topological order of the causal graph. Before each event, the causal relationships with its parents is also described. Here is an example:</p><p>The causal graph is composed of the following events: ({parent rank} -&gt; {target rank}) {edge description}. {target rank}. {target description}. The value is {node current_value}</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C Supplement to the Experiments</head><p>In this section, we describe in more details the counterfactual causal inference example from This will put pressure on bank stocks due to credit line drawdown and an increase in defaults. "We know oil and gas and airlines are in a bad way due to travel restrictions imposed around the world. "At this stage, I see no way out and expect more investors to move into cash or keep investment portfolio very light primarily in recessionary proof areas like healthcare. "But honestly with credit under duress, I think cash is the place to be. The only endgame in sight is when the world sees COVID-19 ends," he said.</p><p>Table <ref type="table" target="#tab_8">6</ref> provides the explanations given by the models when inferring the values of the remaining variables during the prediction step. We can observe that the two models reason similarly, although GPT-4o tends to return a more precise and detailled explanation. The only difference in behaviour is for variable h0 where GPT-4o does not answer. As this value is computed during the abduction step, in an anticausal fashion (predict a cause from its consequences), this is expected. This issue can be alleviated by marginalising over the set of possible values of h0.</p><p>Tables <ref type="table">7</ref> and<ref type="table">8</ref> provide examples of explanation returned by the models when evaluating the factual and counterfactual causal graphs. GPT-4o provides longer and more detailled explanations while the justification provided by LLaMA-3.1 is not always very explanative. We can see that scores and confidence are highly correlated for both models although outliers can also be observed. However, the severity of the oil price war is severe, which greatly increases the downtrend magnitude. The downside risks to corporate earnings are low, which would also typically suggest a smaller downtrend. Lastly, the potential end of the COVID-19 pandemic is not expected (False), which does not help reduce the downtrend magnitude. Thus, considering the severe impact of the oil price war, I predict a moderate downtrend magnitude of around 20%.</p><p>Given that Severity of oil price war is severe, increasing Bursa Malaysia downtrend magnitude and Downside risks to corporate earnings are low, contributing less to the downtrend. Although Potential end of COVID-19 pandemic would reduce the downtrend magnitude, Severity of COVID-19 pandemic being low would increase it, but this effect is expected to be lower than that of oil price war. Hence Bursa Malaysia downtrend magnitude is predicted to be high.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>3</head><p>The FBM KLCI index value is influenced by several factors for the market close yesterday. The Bursa Malaysia downtrend magnitude shows a significant percentage decline from peak (20%), which has a negative impact on the index. Furthermore, the selling pressure on stocks is high, which also decreases the index value. On the other hand, the condition of the oil &amp; gas and airlines sectors is good, which supports the index value. Given these mixed factors, the FBM KLCI index is estimated to be lower but not drastically so.</p><p>The estimated value of the FBM KLCI index is 1500.00 due to the high Bursa Malaysia downtrend magnitude and high selling pressure on stocks, which both decrease the FBM KLCI index value. However, the good condition of oil &amp; gas and airlines sectors has a positive effect on the index value.</p><p>10 The downside risks to corporate earnings are influenced by Malaysia's change of coalition government. Since the change of coalition government did not occur (value is False), the downside risks are expected to be low.</p><p>(no explanation returned by the model)</p><p>11 Given that the severity of the COVID-19 pandemic is low and the potential end of the pandemic is false, there would be no severe travel restrictions imposed worldwide. The low severity of the pandemic suggests minimal disruption, and since there's no potential end of the pandemic yet, current measures would likely remain in place but not be stringent.</p><p>Given that the severity of COVID-19 pandemic is low and there is a potential end of COVID-19 pandemic, it can be inferred that travel restrictions imposed worldwide would likely be none. This is because a low severity of the pandemic suggests that the situation is under control, and a potential end to the pandemic would further reduce the need for travel restrictions. 12 Since the travel restrictions imposed worldwide were 'none' yesterday, it is likely that the oil &amp; gas and airlines sectors condition was 'good'.</p><p>Severe travel restrictions would worsen these sectors, but in the absence of any restrictions, the condition should be favorable.</p><p>Given that yesterday there were no worldwide travel restrictions, it is estimated that the condition of oil &amp; gas and airlines sectors was good.</p><p>h0 The value cannot be determined as there are no parent causes provided to infer the outcome.</p><p>The potential end of COVID-19 pandemic will occur because all the parent causes have values that lead to this outcome.</p><p>Table <ref type="table">8</ref>: Example of graph scores explanations given by LLaMA3.1 in Table <ref type="table">5</ref>. FG stands for Factual Graph and CG for Counterfactual Graph. Sc stands for Score and Cf stands for confidence. We show the explanations for one graph and two counterfactual graphs. Sc Cf LLaMA-3.1 FG 0.7 0.8 The plausibility of the sequence of events is high due to the following reasons: COVID-19 pandemic (event 0) has a direct impact on recessionary trends (event 1). Fiscal policy responses (event 2) mitigated the effects of recessionary trends. However, oil price war (event 3) influenced FBM KLCI (event 4), which was also impacted by COVID-19 pandemic and recessionary trends. CG1 0.6 0.7 The event 'COVID-19 pandemic' with a value of True increases the likelihood of recessionary trends and has an impact on FBM KLCI. The event 'Oil price war' with a value of 80 influences FBM KLCI but is not directly linked to recessionary trends, despite its potential indirect impact. However, recessionary trends are False which decreases the likelihood of FBM KLCI being influenced by it. CG2 0.0 0.8 The COVID-19 pandemic has had a significant impact on the global economy, leading to recessionary trends. However, fiscal policy responses have mitigated some of these effects. The oil price war has also influenced the FBM KLCI, but its overall value remains high.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: Overview of the proposed framework. (1) An LLM extracts causal variables and their corresponding causal relationships from the input text. (2) Multiple graphs are generated and merged into a single graph if multiple text snippets are given in input. (3) The resulting causal graph is edited using ablation, intervention, and prediction steps to build counterfactual instantiations. The LLM performs inference given the variables' parent values. (4) The LLM self-evaluates the original and counterfactual graphs.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: Counterfactual inference steps. (2a) The original causal graph. (2b) We estimate the possible values of the exogenous factors, here U , from the observations. (2c) We perform the do(X = x) operation. (2d) We predict the values of the remaining variables given their parent causes.Here, X and U are known. B, A and Y should be predicted. (2e) However, to maintain efficiency, we consider a single possible value per exogenous factor and re-compute only the variables affected by the intervention: here B is unaffected and not re-computed.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: Example of counterfactual query from the Cladder dataset. (left) The context and question description in natural language as provided to the model. (right) The corresponding ground-truth and counterfactual causal graph with (H) a hidden confounder, unlike in real-world situations, its value is given in the dataset and thus shown in blue, (C) coffee drinking, and (S) a high or low salary. All causes affecting the system are mentioned. Intervention is shown in yellow.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head></head><label></label><figDesc>description: {description}, type: {type}, values: {values}, context: {context} When adding neighbour information, we concatenate the initial representation with the folowing neighbour representation: neighbour at distance {rank} from node: description: {description}, type: {type}, values: {values}, context: {context}</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 1 :</head><label>1</label><figDesc>Accuracy on the counterfactual subset of the Cladder dataset. Only extracted answers are shown. Accuracy is reported overall and divided by commonsense (Common.), nonsensical and anticommonsense (Anti-Common) queries. Models with G gt are given the true causal graph extracted via standard parsing. Results with * are obtained on ∼ 65% of the dataset and cannot be directly compared with the other models (see Figure4). LLMs do not demonstrate good counterfactual inference abilities even when the causal and reasoning structures are given, highlighting that the performance bottleneck lies in the LLMs' ability to perform accuracte prediction.</figDesc><table><row><cell></cell><cell></cell><cell></cell><cell>Accuracy</cell><cell></cell></row><row><cell></cell><cell cols="4">Overall Common. Nonsensical Anti-Common.</cell></row><row><cell>LLaMA</cell><cell>56.61</cell><cell>54.99</cell><cell>58.26</cell><cell>54.78</cell></row><row><cell>GPT-3 Non-Instr. (davinci)</cell><cell>50.00</cell><cell>47.01</cell><cell>49.17</cell><cell>47.78</cell></row><row><cell>GPT-3 Instr. (text-davinci-001)</cell><cell>50.07</cell><cell>53.28</cell><cell>50.82</cell><cell>45.22</cell></row><row><cell>GPT-3 Instr. (text-davinci-002)</cell><cell>51.76</cell><cell>54.13</cell><cell>51.93</cell><cell>48.99</cell></row><row><cell>GPT-3 Instr. (text-davinci-003)</cell><cell>58.02</cell><cell>54.13</cell><cell>59.23</cell><cell>59.42</cell></row><row><cell>GPT-3.5</cell><cell>50.49</cell><cell>51.85</cell><cell>51.38</cell><cell>47.25</cell></row><row><cell>GPT-4-1106</cell><cell>59.77</cell><cell>61.25</cell><cell>59.78</cell><cell>58.26</cell></row><row><cell>GPT-4-1106 + CausalCoT</cell><cell>62.31</cell><cell>63.53</cell><cell>60.06</cell><cell>65.78</cell></row><row><cell>Counterfactual-CI-GPT-4-1106*</cell><cell>50.57</cell><cell>51.17</cell><cell>49.33</cell><cell>52.94</cell></row><row><cell>-GPT-4o</cell><cell>52.26</cell><cell>53.85</cell><cell>51.39</cell><cell>52.37</cell></row><row><cell>-GPT-4o-mini</cell><cell>51.86</cell><cell>54.19</cell><cell>51.22</cell><cell>50.80</cell></row><row><cell>-GPT-3.5</cell><cell>52.31</cell><cell>48.39</cell><cell>53.57</cell><cell>53.92</cell></row><row><cell>-LLaMA-3.1*</cell><cell>52.11</cell><cell>53.00</cell><cell>53.11</cell><cell>48.39</cell></row><row><cell>-GPT-4o-Ggt</cell><cell>60.53</cell><cell>58.68</cell><cell>61.23</cell><cell>61.20</cell></row><row><cell>-GPT-4o-mini-Ggt</cell><cell>56.58</cell><cell>53.16</cell><cell>58.03</cell><cell>56.91</cell></row><row><cell>-GPT-3.5-Ggt</cell><cell>49.80</cell><cell>47.78</cell><cell>48.41</cell><cell>54.52</cell></row><row><cell>-LLaMA-3.1-Ggt</cell><cell>58.05</cell><cell>54.33</cell><cell>61.17</cell><cell>54.79</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 2 :</head><label>2</label><figDesc>Graph distances with ground-truth graph. GED stands for Graph Edit Distance. IoU-GED is the GED metric between the intersection and the union of the built and ground-truth graphs. The base metric matches the variable names while the topology metric only look at the structure. All graphs have either three and four nodes. Most models require less than one change in average, except for GPT-4o-mini and LLaMA-3.1.</figDesc><table><row><cell></cell><cell cols="4">GED IoU-DEG GEDtopology IoU-GEDtopology</cell></row><row><cell cols="2">Counterfactual-CI-GPT-4-1106 0.814</cell><cell>3.929</cell><cell>0.814</cell><cell>2.240</cell></row><row><cell>-GPT-4o</cell><cell>0.897</cell><cell>4.268</cell><cell>0.897</cell><cell>2.100</cell></row><row><cell>-GPT-4o-mini</cell><cell>2.667</cell><cell>5.898</cell><cell>2.666</cell><cell>6.175</cell></row><row><cell>-GPT-3.5</cell><cell>0.582</cell><cell>3.708</cell><cell>0.579</cell><cell>0.919</cell></row><row><cell>-LLaMA-3.1</cell><cell>2.420</cell><cell>6.198</cell><cell>2.419</cell><cell>4.790</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 3 :</head><label>3</label><figDesc>Partition of the Counterfactual-CI models results between correct, incorrect answers and errors. Errors in grey are not considered as counterfactual reasoning errors but as instruction errors and are not considered in the results of Table1. Models can usually generate the causal structure and conduct inference. GPT-4-1106 and LLaMA-3.1 show a lower capacity to follow instructions and generate structured outputs. Models also often require to have their response parsed to extract the answer, particularly GPT-4o-G gt .</figDesc><table><row><cell>1,500</cell></row><row><cell>000</cell></row></table><note><p>Self-evaluation and confidence provided by the LLMs. Results for GPT-3.5 are omitted because the model did not return properly formatted scores on a sufficient number of samples (less than five). Models attribute a slightly lower score to the counterfactual graphs. Models performing better tend to attribute lower scores and confidence than their counterparts.</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 4</head><label>4</label><figDesc></figDesc><table><row><cell>provides an example of results obtained with our method for a model M(D) extracted from</cell></row><row><cell>a document D and under interventions M 0='low',9='False' (D). The input text and the explanations</cell></row><row><cell>given by the LLMs during inference are given in Appendix C. The document D describes how</cell></row></table><note><p>the COVID-19 pandemic and the rise in oil prices affect Malaysia's economy. We perform two interventions on the graph and build a counterfactual world where the severity of the pandemic is low and a change of governement has not happened. From these interventions, the model updates the rest</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Table 4 :</head><label>4</label><figDesc>Example of counterfactual inference performed by the Counterfactual-CI model on realworld data. The first row shows the extracted factual graph and the counterfactual graph under interventions (in yellow) do(0='low') and do(9='False'). The exogenous factor is in red. After abduction, a value is assigned to it (illustrated in blue). Variables inferred during the prediction step are shown in green. The bottom rows show the values of the factual and counterfactual worlds.</figDesc><table><row><cell></cell><cell cols="3">Factual Graph</cell><cell cols="3">Intervened Graph</cell></row><row><cell></cell><cell>5</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell></cell><cell>H0</cell><cell></cell><cell></cell><cell>H0</cell></row><row><cell></cell><cell>4</cell><cell>0</cell><cell>9</cell><cell>4</cell><cell>0</cell><cell>9</cell></row><row><cell></cell><cell>11</cell><cell>1</cell><cell>10</cell><cell>11</cell><cell>1</cell><cell>10</cell></row><row><cell></cell><cell>12</cell><cell>2</cell><cell></cell><cell>12</cell><cell>2</cell></row><row><cell></cell><cell></cell><cell>3</cell><cell></cell><cell></cell><cell>3</cell></row><row><cell></cell><cell cols="3">Factual Values</cell><cell cols="3">Counterfactual Values GPT-4o LLaMA-3.1</cell></row><row><cell>0</cell><cell cols="3">Severity of COVID-19 pandemic (range element): severe</cell><cell cols="3">low (from do operation)</cell></row><row><cell>1</cell><cell cols="3">Severity of oil price war (range element): severe</cell><cell></cell><cell></cell></row><row><cell>2</cell><cell cols="3">Bursa Malaysia downtrend magnitude (int): 29%</cell><cell>20</cell><cell>high</cell></row><row><cell>3</cell><cell cols="3">FBM KLCI index value (float): 1,280.63</cell><cell>1580</cell><cell>1500.00</cell></row><row><cell>4</cell><cell cols="3">Selling pressure on stocks (range element): high</cell><cell></cell><cell></cell></row><row><cell>5</cell><cell cols="3">Investors moving into cash (bool): True</cell><cell></cell><cell></cell></row><row><cell>9</cell><cell cols="3">Malaysia's change of coalition government (bool): True</cell><cell cols="3">False (from do operation)</cell></row><row><cell cols="4">10 Downside risks to corporate earnings (range element): high</cell><cell>low</cell><cell>low</cell></row><row><cell cols="4">11 Travel restrictions imposed worldwide (range element): severe</cell><cell>none</cell><cell>none</cell></row><row><cell cols="5">12 Condition of oil &amp; gas and airlines sectors (range element): bad good</cell><cell>good</cell></row><row><cell cols="4">h0 Potential end of COVID-19 pandemic (bool): None</cell><cell>False</cell><cell>True</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head>Table 4 .</head><label>4</label><figDesc>The document from which is extracted the causal graph is shown below:KUALA LUMPUR: Bursa Malaysia downtrend could be far from over as there is always more room to decline depending on the severity of COVID-19 pandemic and oil price war, said economists after key benchmark FBM KLCI took another beating in the early trading session yesterday. To what may be seen as continued selling pressure from last week's Friday the 13th, the FTSE Bursa Malaysia KLCI (FBM KLCI) lost 44.99 points to 1,299.76 at 9.10am yesterday, compared with Friday's close of 1,344.75, after opening 25.38 points lower at 1,319.37 yesterday morning. At market closing yesterday, the FBM KLCI closed at 4.77 per cent lower to 1,280.63 points with turnover at 4.473 billion shares valued at RM3.687 billion. Bank Islam chief economist Dr Mohd Afzanizam Abdul Rashid said if history is of any guide, the FBM KLCI has fallen sharply between January 11, 2008 (1,516.22 points) and October 29, 2009 (829.41 points). He said during the Asia Financial Crisis in 1997/1998, the FBM KLCI was down massively by 79.2 per cent between February 25, 1997 (1,265.01 points) and September 1, 1998 (262.7 points). "For now, the FBM touches its peak at 1,895.18 points on April 19, 2018 and has plunged by 29.0 per cent to 1,344.75 points as of March 13, 2020. There is always more room to decline obviously due to the virus outbreak and oil price war," he told NST Business. CGS-CIMB analyst Ivy Ng Lee Fang said the research firm has cut its year-end FBM KLCI target to 1,449 points. "We advise investors to seek shelter in defensive and high-dividend-yield stocks until the concerns over the global spread of COVID-19 subside. "These, together with Malaysia's unexpected change of coalition government, could pose downside risks to corporate earnings, which are difficult to measure at this time," it said. Ng said during the global financial crisis, FBM KLCI fell by 45 per cent from its peak to 829 points, its lowest ever and FBM KLCI earnings fell by 8.7 per cent in 2009. She said there is a potential earning downside risk of 10.3 per cent to its current 1.6 per cent FBM KLCI earnings per share growth forecast if the earnings risk resembles that of during the global financial crisis decline (-8.7 per cent). Meanwhile, AxiCorp market strategist Stephen Innes said small and medium enterprises (SMEs) are most at risk given they generally operate on small operating cushions and will need to dive into credit lines if not hefty interest credit card to keep things afloat. "Unless governments actually get money physically into the hands that need it the most things can turn bad.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_8"><head>Table 6 :</head><label>6</label><figDesc>Explanation of the inferred values by GPT-4o and LLaMA-3.1 for every variable in Table4.</figDesc><table><row><cell></cell><cell>GPT-4o</cell><cell>LLaMA-3.1</cell></row><row><cell>2</cell><cell>The Bursa Malaysia downtrend magnitude is in-</cell></row><row><cell></cell><cell>fluenced by several factors. The severity of the</cell></row><row><cell></cell><cell>COVID-19 pandemic is low, which would typ-</cell></row><row><cell></cell><cell>ically suggest a smaller downtrend magnitude.</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>Our code is available at: https://github.com/Strong-AI-Lab/counterfactual-llm-inference.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_1"><p>We download the results divided by query type and commonsense here: https://edmond.mpg.de/ dataset.xhtml?persistentId=doi%3A10.17617%2F3.NVRRA9.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="3" xml:id="foot_2"><p>The geopolitical events were highlighted in the following report, last accessed on August 25 th 2023: https://www.eia.gov/finance/markets/crudeoil/spot_prices.php.</p></note>
+		</body>
+		<back>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Table <ref type="table">7</ref>: Example of graph scores explanations given by GPT-4o in Table <ref type="table">5</ref>. FG stands for Factual Graph and CG for Counterfactual Graph. Sc stands for Score and Cf stands for confidence. We show the explanations for one graph and two counterfactual graphs. Sc Cf GPT-4o FG 0.85 0.85 The sequence of events and their causal relationships are highly plausible given the context of the COVID-19 pandemic and global economic conditions. The COVID-19 pandemic had a significant impact on global markets, including Bursa Malaysia, leading to a downtrend in FBM KLCI points.</p><p>The severity of the oil price war also contributed to this downtrend. Travel restrictions due to the pandemic affected both the oil and gas sector and the airline sector, leading to further economic pressure. The change in Malaysia's coalition government affected corporate earnings, contributing to the overall economic situation. The lack of financial support from the government increased pressure on bank stocks, especially given the bad operating conditions for SMEs. The values provided for FBM KLCI points and other financial metrics are consistent with the described events and their causal relationships. Therefore, the overall sequence of events is highly plausible. CG1 0.5 0.5 Let's break down the events and their causal relationships one by one: 1. Travel restrictions (Event 0) are false, meaning there are no travel restrictions in place. 2. The severity of the oil price war (Event 1) is high, which indicates a significant conflict impacting oil prices. 3. The severity of the COVID-19 pandemic (Event 2) is also high, suggesting widespread impact from the pandemic. 4. Travel restrictions affect the oil and gas sector condition (causal relationship 0 -&gt; 3). 5. The condition of the oil and gas sector (Event 3) is bad. Given the provided events and relationships, the key causal link to evaluate is between travel restrictions (Event 0) and the oil and gas sector condition (Event 3). Since travel restrictions are not in place (false), this would typically suggest a neutral or positive impact on the oil and gas sector. However, the sector condition is bad. This could be due to other factors not explicitly mentioned in the graph, such as the high severity of the oil price war (Event 1) and the high severity of the COVID-19 pandemic (Event 2). The graph doesn't explicitly link these other factors to the oil and gas sector condition, but they are plausible contributors. Overall, the sequence of events seems somewhat plausible but lacks explicit causal links for all influencing factors, resulting in a moderate score and confidence. CG2 0.3 0.5 The causal graph has several issues that impact its overall plausibility. First, the event 'FBM KLCI earnings decline in 2009' is given a value of 5.0, which is plausible given the historical context of the 2008-2009 financial crisis. However, the subsequent events 'Severity of COVID-19 pandemic' and 'Severity of oil price war' are not assigned values, making it difficult to evaluate their plausibility. The link between 'FBM KLCI earnings decline in 2009' and 'Potential earning downside risk' is plausible, as past earnings declines can influence future downside risks. However, the lack of values for the severity of the pandemic and oil price war significantly reduces the confidence in the overall plausibility of the causal graph.</p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<title level="m" type="main">On pearl&apos;s hierarchy and the foundations of causal inference</title>
+		<author>
+			<persName><forename type="first">Elias</forename><surname>Bareinboim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Juan</forename><forename type="middle">D</forename><surname>Correa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Duligur</forename><surname>Ibeling</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Icard</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/3501714.3501743</idno>
+		<ptr target="https://doi.org/10.1145/3501714.3501743" />
+		<editor>Hector Geffner, Rina Dechter, and Joseph Y. Halpern</editor>
+		<imprint>
+			<publisher>ACM</publisher>
+			<biblScope unit="volume">36</biblScope>
+			<biblScope unit="page">2022</biblScope>
+		</imprint>
+	</monogr>
+	<note>Probabilistic and Causal Inference: The Works of Judea Pearl</note>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Foundations of structural causal models with cycles and latent variables</title>
+		<author>
+			<persName><forename type="first">Stephan</forename><surname>Bongers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Patrick</forename><surname>Forré</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jonas</forename><surname>Peters</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joris</forename><forename type="middle">M</forename><surname>Mooij</surname></persName>
+		</author>
+		<idno type="DOI">10.1214/21-AOS2064</idno>
+		<ptr target="https://doi.org/10.1214/21-AOS2064" />
+	</analytic>
+	<monogr>
+		<title level="j">The Annals of Statistics</title>
+		<imprint>
+			<biblScope unit="volume">49</biblScope>
+			<biblScope unit="issue">5</biblScope>
+			<biblScope unit="page" from="2885" to="2915" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Artificial intelligence in strategic foresight-current practices and future application potentials: Current practices and future application potentials</title>
+		<author>
+			<persName><forename type="first">Patrick</forename><surname>Brandtner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marius</forename><surname>Mates</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">The 2021 12th International Conference on E-business, Management and Economics</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="75" to="81" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Language models are few-shot learners</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Tom</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Benjamin</forename><surname>Brown</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nick</forename><surname>Mann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Melanie</forename><surname>Ryder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jared</forename><surname>Subbiah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Prafulla</forename><surname>Kaplan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arvind</forename><surname>Dhariwal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pranav</forename><surname>Neelakantan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Girish</forename><surname>Shyam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amanda</forename><surname>Sastry</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sandhini</forename><surname>Askell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ariel</forename><surname>Agarwal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gretchen</forename><surname>Herbert-Voss</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tom</forename><surname>Krueger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rewon</forename><surname>Henighan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aditya</forename><surname>Child</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><forename type="middle">M</forename><surname>Ramesh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeffrey</forename><surname>Ziegler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Clemens</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Winter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mark</forename><surname>Hesse</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eric</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mateusz</forename><surname>Sigler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Scott</forename><surname>Litwin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Benjamin</forename><surname>Gray</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jack</forename><surname>Chess</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Clark</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sam</forename><surname>Berner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alec</forename><surname>Mccandlish</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ilya</forename><surname>Radford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dario</forename><surname>Sutskever</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Amodei</surname></persName>
+		</author>
+		<ptr target="https://proceedings.neurips.cc/paper/2020/hash/1457" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems 33: Annual Conference on Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">Hugo</forename><surname>Larochelle</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Marc'aurelio</forename><surname>Ranzato</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Raia</forename><surname>Hadsell</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Maria-Florina</forename><surname>Balcan</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Hsuan-Tien</forename><surname>Lin</surname></persName>
+		</editor>
+		<meeting><address><addrLine>NeurIPS</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2020-12-06">2020. 2020. December 6-12, 2020. 2020</date>
+		</imprint>
+	</monogr>
+	<note>c0d6bfcb4967418bfb8ac142f64a-Abstract.html</note>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<monogr>
+		<title level="m" type="main">Sparks of artificial general intelligence: Early experiments with GPT-4</title>
+		<author>
+			<persName><forename type="first">Sébastien</forename><surname>Bubeck</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Varun</forename><surname>Chandrasekaran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ronen</forename><surname>Eldan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Johannes</forename><surname>Gehrke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eric</forename><surname>Horvitz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ece</forename><surname>Kamar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yin</forename><surname>Tat Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuanzhi</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Scott</forename><forename type="middle">M</forename><surname>Lundberg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Harsha</forename><surname>Nori</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hamid</forename><surname>Palangi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marco</forename><surname>Túlio Ribeiro</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yi</forename><surname>Zhang</surname></persName>
+		</author>
+		<idno type="DOI">10.48550/arXiv.2303.12712</idno>
+		<ptr target="https://doi.org/10.48550/arXiv.2303.12712" />
+		<imprint>
+			<date type="published" when="2023">CoRR, abs/2303.12712, 2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Rigidities of imagination in scenario planning: Strategic foresight through &apos;unlearning</title>
+		<author>
+			<persName><forename type="first">George</forename><surname>Burt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anup Karath</forename><surname>Nair</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Technological Forecasting and Social Change</title>
+		<imprint>
+			<biblScope unit="volume">153</biblScope>
+			<biblScope unit="page">119927</biblScope>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">BERT: pre-training of deep bidirectional transformers for language understanding</title>
+		<author>
+			<persName><forename type="first">Jacob</forename><surname>Devlin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming-Wei</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kenton</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kristina</forename><surname>Toutanova</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/n19-1423</idno>
+		<ptr target="https://doi.org/10.18653/v1/n19-1423" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, NAACL-HLT 2019</title>
+		<title level="s">Long and Short Papers</title>
+		<editor>
+			<persName><forename type="first">Jill</forename><surname>Burstein</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Christy</forename><surname>Doran</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Thamar</forename><surname>Solorio</surname></persName>
+		</editor>
+		<meeting>the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, NAACL-HLT 2019<address><addrLine>Minneapolis, MN, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2019">June 2-7, 2019. 2019</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="4171" to="4186" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<title level="m" type="main">Endto-end causal effect estimation from unstructured natural language data</title>
+		<author>
+			<persName><forename type="first">Nikita</forename><surname>Dhawan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Leonardo</forename><surname>Cotta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Karen</forename><surname>Ullrich</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Rahul</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><forename type="middle">J</forename><surname>Krishnan</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Maddison</surname></persName>
+		</author>
+		<idno type="DOI">10.48550/arXiv.2407.07018</idno>
+		<ptr target="https://doi.org/10.48550/arXiv.2407.07018" />
+		<imprint>
+			<biblScope unit="page">2024</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<monogr>
+		<title level="m" type="main">The llama 3 herd of models</title>
+		<author>
+			<persName><forename type="first">Abhimanyu</forename><surname>Dubey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abhinav</forename><surname>Jauhri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abhinav</forename><surname>Pandey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abhishek</forename><surname>Kadian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ahmad</forename><surname>Al-Dahle</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aiesha</forename><surname>Letman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Akhil</forename><surname>Mathur</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alan</forename><surname>Schelten</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amy</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Angela</forename><surname>Fan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anirudh</forename><surname>Goyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anthony</forename><surname>Hartshorn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aobo</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Archi</forename><surname>Mitra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Archie</forename><surname>Sravankumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Artem</forename><surname>Korenev</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arthur</forename><surname>Hinsvark</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arun</forename><surname>Rao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aston</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aurélien</forename><surname>Rodriguez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Austen</forename><surname>Gregerson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ava</forename><surname>Spataru</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Baptiste</forename><surname>Rozière</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bethany</forename><surname>Biron</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Binh</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bobbie</forename><surname>Chern</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Charlotte</forename><surname>Caucheteux</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chaya</forename><surname>Nayak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chloe</forename><surname>Bi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Marra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Mcconnell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christian</forename><surname>Keller</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christophe</forename><surname>Touret</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chunyang</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Corinne</forename><surname>Wong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Cristian Canton</forename><surname>Ferrer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Cyrus</forename><surname>Nikolaidis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Damien</forename><surname>Allonsius</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danielle</forename><surname>Pintz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danny</forename><surname>Livshits</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Esiobu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dhruv</forename><surname>Choudhary</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dhruv</forename><surname>Mahajan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Diego</forename><surname>Garcia-Olano</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Diego</forename><surname>Perino</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dieuwke</forename><surname>Hupkes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Egor</forename><surname>Lakomkin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ehab</forename><surname>Albadawy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Elina</forename><surname>Lobanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Emily</forename><surname>Dinan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eric</forename><forename type="middle">Michael</forename><surname>Smith</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Filip</forename><surname>Radenovic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Frank</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gabriel</forename><surname>Synnaeve</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gabrielle</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Georgia</forename><surname>Lewis Anderson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Graeme</forename><surname>Nail</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Grégoire</forename><surname>Mialon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guan</forename><surname>Pang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillem</forename><surname>Cucurell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hailey</forename><surname>Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hannah</forename><surname>Korevaar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hu</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hugo</forename><surname>Touvron</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Iliyan</forename><surname>Zarov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arrieta</forename><surname>Imanol</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Isabel</forename><forename type="middle">M</forename><surname>Ibarra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ishan</forename><surname>Kloumann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ivan</forename><surname>Misra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jade</forename><surname>Evtimov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jaewon</forename><surname>Copet</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jan</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jana</forename><surname>Geffert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Vranes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jay</forename><surname>Park</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeet</forename><surname>Mahadeokar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jelmer</forename><surname>Shah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jennifer</forename><surname>Van Der Linde</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jenny</forename><surname>Billock</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jenya</forename><surname>Hong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeremy</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianfeng</forename><surname>Fu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jianyu</forename><surname>Chi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiawen</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jie</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiecao</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joanna</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joe</forename><surname>Bitton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jongsoo</forename><surname>Spisak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joseph</forename><surname>Park</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joshua</forename><surname>Rocca</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joshua</forename><surname>Johnstun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junteng</forename><surname>Saxe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kalyan</forename><surname>Jia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kartikeya</forename><surname>Vasuden Alwala</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kate</forename><surname>Upasani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ke</forename><surname>Plawiak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kenneth</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kevin</forename><surname>Heafield</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Stone</surname></persName>
+		</author>
+		<idno type="DOI">10.48550/arXiv.2407.21783</idno>
+		<ptr target="https://doi.org/10.48550/arXiv.2407.21783" />
+		<imprint>
+			<biblScope unit="page">2024</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Detecting emerging technologies and their evolution using deep learning and weak signal analysis</title>
+		<author>
+			<persName><forename type="first">Ashkan</forename><surname>Ebadi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alain</forename><surname>Auger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yvan</forename><surname>Gauthier</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Informetrics</title>
+		<imprint>
+			<biblScope unit="volume">16</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page">101344</biblScope>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<title level="m" type="main">A density-based algorithm for discovering clusters in large spatial databases with noise</title>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>Ester</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hans-Peter</forename><surname>Kriegel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jörg</forename><surname>Sander</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaowei</forename><surname>Xu</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1996">1996</date>
+			<biblScope unit="volume">96</biblScope>
+			<biblScope unit="page" from="226" to="231" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Analogical abduction and prediction: Their impact on deception</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Kenneth</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Forbus</surname></persName>
+		</author>
+		<ptr target="http://www.aaai.org/ocs/index.php/FSS/FSS15/paper/view/11660" />
+	</analytic>
+	<monogr>
+		<title level="m">2015 AAAI Fall Symposia</title>
+		<meeting><address><addrLine>Arlington, Virginia, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>AAAI Press</publisher>
+			<date type="published" when="2015">November 12-14, 2015. 2015</date>
+			<biblScope unit="page" from="15" to="20" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Large language models are not strong abstract reasoners</title>
+		<author>
+			<persName><forename type="first">Gaël</forename><surname>Gendron</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qiming</forename><surname>Bao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Witbrock</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gillian</forename><surname>Dobbie</surname></persName>
+		</author>
+		<idno type="DOI">10.24963/ijcai.2024/693</idno>
+		<ptr target="https://doi.org/10.24963/ijcai.2024/693.MainTrack" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Thirty-Third International Joint Conference on Artificial Intelligence, IJCAI-24</title>
+		<editor>
+			<persName><forename type="first">Kate</forename><surname>Larson</surname></persName>
+		</editor>
+		<meeting>the Thirty-Third International Joint Conference on Artificial Intelligence, IJCAI-24</meeting>
+		<imprint>
+			<biblScope unit="volume">8</biblScope>
+			<biblScope unit="page">2024</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">New perspectives for data-supported foresight: The hybrid ai-expert approach</title>
+		<author>
+			<persName><forename type="first">Amber</forename><surname>Geurts</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ralph</forename><surname>Gutknecht</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Philine</forename><surname>Warnke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arjen</forename><surname>Goetheer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Elna</forename><surname>Schirrmeister</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Babette</forename><surname>Bakker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Svetlana</forename><surname>Meissner</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Futures &amp; Foresight Science</title>
+		<imprint>
+			<biblScope unit="volume">4</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page">99</biblScope>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<title level="m" type="main">Causality extraction from medical text using large language models (llms)</title>
+		<author>
+			<persName><forename type="first">Seethalakshmi</forename><surname>Gopalakrishnan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luciana</forename><surname>Garbayo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wlodek</forename><surname>Zadrozny</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2407.10020</idno>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Causal inference through the structural causal marginal problem</title>
+		<author>
+			<persName><forename type="first">Luigi</forename><surname>Gresele</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jonas</forename><forename type="middle">M</forename><surname>Julius Von Kügelgen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Elke</forename><surname>Kübler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bernhard</forename><surname>Kirschbaum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dominik</forename><surname>Schölkopf</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Janzing</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<editor>
+			<persName><forename type="first">Kamalika</forename><surname>Chaudhuri</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Stefanie</forename><surname>Jegelka</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Le</forename><surname>Song</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Csaba</forename><surname>Szepesvári</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Gang</forename><surname>Niu</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Sivan</forename><surname>Sabato</surname></persName>
+		</editor>
+		<meeting><address><addrLine>Baltimore, Maryland, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2022-07-23">17-23 July 2022</date>
+			<biblScope unit="volume">2022</biblScope>
+			<biblScope unit="page" from="7793" to="7824" />
+		</imprint>
+	</monogr>
+	<note>ICML</note>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<monogr>
+		<title/>
+		<author>
+			<persName><surname>Pmlr</surname></persName>
+		</author>
+		<ptr target="https://proceedings.mlr.press/v162/gresele22a.html" />
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Investigating causal understanding in llms</title>
+		<author>
+			<persName><forename type="first">Marius</forename><surname>Hobbhahn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tom</forename><surname>Lieberum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Seiler</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NeurIPS ML Safety Workshop</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<monogr>
+		<author>
+			<persName><forename type="first">Lei</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Weijiang</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Weitao</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Weihong</forename><surname>Zhong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhangyin</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Haotian</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qianglong</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Weihua</forename><surname>Peng</surname></persName>
+		</author>
+		<title level="m">Xiaocheng Feng, Bing Qin, and Ting Liu. A survey on hallucination in large language models: Principles, taxonomy, challenges, and open questions</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<monogr>
+		<title/>
+		<author>
+			<persName><surname>Corr</surname></persName>
+		</author>
+		<idno type="DOI">10.48550/arXiv.2311.05232</idno>
+		<ptr target="https://doi.org/10.48550/arXiv.2311.05232" />
+		<imprint>
+			<biblScope unit="page">2023</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Cladder: A benchmark to assess causal reasoning capabilities of language models</title>
+		<author>
+			<persName><forename type="first">Zhijing</forename><surname>Jin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuen</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Felix</forename><surname>Leeb</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luigi</forename><surname>Gresele</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ojasv</forename><surname>Kamal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiheng</forename><surname>Lyu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kevin</forename><surname>Blin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fernando</forename><surname>Gonzalez Adauto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Kleiman-Weiner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mrinmaya</forename><surname>Sachan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bernhard</forename><surname>Schölkopf</surname></persName>
+		</author>
+		<ptr target="http://papers.nips.cc/paper_files/paper/2023/hash/631" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems 36: Annual Conference on Neural Information Processing Systems 2023, NeurIPS 2023</title>
+		<editor>
+			<persName><forename type="first">Alice</forename><surname>Oh</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Tristan</forename><surname>Naumann</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Amir</forename><surname>Globerson</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Kate</forename><surname>Saenko</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Moritz</forename><surname>Hardt</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Sergey</forename><surname>Levine</surname></persName>
+		</editor>
+		<meeting><address><addrLine>New Orleans, LA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2023">December 10 -16, 2023. 2023</date>
+		</imprint>
+	</monogr>
+	<note>bb9434d718ea309af82566347d607-Abstract-Conference.html</note>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Can large language models infer causation from correlation?</title>
+		<author>
+			<persName><forename type="first">Zhijing</forename><surname>Jin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiarui</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhiheng</forename><surname>Lyu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Spencer</forename><surname>Poff</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mrinmaya</forename><surname>Sachan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rada</forename><surname>Mihalcea</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mona</forename><forename type="middle">T</forename><surname>Diab</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bernhard</forename><surname>Schölkopf</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=vqIH0ObdqL" />
+	</analytic>
+	<monogr>
+		<title level="m">The Twelfth International Conference on Learning Representations, ICLR 2024</title>
+		<meeting><address><addrLine>Vienna, Austria</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2024">May 7-11, 2024. 2024</date>
+		</imprint>
+	</monogr>
+	<note>OpenReview.net</note>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<monogr>
+		<title level="m" type="main">Efficient causal graph discovery using large language models</title>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Jiralerspong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaoyin</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yash</forename><surname>More</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vedant</forename><surname>Shah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+		<idno type="DOI">10.48550/arXiv.2402.01207</idno>
+		<ptr target="https://doi.org/10.48550/arXiv.2402.01207" />
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<monogr>
+		<title level="m" type="main">Llms are prone to fallacies in causal inference</title>
+		<author>
+			<persName><forename type="first">Nitish</forename><surname>Joshi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abulhair</forename><surname>Saparov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yixin</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">He</forename><surname>He</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2406.12158</idno>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<monogr>
+		<title level="m" type="main">Causal reasoning and large language models: Opening a new frontier for causality</title>
+		<author>
+			<persName><forename type="first">Emre</forename><surname>Kiciman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Robert</forename><surname>Ness</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amit</forename><surname>Sharma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chenhao</forename><surname>Tan</surname></persName>
+		</author>
+		<idno type="DOI">10.48550/arXiv.2305.00050</idno>
+		<ptr target="https://doi.org/10.48550/arXiv.2305.00050" />
+		<imprint>
+			<biblScope unit="page">2023</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Semi-supervised classification with graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">Thomas</forename><forename type="middle">N</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Welling</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=SJU4ayYgl" />
+	</analytic>
+	<monogr>
+		<title level="m">5th International Conference on Learning Representations</title>
+		<meeting><address><addrLine>Toulon, France</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2017-04-24">2017. April 24-26, 2017. 2017</date>
+		</imprint>
+	</monogr>
+	<note>Conference Track Proceedings. OpenReview.net</note>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Event registry: learning about world events from news</title>
+		<author>
+			<persName><forename type="first">Gregor</forename><surname>Leban</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Blaz</forename><surname>Fortuna</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Janez</forename><surname>Brank</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marko</forename><surname>Grobelnik</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 23rd International Conference on World Wide Web</title>
+		<meeting>the 23rd International Conference on World Wide Web</meeting>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="107" to="110" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<monogr>
+		<author>
+			<persName><forename type="first">Jing</forename><surname>Ma</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2409.09822</idno>
+		<title level="m">Causal inference with large language model: A survey</title>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<monogr>
+		<title level="m" type="main">Self-refine: Iterative refinement with self-feedback</title>
+		<author>
+			<persName><forename type="first">Aman</forename><surname>Madaan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Niket</forename><surname>Tandon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Prakhar</forename><surname>Gupta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Skyler</forename><surname>Hallinan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luyu</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sarah</forename><surname>Wiegreffe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Uri</forename><surname>Alon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nouha</forename><surname>Dziri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shrimai</forename><surname>Prabhumoye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yiming</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sean</forename><surname>Welleck</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Prasad</forename><surname>Bodhisattwa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shashank</forename><surname>Majumder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amir</forename><surname>Gupta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Yazdanbakhsh</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Clark</surname></persName>
+		</author>
+		<idno type="DOI">10.48550/arXiv.2303.17651</idno>
+		<ptr target="https://doi.org/10.48550/arXiv.2303.17651" />
+		<imprint>
+			<biblScope unit="page">2023</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Causal transformer for estimating counterfactual outcomes</title>
+		<author>
+			<persName><forename type="first">Valentyn</forename><surname>Melnychuk</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dennis</forename><surname>Frauen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stefan</forename><surname>Feuerriegel</surname></persName>
+		</author>
+		<ptr target="https://proceedings.mlr.press/v162/melnychuk22a.html" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<editor>
+			<persName><forename type="first">Kamalika</forename><surname>Chaudhuri</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Stefanie</forename><surname>Jegelka</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Le</forename><surname>Song</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Csaba</forename><surname>Szepesvári</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Gang</forename><surname>Niu</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Sivan</forename><surname>Sabato</surname></persName>
+		</editor>
+		<meeting><address><addrLine>Baltimore, Maryland, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2022-07-23">17-23 July 2022. 2022</date>
+			<biblScope unit="volume">2022</biblScope>
+			<biblScope unit="page" from="15293" to="15329" />
+		</imprint>
+	</monogr>
+	<note>PMLR</note>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<monogr>
+		<title/>
+		<idno type="DOI">10.48550/arXiv.2303.08774</idno>
+		<ptr target="https://doi.org/10.48550/arXiv.2303.08774" />
+		<imprint>
+			<biblScope unit="page">2023</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<monogr>
+		<title level="m" type="main">Hello gpt-4o</title>
+		<ptr target="https://openai.com/index/hello-gpt-4o/.Ac-cessed" />
+		<imprint>
+			<date type="published" when="2024">2024</date>
+			<biblScope unit="page" from="2024" to="2029" />
+		</imprint>
+		<respStmt>
+			<orgName>OpenAI</orgName>
+		</respStmt>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Analogy as a search procedure: a dimensional view</title>
+		<author>
+			<persName><forename type="first">Matías</forename><surname>Osta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">-</forename><surname>Vélez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Gärdenfors</surname></persName>
+		</author>
+		<idno type="DOI">10.1080/0952813X.2022.2125081</idno>
+		<ptr target="https://doi.org/10.1080/0952813X.2022.2125081" />
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Experimental &amp; Theoretical Artificial Intelligence</title>
+		<imprint>
+			<biblScope unit="volume">0</biblScope>
+			<biblScope unit="issue">0</biblScope>
+			<biblScope unit="page" from="1" to="20" />
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Training language models to follow instructions with human feedback</title>
+		<author>
+			<persName><forename type="first">Long</forename><surname>Ouyang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeffrey</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xu</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Diogo</forename><surname>Almeida</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Carroll</forename><forename type="middle">L</forename><surname>Wainwright</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pamela</forename><surname>Mishkin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chong</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sandhini</forename><surname>Agarwal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Katarina</forename><surname>Slama</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alex</forename><surname>Ray</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">John</forename><surname>Schulman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jacob</forename><surname>Hilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fraser</forename><surname>Kelton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luke</forename><surname>Miller</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maddie</forename><surname>Simens</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amanda</forename><surname>Askell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Welinder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Paul</forename><forename type="middle">F</forename><surname>Christiano</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jan</forename><surname>Leike</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ryan</forename><surname>Lowe</surname></persName>
+		</author>
+		<ptr target="http://papers.nips.cc/paper_files/paper/2022/hash/b" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems 35: Annual Conference on Neural Information Processing Systems 2022, NeurIPS 2022</title>
+		<editor>
+			<persName><forename type="first">S</forename><surname>Sanmi Koyejo</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">A</forename><surname>Mohamed</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Danielle</forename><surname>Agarwal</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">K</forename><surname>Belgrave</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">A</forename><surname>Cho</surname></persName>
+		</editor>
+		<editor>
+			<persName><surname>Oh</surname></persName>
+		</editor>
+		<meeting><address><addrLine>New Orleans, LA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2022-12-09">November 28 -December 9, 2022. 2022</date>
+		</imprint>
+	</monogr>
+	<note>1efde53be364a73914f58805a001731-Abstract-Conference.html</note>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Crystal cube: Multidisciplinary approach to disruptive events prediction</title>
+		<author>
+			<persName><forename type="first">Anna</forename><forename type="middle">L</forename><surname>Nathan H Parrish</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jared</forename><forename type="middle">T</forename><surname>Buczak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><forename type="middle">P</forename><surname>Zook</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Brian</forename><forename type="middle">J</forename><surname>Howard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Benjamin</forename><forename type="middle">D</forename><surname>Ellison</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Baugher</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AHFE 2018 International Conference on Human Factors</title>
+		<meeting>the AHFE 2018 International Conference on Human Factors<address><addrLine>Orlando, Florida, USA 9</addrLine></address></meeting>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2018">July 21-25, 2018. 2019</date>
+			<biblScope unit="page" from="571" to="581" />
+		</imprint>
+	</monogr>
+	<note>Loews Sapphire Falls Resort at Universal Studios</note>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<monogr>
+		<title/>
+		<idno type="DOI">10.1017/CBO9780511803161</idno>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+			<publisher>Judea Pearl. Causality. Cambridge university press</publisher>
+		</imprint>
+	</monogr>
+	<note>2 edition</note>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Bringing advanced technology to strategic decision-making: The decision intelligence/data science (di/ds) integration framework</title>
+		<author>
+			<persName><forename type="first">Lorien</forename><surname>Pratt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christophe</forename><surname>Bisson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thierry</forename><surname>Warin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Futures</title>
+		<imprint>
+			<biblScope unit="volume">152</biblScope>
+			<biblScope unit="page">103217</biblScope>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Phenomenal yet puzzling: Testing inductive reasoning capabilities of language models with hypothesis refinement</title>
+		<author>
+			<persName><forename type="first">Linlu</forename><surname>Qiu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Liwei</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ximing</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Melanie</forename><surname>Sclar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Valentina</forename><surname>Pyatkin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chandra</forename><surname>Bhagavatula</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bailin</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoon</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yejin</forename><surname>Choi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nouha</forename><surname>Dziri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiang</forename><surname>Ren</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=bNt" />
+	</analytic>
+	<monogr>
+		<title level="m">The Twelfth International Conference on Learning Representations, ICLR 2024, Vienna, Austria</title>
+		<imprint>
+			<date type="published" when="2024">May 7-11, 2024. 2024</date>
+		</imprint>
+	</monogr>
+	<note>OpenReview.net</note>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Foresight-based leadership. decision-making in a growing ai environment</title>
+		<author>
+			<persName><forename type="first">Norbert</forename><surname>Reez</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">In International Security Management: New Solutions to Complexity</title>
+		<imprint>
+			<biblScope unit="page" from="323" to="341" />
+			<date type="published" when="2020">2020</date>
+			<publisher>Springer</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<monogr>
+		<title level="m" type="main">Gemini 1.5: Unlocking multimodal understanding across millions of tokens of context</title>
+		<author>
+			<persName><forename type="first">Machel</forename><surname>Reid</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nikolay</forename><surname>Savinov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Denis</forename><surname>Teplyashin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dmitry</forename><surname>Lepikhin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Timothy</forename><forename type="middle">P</forename><surname>Lillicrap</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jean-Baptiste</forename><surname>Alayrac</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Radu</forename><surname>Soricut</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Angeliki</forename><surname>Lazaridou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Orhan</forename><surname>Firat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Julian</forename><surname>Schrittwieser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ioannis</forename><surname>Antonoglou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rohan</forename><surname>Anil</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Borgeaud</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><forename type="middle">M</forename><surname>Dai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Katie</forename><surname>Millican</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ethan</forename><surname>Dyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mia</forename><surname>Glaese</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thibault</forename><surname>Sottiaux</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Benjamin</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fabio</forename><surname>Viola</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Malcolm</forename><surname>Reynolds</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuanzhong</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><surname>Molloy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jilin</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Isard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Paul</forename><surname>Barham</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tom</forename><surname>Hennigan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ross</forename><surname>Mcilroy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Melvin</forename><surname>Johnson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Johan</forename><surname>Schalkwyk</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eli</forename><surname>Collins</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eliza</forename><surname>Rutherford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Erica</forename><surname>Moreira</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kareem</forename><surname>Ayoub</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Megha</forename><surname>Goel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Clemens</forename><surname>Meyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gregory</forename><surname>Thornton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhen</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Henryk</forename><surname>Michalewski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zaheer</forename><surname>Abbas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nathan</forename><surname>Schucher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ankesh</forename><surname>Anand</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Richard</forename><surname>Ives</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><surname>Keeling</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Karel</forename><surname>Lenc</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Salem</forename><surname>Haykal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Siamak</forename><surname>Shakeri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pranav</forename><surname>Shyam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aakanksha</forename><surname>Chowdhery</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Roman</forename><surname>Ring</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephen</forename><surname>Spencer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eren</forename><surname>Sezener</surname></persName>
+		</author>
+		<idno type="DOI">10.48550/arXiv.2403.05530</idno>
+		<ptr target="https://doi.org/10.48550/arXiv.2403.05530" />
+		<imprint>
+			<biblScope unit="page">2024</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Sensemaking and lens-shaping: Identifying citizen contributions to foresight through comparative topic modelling</title>
+		<author>
+			<persName><forename type="first">Niklas</forename><surname>Aaron B Rosa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Petteri</forename><surname>Gudowsky</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Repo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Futures</title>
+		<imprint>
+			<biblScope unit="volume">129</biblScope>
+			<biblScope unit="page">102733</biblScope>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<monogr>
+		<title level="m" type="main">Back to the future: predicting causal relationships influencing oil prices</title>
+		<author>
+			<persName><forename type="first">Jose</forename><surname>Rozanec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Beno</forename><surname>Šircelj</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Cochez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gregor</forename><surname>Leban</surname></persName>
+		</author>
+		<imprint/>
+	</monogr>
+	<note>In The Second Tiny Papers Track at ICLR 2024</note>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">Ai, what does the future hold for us? automating strategic foresight</title>
+		<author>
+			<persName><forename type="first">Joze</forename><surname>Rozanec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Nemec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gregor</forename><surname>Leban</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marko</forename><surname>Grobelnik</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Companion of the 2023 ACM/SPEC International Conference on Performance Engineering</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+			<biblScope unit="page" from="247" to="248" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">Ai-based strategic foresight for environment protection</title>
+		<author>
+			<persName><forename type="first">Radu</forename><surname>Jože M Rožanec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dumitru</forename><surname>Prodan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gregor</forename><surname>Roman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marko</forename><surname>Leban</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Grobelnik</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Symposium on AI, Data and Digitalization (SAIDD 2023)</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+			<biblScope unit="volume">7</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<monogr>
+		<title level="m" type="main">Building a causality graph for strategic foresight</title>
+		<author>
+			<persName><forename type="first">Beno</forename><surname>Jože M Rožanec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Šircelj</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gregor</forename><surname>Nemec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dunja</forename><surname>Leban</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Mladenić</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<title level="a" type="main">Toward causal representation learning</title>
+		<author>
+			<persName><forename type="first">Bernhard</forename><surname>Schölkopf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Francesco</forename><surname>Locatello</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stefan</forename><surname>Bauer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nan</forename><forename type="middle">Rosemary</forename><surname>Ke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nal</forename><surname>Kalchbrenner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anirudh</forename><surname>Goyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+		<idno type="DOI">10.1109/JPROC.2021.3058954</idno>
+		<ptr target="https://doi.org/10.1109/JPROC.2021.3058954" />
+	</analytic>
+	<monogr>
+		<title level="j">Proc. IEEE</title>
+		<imprint>
+			<biblScope unit="volume">109</biblScope>
+			<biblScope unit="issue">5</biblScope>
+			<biblScope unit="page" from="612" to="634" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<analytic>
+		<title level="a" type="main">Graph attention networks</title>
+		<author>
+			<persName><forename type="first">Petar</forename><surname>Velickovic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillem</forename><surname>Cucurull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arantxa</forename><surname>Casanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adriana</forename><surname>Romero</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pietro</forename><surname>Liò</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=rJXMpikCZ" />
+	</analytic>
+	<monogr>
+		<title level="m">6th International Conference on Learning Representations, ICLR 2018</title>
+		<meeting><address><addrLine>Vancouver, BC, Canada</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2018-05-03">April 30 -May 3, 2018. 2018</date>
+		</imprint>
+	</monogr>
+	<note>Conference Track Proceedings. OpenReview.net</note>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<analytic>
+		<title level="a" type="main">Alphazero-like tree-search can guide large language model decoding and training</title>
+		<author>
+			<persName><forename type="first">Ziyu</forename><surname>Wan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xidong</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Muning</forename><surname>Wen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephen</forename><forename type="middle">Marcus</forename><surname>Mcaleer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ying</forename><surname>Wen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Weinan</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jun</forename><surname>Wang</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=C4OpREezgj" />
+	</analytic>
+	<monogr>
+		<title level="m">Forty-first International Conference on Machine Learning, ICML 2024</title>
+		<meeting><address><addrLine>Vienna, Austria</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2024">July 21-27, 2024. 2024</date>
+		</imprint>
+	</monogr>
+	<note>OpenReview.net</note>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<analytic>
+		<title level="a" type="main">Chain-of-thought prompting elicits reasoning in large language models</title>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Wei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xuezhi</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dale</forename><surname>Schuurmans</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maarten</forename><surname>Bosma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Brian</forename><surname>Ichter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fei</forename><surname>Xia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ed</forename><forename type="middle">H</forename><surname>Chi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Quoc</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Denny</forename><surname>Le</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Zhou</surname></persName>
+		</author>
+		<ptr target="http://papers.nips.cc/paper_files/paper/2022/hash/9" />
+	</analytic>
+	<monogr>
+		<title level="m">NeurIPS</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note>d5609613524ecf4f15af0f7b31abca4-Abstract-Conference.html</note>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<monogr>
+		<title level="m" type="main">Strategic foresight primer</title>
+		<author>
+			<persName><forename type="first">Angela</forename><surname>Wilkinson</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<publisher>European Political Strategy Centre</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<monogr>
+		<title level="m" type="main">Reasoning or reciting? exploring the capabilities and limitations of language models through counterfactual tasks</title>
+		<author>
+			<persName><forename type="first">Zhaofeng</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Linlu</forename><surname>Qiu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexis</forename><surname>Ross</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ekin</forename><surname>Akyürek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Boyuan</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bailin</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Najoung</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jacob</forename><surname>Andreas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoon</forename><surname>Kim</surname></persName>
+		</author>
+		<idno type="DOI">10.48550/arXiv.2307.02477</idno>
+		<ptr target="https://doi.org/10.48550/arXiv.2307.02477" />
+		<imprint>
+			<biblScope unit="page">2023</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b51">
+	<analytic>
+		<title level="a" type="main">How powerful are graph neural networks?</title>
+		<author>
+			<persName><forename type="first">Keyulu</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Weihua</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stefanie</forename><surname>Jegelka</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=ryGs6iA5Km" />
+	</analytic>
+	<monogr>
+		<title level="m">7th International Conference on Learning Representations</title>
+		<meeting><address><addrLine>New Orleans, LA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2019-05-06">2019. May 6-9, 2019. OpenReview.net, 2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b52">
+	<analytic>
+		<title level="a" type="main">Tree of thoughts: Deliberate problem solving with large language models</title>
+		<author>
+			<persName><forename type="first">Shunyu</forename><surname>Yao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dian</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeffrey</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Izhak</forename><surname>Shafran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tom</forename><surname>Griffiths</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuan</forename><surname>Cao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Karthik</forename><surname>Narasimhan</surname></persName>
+		</author>
+		<ptr target="http://papers.nips.cc/paper_files/paper/2023/hash/271" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems 36: Annual Conference on Neural Information Processing Systems 2023, NeurIPS 2023</title>
+		<editor>
+			<persName><forename type="first">Alice</forename><surname>Oh</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Tristan</forename><surname>Naumann</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Amir</forename><surname>Globerson</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Kate</forename><surname>Saenko</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Moritz</forename><surname>Hardt</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Sergey</forename><surname>Levine</surname></persName>
+		</editor>
+		<meeting><address><addrLine>New Orleans, LA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2023">December 10 -16, 2023. 2023</date>
+		</imprint>
+	</monogr>
+	<note>db9922b8d1f4dd7aaef84ed5ac703-Abstract-Conference.html</note>
+</biblStruct>
+
+<biblStruct xml:id="b53">
+	<monogr>
+		<title level="m" type="main">Self-rewarding language models</title>
+		<author>
+			<persName><forename type="first">Weizhe</forename><surname>Yuan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Richard</forename><forename type="middle">Yuanzhe</forename><surname>Pang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kyunghyun</forename><surname>Cho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sainbayar</forename><surname>Sukhbaatar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jing</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Weston</surname></persName>
+		</author>
+		<idno type="DOI">10.48550/arXiv.2401.10020</idno>
+		<ptr target="https://doi.org/10.48550/arXiv.2401.10020" />
+		<imprint>
+			<biblScope unit="page">2024</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b54">
+	<analytic>
+		<title level="a" type="main">Causal parrots: Large language models may talk causality but are not causal</title>
+		<author>
+			<persName><forename type="first">Matej</forename><surname>Zecevic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Moritz</forename><surname>Willig</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Devendra</forename><surname>Singh Dhami</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kristian</forename><surname>Kersting</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=tv46tCzs83" />
+	</analytic>
+	<monogr>
+		<title level="j">Trans. Mach. Learn. Res</title>
+		<imprint>
+			<date type="published" when="2023">2023. 2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b55">
+	<analytic>
+		<title level="a" type="main">ROCK: causal inference principles for reasoning about commonsense causality</title>
+		<author>
+			<persName><forename type="first">Jiayao</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongming</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Weijie</forename><forename type="middle">J</forename><surname>Su</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dan</forename><surname>Roth</surname></persName>
+		</author>
+		<ptr target="https://proceedings.mlr.press/v162/zhang22am.html" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<meeting><address><addrLine>Baltimore, Maryland, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2022-07">July 2022. 2022</date>
+			<biblScope unit="volume">2022</biblScope>
+			<biblScope unit="page" from="26750" to="26771" />
+		</imprint>
+	</monogr>
+	<note>PMLR</note>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

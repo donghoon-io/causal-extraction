@@ -1,0 +1,970 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Latent variable model for high-dimensional point process with structured missingness</title>
+				<funder ref="#_YvAgWHz">
+					<orgName type="full">Research Council of Finland</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability  status="unknown">
+					<licence/>
+				</availability>
+				<date type="published" when="2024-06-28">28 Jun 2024</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author role="corresp">
+							<persName><forename type="first">Maksim</forename><surname>Sinelnikov</surname></persName>
+							<email>&lt;maksim.sinelnikov@aalto.fi&gt;.</email>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Computer Science</orgName>
+								<orgName type="institution">Aalto University</orgName>
+								<address>
+									<settlement>Espoo</settlement>
+									<country key="FI">Finland</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Manuel</forename><surname>Haussmann</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Computer Science</orgName>
+								<orgName type="institution">Aalto University</orgName>
+								<address>
+									<settlement>Espoo</settlement>
+									<country key="FI">Finland</country>
+								</address>
+							</affiliation>
+							<affiliation key="aff1">
+								<orgName type="department">Department of Mathematics and Computer Science</orgName>
+								<orgName type="institution">Uni- versity of Southern Denmark</orgName>
+								<address>
+									<settlement>Odense</settlement>
+									<country key="DK">Denmark</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Harri</forename><surname>Lähdesmäki</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Computer Science</orgName>
+								<orgName type="institution">Aalto University</orgName>
+								<address>
+									<settlement>Espoo</settlement>
+									<country key="FI">Finland</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Latent variable model for high-dimensional point process with structured missingness</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2024-06-28">28 Jun 2024</date>
+						</imprint>
+					</monogr>
+					<idno type="arXiv">arXiv:2402.05758v2[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-14T17:23+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Longitudinal data are important in numerous fields, such as healthcare, sociology, and seismology, but real-world datasets present notable challenges for practitioners because they can be high-dimensional, contain structured missingness patterns, and measurement time points can be governed by an unknown stochastic process. While various solutions have been suggested, the majority of them have been designed to account for only one of these challenges. In this work, we propose a flexible and efficient latent-variable model that is capable of addressing all these limitations. Our approach utilizes Gaussian processes to capture temporal correlations between samples and their associated missingness masks as well as to model the underlying point process. We construct our model as a variational autoencoder together with deep neural network parameterised encoder and decoder models and develop a scalable amortised variational inference approach for efficient model training. We demonstrate competitive performance using both simulated and real datasets.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1.">Introduction</head><p>Longitudinal data arise in many domains such as healthcare, sociology and seismology <ref type="bibr" target="#b17">(Liu, 2015)</ref>. These datasets consist of repeated measurements of unique instances, e.g. patients, collected over time. However, real-world applications pose several challenges for practitioners: measurements are typically high-dimensional and contain non-trivial missingness patterns, and time points of the observations are not deterministic but rather arise from an unknown stochastic process. These challenges are characteristic of many real biomedical datasets, such as electronic health records.</p><p>Variational autoencoders (VAEs) have become a popular approach to model high-dimensional data <ref type="bibr" target="#b13">(Kingma &amp; Welling, 2014;</ref><ref type="bibr" target="#b27">Rezende et al., 2014)</ref>. However, a notable limitation of standard VAEs is their assumption that the latent variables factorize across samples, hence ignoring correlations between observations and making the models inappropriate for temporal and longitudinal datasets. Several recent works <ref type="bibr" target="#b0">(Casale et al., 2018;</ref><ref type="bibr" target="#b5">Fortuin et al., 2020;</ref><ref type="bibr" target="#b26">Ramchandran et al., 2021)</ref> have addressed this issue by incorporating Gaussian process (GP) priors for these latent variables, creating a probabilistic model that is capable of modelling arbitrary correlations between latent encodings.</p><p>The simplest form of missingness is missing completely at random (MCAR), i.e., the missingness pattern is independent of the observed and unobserved data. While it is generally feasible to handle MCAR in most latent-variable models, more complex patterns of structured missingness <ref type="bibr" target="#b28">(Rubin, 1976;</ref><ref type="bibr" target="#b21">Mitra et al., 2023)</ref> require additional modeling capacities. Extending VAEs to be able to model various structured missingness patterns has recently become the focus of several papers <ref type="bibr" target="#b2">(Collier et al., 2020;</ref><ref type="bibr" target="#b10">Ipsen et al., 2021;</ref><ref type="bibr" target="#b6">Ghalebikesabi et al., 2021)</ref>. However, these methods still lack the ability to model correlations among observations or missingness masks, thus limiting their applicability to temporal data.</p><p>While VAEs have been applied to various biomedical datasets, the existing methods cannot consider observation time points as random variables. Instead, they have to treat time as a deterministic covariate and, therefore, loose useful information embedded in its stochastic nature. A separate line of research has proposed methods to model unknown temporal point processes primarily using GP-based methods <ref type="bibr" target="#b18">(Lloyd et al., 2015;</ref><ref type="bibr" target="#b16">Liu &amp; Hauskrecht, 2019)</ref>. Overall, the field lacks versatile modeling methods that would allow modeling high-dimensional, marked point-processes that may be corrupted by structured missingness.</p><p>Contributions. In this work, we propose a novel deep latent variable model (DLVM), that is specifically designed to capture structured missingness and uses temporal point processes to model time. We construct the model by intro- ducing three sets of latent variables with GP priors, which model observations, missingness masks and point process.</p><p>To adapt the model for longitudinal data, we rely on longitudinal additive kernels <ref type="bibr" target="#b26">(Ramchandran et al., 2021)</ref> for the latent representations of observations and masks. Additionally, to use the information embedded in the temporal point process, we provide the intensity of the point process as an additional input to the GP kernel functions of observations and missingness masks. See Figure <ref type="figure" target="#fig_0">1</ref> for a high-level summary of our model and Appendix G for an extended visualization. We present two variations of our proposal, the simplified longitudinal latent variable model with structured missingness (LLSM) without a temporal point process, and the full model, longitudinal latent variable model for high-dimensional point process with structured missingness (LLPPSM). To summarize, our contributions are that (i) we present a latent variable model able to capture structured missingness in the context of longitudinal data;</p><p>(ii) we extend this model by a temporal point process and use the inferred intensity of the process as an additional input to the model;</p><p>(iii) we compare the performance of our two model variants against baseline methods on several datasets and report state-of-the-art results on a variety of tasks.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.">Related Work</head><p>We summarize and compare previous methods in Table <ref type="table" target="#tab_1">1</ref>.</p><p>Challenges with missing data. In his pioneering work, <ref type="bibr" target="#b28">Rubin (1976)</ref> identified three classes of missing data: missing completely at random (MCAR), missing at random (MAR), and missing not at random (MNAR). For MCAR, the missingness mechanism is independent of both observed and unobserved variables. In case of MAR, the missingness depends on the observed attributes. Temporal DLVMs. To model temporal data, a set of methodologies has emerged, exploring the use of GP priors for latent variables. <ref type="bibr" target="#b0">Casale et al. (2018)</ref> introduced the GPP-VAE model to integrate both view and object information in a GP prior through the product kernel. <ref type="bibr" target="#b5">Fortuin et al. (2020)</ref> proposed the GP-VAE that assigns individual GP prior for the time-series of each subject. While these methods allow to model subject-specific temporal structure, they have limited or no functionality to account for possible other auxiliary covariates. <ref type="bibr" target="#b26">Ramchandran et al. (2021)</ref> introduced L-VAE, a model that uses a multi-output additive GP prior and is well-suited for longitudinal data by leveraging carefully designed interaction kernels. The main drawback of all these approaches is their limitation to MCAR modeling which is naïve in many domains, such as healthcare.</p><p>Another direction of research to deal with temporal data focuses on recurrent neural networks (RNNs). <ref type="bibr" target="#b1">Che et al. (2018)</ref> developed GRU-D which incorporates masking and a time interval into a deep model architecture, making it possible to model structured missingness patterns. They also proposed to use a decaying mechanism to handle irregularlysampled timestamps. <ref type="bibr" target="#b19">Luo et al. (2018)</ref> extended this model for time-series imputation by employing generative adversarial networks (GRUI-GAN). However, it is not straightforward to incorporate auxiliary information into these models. Longitudinal data analysis. An additional line of research that gained popularity in recent years refers to modeling of longitudinal data. Several works have focused on addressing the dependence between timestamps and longitudinal observations in order to avoid bias during the inference <ref type="bibr" target="#b23">(Pullenayegum &amp; Lim, 2016;</ref><ref type="bibr" target="#b32">Xu et al., 2022;</ref><ref type="bibr" target="#b29">Sang et al., 2022)</ref>. However, although previous methods take into account auxiliary covariate information, they have two limitations. First, they are not applicable for the high-dimensional setting considered in our work as these previous methods were derived for one-dimensional case and employ purely statistical techniques. Second, to the best of our knowledge, the previous methods do not assume missing data mechanisms to depend on timestamps.</p><p>Temporal Point Process. Modelling temporal point processes has been a subject of several studies in recent years. Classical statistical approaches <ref type="bibr" target="#b24">(Puri &amp; Tuan, 1986</ref>) use maximum likelihood estimation to infer the parameters of a model. For this, they require specifying a parametric form of the intensity function which significantly limits their applications. Neural network-based models typically employ RNNs <ref type="bibr" target="#b4">(Du et al., 2016)</ref>. <ref type="bibr" target="#b18">Lloyd et al. (2015)</ref> proposed to model intensity function with Gaussian processes and a squared link function that leads to closed-form solution. <ref type="bibr" target="#b11">John &amp; Hensman (2018)</ref>  </p><formula xml:id="formula_0">p i ∈ X = X 1 × • • • × X Q is a Q-dimensional vector.</formula><p>Covariates can be both discrete and continuous and represent, for instance, a patient's age, their gender, etc. For notational convenience, we separately denote the measurement time points of the subject p as t p = [t p 1 , . . . , t p np ] T modeled as random variables, and X static as the set of covariates that do not depend on time, such that t ⊂ X and X static ⊂ X . Observations from all P instances, e.g., patients, form our longitudinal data matrix y, matrix of missing values m, covariate matrix x, and vector of timestamps t, defined respectively as</p><formula xml:id="formula_1">y = [y 1 , . . . , y P ] = [y 1 , . . . , y N ] ∈ R K×N , m = [m 1 , . . . , m P ] = [m 1 , . . . , m N ] ∈ {0, 1} K×N , x = [x 1 , . . . , x P ] = [x 1 , . . . , x N ] (size Q × N ), t = [t T 1 , . . . , t T P ] T = [t 1 , . . . , t N ] T ∈ R N .</formula><p>We rely on a latent space Z = R L and combine the latent embedding for all N samples as z = [z 1 , . . . , z N ] ∈ R L×N .</p><p>Variational autoencoders. Assuming a deep latent variable model p ω (y, z) = p ψ (y|z)p θ (z), inference of the posterior p ω (z|y) = p ψ (y|z)p θ (z)/p ω (y) is in general intractable, as the evidence p ω (y) cannot be computed analytically due to the highly non-linear relationship between z and y. Common practice is to rely on amortized inference <ref type="bibr" target="#b13">(Kingma &amp; Welling, 2014;</ref><ref type="bibr" target="#b27">Rezende et al., 2014)</ref>, where a parameterized approximation, q ϕ (z|y), to the true posterior is inferred by optimizing a lower bound to the evidence,</p><formula xml:id="formula_2">log p ω (y) ≥ E q [log p ψ (y|z)] -KL(q ϕ (z|y)||p θ (z)),</formula><p>with respect to all parameters. Usually, likelihood p ψ (y|z), prior p θ (z), and variational posterior q ϕ (z|y) are assumed to be mean-field, i.e., to factorize over their respective random variables.</p><p>GP-prior variational autoencoder. Despite the computational efficiency provided by a factorized prior p θ (z) over the latent variables, its major limitation is the inability to model correlations between data samples. Prior work addressed this by combining VAEs with GPs, creating a powerful probabilistic model for this task <ref type="bibr" target="#b0">(Casale et al., 2018;</ref><ref type="bibr" target="#b5">Fortuin et al., 2020;</ref><ref type="bibr" target="#b26">Ramchandran et al., 2021)</ref>. The key difference is that the factorized prior p θ (z) is replaced by a GP-prior p θ (z|x) which depends on auxiliary information x. The conditional generative model is then given as</p><formula xml:id="formula_3">p ω (y|x) = N i=1 p ψ (y i |z i )p θ (z|x)dz.</formula><p>Defining a mapping from the covariates to the latent space,</p><formula xml:id="formula_4">f : X → Z, such that z = f(x) = [f 1 (x), . . . , f L (x)] T ,</formula><p>these models assume a GP-prior over each f l ,</p><formula xml:id="formula_5">f l (x) ∼ GP µ l (x), k l (x, x ′ |θ l ) ,</formula><p>where µ l (x) is the mean function and k l (x, x ′ |θ l ) is the covariance function parameterized by θ l .</p><p>Given this prior, the l-th latent variable</p><formula xml:id="formula_6">zl = f l (x) = [f l (x 1 ), . . . , f l (x N )] T follows a multi- variate Gaussian distribution across the N data samples p θ l (z l |x) = p θ l (f l (x)) = N zl 0, K (l) xx ,</formula><p>where</p><formula xml:id="formula_7">K (l) xx is a N × N covariance matrix such that {K (l) xx } ij = k l (x i , x j |θ l ).</formula><p>We follow common practice and factorize the GP-prior across its L dimensions, such that the conditional prior is given as</p><formula xml:id="formula_8">p θ (z|x) = L l=1 p θ l (z l |x) = L l=1 N zl 0, K (l)</formula><p>xx .</p><p>The main distinction among previous GP-prior models lies in the choice of covariance functions. GPPVAE <ref type="bibr" target="#b0">(Casale et al., 2018)</ref> and GP-VAE <ref type="bibr" target="#b5">(Fortuin et al., 2020)</ref> both rely on restricted kernels that do not adequately model longitudinal data structure. Instead, we adopt the proposal by Ramchandran et al. ( <ref type="formula">2021</ref>) who introduce a flexible additive kernel structure that is specifically designed for longitudinal data and is capable of employing various interactions between continuous and categorical covariates</p><formula xml:id="formula_9">k l (x, x ′ |θ l ) = R r=1 k l,r (x, x ′ |θ l,r ) + σ 2 zl , such that p θ (z|x) = L l=1 N zl 0, R r=1 K (l,r) xx + σ 2 zl I N .</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2.">Modeling structured missingness</head><p>These GP-prior models are capable of dealing with missing values solely by substituting zeros or alternative values and propagating y through encoder-decoder structure to perform imputation. However, this approach lacks the ability to model specific missingness patterns therefore making them suitable only for an MCAR scenario, an unrealistic assumption in many real applications. In this work, we solve this constraint and propose the longitudinal latent variable model with structured missingness (LLSM). To model nonrandom missingness in VAE models various approaches exist. For example, <ref type="bibr" target="#b20">Mattei &amp; Frellsen (2019)</ref> and <ref type="bibr" target="#b10">Ipsen et al. (2021)</ref> model the dependency between y and m directly, whereas <ref type="bibr" target="#b2">Collier et al. (2020)</ref> propose a VAE model that incorporates an additional latent variable to account for structured missingness. In this work, we follow <ref type="bibr" target="#b2">Collier et al. (2020)</ref> and introduce a second latent variable z m ∈ R Lm associated with a missingness mask m, while referring to the latent variables associated to y from now on as z y ∈ R Ly .</p><p>To properly model MNAR we assume that m depends on both z m and z y . The joint likelihood for a single sample is given as</p><formula xml:id="formula_10">p ω (y o , z y , m, z m |x) = p ψy (y o |z y , z m , m)p ψm (m|z y , z m ) • p θy (z y |x)p θm (z m |x),<label>(1)</label></formula><p>where y o refers to the observed features specified by m. Also, by optionally conditioning y on z m , we can use any information contained in the missing mask, e.g., during an imputation task. To model correlation within the missingness patterns, e.g., across time, or within a patient, we assign z m a GP prior as well,</p><formula xml:id="formula_11">z m (x) ∼ GP 0, k(x, x ′ |θ m ) .</formula><p>Additionally, we assume that y o and m are distributed as</p><formula xml:id="formula_12">p ψy (y o |z y , z m , m) = N (y|g ψy (z y , z m ), σ 2 ) ⊙ m p ψm (m|z y , z m ) = Ber(m|g ψm (z y , z m )),</formula><p>where the decoder functions g ψy and g ψm are parameterized by neural networks, ⊙ denotes an element-wise Hadamard product, and the observational variance parameters σ 2 = diag(σ 2 y1 , . . . , σ 2 y K ) are optimized jointly with all other parameters via gradient descent. The graphical model of LLSM is shown in Figure <ref type="figure" target="#fig_1">2</ref>.</p><p>We approximate the intractable posterior across all N samples p(z y , z m |x, y o , m) using a mean-field amortized inference distribution where q ϕy (z y i |y o i ) and q ϕm (z m i |m i ) are diagonal Gaussian distributions parameterized by neural network-based mappings from the corresponding inputs y o i and m i . The lower bound on the evidence to be optimized is given as</p><formula xml:id="formula_13">q ϕ (z y , z m |y o , m) = q ϕy (z y |y o )q ϕm (z m |m) = N i=1 q ϕy (z y i |y o i )q ϕm (z m i |m i ) (2) x z m z y m y</formula><formula xml:id="formula_14">log p(y o , m|x) ≥ E q ϕ log p ψy (y o |z y , z m , m) + E q ϕ [log p ψm (m|z y , z m )] -KL(q ϕy (z y |y o )||p θy (z y |x)) -KL(q ϕm (z m |m)||p θm (z m |x)),</formula><p>where, in order to maintain computational tractability, and to be able to perform mini-batching, we substitute the KL terms with the corresponding upper bounds KL derived by <ref type="bibr" target="#b26">Ramchandran et al. (2021)</ref> that, for longitudinal data, are tighter than the well-known bound proposed by <ref type="bibr" target="#b31">Titsias (2009)</ref>. Further details on the lower bound and KL upper bound are given in Appendix A and Appendix B.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3.">Modeling Time</head><p>Prior work relying on GP-based priors suffers from a second restriction. They often rely on time t as a primary, or even the only <ref type="bibr" target="#b5">(Fortuin et al., 2020)</ref>, covariate that is used in the covariance function. This implies that the similarity between two measurements y and y ′ is directly contingent on the corresponding t and t ′ , e.g., their temporal difference when employing a stationary kernel. While this assumption is reasonable in some use cases, it is too limiting to be universally applicable. For instance, consider a scenario where a patient develops a disease, and since the progression varies for each individual, it may be more appropriate for similarity to be determined not solely by the elapsed time since the onset of the disease, but rather by their current well-being, which can be captured by factors such as the frequency of doctor visits. This example highlights a possible bias that may occur if the dependence between timepoints and longitudinal observations is ignored. To properly account for such variations, we model t by a temporal point process and add the intensity of this point process as an additional input to the GP kernel computation.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Temporal point processes (TPP).</head><p>A TPP <ref type="bibr" target="#b3">(Cox &amp; Isham, 1980</ref>) is a stochastic process over variable-length sequences in some time interval T = [0, T ] defined via an intensity function λ(t). The probability density function of N observed points t = {t i ∈ T } is defined as</p><formula xml:id="formula_15">p(t|λ) = exp - T λ(t)dt N i=1 λ(t i ).</formula><p>TPPs can be divided into roughly two classes: inhomogeneous Poisson processes, where the intensity function only depends on the current time point t, and self-exciting processes, where the occurrence of events changes the intensity. One type of these self-exciting processes, known as the Hawkes process <ref type="bibr" target="#b7">(Hawkes, 1971)</ref>, has an intensity function</p><formula xml:id="formula_16">λ(t) = µ + tj &lt;t ν(t -t j ),</formula><p>where ν is a triggering kernel that characterizes the influence of past events on intensity at time t and µ is a corresponding baseline. Inspired by the broad applicability of Hawkes processes <ref type="bibr" target="#b8">(Hawkes, 2018)</ref>, we adopt the proposal by <ref type="bibr" target="#b16">Liu &amp; Hauskrecht (2019)</ref> to model such self-exciting processes with GPs by computing kernels from the last D timestamps.</p><p>GP point processes. Given a latent variable z λ with</p><formula xml:id="formula_17">z λ (t) ∼ GP 0, k θ λ (v D , v D ′ ) v D = t -t D ,<label>(3)</label></formula><p>where t D denotes D previous timestamps before t, v D are the elapsed times between t and t D , and k θ λ is an additive kernel structure, we model the intensity as</p><formula xml:id="formula_18">λ(t) = (z λ (t) + β) 2 (4)</formula><p>where β is either a trainable baseline or a function that can depend on static covariates <ref type="bibr" target="#b11">(John &amp; Hensman, 2018)</ref>. We choose a squared link function as it provides an analytical tractability <ref type="bibr" target="#b18">(Lloyd et al., 2015)</ref>.</p><p>The posterior distribution of the intensity,</p><formula xml:id="formula_19">p(λ|t) = p(λ) exp -T λ(t)dt N i=1 λ(t i ) p(λ) exp -T λ(t)dt N i=1 λ(t i )dλ</formula><p>, is intractable due to the integration over λ. To overcome this challenge, we approximate it with a variational distribution p(z λ |u)q(u) that relies on inducing points u for additional scalability <ref type="bibr" target="#b25">(Quiñonero Candela &amp; Rasmussen, 2005)</ref>. See Appendix C for a more detailed discussion.</p><p>LLPPSM. Combining such a point process with our LLSM model allows us to capture intricate missingness patterns and to effectively leverage information embedded in the time points. We call this model longitudinal latent variable model for high-dimensional point process with structured missingness (LLPPSM). See Figure <ref type="figure" target="#fig_2">3</ref> for its plate diagram.</p><p>Defining z λ and λ as in Equations ( <ref type="formula" target="#formula_17">3</ref>) and ( <ref type="formula">4</ref>), we extend the GP priors for z y and z m by letting their covariance kernel depend on the rate of the TPP λ as well, i.e., z y (x, λ) ∼ GP 0, k((x, λ(t)), (x ′ , λ(t ′ ))|θ y ) , and analogously for z m . As inference of the full model remains intractable, we once again rely on variational inference and use the following variational approximation q(z y , z m , z λ , u|y o , m) = q ϕy (z y |y o )q ϕm (z m |m)p(z λ |u)q(u), where q ϕy (z y |y o ) and q ϕm (z m |m) are defined as in Equation (2), and u are the inducing points of z λ . The bound to be optimized is given as</p><formula xml:id="formula_20">log p(y o , m, t|x s ) ≥ E q log p ψy (y o z y , z m , m)p ψm (m z y , z m )p(t λ) -KL(q(u)||p(u)) -E p(z λ |u)•q(u) [ KL(q ϕy (z y y o )||p θy (z y x, λ(t))] -E p(z λ |u)•q(u) [ KL(q ϕm (z m m)||p θm (z m x, λ(t))],</formula><p>where x s refers to static covariates and x is composed of x s and t. See Appendix C for a detailed derivation and discussion.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.4.">Imputation and future prediction</head><p>Our method can be employed for various tasks such as imputation and future prediction. The imputation is done by substituting missing elements with some intermediate values (in our case zeros), and propagating them through the encoder-decoder structure of our model so that the decoder imputes the missing values.</p><p>Future predictions are obtained by evaluating the posterior predictive distribution p(y * | x * , y o , x, m) for new data y * given covariates x * and all training data. A detailed explanation together with the necessary derivations to approximate this intractable density is given in Appendix D.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.5.">Computational complexity and scalability</head><p>The complexity of LLSM is dominated by computation of KL divergence upper bounds KL(q ϕy (z ), where M is the number of inducing points. We also adopt the mini-batching scheme from Ramchandran et al. ( <ref type="formula">2021</ref>) that provides additional scalability to large-sized datasets in terms of memory consumption.</p><p>For LLPPSM, an additional complexity comes from the point process computation, which corresponds to O(N M 2 D 2 ) <ref type="bibr" target="#b16">(Liu &amp; Hauskrecht, 2019)</ref>, therefore the total complexity is O(</p><formula xml:id="formula_21">P p=1 n p 3 + N M 2 D 2 ), where N M 2 van- ishes as N M 2 D 2 dominates it.</formula><p>When training LLPPSM, we also employ mini-batching in a similar fashion as for LLSM to achieve additional scalability.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.">Experiments</head><p>We demonstrate the efficiency of our proposal on various tasks, such as missing value imputation, long-term prediction, for synthetic as well as real-world healthcare datasets. We compare against a variety of models: GPPVAE <ref type="bibr" target="#b0">(Casale et al., 2018)</ref>     <ref type="bibr" target="#b14">(Krishnan et al., 2015)</ref>. We chose two digits, '3' and '6', to represent two biological genders. We simulated a shared time-related effect by shifting all digit instances towards the right corner over time. In our experiments, half of the instances remain healthy and half get a disease. To demonstrate changes in the laboratory measurements of the diseased individuals, we rotated digits with the amount of rotation depending on the time from disease diagnosis. Each sample has in total five covariates: time, id, diseasePresence, diseaseTime, and gender, where id serves as the identifier of a specific instance. The timestamps of all observations are regularly sampled which is why we only evaluated LLSM.</p><p>To model MNAR, the probability of each pixel being missing depends on the color intensity of that pixel: the higher the intensity, the higher is the probability of the pixel being unobserved. For MAR, we applied a square-shaped missingness mask to the images. If a patient is healthy, no box is applied. For diseased patients, a mask is only applied upon the onset of the disease. Afterwards, the mask starts to increase in size linearly as time progresses. See Figure <ref type="figure" target="#fig_3">4</ref> for an illustration. In this case, missingness depends on both unobserved signal as well as on covariate information.</p><p>The training set consists of P = 900 unique instances, each having n p = 20 time points. The test set contains 100 unique instances, with 15 last observations for each instance. When performing future prediction, the model conditions on all training data as well as first five observations of each instance, that are kept separately.</p><p>Table <ref type="table" target="#tab_5">2</ref> shows that our method outperforms all baselines on the task of missingness imputation. The same holds for future prediction of data from covariates (Table <ref type="table">3</ref>), with the exception for the simplest missingness scenario where L-VAE is slightly better. We also performed future prediction of missingness mask by the same approach. Because none of the baseline methods is able to model the mask m explicitly, we separately modelled missingness by training an L-VAE with a Bernoulli likelihood for m. The results are shown in Table <ref type="table" target="#tab_6">4</ref> and show that the mask prediction is almost identical except for the case with the highest missingness when LLSM is slightly better. In Figure <ref type="figure" target="#fig_3">4</ref>, we demonstrate visually the benefits of our model for future prediction for the case of 75% maximum probability of missingness.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2.">Irregularly sampled Health MNIST</head><p>We modified the previous setup such that timepoints come from a random process and similarity in the observations depends on covariates as well as the underlying rate of the TPP that was discussed in Section 3.3. We implemented it in a following way: for healthy patients, the timestamps come from a homogeneous Poisson process with intensity λ = 0.1 and the digit is not modified, whereas for diseased patients, timestamps are generated according to a Hawkes process, with baseline intensity µ = 0.5 and the digit rotation depends on the intensity of process at the moment: the higher the intensity, the stronger the rotation. For healthy patients we modelled MNAR as in the previous setup, while for diseased patients we also applied a square-shaped mask with its size being proportional to the intensity of the process at that moment. Table <ref type="table" target="#tab_7">5</ref> shows that both of our models improve upon the baselines in all imputation scenarios. Moreover, Tables <ref type="table" target="#tab_8">6</ref> and<ref type="table" target="#tab_9">7</ref> show that LLPPSM outperforms LLSM in both future data and mask prediction tasks. The Figure <ref type="figure" target="#fig_4">5</ref> depicts that although LLSM is capable of capturing the general form of an image, it cannot model the rotation properly due to the limited kernel component related to time whereas LLPPSM does it well. The same holds for prediction of mask. The inferred mean intensity function of the point process for one individual can be found in Appendix G.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3.">Physionet data</head><p>We evaluated our model on healthcare data from the 2012 Physionet Challenge <ref type="bibr" target="#b30">(Silva et al., 2012)</ref>. The dataset contains around 12,000 patients monitored on the intensive care unit (ICU) for 48 hours. We modelled measurements of 37 different attributes, such as glucose level, heart rate, body temperature, etc. The dataset is extremely sparse, with about 85% missing values. We cannot directly measure imputation performance due to the lack of ground truth data for missing values, hence, to test the learned representations of our models, we used this dataset only for future prediction. We predicted values of laboratory attributes given the knowledge of the first ten measurements for a patient in the test set. As auxiliary covariates, we employed the following variables: time of the measurement, id, type of ICU, gender, and in-hospital mortality. More information regarding Physionet data can be found in Appendix E.2. We present the results in Table <ref type="table" target="#tab_10">8</ref>. LLSM performs best, with LLPPSM performing worse. This can be explained by the fact that many observations are taken regularly each hour, making the temporal process be pseudo-stochastic, which is reflected in the intensity of the point process that starts to explode at each hour timepoint, hence modelling it just brings additional redundant information to the model.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.">Conclusions</head><p>In this work, we introduced a novel probabilistic framework for multivariate data with missing values. First, we developed a deep latent variable model, LLSM, that models structured missingness via separate set of latent variables. Second, we extended this model by utilizing temporal point process to account for stochastic nature of timepoints, LLPPSM. Our methods are specifically designed for longitudinal type of data by leveraging GPs to define priors for latent variables. We demonstrated excellent performance of both models on different representation learning tasks and expect them to become useful tools in the analysis of high-dimensional temporal and longitudinal data.</p><p>By approximating the KL terms with the corresponding upper bounds KL that are necessary for computational scalability (see Appendix B), the final ELBO is given as</p><formula xml:id="formula_22">L(ϕ, ψ, θ; y o , m) ≥ E q ϕ log p ψy (y o |z y , z m , m) + E q ϕ [log p ψm (m|z y , z m )]</formula><p>-KL(q ϕy (z y |y o )||p θy (z y |x)) -KL(q ϕm (z m |m)||p θm (z m |x)).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Scalable KL Divergence Computation</head><p>Here we review the KL upper bound from <ref type="bibr" target="#b26">Ramchandran et al. (2021)</ref> that implements a scalable KL divergence computation. Optimising the variational objective requires us to evaluate L KL terms KL(N ( μl , W l )||N (0, Σ l )), where μl = [µ ϕ,l (y 1 ), . . . , µ ϕ,l (y N )] T , W l = diag(σ 2 ϕ,l (y 1 ), . . . , σ 2 ϕ,l (y N )), and</p><formula xml:id="formula_23">Σ l = R r=1 K (r,l) xx + σ 2 zl I N .</formula><p>For notational convenience, we drop the index l. The exact computation has O(N 3 ) complexity, making it impractical for large datasets. Therefore, instead of computing it, we will use an upper bound to the KL that comes from the fact that any lower bound for the prior GP marginal log-likelihood induces an upper bound to the KL divergence. <ref type="bibr" target="#b31">Titsias (2009)</ref> proposed the freeform variational lower bound for a GP marginal log-likelihood log N (z 0, Σ) by assuming a set of M inducing locations s = [s 1 , . . . , s M ] in X , with the corresponding inducing function values u = [f (s 1 ), . . . , f (s</p><formula xml:id="formula_24">M )] T = [u 1 , . . . , u M ] T , such that p(u) = N (u 0, K ss ) p(f u) = N (f K xs K -1 ss u, K), K = K xx -K xs K -1 ss K sx p(z f ) = N (z f , σ 2 z I N ),</formula><p>and the corresponding lower bound is L(z; Σ) = N (z 0,</p><formula xml:id="formula_25">K xs K -1 ss K sx +σ 2 z I N )-1 2σ 2 z tr( K)</formula><p>, where tr(•) is the matrix trace. Titsias bound is known to be tight when M is large enough and the covariance function is smooth enough. Longitudinal data, however, always contain categorical covariates corresponding to instance ids, making the covariance function necessarily non-continuous.</p><p>To still get a tighter bound, we separate the additive component that corresponds to the instance id from the other covariates, so that covariance function has the following form Σ = K </p><formula xml:id="formula_26">≤ 1 2 tr Σ-1 W + μT Σ-1 μ -N + log | Σ| -log |W | + P p=1 tr Σ-1 p K(A) xpxp , where Σ = K (A) xs K (A) -1 ss K (A) sx + Σ and K(A) xpxp = K (A) xpxp -K (A) xps K (A) -1 ss K (A)</formula><p>sxp . This bound has a computational complexity O( P p=1 n p 3 + N M 2 ) and <ref type="bibr" target="#b26">Ramchandran et al. (2021)</ref> proved it to be tighter than the corresponding bound by Titsias for longitudinal datasets. Despite the reduced complexity, a problem still remains. For every gradient descent step, the algorithm has to iterate through the entire dataset, requiring a substantial allocation of memory and computational time. This issue can be solved using a similar technique as the one presented by <ref type="bibr" target="#b9">Hensman et al. (2013)</ref>, with adaptation to the properties of a longitudinal kernel. We will only present the final bound and refer the reader to <ref type="bibr" target="#b26">Ramchandran et al. (2021)</ref> for a detailed derivation. Defining I pi to be the index of the ith sample for the pth patient and μp = μIp i , . . . , μIn p T to be a a sub-vector of μ that is related to the pth patient, the unbiased estimate of the KL divergence upper bound, computed from the batch with instances P batch ⊂ {1, . . . , P }, is defined as</p><formula xml:id="formula_27">KL = 1 2 P |P batch | p∈P K (A) xps K (A) -1 ss m H -μp T Σ-1 p K (A) xps K (A) -1 ss m H -μp + np i=1 ( Σ-1 p ) ii σ 2 ϕ (y Ip i ) + log | Σp | + tr Σ-1 p K(A) xpxp + tr K (A) -1 ss HK (A) -1 ss K (A) sxp Σ-1 p K (A) xps - np i=1 log σ 2 ϕ (y Ip i ) - N 2 + KL N (m H , H)||N (0, K (A) ss ) ,</formula><p>where m H and H are variational parameters computed via natural gradients.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Various LLPPSM specifications</head><p>We define three sets of latent variables: z y , z m and z λ . Observations y, masks m and timestamps t are modelled as random variables. The complete joint probability is given as: We assume the following Gaussian process priors</p><formula xml:id="formula_28">p ω (y o , z y , m, z m , t, z λ |x s , v D )</formula><formula xml:id="formula_29">z λ (t) ∼ GP 0, k(v D , v D ′ |θ λ ) z y (x, λ) ∼ GP 0, k((x, λ(t)), (x ′ , λ(t ′ ))|θ y ) z m (x, λ) ∼ GP 0, k((x, λ(t)), (x ′ , λ(t ′ ))|θ m ) .</formula><p>The decoders of y and m are parameterized by neural networks that predict the mean of the generative distributions</p><formula xml:id="formula_30">p ψy (y o i |z y i , z m i , m i ) = N (y i g ψy (z y i , z m i ), diag(σ 2 y1 , . . . , σ 2 y K )) ⊙ m i p ψm (m i z y i , z m i ) = Ber(m i |g ψm (z y i , z m i )),</formula><p>where σ 2 y1 , . . . , σ 2 y K are jointly optimised via gradient descent, and ⊙ is the elementwise Hadamard product. The likelihood of the temporal point process for instance p is given as</p><formula xml:id="formula_31">p(t p |λ) = exp - T λ(t)dt np i=1 λ(t i ), where λ(t) = (z λ (t) + β) 2 ,</formula><p>and β is a learnable offset.</p><p>The covariances of the GPs of z y and z m are parameterized by the additive kernels discussed in Section 3. For z λ , we instead rely on the following additive structure:</p><formula xml:id="formula_32">k(v D , v D ′ |θ λ ) = D d=1 1(v d )1(v d ′ ) • γ d • exp - (v d -v d ′ ) 2 2l 2 d , 1(v d ) = 1, if v d &lt; ∞ 0, otherwise<label>,</label></formula><p>where v d is the elapsed time between t and dth timepoint, t d , that happened before t, and infinite, if there is no available information about the past event. Hence, the above kernel depends on past events and on the current time point.</p><p>As the posterior inference is not tractable, we rely on variational inference and choose the following approximation to the posterior</p><formula xml:id="formula_33">q(z y , z m , z λ , u y o , m) = q ϕy (z y |y o ) • q ϕm (z m |m) • p(z λ |u) • q(u),</formula><p>where we also employed inducing points of z λ , denoted by u with q(u) = N (m λ , S). Note that these inducing points are different from those of the scalable KL bound in Appendix B. To shorten the notation we will denote this variational posterior as q in the following derivations. The ELBO is given as</p><formula xml:id="formula_34">L = E q log p ω (y o , m, t, z y , z m , z λ , u|x s , v D ) q ϕy (z y |y o ) • q ϕm (z m |m) • p(z λ |u) • q(u) = E q log p ψy (y o |z y , z m , m)p ψm (m|z y , z m )p(t|λ) -E q log( q(u) p(u) )</formula><p>-E q log( q ϕy (z y |y o ) p(z y |x, λ(t))</p><p>) -E q log( q ϕm (z m |m) p(z m |x, λ(t)) )</p><p>= E q log p ψy (y o |z y , z m , m)p ψm (m|z y , z m )p(t|λ) -KL(q(u)||p(u))</p><formula xml:id="formula_35">-E p(z λ |u)•q(u) KL(q ϕy (z y |y o )||p(z y |x, λ(t)) -E p(z λ |u)•q(u) [KL(q ϕm (z m |m)||p(z m |x, λ(t))] ≥ E q log p ψy (y o |z y , z m , m)p ψm (m|z y , z m )p(t|λ) -KL(q(u)||p(u)) -E p(z λ |u)•q(u) KL(q ϕy (z y |y o )||p(z y |x, λ(t)) -E p(z λ |u)•q(u) KL(q ϕm (z m |m)||p(z m |x, λ(t)) ,</formula><p>where KL is the corresponding upper bound for KL divergence from Appendix B and expectations involving upper bounds are estimated via Monte Carlo sampling. The generative part can be further decomposed into</p><formula xml:id="formula_36">E q log p ψy (y o |z y , z m , m)p ψm (m|z y , z m )p(t|λ) = E q ϕ log p ψy (y o |z y , z m , m) + E q ϕ [log (p ψm (m|z y , z m ))] + E p(z λ |u)•q(u) [log(p(t|λ)] ,</formula><p>where q ϕ (z y , z m |y o , m) = q ϕy (z y |y o ) • q ϕm (z m |m).</p><p>The expectations involving z y and z m are computed by sampling from their variational distributions and utilizing the reparameterization trick <ref type="bibr" target="#b13">(Kingma &amp; Welling, 2014)</ref>, whereas expectation involving likelihood of the point process can be evaluated in a closed from due to the chosen squared link function as we show below for the timepoints of individual p.</p><p>To lighten the notation, we use L T := E p(z λ |u)•q(u) [log(p(t|λ)], drop subscript p denoting the individual and drop subscript D from v D . Also, by s we denote inducing point locations of u. First, we integrate out u:</p><formula xml:id="formula_37">q(z λ ) = U p(z λ |u) • q(u)du = N (z λ μ, Σ), where μ(v) = k vs K -1 ss m λ , Σ(v, v ′ ) = K vv ′ -k vs K -1 ss k sv ′ + k vs K -1 ss SK -1 ss k sv ′ ,</formula><p>and U is a space of inducing values. We write L T as</p><formula xml:id="formula_38">L T = n E q(z λ ) [log λ(t n )] -E q(z λ ) T λ(t)dt = n E q(z λ ) log z λ (t n ) + β 2 -E q(z λ ) T λ(t)dt :=Lt</formula><p>, where we sum over all timepoints of the individual. Via <ref type="bibr" target="#b18">Lloyd et al. (2015)</ref>, we have</p><formula xml:id="formula_39">E q(z λ ) log z λ (t n ) + β 2 = ∞ -∞ log((z λ (t n ) + β) 2 )N (z λ (t n ) μ, σ2 )dz λ (t n ) = -G - (μ + β) 2 2σ 2 + log σ2 2 -C,</formula><p>where σ2 is the diagonal element of Σ, C is the Euler-Mascheroni constant and G is the confluent hyper-geometric function.</p><p>Following the derivations of <ref type="bibr" target="#b16">Liu &amp; Hauskrecht (2019)</ref>, we compute L t as:</p><formula xml:id="formula_40">L t = E q(z λ ) T λ(t)dt = E q(z λ ) T (z λ (t) + β) 2 dt = T E q(z λ ) (z λ (t) + β) 2 dt = T E q(z λ ) (z λ (t) 2 + 2βE q(z λ ) z λ (t) + β 2 dt = T E q(z λ ) z λ (t) 2 dt + T Var q(z λ ) z λ (t) dt + 2β T E q(z λ ) z λ (t) dt + β 2 |T | = n tn tn-1 E q(z λ ) z λ (t) 2 dt + tn tn-1</formula><p>Var q(z λ ) z λ (t) dt + 2β tn tn-1</p><formula xml:id="formula_41">E q(z λ ) z λ (t) dt + β 2 |T |.</formula><p>Each integral is computed as follows: 1(s i )1(s ′ j )1(v in )1(v j n )γ i γ j</p><formula xml:id="formula_42">tn tn-1 E q(z λ ) z λ (t) 2 dt = m T λ K -1 ss Ψ n K -1 ss m λ ,</formula><formula xml:id="formula_43">πl 2 i l 2 j 2 • (l 2 i + l 2 j ) exp - (s i + t in -s ′ j -t j n ) 2 2(l 2 i + l 2 j )   erf   l 2 i (v j n -s ′ j ) + l 2 j (v in -s i ) 2l 2 i l 2 j (l 2 i + l 2 j )   -erf   l 2 i (v j n-1 -s ′ j ) + l 2 j (v in-1 -s i ) 2l 2 i l 2 j (l 2 i + l 2 j )     ,</formula><p>where l i , γ i are kernel hyperparameters. where w = (x, λ(t)), w * = (x * , λ(t * )) and N * is a number of elements for prediction. Above, we dropped the superscripts, meaning that the same formulae hold for both z y and z m with respect to their kernel hyperparameters. The same approach holds for deriving p(m * | x * , y o , x, m). In order to sample from these predictive distributions, ancestral sampling can be employed. Computing the predictive distributions scales cubically for this case. To get the idea of how to implement a scalable predictive distribution using low-rank inducing point approximation, we refer the reader to the derivations by <ref type="bibr" target="#b26">Ramchandran et al. (2021)</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D. Predictive distribution</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E. Experimental setups</head><p>We employed identical kernel structures for the GPs of both z y and z m across all of the datasets mentioned below. Nonetheless, it's important to note that, in general, these kernel structures could differ between the two. We also selected sixty inducing points for each GP model for all setups and chose the latent dimension to be 32.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E.1. HealthMNIST variants</head><p>For the Health MNIST regularly sampled dataset we use the following covariates: time, id, diseasePresence, diseaseTime and gender. When running LLSM on the corresponding dataset, we relied on the following additive kernel structure f ca (id) + f se (time) + f ca×se (id × time) + f ca×se (gender × time) + f ca×se (diseasePresence × diseaseTime),</p><p>where se denotes squared exponential kernel and ca is referred to categorical one.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 .</head><label>1</label><figDesc>Figure 1. Conceptual overview of our model. Shaded, partiallyshaded, and blank rectangles refer to observed, partially observed, and latent components. Dashed arrow corresponds to the dependence of the point process intensity on the previous time points.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 .</head><label>2</label><figDesc>Figure 2. The graphical model of LLSM. Shaded, partially-shaded, and blank circles refer to observed, partially observed, and latent variables. The dashed arrow highlights an optional dependency.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 3 .</head><label>3</label><figDesc>Figure 3. The graphical model of LLPPSM. (Partially) shaded, and blank circles refer to (partially) observed, and latent variables. The dashed arrow highlights an optional dependency, x s p are static covariates and tD the D previous time steps to t.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 4 .</head><label>4</label><figDesc>Figure 4. Future predictions of data (top) and missingness mask (bottom) on the regularly sampled health MNIST dataset. Although predictions of mask look almost identical, the prediction of data cannot be captured by L-VAE, whereas LLSM does it very accurately.</figDesc><graphic coords="7,79.74,67.06,437.38,195.09" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 5 .</head><label>5</label><figDesc>Figure 5. Future predictions of data (top) and missingness mask (bottom) on irregularly sampled health MNIST dataset.</figDesc><graphic coords="9,79.74,67.06,437.42,195.07" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head></head><label></label><figDesc>, where Σ = diag( Σ1 , . . . , ΣP ), Σp = K (R) xpxp + σ 2 z I np contains all terms with instance-specific id and K xx contains the other components.<ref type="bibr" target="#b26">Ramchandran et al. (2021)</ref> proposed the following upper bound for KL KL</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head></head><label></label><figDesc>d )dttr(K -1 ss Ψ n ) + tr(K -1 ss SK -1 ss Ψ n ), tn tn-1 E q(z λ ) z λ (t) dt = Φ n (s) T K -1 ss m λ , Ψ n (s, s ′ ) = tn tn-1 K(s, v(t))K(v(t), s ′ )dt, Φ n (s) = tn tn-1 K(s, v(t))dt.Φ and Ψ each have closed form solutions which we obtain by evaluating the integrals for the sum of SE kernels.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head></head><label></label><figDesc>Given training samples y o , covariate information x and masks m, the predictive distribution for a new observation y * , givencovariates x * is p(y * | x * , y o , x, m) = p(y * | z y * , z m * )p(z y * , z m * | x * , y o , x, m) dz y * dz m * ≈ p(y * | z y * , z m * ) decode GP predictions p(z y * | x * , λ(t * ), z y , x, λ(t)) GP posterior of z y * p(z m * | x * , λ(t * ), z m , x, λ(t)) GP posterior of z m * q(z λ * ) variational posterior of z λ * q ϕy (z y | y o ) encode data q ϕm (z m | m)encode mask dz λ * dz y * dz m * dz y dz m , where timestamps t and t * belong to x and x * , respectively, and p(z y * | x * , λ(t * ), z y , x, λ(t)) and p(z m * | x * , λ(t * ), z m , x, λ(t)) are GP posteriors such that p(z * | x * , λ(t * ), z, x, λ(t)) = N (μ, Σ), μ = K w * w (K ww + σ 2 z I N ) -1 z, Σ = K w * w * + σ 2 z I N * -K w * w (K ww + σ 2 z I N ) -1 K ww * ,</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0"><head></head><label></label><figDesc></figDesc><graphic coords="19,104.04,379.85,388.82,291.62" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head></head><label></label><figDesc>The last two are examples of structured missingness. Although MCAR case can be handled by simply excluding missing elements from the analysis without introducing a bias, the same does not hold for the other scenarios. Despite the utility of Rubin's taxonomies,<ref type="bibr" target="#b21">Mitra et al. (2023)</ref> emphasized that they do not fully account for highdimensional patterns of structured missingness, frequently encountered in modern ML applications. They also proposed a set of current grand challenges in learning from data with structured missingness and claimed that the field of learning with missing values needs to be further advanced.</figDesc><table><row><cell>DLVMs for missing data. Various methods have been</cell></row><row><cell>proposed to address the challenge of missing values within</cell></row><row><cell>generative models. Collier et al. (2020) employed a varia-</cell></row><row><cell>tional autoencoder by concatenating the input with a miss-</cell></row><row><cell>ingness mask. While this approach can model MAR and</cell></row><row><cell>MNAR scenarios, it fails to model temporal correlations and</cell></row><row><cell>does not take into account auxiliary covariate information.</cell></row></table><note><p><p><p><p><p>Whereas, if data is MNAR, missing readings are dependent on the unobserved data, or systematic factors that are not accounted for in the experiment.</p><ref type="bibr" target="#b20">Mattei &amp; Frellsen (2019)</ref> </p>used importance sampling to derive a Missing Importance Weighted Autoencoder (MIWAE) bound for training DLVMs under MAR condition. Building upon this work,</p><ref type="bibr" target="#b10">Ipsen et al. (2021)</ref> </p>expanded this method to MNAR scenario by directly modeling the missingness mask. However, both these approaches lack the ability to model temporal correlation in the latent space, hence they are not suitable for longitudinal setting.</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 1 .</head><label>1</label><figDesc>A summary of related methods.</figDesc><table><row><cell>Model</cell><cell cols="4">Temporal structure Other covariates Structured missingness Modelling timestamps</cell><cell>Generative</cell><cell>Reference</cell></row><row><cell>VAE missing</cell><cell>✗</cell><cell>✗</cell><cell>✓</cell><cell>✗</cell><cell>✓</cell><cell>Collier et al. (2020)</cell></row><row><cell>not-MIWAE</cell><cell>✗</cell><cell>✗</cell><cell>✓</cell><cell>✗</cell><cell>✓</cell><cell>Ipsen et al. (2021)</cell></row><row><cell>GRUI-GAN</cell><cell>✓</cell><cell>✗</cell><cell>✓</cell><cell>✗</cell><cell>✓</cell><cell>Luo et al. (2018)</cell></row><row><cell>GPPVAE</cell><cell>✓</cell><cell>Limited</cell><cell>✗</cell><cell>✗</cell><cell>✓</cell><cell>Casale et al. (2018)</cell></row><row><cell>GP-VAE</cell><cell>✓</cell><cell>✗</cell><cell>✗</cell><cell>✗</cell><cell>✓</cell><cell>Fortuin et al. (2020)</cell></row><row><cell>L-VAE</cell><cell>✓</cell><cell>✓</cell><cell>✗</cell><cell>✗</cell><cell>✓</cell><cell>Ramchandran et al. (2021)</cell></row><row><cell>GPRPP</cell><cell>✓</cell><cell>✗</cell><cell>✗</cell><cell>✓</cell><cell cols="2">Limited to timestamps Liu &amp; Hauskrecht (2019)</cell></row><row><cell>LLSM</cell><cell>✓</cell><cell>✓</cell><cell>✓</cell><cell>✗</cell><cell>✓</cell><cell>This work</cell></row><row><cell>LLPPSM</cell><cell>✓</cell><cell>✓</cell><cell>✓</cell><cell>✓</cell><cell>✓</cell><cell>This work</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head></head><label></label><figDesc>y |y o )||p θy (z y |x)) and KL(q ϕm (z m |m)||p θm (z m |x)), which, by employing the techniques from Ramchandran et al. (2021), have complexity O(</figDesc><table><row><cell>P p=1 n p</cell><cell>3 + N M 2</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Table 2 .</head><label>2</label><figDesc>Imputation</figDesc><table><row><cell>Method</cell><cell>50%</cell><cell>75%</cell><cell>90%</cell></row><row><cell cols="2">mean imputation 0.266±0.000</cell><cell>0.314±0.000</cell><cell>0.373±0.000</cell></row><row><cell>GPPVAE</cell><cell>0.248±0.004</cell><cell>0.291±0.004</cell><cell>0.379±0.015</cell></row><row><cell>GRUI-GAN</cell><cell>0.224±0.037</cell><cell>0.218±0.012</cell><cell>0.269±0.028</cell></row><row><cell>L-VAE</cell><cell cols="2">0.124±0.009 0.283±0.062</cell><cell>0.373±0.001</cell></row><row><cell>LLSM (ours)</cell><cell cols="3">0.124±0.008 0.144±0.009 0.174±0.016</cell></row><row><cell cols="4">Table 3. Future data prediction MSEs on the regularly sampled</cell></row><row><cell cols="4">health MNIST dataset. The percentage represents maximum prob-</cell></row><row><cell cols="2">ability of pixel being missing.</cell><cell></cell><cell></cell></row><row><cell>Method</cell><cell>50%</cell><cell>75%</cell><cell>90%</cell></row><row><cell cols="2">mean prediction 0.040±0.000</cell><cell>0.042±0.000</cell><cell>0.048±0.000</cell></row><row><cell>GPPVAE</cell><cell>0.041±0.000</cell><cell>0.041±0.000</cell><cell>0.048±0.001</cell></row><row><cell>L-VAE</cell><cell cols="2">0.021±0.002 0.038±0.008</cell><cell>0.047±0.000</cell></row><row><cell>LLSM (ours)</cell><cell cols="3">0.023±0.002 0.024±0.001 0.026±0.002</cell></row><row><cell cols="3">4.1. Regularly sampled Health MNIST</cell><cell></cell></row><row><cell cols="4">To simulate a high-dimensional longitudinal dataset with</cell></row><row><cell cols="4">structured missingness, we used a modified version of the</cell></row><row><cell cols="4">MNIST dataset (LeCun et al., 1998) called Health MNIST</cell></row></table><note><p>MSEs on the regularly sampled health MNIST dataset. The percentage represents maximum probability of pixel being missing.</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>Table 4 .</head><label>4</label><figDesc>Future missingness prediction MSEs on the regularly sampled health MNIST dataset. The percentage represents maximum probability of pixel being missing.</figDesc><table><row><cell>Method</cell><cell>50%</cell><cell>75%</cell><cell>90%</cell></row><row><cell>L-VAE</cell><cell cols="3">0.032±0.000 0.038±0.002 0.040±0.002</cell></row><row><cell cols="4">LLSM (ours) 0.031±0.002 0.038±0.003 0.038±0.002</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head>Table 5 .</head><label>5</label><figDesc>Imputation MSEs on the irregularly sampled health MNIST dataset. The percentage represents maximum probability of pixel being missing.</figDesc><table><row><cell>Method</cell><cell>50%</cell><cell>75%</cell><cell>90%</cell></row><row><cell cols="2">mean imputation 0.259±0.000</cell><cell>0.335±0.000</cell><cell>0.380±0.000</cell></row><row><cell>GPPVAE</cell><cell>0.239±0.002</cell><cell>0.319±0.001</cell><cell>0.396±0.004</cell></row><row><cell>GRUI-GAN</cell><cell>0.165±0.016</cell><cell>0.203±0.021</cell><cell>0.277±0.035</cell></row><row><cell>L-VAE</cell><cell>0.171±0.045</cell><cell>0.264±0.059</cell><cell>0.379±0.001</cell></row><row><cell>LLSM (ours)</cell><cell>0.130±0.007</cell><cell cols="2">0.163±0.011 0.191±0.012</cell></row><row><cell>LLPPSM (ours)</cell><cell cols="3">0.128±0.005 0.162±0.007 0.207±0.028</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_8"><head>Table 6 .</head><label>6</label><figDesc>Future data prediction MSEs on the irregularly sampled health MNIST dataset. The percentage represents maximum probability of pixel being missing.</figDesc><table><row><cell>Method</cell><cell>50%</cell><cell>75%</cell><cell>90%</cell></row><row><cell cols="2">mean prediction 0.039±0.000</cell><cell>0.044±0.000</cell><cell>0.047±0.000</cell></row><row><cell>GPPVAE</cell><cell>0.040±0.000</cell><cell>0.044±0.001</cell><cell>0.049±0.000</cell></row><row><cell>L-VAE</cell><cell>0.029±0.005</cell><cell>0.036±0.006</cell><cell>0.047±0.000</cell></row><row><cell>LLSM (ours)</cell><cell>0.030±0.001</cell><cell>0.031±0.001</cell><cell>0.031±0.001</cell></row><row><cell cols="4">LLPPSM (ours) 0.025±0.002 0.027±0.001 0.030±0.003</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_9"><head>Table 7 .</head><label>7</label><figDesc>Future missingness prediction MSEs on the irregularly sampled health MNIST dataset. The percentage represents maximum probability of pixel being missing.</figDesc><table><row><cell>Method</cell><cell>50%</cell><cell>75%</cell><cell>90%</cell></row><row><cell>L-VAE</cell><cell>0.063±0.000</cell><cell>0.067±0.001</cell><cell>0.068±0.001</cell></row><row><cell>LLSM (ours)</cell><cell>0.063±0.002</cell><cell>0.067±0.001</cell><cell>0.066±0.001</cell></row><row><cell cols="4">LLPPSM (ours) 0.054±0.006 0.056±0.005 0.058±0.005</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_10"><head>Table 8 .</head><label>8</label><figDesc>Future prediction on Physionet dataset.</figDesc><table><row><cell>Method</cell><cell>MSE</cell></row><row><cell cols="2">mean prediction 0.785±0.000</cell></row><row><cell>GPPVAE</cell><cell>0.786±0.001</cell></row><row><cell>L-VAE</cell><cell>0.720±0.008</cell></row><row><cell>LLSM (ours)</cell><cell>0.713±0.006</cell></row><row><cell>LLPPSM (ours)</cell><cell>0.745±0.009</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_11"><head></head><label></label><figDesc>=p ψy (y o |z y , z m , m)p ψm (m|z y , z m )p θy (z y |x, λ(t))p θm (z m |x, λ(t))p(t|λ)p θ λ (z λ |v D ),where v D corresponds to elapsed times between t and D previous timepoints that occurred before t, denoted as t D , x s refers to static covariates and x consists of t and x s . To compute the marginal likelihood, we have to marginalize over the latent variables asp ω (y o , m, t|x s , v D ) = p ω (y o , z y , m, z m , t, z λ |x s , v D )dz y dz m dz λ = p ψy (y o |z y , z m , m)p ψm (m|z y , z m )p θy (z y |x, λ(t))p θm (z m |x, λ(t))• p(t|λ)p θ λ (z λ |v D )dz y dz m dz λ .Factorizing the joint likelihood w.r.t. the observation given the latent variables, we get p ω (y o , m, t|x s , v D ) = (z λ |v D )dz y dz m dz λ .</figDesc><table><row><cell>N</cell></row><row><cell>p ψy (y o i |z y i , z m i , m i )p ψm (m i |z y i , z m i )p θy (z y |x, λ(t))p θm (z m |x, λ(t))</cell></row><row><cell>i=1</cell></row><row><cell>p(t|λ)p θ λ</cell></row></table></figure>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>Acknowledgements</head><p>We acknowledge the computational resources provided by the <rs type="projectName">Aalto Science-IT</rs> project. This work was supported by the <rs type="funder">Research Council of Finland</rs> (decision number: <rs type="grantNumber">359135</rs>).</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funded-project" xml:id="_YvAgWHz">
+					<idno type="grant-number">359135</idno>
+					<orgName type="project" subtype="full">Aalto Science-IT</orgName>
+				</org>
+			</listOrg>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Impact statement</head><p>This paper presents a work whose goal is to introduce a new method for analyzing high-dimensional data with missing values in the longitudinal scenario. We do not see any potential societal consequences of our work.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>APPENDIX</head><p>A. Deriving the ELBO for LLSM By introducing a variational distribution q ϕ (z y , z m |y o , m), the marginal likelihood can be expanded as log p ω (y o , m|x) = q ϕ (z y , z m |y o , m) log p ω (z y , z m |y o , m)p ω (y o , m|x) p ω (z y , z m |y o , m) dz y dz m = q ϕ (z y , z m |y o , m) log p ω (y o , m, z y , z m |x) p ω (z y , z m |y o , m)</p><p>Hence,</p><p>As the KL divergence term is positive, we get</p><p>By assuming the following factorizations:</p><p>the ELBO simplifies to</p><p>where ψ y , ψ m , ϕ y , ϕ m are parameterized by neural networks and q y , q m are corresponding variational distributions of z y and z m .</p><p>For Health MNIST irregularly sampled dataset, time, id, gender and diseasePresence were used as covariates for LLSM and LLPPSM. In case of LLPPSM, we also added intensity of the point process for covariance computation. When using LLSM, we employed the following kernel structure</p><p>whereas for LLPPSM</p><p>For both variants, we used the Adam optimiser <ref type="bibr" target="#b12">(Kingma &amp; Ba, 2015)</ref> as implemented in Pytorch <ref type="bibr" target="#b22">(Paszke et al., 2019)</ref>, with a learning rate equal to 0.001, which was selected based on cross-validation. After having pretrained a standard VAE, we trained both LLSM and LLPPSM on 1000 epochs, employing early stopping.</p><p>When training LLPPSM, we defined separate β parameters for "healthy" and "sick" instances and optimised them jointly together with other parameters. For the temporal point process part of the model, the number of previous timestamps, D, is 15.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E.2. Physionet dataset</head><p>We selected 2000 patients for training, 1917 for validation and performed future prediction on 100 patients, not included in training and validation sets. We used the following covariates: time, id, type of ICU, gender and in-hospital mortality, with the corresponding additive kernel structure for LLSM</p><p>and for LLPPSM, including intensity as an additional variable</p><p>+f ca×se (type of ICU × intensity) + f ca×se (in-hospital mortality × intensity),</p><p>The optimisation was done by Adam optimiser <ref type="bibr" target="#b12">(Kingma &amp; Ba, 2015)</ref> using Pytorch <ref type="bibr" target="#b22">(Paszke et al., 2019)</ref>, with the learning rate 0.001. Both models were trained for 400 epochs, employing early stopping, after having pretrained them by standard VAE.</p><p>When training LLPPSM, we defined separate β parameters based on in-hospital mortality attribute and optimised them jointly with other parameters. For temporal point process part, the number of previous timestamps, D, is 15.</p><p>Moreover, we found it useful to drop the dependence from z m to y as was discussed in Section 3.2. Our intuition is that in this case, if the dependence is left, we are obliged to apply predictive distribution (Appendix D) for both z y and z m , which, due to the highly complex and sparse nature of this dataset, cannot be modelled highly accurately, leading to the accumulation of additional error.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>F. Neural network architectures</head><p>Table <ref type="table">9</ref> describes neural network architecture used for both Health MNIST setups that consists of convolutional and feedforward layers. Table <ref type="table">10</ref> describes neural network architecture for the Physionet dataset. In this case, we employed a multi layered perceptron (MLP).  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>G. Supplementary figures</head></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Gaussian process prior variational autoencoders</title>
+		<author>
+			<persName><forename type="first">F</forename><forename type="middle">P</forename><surname>Casale</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">V</forename><surname>Dalca</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Saglietti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Listgarten</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Fusi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Recurrent neural networks for multivariate time series with missing value</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Che</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Purushotham</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Cho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Sontag</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Liu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Scientific reports</title>
+		<imprint>
+			<biblScope unit="volume">8</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page">6085</biblScope>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">VAEs in the presence of missing data</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Collier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Nazabal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">K I</forename><surname>Williams</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">the First ICML Workshop on The Art of Learning with Missing Values</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<title level="m" type="main">Point processes</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">R</forename><surname>Cox</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Isham</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1980">1980</date>
+			<publisher>CRC Press</publisher>
+			<biblScope unit="volume">12</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Recurrent marked temporal point processes: Embedding event history to vector</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Du</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Dai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Trivedi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">U</forename><surname>Upadhyay</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Gomez-Rodriguez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Song</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining</title>
+		<meeting>the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Deep probabilistic time series imputation</title>
+		<author>
+			<persName><forename type="first">V</forename><surname>Fortuin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Baranchuk</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Raetsch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Mandt</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Gp-Vae</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 32rd International Conference on Artificial Intelligence and Statistics</title>
+		<meeting>the 32rd International Conference on Artificial Intelligence and Statistics</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Deep generative missingness pattern-set mixture models</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ghalebikesabi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Cornish</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Holmes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Kelly</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 24th International Conference on Artificial Intelligence and Statistics</title>
+		<meeting>the 24th International Conference on Artificial Intelligence and Statistics</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Spectra of some self-exciting and mutually exciting point processes</title>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">G</forename><surname>Hawkes</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Biometrika</title>
+		<imprint>
+			<biblScope unit="volume">58</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="83" to="90" />
+			<date type="published" when="1971">1971</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Hawkes processes and their applications to finance: A review</title>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">G</forename><surname>Hawkes</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Quant. Financ</title>
+		<imprint>
+			<biblScope unit="volume">18</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="193" to="198" />
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Gaussian processes for big data</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Hensman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Fusi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">D</forename><surname>Lawrence</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 29th Conference on Uncertainty in Artificial Intelligence</title>
+		<meeting>the 29th Conference on Uncertainty in Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">not-MIWAE: deep generative modelling with missing not at random data</title>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">B</forename><surname>Ipsen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P.-A</forename><surname>Mattei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Frellsen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">9th International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Large-scale cox process inference using variational fourier features</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>John</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Hensman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 35th International Conference on Machine Learning</title>
+		<meeting>the 35th International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">A method for stochastic optimization</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">P</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ba</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Adam</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">3rd International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Auto-encoding variational bayes</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">P</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2nd International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<title level="m" type="main">Deep Kalman filters</title>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">G</forename><surname>Krishnan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">U</forename><surname>Shalit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Sontag</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1511.05121</idno>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">In arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<monogr>
+		<title level="m" type="main">The mnist database of handwritten digits</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Lecun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Cortes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Burges</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1998">1998</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Nonparametric regressive point processes based on conditional Gaussian processes</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Hauskrecht</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<monogr>
+		<title level="m" type="main">Methods and applications of longitudinal data analysis</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Liu</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<publisher>Elsevier</publisher>
+			<pubPlace>New York</pubPlace>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Variational inference for Gaussian process modulated Poisson processes</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Lloyd</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Gunter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Osborne</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Roberts</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 32nd International Conference on Machine Learning</title>
+		<meeting>the 32nd International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Multivariate time series imputation with generative adversarial networks</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Luo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Cai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">MIWAE: Deep generative modelling and imputation of incomplete data sets</title>
+		<author>
+			<persName><forename type="first">P.-A</forename><surname>Mattei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Frellsen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 36th International Conference on Machine Learning</title>
+		<meeting>the 36th International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Learning from data with structured missingness</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Mitra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">F</forename><surname>Mcgough</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Chakraborti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Holmes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Copping</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Hagenbuch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Biedermann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Noonan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Lehmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Shenvi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><forename type="middle">V</forename><surname>Doan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Leslie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Bianconi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Sanchez-Garcia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Davies</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Mackintosh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E.-R</forename><surname>Andrinopoulou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Basiri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Harbron</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">D</forename><surname>Macarthur</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Nat. Mach. Intell</title>
+		<imprint>
+			<biblScope unit="volume">5</biblScope>
+			<biblScope unit="page" from="13" to="23" />
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">An imperative style, high-performance deep learning library</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Paszke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Gross</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Massa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Lerer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Bradbury</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Chanan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Killeen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Gimelshein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Antiga</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Desmaison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Kopf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Devito</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Raison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Tejani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Chilamkurthy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Steiner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Fang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Bai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Chintala</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Pytorch</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Longitudinal data subject to irregular observation: A review of methods with a focus on visit processes, assumptions, and study design</title>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">M</forename><surname>Pullenayegum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">S</forename><surname>Lim</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Statistical Methods in Medical Research</title>
+		<imprint>
+			<biblScope unit="volume">25</biblScope>
+			<biblScope unit="issue">6</biblScope>
+			<biblScope unit="page" from="2992" to="3014" />
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Maximum likelihood estimation for stationary point processes</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">L</forename><surname>Puri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">D</forename><surname>Tuan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the National Academy of Sciences</title>
+		<meeting>the National Academy of Sciences</meeting>
+		<imprint>
+			<date type="published" when="1986">1986</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">A unifying view of sparse approximate gaussian process regression</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Quiñonero Candela</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">E</forename><surname>Rasmussen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">In Journal of Machine Learning Research</title>
+		<imprint>
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Longitudinal variational autoencoder</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ramchandran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Tikhonov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Kujanpää</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Koskinen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Lähdesmäki</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 24th International Conference on Artificial Intelligence and Statistics</title>
+		<meeting>the 24th International Conference on Artificial Intelligence and Statistics</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Stochastic backpropagation and approximate inference in deep generative models</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">J</forename><surname>Rezende</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Mohamed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wierstra</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 31st International Conference on Machine Learning</title>
+		<meeting>the 31st International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Inference and missing data</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">B</forename><surname>Rubin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Biometrika</title>
+		<imprint>
+			<biblScope unit="volume">63</biblScope>
+			<biblScope unit="page" from="581" to="592" />
+			<date type="published" when="1976">1976</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<monogr>
+		<title level="m" type="main">Functional principal component analysis for longitudinal observations with sampling at random</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Sang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Kong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Yang</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Predicting in-hospital mortality of icu patients: The physionet/computing in cardiology challenge</title>
+		<author>
+			<persName><forename type="first">I</forename><surname>Silva</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Moody</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">J</forename><surname>Scott</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">A</forename><surname>Celi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">G</forename><surname>Mark</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Computing in Cardiology</title>
+		<imprint>
+			<date type="published" when="2012">2012. 2012. 2012</date>
+			<publisher>IEEE</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Variational learning of inducing variables in sparse gaussian processes</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Titsias</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 12th International Conference on Artificial Intelligence and Statistics</title>
+		<meeting>the 12th International Conference on Artificial Intelligence and Statistics</meeting>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<monogr>
+		<title level="m" type="main">Bias-correction and test for mark-point dependence with replicated marked point processes</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Guan</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

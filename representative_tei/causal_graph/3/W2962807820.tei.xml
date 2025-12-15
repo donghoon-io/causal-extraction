@@ -1,0 +1,690 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">A causal framework for explaining the predictions of black-box sequence-to-sequence models</title>
+				<funder>
+					<orgName type="full">CONACYT</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author role="corresp">
+							<persName><forename type="first">David</forename><surname>Alvarez-Melis</surname></persName>
+							<email>davidam@csail.mit.edu</email>
+						</author>
+						<author>
+							<persName><roleName>MIT</roleName><forename type="first">Tommi</forename><forename type="middle">S</forename><surname>Jaakkola Csail</surname></persName>
+						</author>
+						<title level="a" type="main">A causal framework for explaining the predictions of black-box sequence-to-sequence models</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-14T18:21+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>We interpret the predictions of any blackbox structured input-structured output model around a specific input-output pair. Our method returns an "explanation" consisting of groups of input-output tokens that are causally related. These dependencies are inferred by querying the black-box model with perturbed inputs, generating a graph over tokens from the responses, and solving a partitioning problem to select the most relevant components. We focus the general approach on sequence-tosequence problems, adopting a variational autoencoder to yield meaningful input perturbations. We test our method across several NLP sequence generation tasks.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Interpretability is often the first casualty when adopting complex predictors. This is particularly true for structured prediction methods at the core of many natural language processing tasks such as machine translation (MT). For example, deep learning models for NLP involve a large number of parameters and complex architectures, making them practically black-box systems. While such systems achieve state-of-the-art results in MT <ref type="bibr" target="#b1">(Bahdanau et al., 2014)</ref>, summarization <ref type="bibr" target="#b20">(Rush et al., 2015)</ref> and speech recognition <ref type="bibr" target="#b6">(Chan et al., 2015)</ref>, they remain largely uninterpretable, although attention mechanisms <ref type="bibr" target="#b1">(Bahdanau et al., 2014)</ref> can shed some light on how they operate.</p><p>Stronger forms of interpretability could offer several advantages, from trust in model predic-tions, error analysis, to model refinement. For example, critical medical decisions are increasingly being assisted by complex predictions that should lend themselves to easy verification by human experts. Without understanding how inputs get mapped to the outputs, it is also challenging to diagnose the source of potential errors. A slightly less obvious application concerns model improvement <ref type="bibr" target="#b19">(Ribeiro et al., 2016)</ref> where interpretability can be used to detect biases in the methods.</p><p>Interpretability has been approached primarily from two main angles: model interpretability, i.e., making the architecture itself interpretable, and prediction interpretability, i.e., explaining particular predictions of the model (cf. <ref type="bibr" target="#b14">(Lei et al., 2016)</ref>). Requiring the model itself to be transparent is often too restrictive and challenging to achieve. Indeed, prediction interpretability can be more easily sought a posteriori for black-box systems including neural networks.</p><p>In this work, we propose a novel approach to prediction interpretability with only oracle access to the model generating the prediction. Following <ref type="bibr" target="#b19">(Ribeiro et al., 2016)</ref>, we turn the local behavior of the model around the given input into an interpretable representation of its operation. In contrast to previous approaches, we consider structured prediction where both inputs and outputs are combinatorial objects, and our explanation consists of a summary of operation rather than a simpler prediction method.</p><p>Our method returns an "explanation" consisting of sets of input and output tokens that are causally related under the black-box model. Causal dependencies arise from analyzing perturbed versions of inputs that are passed through the black-box model. Although such perturbations might be available in limited cases, we generate them automatically. For sentences, we adopt a variational autoencoder to produce semantically related sentence variations. The resulting inferred causal dependencies (interval estimates) form a dense bipartite graph over tokens from which explanations can be derived as robust min-cut k-partitions.</p><p>We demonstrate quantitatively that our method can recover known dependencies. As a starting point, we show that a grapheme-to-phoneme dictionary can be largely recovered if given to the method as a black-box model. We then show that the explanations provided by our method closely resemble the attention scores used by a neural machine translation system. Moreover, we illustrate how our summaries can be used to gain insights and detect biases in translation systems. Our main contributions are:</p><p>• We propose a general framework for explaining structured black-box models</p><p>• For sequential data, we propose a variational autoencoder for controlled generation of input perturbations required for causal analysis</p><p>• We evaluate the explanations produced by our framework on various sequence-tosequence prediction tasks, showing they can recover known associations and provide insights into the workings of complex systems.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Related Work</head><p>There is a wide body of work spanning various fields centered around the notion of "interpretability". This term, however, is underdetermined, so the goals, methods and formalisms of these approaches are often non-overlapping (Lipton, 2016). In the context of machine learning, perhaps the most visible line of work on interpretability focuses on medical applications <ref type="bibr" target="#b5">(Caruana et al., 2015)</ref>, where trust can be a decisive factor on whether a model is used or not. With the ever-growing success and popularity of deep learning methods for image processing, recent work has addressed interpretability in this setting, usually requiring access to the method's activations and gradients <ref type="bibr" target="#b21">(Selvaraju et al., 2016)</ref>, or directly modeling how influence propagates <ref type="bibr" target="#b0">(Bach et al., 2015)</ref>. For a broad overview of interpretability in machine learning, we refer the reader to the recent survey by <ref type="bibr" target="#b8">Doshi-Velez and Kim (2017)</ref>.</p><p>Most similar to this work are the approaches of <ref type="bibr" target="#b14">Lei et al. (2016) and</ref><ref type="bibr" target="#b19">Ribeiro et al. (2016)</ref>. The former proposes a model that justifies its predictions in terms of fragments of the input. This approach formulates explanation generation as part of the learning problem, and, as most previous work, only deals with the case where predictions are scalar or categorical. On the other hand, <ref type="bibr" target="#b19">Ribeiro et al. (2016)</ref> propose a framework for explaining the predictions of black-box classifiers by means of locally-faithful interpretable models. They focus on sparse linear models as explanations, and rely on local perturbations of the instance to explain. Their model assumes the input directly admits a fixed size interpretable representation in euclidean space, so their framework operates directly on this vector-valued representation.</p><p>Our method differs from-and can be thought of as generalizing-these approaches in two fundamental aspects. First, our framework considers both inputs and outputs to be structured objects thus extending beyond the classification setting. This requires rethinking the notion of explanation to adapt it to variable-size combinatorial objects. Second, while our approach shares the locality and model-agnostic view of <ref type="bibr" target="#b19">Ribeiro et al. (2016)</ref>, generating perturbed versions of structured objects is a challenging task by itself. We propose a solution to this problem in the case of sequence-tosequence learning.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Interpreting structured prediction</head><p>Explaining predictions in the structured inputstructured output setting poses various challenges. As opposed to scalar or categorical prediction, structured predictions vary in size and complexity. Thus, one must decide not only how to explain the prediction, but also what parts of it to explain. Intuitively, the "size" of an explanation should grow with the size of the input and output. A good explanation would ideally also decompose into cognitive chunks <ref type="bibr" target="#b8">(Doshi-Velez and Kim, 2017)</ref>: basic units of explanation which are a priori bounded in size. Thus, we seek a framework that naturally decomposes an explanation into (potentially several) explaining components, each of which justifies, from the perspective of the black-box model, parts of the output relative to the parts of the input.</p><p>Formally, suppose we have a black-box model F : X → Y that maps a structured input x ∈ X to a structured output y ∈ Y. We make no assumptions on the spaces X , Y, except that their elements admit a feature-set representation x = {x 1 , x 2 , . . . , x n }, y = {y 1 , y 2 , . . . , y m }. Thus, x and y can be sequences, graphs or images. We refer to the elements x i and y j as units or "tokens" due to our motivating application of sentences, though everything in this work holds for other combinatorial objects.</p><p>For a given input output pair (x, y), we are interested in obtaining an explanation of y in terms of x. Following <ref type="bibr" target="#b19">(Ribeiro et al., 2016)</ref>, we seek explanations via interpretable representations that are both i) locally faithful, in the sense that they approximate how the model behaves in the vicinity of x, and ii) model agnostic, that is, that do not require any knowledge of F . For example, we would like to identify whether token x i is a likely cause for the occurrence of y j in the output when the input context is x. Our assumption is that we can summarize the behavior of F around x in terms of a weighted bipartite graph G = (V x ∪ V y , E), where the nodes V x and V y correspond to the elements in x and y, respectively, and the weight of each edge E ij corresponds to the influence of the occurrence of token x i on the appearance of y j . The bipartite graph representation suggests naturally that the explanation be given in terms of explaining components. We can formalize these components as subgraphs</p><formula xml:id="formula_0">G k = (V k x ∪ V k y , E k )</formula><p>, where the elements in V k</p><p>x are likely causes for the elements in V k y . Thus, we define an explanation of y as a collection of such components:</p><formula xml:id="formula_1">E x→y = {G 1 , . . . , G k }.</formula><p>Our approach formalizes this framework through a pipeline (sketched in Figure <ref type="figure" target="#fig_0">1</ref>) consisting of three main components, described in detail in the following section: a perturbation model for exercising F locally, a causal inference model for inferring associations between inputs and predictions, and a selection step for partitioning and selecting the most relevant sets of associations.</p><p>We refer to this framework as a structured-output causal rationalizer (SOCRAT).</p><p>A note on alignment models When the inputs and outputs are sequences such as sentences, one might envision using an alignment model, such as those used in MT, to provide an explanation. This differs from our approach in several respects. Specifically, we focus on explaining the behavior of the "black box" mapping F only locally, around the current input context, not globally. Any global alignment model would require access to substantial parallel data to train and would have varying coverage of the local context around the specific example of interest. Any global model would likely also suffer from misspecification in relation to F . A more related approach to ours would be an alignment model trained locally based on the same perturbed sentences and associated outputs that we generate.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Building blocks 4.1 Perturbation Model</head><p>The first step in our approach consists of obtaining perturbed versions of the input: semantically similar to the original but with potential changes in elements and their order. This is a major challenge with any structured inputs. We propose to do this using a variational autoencoder (VAE) <ref type="bibr" target="#b11">(Kingma and Welling, 2014;</ref><ref type="bibr" target="#b17">Rezende et al., 2014)</ref>. VAEs have been successfully used with fixed dimensional inputs such as images <ref type="bibr" target="#b18">(Rezende and Mohamed, 2015;</ref><ref type="bibr" target="#b22">Sønderby et al., 2016)</ref> and recently also adapted to generating sentences from continuous representations <ref type="bibr" target="#b3">(Bowman et al., 2016)</ref>. The goal is to introduce the perturbation in the continuous latent representation rather than directly on the structured inputs.</p><p>A VAE is composed of a probabilistic encoder ENC : X → R d and a decoder DEC : R d → X . The encoder defines a distribution over latent codes q(z|x), typically by means of a twostep procedure that first maps x → (µ, σ) and then samples z from a gaussian distribution with these parameters. We can leverage this stochasticity to obtain perturbed versions of the input by sampling repeatedly from this distribution, and then mapping these back to the original space using the decoder. The training regime for the VAE ensures approximately that a small perturbation of the hidden representation maintains similar semantic content while introducing small changes in the decoded surface form. We emphasize that the approach would likely fail with an ordinary autoencoder where small changes in the latent representation can result in large changes in the decoded output. In practice, we ensure diversity of perturbations by scaling the variance term σ and sampling points z and different resolutions. We provide further details of this procedure in the supplement. Naturally, we can train this perturbation model in advance on (unlabeled) data from the input domain X , and then use it as a subroutine in our method. After this process is complete, we have N pairs of perturbed input-output pairs: {(x i , ỹi )} N i=1 which exercise the mapping F around semantically similar inputs.</p><formula xml:id="formula_2">Perturbation Model Causal Inference Explanation Selection (x, y) {(x i , ỹi )} G(U ∪ V, E) {E k x→y } K k=1 z z1 z2 z3 z4 z5 z6 z7 z8 s 1 s 2 s 3 s 4 t 1 t 2 t 3 t 4 t 5 s 1 s 2 t 1 t 2 t 3 s 1 s 2 t 1 t 2</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Causal model</head><p>The second step consists of using the perturbed input-output pairs {(x i , ỹi )} N i=1 to infer causal dependencies between the original input and output tokens. A naive approach would consider 2x2 contingency tables representing presence/absence of input/output tokens together with a test statistic for assessing their dependence. Instead, we incorporate all input tokens simultaneously to predict the occurrence of a single output token via logistic regression. The quality of these dependency estimators will depend on the frequency with which each input and output token occurs in the perturbations. Thus, we are interested in obtaining uncertainty estimates for these predictions, which can be naturally done with a Bayesian approach to logistic regression. Let φ x (x) ∈ {0, 1} |x| be a binary vector encoding the presence of the original tokens x 1 , . . . , x n from x in the perturbed version x. For each target token y j ∈ y, we estimate a model:</p><formula xml:id="formula_3">P (y j ∈ ỹ | x) = σ(θ T j φ x (x))<label>(1)</label></formula><p>where σ(z) = (1 + exp(-z)) -1 . We use a Gaussian approximation for the logarithm of the logistic function together with the prior p(θ) = N (θ 0 , H -1 0 ) <ref type="bibr" target="#b16">(Murphy, 2012)</ref>. Since in our case all tokens are guaranteed to occur at least once (we include the original example pair as part of the set), we use θ 0 = α1, H 0 = βI, with α, β &gt; 0. Upon completion of this step, we have dependency coefficients between all original input and output tokens {θ ij }, along with their uncertainty estimates.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">Explanation Selection</head><p>The last step in our interpretability framework consists of selecting a set explanations for (x, y). The steps so far yield a dense bipartite graph between the input and output tokens. Unless |x| and |y| are small, this graph itself may not be sufficiently interpretable. We are interested in selecting relevant components of this dependency graph, i.e., partition the vertex set of G into disjoint subsets so as to minimize the weight of omitted edges (i.e. the k-cut value of the partition).</p><p>Graph partitioning is a well studied NPcomplete problem <ref type="bibr" target="#b10">(Garey et al., 1976)</ref>. The usual setting assumes deterministic edge weights, but in our case we are interested in incorporating the uncertainty of the dependency estimates-resulting from their finite sample estimation-into the partitioning problem. For this, we rely on the approach of <ref type="bibr" target="#b9">Fan et al. (2012)</ref> designed for interval estimates of edge weights. At a high level, this is a robust optimization formulation which seeks to minimize worst case cut values, and can be cast as a Mixed Integer Programming (MIP) problem. Specifically, for a bipartite graph G = (U, V, E) Algorithm 1 Structured-output causal rationalizer 1: procedure SOCRAT(x, y, F ) 2:</p><p>(µ, σ) ← ENCODE(x) 3:</p><formula xml:id="formula_4">for i = 1 to N do 4: zi ← SAMPLE(µ, σ)          Perturbation Model. 5: xi ← DECODE(zi) 6: ỹi ← F (xi) 7:</formula><p>end for 8:</p><formula xml:id="formula_5">G ← CAUSAL(x, y, {xi, ỹi} N i=1 ) 9:</formula><p>Ex →y ← BIPARTITION(G) 10:</p><p>Ex →y ← SORT(Ex →y ) By cut capacity 11:</p><p>return Ex →y 12: end procedure with edge weights given as uncertainty intervals θ ij ± θij , the partitioning problem is given by min</p><formula xml:id="formula_6">(x u ik ,x v jk ,y ij )∈Y n i=1 m j=1 θ ij y ij + max S:S⊆V,|S|≤Γ (it,jt)∈V \S (i,j)∈S θij y ij + (Γ -Γ ) θit,jt y it,jt<label>(2)</label></formula><p>where x u ik , x v jk are binary variables indicating subset belonging for elements of U and V respectively, y ij are binary auxiliary variables indicating whether i and j are in different partitions, and Y is a set of constraints that ensure the K-partition is valid. Γ is a parameter in [0, |V |] which adjusts the robustness of the partition (the number of deviations from the mean edge values). See the supplement for further explanation of this objective.</p><p>If |x| and |y| are small, the number of clusters K will also be small, so we can simply return all the partitions (i.e. the explanation chunks)</p><formula xml:id="formula_7">E k x→y := (V k x ∪ V k y ).</formula><p>However, when K is large, one might wish to entertain only the κ most relevant explanations. The graph partitioning framework provides us with a natural way to score the importance of each chunk. Intuitively, subgraphs that have few high-valued edges connecting them to other parts of the graph (i.e. low cut-capacity) can be thought of as self-contained explanations, and thus more relevant for interpretability. We can therefore define the importance score an atom as:</p><formula xml:id="formula_8">importance(E k x→y ) := - (i,j)∈X k θ ij (3)</formula><p>where X k is the cut-set implied by E k x→y :</p><formula xml:id="formula_9">X k = {(i, j) ∈ E | i ∈ E k x→y , j ∈ V \ E k x→y }</formula><p>The full interpretability method is succinctly expressed in Algorithm 1.</p><p>5 Experimental Framework</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1">Training and optimization</head><p>For the experiments involving sentence inputs, we train in advance the VAE described in Section 4.1. We use symmetric encoder-decoders consisting of recurrent neural networks with an intermediate variational layer. In our case, however, we use L stacked RNN's on both sides, and a stacked variational layer. Training variational autoencoders for text is notoriously hard. In addition to dropout and KLD annealing <ref type="bibr" target="#b3">(Bowman et al., 2016)</ref>, we found that slowly scaling the variance sampled from the normal distribution from 0 to 1 made training much more stable.</p><p>For the partitioning step we compare the robust formulation described above with two classical approaches to bipartite graph partitioning which do not take uncertainty into account: the coclustering method of <ref type="bibr" target="#b7">Dhillon (2001)</ref> and the biclustering method of <ref type="bibr" target="#b13">Kluger et al. (2003)</ref>. For these two, we use off-the-shelf implementations,<ref type="foot" target="#foot_0">foot_0</ref> while we solve the MIP problem version of (2) with the optimization library gurobi.<ref type="foot" target="#foot_1">foot_1</ref> </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2">Recovering simple mappings</head><p>Before using our interpretability framework in real tasks where quantitative evaluation of explanations is challenging, we test it in a simplified setting where the "black-box" is simple and fully known. A reasonable minimum expectation on our method is that it should be able to infer many of these simple dependencies. For this purpose, we use the CMU Dictionary of word pronunciations,<ref type="foot" target="#foot_2">foot_2</ref> which is based on the ARPAbet symbol set and consists of about 130K word-to-phoneme pairs. Phonemes are expressed as tokens of 1 to 3 characters. An example entry in this dictionary is the pair vowels → V AW1 AH0 L Z. Though the mapping is simple, it is not one-toone (a group of characters can correspond to a single phoneme) nor deterministic (the same character can map to different phonemes depending on the context). Thus, it provides a reasonable testbed for our method. The setting is as follows: given an input-output pair from the cmudict "black-box", we use our method to infer dependencies between characters in the input and phonemes in the output. Since locality in this context is morphological instead of semantic, we produce perturbations selecting n words randomly from the intersection of the cmudict vocabulary and the set of words with edit distance at most 2 from the original word.</p><p>To evaluate the inferred dependencies, we randomly selected 100 key-value pairs from the dictionary and manually labeled them with characterto-phoneme alignments. Even though our framework is not geared to produce pairwise alignments, it should nevertheless be able to recover them to a certain extent. To provide a point of reference, we compare against a (strong) baseline that is tailored to such a task: a state-of-theart unsupervised word alignment method based on Monte Carlo inference <ref type="bibr" target="#b24">(Tiedemann and Östling, 2016)</ref>. The results in Figure <ref type="figure" target="#fig_1">2</ref> show that the version of our method that uses the uncertainty clustering performs remarkably close to the alignment system, with an alignment error rate only ten points above an oracle version of this system that was trained on the full arpabet dictionary (dashed line). The raw and partitioned explanations provided by our method for an example input-output pair are shown in Table <ref type="table">1</ref>, where the edge widths correspond to the estimated strength of dependency. Throughout this work we display the nodes in the same lexical order of the inputs/outputs to facilitate reading, even if that makes the explanation chunks less visibly discernible. Instead, we sometimes provide an additional (sorted) heatplot Table <ref type="table">1</ref>: Inferred dependency graphs before (left) and after (right) explanation selection for the prediction: boolean → B UW0 L IY1 AH0 N, in independent runs with large (top) and small (bottom) clustering parameter k.</p><p>of dependency values to show these partitions.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.3">Machine Translation</head><p>In our second set of experiments we evaluate our explanation model in a relevant and popular sequence-to-sequence task: machine translation. As black-boxes, we use three different methods for translating English into German: (i) Azure's Machine Translation system, (ii) a Neural MT model, and (iii) a human (native speaker of German). We provide details on all three systems in the supplement. We translate the same English sentences with all three methods, and explain their predictions using SOCRAT. To be able to generate sentences with similar language and structure as those used to train the two automatic systems, we use the monolingual English side of the WMT14 dataset to train the variational autoencoder described in Section 4.1. For every explanation instance, we sample S = 100 perturbations and use the blackboxes to translate them. In all cases, we use the same default SOCRAT configurations, including the robust partitioning method.</p><p>In Figure <ref type="figure" target="#fig_3">3</ref>, we show the explanations provided by our method for the predictions of each of the three systems on the input sentence "Students said they looked forward to his class". Although the three black-boxes all provided different translations, the explanations show a mostly consistent clustering around the two phrases in the sentence, and in all three cases the cluster with the highest cut value (i.e. the most relevant explanative chunk) is the one containing the subject. Interestingly, the dependency coefficients are overall higher for the human than for the other systems, suggesting more coherence in the translations (potentially because the human translated sentences in context, while the two automatic systems carry over no information from one example to the next).</p><p>The NMT system, as opposed to the other two, is not truly a black-box. We can open the box to get a glimpse on the true dependencies on the inputs used by the system at prediction time (the attention weights) and compare them to the explanation graph. The attention matrix, however, is dense and not normalized over target tokens, so it is not directly comparable to our dependency scores. Nevertheless, we can partition it with the coclustering method described in Section 4.3 to enforce group structure and make it easier to compare. Figure <ref type="figure" target="#fig_4">4</ref> shows the attention matrix and the explanation for an example sentence of the test set. Their overall cluster structure agrees, though our method shows conservatism with respect to the dependencies of the function words (to, for). Interestingly, our method is able to figure out that the &lt;unk&gt; token was likely produced by the word "appeals", as shown by the explanation graph.</p><p>It must be emphasized that although we dis- play attention scores in various experiments in this work, we do so only for qualitative evaluation purposes. Our model-agnostic framework can be used on top of models that do not use attention mechanisms or for which this information is hard to extract. Even in cases where it is available, the explanation provided by SOCRAT might be complementary or even preferable to attention scores because: (a) being normalized on both directions (as opposed to only over source tokens) and partitioned, it is often more interpretable than a dense attention matrix, and (b) it can be retrieved chunkby-chunk in decreasing order of relevance, which is especially important when explaining large inputs and/or outputs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.4">A (mediocre) dialogue system</head><p>So far we have used our method to explain (mostly) correct predictions of meaningful models. But we can use it to gain insights into the workings of flawed black-box systems too. To test this, we train a simple dialogue system on the OpenSubtitle corpus <ref type="bibr" target="#b23">(Tiedemann, 2009)</ref>, consisting of ∼14M two-step movie dialogues. As before, we use a sequence-to-sequence model with attention, but now we constrain the quality of the model, using only two layers, hidden state dimension of 1000 and no hyper-parameter tuning.    <ref type="table" target="#tab_1">2</ref>.</p><p>Although most of the predictions of this model are short and repetitive (Yes/No/&lt;unk&gt; answers), some of them are seemingly meaningful, and might-if observed in isolation-lead one to believe the system is much better than it actually is. For example, the predictions in Table <ref type="table" target="#tab_1">2</ref> suggest a complex use of the input to generate the output.</p><p>To better understand this model, we rationalize its predictions using SOCRAT. The explanation graph for one such "good" prediction, shown in Figure <ref type="figure" target="#fig_5">5</ref>, suggests that there is little influence of anything except the tokens What and you on the output. Thus, our method suggests that this model is using only partial information of the input and has probably memorized the connection between question words and responses. This is confirmed upon inspecting the model's attention scores for this prediction (same figure, right pane).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.5">Bias detection in parallel corpora</head><p>Natural language processing methods that derive semantics from large corpora have been shown to incorporate biases present in the data, such as archaic stereotypes of male/female occupations <ref type="bibr" target="#b4">(Caliskan et al., 2017)</ref> and sexist adjective associations <ref type="bibr" target="#b2">(Bolukbasi et al., 2016)</ref>. Thus, there is interest in methods that can detect and address those biases. For our last set of experiments, we use our approach to diagnose and explain biased translations of MT systems, first on a simplistic but verifiable synthetic setting, where we inject We simulate a biased corpus as follows. Starting from the WMT14 English-French dataset, we identify French sentences written in the informal register (e.g. containing the singular second person tu) and prepend their English translation with the word However. We obtain about 6K examples this way, after which we add an additional 1M examples that do not contain the word however on the English side. The purpose of this is to attempt to induce a (false) association between this adverb and the informal register in French. We then train a sequence-to-sequence model on this polluted data, and we use it to translate adversariallychosen sentences containing the contaminating token. For example, given the input sentence "However, you might think this is good", the method predicts the translation "Tu peux penser qu ' il est bon que tu &lt;unk&gt;", which, albeit far from perfect, seems reasonable. However, using SOCRAT to explain this prediction (cf. Figure <ref type="figure">6</ref>) raises a red flag: there is an inexplicable strong dependency between the function word however and tokens in the output associated with the informal register (tu, peux), and a lack of dependency between the second tu and the source-side pronoun you. The model's attention for this prediction (shown in Figure <ref type="figure">7</ref>, left) confirms that it has picked up this spurious association. Indeed, translating the English sentence now without the prepended adverb results in a switch to the formal register, as shown in the second plot in Figure <ref type="figure">7</ref>.</p><p>Although somewhat contrived, this synthetic setting works as a litmus test to show that our method is able to detect known artificial biases from a model's predictions. We now move to a real setting, where we investigate biases in the predictions of an industrial-quality translation system. We use Azure's MT service to translate into French various simple sentences that lack gender specification in English, but which require genderdeclined words in the output. We choose sentences containing occupations and adjectives previously shown to exhibit gender biases in linguistic corpora <ref type="bibr" target="#b2">(Bolukbasi et al., 2016)</ref>. After observing the choice of gender in the translation, we use SO-CRAT to explain the output.</p><p>In line with previous results, we observe that this translation model exhibits a concerning preference for the masculine grammatical gender in sentences containing occupations such as doctor, professor or adjectives such as smart, talented, while choosing the feminine gender for charming, compassionate subjects who are dancers or nurses. The explanation graphs for two such examples, shown in Figure <ref type="figure" target="#fig_7">8</ref> (left and center), suggest strong associations between the genderneutral but stereotype-prone source tokens (nurse, doctor, charming) and the gender-carrying target tokens (i.e. the feminine-declined cette, danseuse, charmante in the first sentence and the masculine ce, médecin, talenteux in the second). While it is not unusual to observe interactions between multiple source and target tokens, the strength of dependence in some of these pairs (charm-ing→danseuse, doctor→ce) is unexplained from a grammatical point of view. For comparison, the third example-a sentence in the plural form that does not involve choice of grammatical gender in French-shows comparatively much weaker associations across words in different parts of the sentence.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Discussion</head><p>Our model-agnostic framework for prediction interpretability with structured data can produce reasonable, coherent, and often insightful explanations. The results on the machine translation task demonstrate how such a method yields a partial view into the inner workings of a black-box system. Lastly, the results of the last two experiments also suggest potential for improving existing systems, by questioning seemingly correct predictions and explaining those that are not.</p><p>The method admits several possible modifications. Although we focused on sequence-tosequence tasks, SOCRAT generalizes to other settings where inputs and outputs can be expressed as sets of features. An interesting application would be to infer dependencies between textual and image features in image-to-text prediction (e.g. image captioning). Also, we used a VAE-based sampling for object perturbations but other approaches are possible depending on the nature of the domain or data.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: A schematic representation of the proposed prediction interpretability method.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: Arpabet test results as a function of number of perturbations used. Shown are mean plus confidence bounds over 5 repetitions. Left: Alignment Error Rate, Right: F1 over edge prediction.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: Explanations for the predictions of three Black-Box translators: Azure (top), NMT (middle) and human (bottom). Note that the rows and columns of the heatmaps are permuted to show explanation chunks (clusters).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 4 :</head><label>4</label><figDesc>Figure 4: Top: Original and clustered attention matrix of the NMT system for a given translation. Bottom: Dependency estimates and explanation graph generated by SOCRAT with with S = 100.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Figure 5 :</head><label>5</label><figDesc>Figure 5: Explanation with S = 50 (left) and attention (right) for the first prediction in Table2.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>Figure 6 :Figure 7 :</head><label>67</label><figDesc>Figure 6: Explanation with S = 50 for the prediction of the biased translator.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head>Figure 8 :</head><label>8</label><figDesc>Figure8: Explanations for biased translations of similar gender-neutral English sentences into French generated with Azure's MT service. The first two require gender declination in the target (French) language, while the third one, in plural, does not. The dependencies in the first two shed light on the cause of the biased selection of gender in the output sentence.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 2 :</head><label>2</label><figDesc>"Good" dialogue system predictions.</figDesc><table><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>What</cell><cell></cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>do</cell><cell></cell><cell>0.75</cell></row><row><cell></cell><cell></cell><cell>I</cell><cell>don't</cell><cell cols="2">know.</cell><cell>you mean</cell><cell></cell><cell>0.60</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>it</cell><cell></cell><cell>0.45</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>doesn</cell><cell></cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>'</cell><cell></cell><cell>0.30</cell></row><row><cell>What</cell><cell>do</cell><cell>you</cell><cell>mean</cell><cell>it</cell><cell>doesn't matter?</cell><cell>t matter</cell><cell></cell><cell>0.15</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>?</cell><cell></cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>I</cell><cell>don't</cell><cell>know.</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>http://scikit-learn.org/stable/modules/biclustering.html</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_1"><p>http://www.gurobi.com/</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="3" xml:id="foot_2"><p>www.speech.cs.cmu.edu/cgi-bin/cmudict</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>Acknowledgments</head><p>We thank the anonymous reviewers for their helpful suggestions regarding presentation and additional experiments, and <rs type="person">Dr. Chantal Melis</rs> for valuable feedback. DAM gratefully acknowledges support from a <rs type="funder">CONACYT</rs> fellowship and the <rs type="institution">MIT-QCRI collaboration</rs>.</p></div>
+			</div>
+			<listOrg type="funding">
+			</listOrg>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">On Pixel-Wise Explanations for Non-Linear Classifier Decisions by Layer-Wise Relevance Propagation</title>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Bach</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexander</forename><surname>Binder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Grégoire</forename><surname>Montavon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Frederick</forename><surname>Klauschen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Klaus-Robert</forename><surname>Müller</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wojciech</forename><surname>Samek</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">PLoS One</title>
+		<imprint>
+			<biblScope unit="volume">10</biblScope>
+			<biblScope unit="issue">7</biblScope>
+			<biblScope unit="page" from="1" to="46" />
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<title level="m" type="main">Neural Machine Translation By Jointly Learning To Align and Translate</title>
+		<author>
+			<persName><forename type="first">Dzmitry</forename><surname>Bahdanau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kyunghyun</forename><surname>Cho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2014">2014. 2015</date>
+			<biblScope unit="page" from="1" to="15" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Man is to Computer Programmer as Woman is to Homemaker? Debiasing Word Embeddings</title>
+		<author>
+			<persName><forename type="first">Tolga</forename><surname>Bolukbasi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kai-Wei</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><surname>Zou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Venkatesh</forename><surname>Saligrama</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Kalai</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">NIPS</title>
+		<imprint>
+			<biblScope unit="page" from="4349" to="4357" />
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title/>
+		<author>
+			<persName><forename type="first">R</forename><surname>Samuel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luke</forename><surname>Bowman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oriol</forename><surname>Vilnis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><forename type="middle">M</forename><surname>Vinyals</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rafal</forename><surname>Dai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Samy</forename><surname>Jozefowicz</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Bengio</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Generating Sentences from a Continuous Space. Iclr</title>
+		<imprint>
+			<biblScope unit="page" from="1" to="13" />
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Semantics derived automatically from language corpora contain human-like biases</title>
+		<author>
+			<persName><forename type="first">Aylin</forename><surname>Caliskan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joanna</forename><forename type="middle">J</forename><surname>Bryson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arvind</forename><surname>Narayanan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Science</title>
+		<imprint>
+			<biblScope unit="volume">356</biblScope>
+			<biblScope unit="issue">6334</biblScope>
+			<biblScope unit="page" from="183" to="186" />
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Intelligible Models for HealthCare : Predicting Pneumonia Risk and Hospital 30-day Readmission</title>
+		<author>
+			<persName><forename type="first">Rich</forename><surname>Caruana</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yin</forename><surname>Lou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Johannes</forename><surname>Gehrke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Paul</forename><surname>Koch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marc</forename><surname>Sturm</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noemie</forename><surname>Elhadad</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. 21th ACM SIGKDD Int. Conf. Knowl. Discov. Data Min. -KDD &apos;15</title>
+		<meeting>21th ACM SIGKDD Int. Conf. Knowl. Discov. Data Min. -KDD &apos;15</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="1721" to="1730" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<monogr>
+		<author>
+			<persName><forename type="first">William</forename><surname>Chan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Navdeep</forename><surname>Jaitly</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Quoc</forename><forename type="middle">V</forename><surname>Le</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oriol</forename><surname>Vinyals</surname></persName>
+		</author>
+		<title level="m">Listen, attend and spell. arXiv Prepr</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="1" to="16" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Co-clustering documents and words using Bipartite spectral graph partitioning</title>
+		<author>
+			<persName><forename type="first">Inderjit</forename><forename type="middle">S</forename><surname>Dhillon</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc 7th ACM SIGKDD Conf</title>
+		<meeting>7th ACM SIGKDD Conf</meeting>
+		<imprint>
+			<date type="published" when="2001">2001</date>
+			<biblScope unit="page" from="269" to="274" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<monogr>
+		<title level="m" type="main">A Roadmap for a Rigorous Science of Interpretability</title>
+		<author>
+			<persName><forename type="first">Finale</forename><surname>Doshi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">-</forename><surname>Velez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Been</forename><surname>Kim</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="1" to="12" />
+		</imprint>
+	</monogr>
+	<note>ArXiv eprints</note>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Robust optimization of graph partitioning involving interval uncertainty</title>
+		<author>
+			<persName><forename type="first">Neng</forename><surname>Fan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Qipeng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Panos</forename><forename type="middle">M</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Pardalos</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">In Theor. Comput. Sci</title>
+		<imprint>
+			<biblScope unit="volume">447</biblScope>
+			<biblScope unit="page" from="53" to="61" />
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Some simplified NP-complete graph problems</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">R</forename><surname>Garey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">S</forename><surname>Johnson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Stockmeyer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Theor. Comput. Sci</title>
+		<imprint>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="237" to="267" />
+			<date type="published" when="1976">1976</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Auto-Encoding Variational Bayes</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Diederik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Iclr</title>
+		<imprint>
+			<biblScope unit="page" from="1" to="14" />
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<monogr>
+		<author>
+			<persName><forename type="first">G</forename><surname>Klein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Senellert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">M</forename><surname>Rush</surname></persName>
+		</author>
+		<title level="m">OpenNMT: Open-Source Toolkit for Neural Machine Translation</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note>ArXiv e-prints</note>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<monogr>
+		<author>
+			<persName><forename type="first">Yuval</forename><surname>Kluger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ronen</forename><surname>Basri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joseph</forename><forename type="middle">T</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mark</forename><surname>Gerstein</surname></persName>
+		</author>
+		<title level="m">Spectral biclustering of microarray data: Coclustering genes and conditions</title>
+		<imprint>
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Rationalizing Neural Predictions</title>
+		<author>
+			<persName><forename type="first">Tao</forename><surname>Lei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Regina</forename><surname>Barzilay</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tommi</forename><surname>Jaakkola</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">EMNLP 2016, Proc. 2016 Conf. Empir</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="107" to="117" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<author>
+			<persName><surname>Zachary C Lipton</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">The Mythos of Model Interpretability. ICML Work</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<monogr>
+		<author>
+			<persName><forename type="first">Kevin</forename><forename type="middle">P</forename><surname>Murphy</surname></persName>
+		</author>
+		<title level="m">Machine Learning: A Probabilistic Perspective</title>
+		<imprint>
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Stochastic backpropagation and approximate inference in deep generative models</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>D J Rezende</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Mohamed</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Wierstra</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. 31st</title>
+		<meeting>31st</meeting>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="volume">32</biblScope>
+			<biblScope unit="page" from="1278" to="1286" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Variational Inference with Normalizing Flows</title>
+		<author>
+			<persName><forename type="first">Danilo</forename><surname>Jimenez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rezende</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shakir</forename><surname>Mohamed</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. 32nd Int. Conf. Mach. Learn</title>
+		<meeting>32nd Int. Conf. Mach. Learn</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="volume">37</biblScope>
+			<biblScope unit="page" from="1530" to="1538" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Why Should I Trust You?&quot;: Explaining the Predictions of Any Classifier</title>
+		<author>
+			<persName><forename type="first">Marco</forename><surname>Tulio Ribeiro</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sameer</forename><surname>Singh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Carlos</forename><surname>Guestrin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. 22Nd ACM SIGKDD Int. Conf. Knowl. Discov. Data Min., KDD &apos;16</title>
+		<meeting>22Nd ACM SIGKDD Int. Conf. Knowl. Discov. Data Min., KDD &apos;16<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="1135" to="1144" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">A Neural Attention Model for Abstractive Sentence Summarization</title>
+		<author>
+			<persName><forename type="first">Sumit</forename><surname>Alexander M Rush</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Chopra</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Weston</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. Conf. Empir. Methods Nat</title>
+		<meeting>Conf. Empir. Methods Nat</meeting>
+		<imprint>
+			<date type="published" when="2015-09">2015. September</date>
+			<biblScope unit="page" from="379" to="389" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<monogr>
+		<title level="m" type="main">Grad-CAM: Why did you say that? Visual Explanations from Deep Networks via Gradient-based Localization</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Ramprasaath</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abhishek</forename><surname>Selvaraju</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ramakrishna</forename><surname>Das</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Vedantam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Devi</forename><surname>Cogswell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dhruv</forename><surname>Parikh</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Batra</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="1" to="5" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Ladder Variational Autoencoders</title>
+		<author>
+			<persName><forename type="first">Tapani</forename><surname>Casper Kaae Sønderby</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lars</forename><surname>Raiko</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Søren</forename><surname>Maaløe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ole</forename><surname>Kaae Sønderby</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Winther</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">NIPS</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">News from OPUS -A Collection of Multilingual Parallel Corpora with Tools and Interfaces</title>
+		<author>
+			<persName><forename type="first">Jörg</forename><surname>Tiedemann</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Recent Adv. Nat. Lang. Process</title>
+		<editor>
+			<persName><forename type="first">N</forename><surname>Nicolov</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">G</forename><surname>Bontcheva</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">G</forename><surname>Angelova</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">R</forename><surname>Mitkov</surname></persName>
+		</editor>
+		<imprint>
+			<biblScope unit="page" from="237" to="248" />
+			<date type="published" when="2009">2009</date>
+			<publisher>John Benjamins</publisher>
+			<pubPlace>Amsterdam/Philadelphia</pubPlace>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Efficient Word Alignment with Markov Chain Monte Carlo</title>
+		<author>
+			<persName><forename type="first">Jörg</forename><surname>Tiedemann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Robert</forename><surname>Östling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Prague Bull. Math. Linguist</title>
+		<imprint>
+			<biblScope unit="issue">106</biblScope>
+			<biblScope unit="page" from="125" to="146" />
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

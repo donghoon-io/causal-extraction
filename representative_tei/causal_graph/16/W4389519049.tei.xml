@@ -1,0 +1,1490 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">AMR Parsing with Causal Hierarchical Attention and Pointers</title>
+				<funder ref="#_WCeMgdc">
+					<orgName type="full">National Natural Science Foundation of China</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author role="corresp">
+							<persName><forename type="first">Chao</forename><surname>Lou</surname></persName>
+							<email>louchao@shanghaitech.edu.cn</email>
+							<affiliation key="aff0">
+								<orgName type="department" key="dep1">School of Information Science and Technology</orgName>
+								<orgName type="department" key="dep2">ShanghaiTech University Shanghai Engineering Research Center of Intelligent Vision and Imaging</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Kewei</forename><surname>Tu</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department" key="dep1">School of Information Science and Technology</orgName>
+								<orgName type="department" key="dep2">ShanghaiTech University Shanghai Engineering Research Center of Intelligent Vision and Imaging</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">AMR Parsing with Causal Hierarchical Attention and Pointers</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-21T20:21+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Translation-based AMR parsers have recently gained popularity due to their simplicity and effectiveness. They predict linearized graphs as free texts, avoiding explicit structure modeling. However, this simplicity neglects structural locality in AMR graphs and introduces unnecessary tokens to represent coreferences. In this paper, we introduce new target forms of AMR parsing and a novel model, CHAP, which is equipped with causal hierarchical attention and the pointer mechanism, enabling the integration of structures into the Transformer decoder. We empirically explore various alternative modeling options. Experiments show that our model outperforms baseline models on four out of five benchmarks in the setting of no additional data.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Abstract Meaning Representation <ref type="bibr" target="#b3">(Banarescu et al., 2013)</ref> is a semantic representation of natural language sentences typically depicted as directed acyclic graphs, as illustrated in Fig. <ref type="figure">1a</ref>. This representation is both readable and broad-coverage, attracting considerable research attention across various domains, including information extraction <ref type="bibr" target="#b43">(Zhang and Ji, 2021;</ref><ref type="bibr" target="#b40">Xu et al., 2022)</ref>, summarization <ref type="bibr" target="#b14">(Hardy and Vlachos, 2018;</ref><ref type="bibr" target="#b23">Liao et al., 2018)</ref>, and vision-language understanding <ref type="bibr" target="#b31">(Schuster et al., 2015;</ref><ref type="bibr" target="#b9">Choi et al., 2022)</ref>. However, the inherent flexibility of graph structures makes AMR parsing , i.e., translating natural language sentences into AMR graphs, a challenging task.</p><p>The development of AMR parsers has been boosted by recent research on pretrained sequenceto-sequence (seq2seq) models. Several studies, categorized as translation-based models, show that fine-tuning pretrained seq2seq models to predict linearized graphs as if they are free texts (e.g., examples in Tab.1.ab) can achieve competitive or even superior performance <ref type="bibr" target="#b19">(Konstas et al., 2017;</ref><ref type="bibr" target="#b39">Xu et al., 2020;</ref><ref type="bibr">Bevilacqua et al., 2021;</ref><ref type="bibr" target="#b20">Lee et al., 2023)</ref>. This finding has spurred a wave of subsequent efforts to design more effective training strategies that maximize the potential of pretrained decoders <ref type="bibr" target="#b1">(Bai et al., 2022;</ref><ref type="bibr" target="#b8">Cheng et al., 2022;</ref><ref type="bibr" target="#b36">Wang et al., 2022;</ref><ref type="bibr" target="#b42">Chen et al., 2022)</ref>, thereby sidelining the exploration of more suitable decoders for graph generation. Contrary to preceding translation-based models, we contend that explicit structure modeling within pretrained decoders remains beneficial in AMR parsing. To our knowledge, the Ancestor parser <ref type="bibr" target="#b42">(Yu and Gildea, 2022)</ref> is the only translation-based model contributing to explicit structure modeling, which introduces shortcuts to access ancestors in the graph. However, AMR graphs contain more information than just ancestors, such as siblings and coreferences, resulting in suboptimal modeling.</p><p>In this paper, we propose CHAP, a novel translation-based AMR parser distinguished by three innovations. Firstly, we introduce new target forms of AMR parsing. As demonstrated in Tab. 1.c-e, we use multiple layers to capture different semantics, such that each layer is simple and concise. Particularly, the base layer, which encapsulates all meanings except for coreferences (or reentrancies), is a tree-structured representation, enabling more convenient structure modeling than the graph structure of AMR. Meanwhile, coreferences are presented through pointers, circumventing several shortcomings associated with the variablebased coreference representation <ref type="bibr">(See Sec. 3</ref> for more details) used in all previous translation-based models. Secondly, we propose Causal Hierarchical Attention (CHA), the core mechanism of our incremental structure modeling, inspired by Transformer Grammars <ref type="bibr" target="#b30">(Sartran et al., 2022)</ref>. CHA describes a procedure of continuously composing child nodes to their parent nodes and encoding new nodes with all uncomposed nodes, as illustrated in Fig. <ref type="figure" target="#fig_2">2</ref>. Un-   <ref type="formula">c</ref>) is for ⇓single(c) (Fig. <ref type="figure" target="#fig_4">3c</ref>). ( <ref type="formula">d</ref>) is for ⇓double(c) (Fig. <ref type="figure" target="#fig_4">3b</ref>). (e) is for ⇑ (Fig. <ref type="figure" target="#fig_4">3d</ref>). Red pointers , which represent coreferences, constitute the coref layer. Blue pointers , which point to the left boundaries of subtrees, constitute the auxiliary structure layer. Texts, which encapsulate all other meanings, constitute the base layer.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Property</head><p>Translation-based Transition-based Factor.-based Ours like the causal attention in translation-based models, which allows a token to interact with all its preceding tokens, CHA incorporates a strong inductive bias of recursion, composition, and graph topology. Thirdly, deriving from transition-based AMR parsers <ref type="bibr">(Zhou et al., 2021a,b)</ref>, we introduce a pointer encoder for encoding histories and a pointer net for predicting coreferences, which is proven to be an effective solution for generalizing to a variable-size output space <ref type="bibr" target="#b35">(Vinyals et al., 2015;</ref><ref type="bibr" target="#b32">See et al., 2017)</ref>. We propose various alternative modeling options of CHA and strategies for integrating CHA with existing pretrained seq2seq models and investigate them via extensive experiments. Ultimately, our model CHAP achieves superior performance on two in-distribution and three out-ofdistribution benchmarks. Our code is available at <ref type="url" target="https://github.com/LouChao98/chap_amr_parser">https://github.com/LouChao98/chap_amr_parser</ref>.</p><formula xml:id="formula_0">Trainability ✓ require alignments ✓ ✓ Structure modeling ✗ ✗ ✓ ✓ Pretrained decoder ✓ ✓ ✗ ✓ Variable-free ✗ ✓ ✓ ✓</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Related Work</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.1">AMR Parsing</head><p>Most recent AMR parsing models generate AMR graphs via a series of local decisions. Transitionbased models <ref type="bibr" target="#b2">(Ballesteros and Al-Onaizan, 2017;</ref><ref type="bibr" target="#b26">Naseem et al., 2019;</ref><ref type="bibr" target="#b13">Fernandez Astudillo et al., 2020;</ref><ref type="bibr">Zhou et al., 2021a,b)</ref> and translation-based models <ref type="bibr" target="#b19">(Konstas et al., 2017;</ref><ref type="bibr" target="#b39">Xu et al., 2020;</ref><ref type="bibr">Bevilacqua et al., 2021;</ref><ref type="bibr" target="#b20">Lee et al., 2023)</ref> epitomize local models as they are trained with teacher forcing, optimizing only next-step predictions, and rely on greedy decoding algorithms, such as greedy search and beam search. Particularly, transitionbased models predict actions permitted by a transition system, while translation-based models predict AMR graph tokens as free texts. Some factorization-based models are also local <ref type="bibr">(Cai and</ref><ref type="bibr">Lam, 2019, 2020)</ref>, sequentially composing subgraphs into bigger ones. We discern differences in four properties among previous local models and our model in Tab. 2:</p><p>Trainability Whether additional information is required for training. Transition-based models rely on word-node alignment to define the gold action sequence.</p><p>Structure modeling Whether structures are modeled explicitly in the decoder. Transition-based models encode action histories like texts without considering graph structures. Besides, translationbased models opt for compatibility with pretrained decoders, prioritizing this over explicit structure  modeling.</p><p>Pretrained decoder Whether pretrained decoders can be leveraged.</p><p>Variable-free Whether there are variable tokens in the target representation. Transition-based models, factorization-based models and ours generate coreference pointers, obviating the need of introducing variables.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.2">Transformer Grammar</head><p>Transformer Grammars (TGs; <ref type="bibr" target="#b30">Sartran et al., 2022)</ref> are a novel class of language models that simultaneously generate sentences and constituency parse trees, in the fashion of transition-based parsing.</p><p>The base layer of Tab. 1.c can be viewed as an example action sequence. There are three types of actions in TG: (1) the token "(" represents the action ONT, opening a nonterminal; (2) the token ")" represents the action CNT, closing the nearest open nonterminal; and (3) all other tokens (e.g., a and :arg0) represent the action T, generating a terminal. TG carries out top-down generation, where a nonterminal is allocated before its children. We will also explore a bottom-up variant in Sec. 3.4.</p><p>Several studies have already attempted to generate syntax-augmented sequences <ref type="bibr" target="#b0">(Aharoni and Goldberg, 2017;</ref><ref type="bibr" target="#b29">Qian et al., 2021)</ref>. However, TG differentiates itself from prior research through its unique simulation of stack operations in transition-based parsing, which is implemented by enforcing a specific instance of CHA. A TG-like CHA is referred to as ⇓double in this paper and we will present technical details in Sec. 3.3 along with other variants.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Structure Modeling</head><p>We primarily highlight two advantages of incorporating structured modeling into the decoder. Firstly, the sequential order and adjacence of previous linearized form mismatch the locality of real graph structures, making the Transformer decoder hard to understand graph data. Specifically, adjacent nodes in an AMR graph exhibit strong semantic relationships, but they could be distant in the linearized form (e.g., person and tour-01 in Fig. <ref type="figure">1a</ref>).</p><p>Conversely, tokens closely positioned in the linearized form may be far apart in the AMR graph (e.g., employ-01 and tour-01 in Fig. <ref type="figure">1a</ref>). Secondly, previous models embed variables into the linearized form (e.g., b in Tab. 1.a and &lt;R1&gt; in Tab. 1.b) and represent coreferences (or reentrancies) by reusing the same variables. However, the literal value of variables is inconsequential. For example, in the PENMAN form, (a / alpha :arg0 (b / beta)) conveys the same meaning as (n1 / alpha :arg0 (n2 / beta)). Furthermore, the usage of variables brings up problems regarding generalization <ref type="bibr" target="#b37">(Wong and Mooney, 2007;</ref><ref type="bibr" target="#b28">Poelman et al., 2022)</ref>. For instance, in the SPRING DFS form, &lt;R0&gt; invariably comes first and appears in all training samples, while &lt;R100&gt; is considerably less frequent.  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Multi-layer Target Form</head><p>As shown in Tab. 1.c, we incorporate a new layer, named the coreference (coref) layer, on top of the conventional one produced by a DFS linearization, named the base layer 1 . The coref layer serves to represent coreferences, in which a pointer points from a mention to its nearest preceding mention, and the base layer encapsulates all other meanings. From a graph perspective, a referent is replicated to new nodes with an amount equal to the reference count that are linked by newly introduced coref pointers, as illustrated in Fig. <ref type="figure">1b</ref>. We argue that our forms are more promising because our forms can avoid meaningless tokens (i.e., variables) from cluttering up the base layer, yielding several beneficial byproducts: (1) it shortens the representation length;</p><p>(2) it aligns the representation more closely with natural language; and (3) it allows the base layer to be interpreted as trees, a vital characteristic for our structure modeling. Tab. 1.d and e are two variants of Tab. 1.c. These three forms are designed to support different variants of CHA, which will be introduced in Sec. 3.3 1 We use the DFS order provided in the AMR datasets. and 3.4.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Causal Hierarchical Attention</head><p>Causal Hierarchical Attention (CHA) is situated in the decoder and maintains structures during generation. For each token, CHA performs one of the two actions, namely compose and expand, as demonstrated in Fig. <ref type="figure" target="#fig_2">2</ref>. The compose operation is performed once all children of a parent node have been generated. It aggregates these children to obtain a comprehensive representation of the subtree under the parent node, subsequently setting the children invisible in future attention. On the other hand, the expand operation aggregates all visible tokens to derive the representation of the subsequent token.</p><p>We note the subtle distinction between the term parent in the DAG representation (e.g., Fig. <ref type="figure">1a</ref>) and in target forms (e.g., Tab. 1 and Fig. <ref type="figure" target="#fig_4">3a</ref>). Recall that TG uses "(" (ONT) to indicate a new nonterminal, which is the parent node of all following tokens before a matched ")" (CNT). This implies that alpha in Tab. 1.c is considered as a child node, being a sibling of :arg0, rather than a parent node governing them. This discrepancy does not impact our modeling because we can treat labels of nonterminals as a particular type of child nodes, which are absorbed into the parent node when drawing the DAG representation. The tree of target forms are illustrated in Appx. A.1.</p><p>The two actions can be implemented by modifying attention masks conveniently. Specially, the compose operation masks out attention to tokens that are not destined to be composed, as depicted in the fourth row of Fig. <ref type="figure" target="#fig_4">3c</ref>. Moreover, the expand operation masks out attention to tokens that have been composed in previous steps, as depicted in the top three rows and the fifth row of Fig. <ref type="figure" target="#fig_4">3c</ref>.</p><p>In subsequent sections, we will explore two classes of generation procedures that utilize different target forms and variants of CHA, akin to top-down <ref type="bibr" target="#b12">(Dyer et al., 2016;</ref><ref type="bibr" target="#b27">Nguyen et al., 2021;</ref><ref type="bibr" target="#b30">Sartran et al., 2022)</ref> and bottom-up <ref type="bibr" target="#b41">(Yang and Tu, 2022)</ref> parsing.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3">Top-down generation</head><p>Most prior studies utilize paired brackets to denote nested structures, as shown in Tab. 1.a-d. Section 2.2 outlines that, in left-to-right decoding, due to the prefix "(", this type of representation results in top-down tree generation.</p><p>We consider two modeling options of top-down generation, ⇓single (Fig. <ref type="figure" target="#fig_4">3c</ref> and ⇓double (Fig. <ref type="figure" target="#fig_4">3b</ref>), varying on actions triggered by ")". More precisely, upon seeing a ")", ⇓single executes a compose, whereas ⇓double executes an additional expand after the compose. For other tokens, both ⇓single and ⇓double execute an expand operation. Because the decoder performs one attention for each token, in ⇓double, each ")" is duplicated to represent compose and expand respectively, i.e., ")" becomes ") 1 ) 2 ". We detail the procedure of generating M CHA for ⇓single in Alg. 1. The procedure for ⇓double can be found in <ref type="bibr">Sartran et al.'s (2022)</ref> Alg. 1.</p><p>The motivation for the two variants is as follows. In a strict leaf-to-root information aggregation procedure, which is adopted in many studies on tree encoding <ref type="bibr" target="#b33">(Tai et al., 2015;</ref><ref type="bibr" target="#b11">Drozdov et al., 2019;</ref><ref type="bibr" target="#b16">Hu et al., 2021;</ref><ref type="bibr" target="#b44">Zhou et al., 2022)</ref>, a parent node only aggregates information from its children, remaining unaware of other generated structures (e.g., beta is unaware of alpha in Fig. <ref type="figure" target="#fig_2">2b</ref>). However, when new nodes are being expanded, utilizing all available information could be a more reasonable approach (e.g., gamma in Fig. <ref type="figure" target="#fig_2">2c</ref>). Thus, an expand process is introduced to handle this task. The situation with CHA becomes more flexible. Recall that all child nodes are encoded with the expand action, which aggregates information from all visible nodes, such that information of non-child nodes is leaked to the parent node during composition. ⇓single relies on the neural network's capability to encode all necessary information through this leakage, while ⇓double employs an explicit expand to allow models to directly revisit their histories.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.4">Bottom-up generation</head><p>In the bottom-up generation, the parent node is allocated after all child nodes have been generated. This process enables the model to review all yet-tobe-composed tokens before deciding which ones should be composed into a subtree, in contrast to the top-down generation, where the model is required to predict the existence of a parent node without seeing its children. The corresponding target form, as illustrated in Tab. 1.e, contains no brackets. Instead, a special token ■ is placed after the rightmost child node of each parent node, with a pointer pointing to the leftmost child node. We execute the compose operation for ■ and the expand operation for other tokens. The generation of the attention mask (Fig. <ref type="figure" target="#fig_4">3d</ref>) is analogous to ⇓single, Algorithm 1: M CHA for ⇓single.</p><p>Data: sequence of token t with length N Result:</p><formula xml:id="formula_1">attention mask M CHA ∈ R N ×N S ← [ ] £ Empty stack M CHA ← -∞ for i ← 1 to N do if t[i] = ')' then £ compose j ← i while t[j] ̸ = '(' do M CHA [ij] ← 0 j ← S.pop() end M CHA [ij] ← 0 S.push(i) else S.push(i) for j ∈ S do £ expand M CHA [ij] ← 0 end end end return M CHA</formula><p>but we utilize pointers in place of left brackets to determine the left boundaries of subtrees. The exact procedure can be found in Appx. B.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Parsing Model</head><p>Our parser is based on BART <ref type="bibr" target="#b21">(Lewis et al., 2020)</ref>, a pretrained seq2seq model. We make three modifications to BART: (1) we add a new module in the decoder to encode generated pointers, (2) we enhance decoder layers with CHA, and (3) we use the pointer net to predict pointers.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Encoding Pointers</head><p>The target form can be represented as a tuple of (t, p)<ref type="foot" target="#foot_0">foot_0</ref> , where t and p are the sequence of the base layer and the coref layer, respectively, such that each p i is the index of the pointed token. We define p i = -1 if there is no pointer at index i.</p><p>In the BART model, t is encoded using the token embedding. However, no suitable module exists for encoding p. To address this issue, we introduce a multi-layer perceptron, denoted as MLP p , which takes in the token and position embeddings of the pointed tokens and then outputs the embedding of p. Notably, if p i = -1, the embedding is set to 0. All embeddings, including that of t, p and positions, are added together before being fed into subsequential modules.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Augmenting Decoder with CHA</head><p>We explore three ways to integrate CHA in the decoder layer, as shown in Fig. <ref type="figure" target="#fig_5">4</ref>. The inplace architecture replaces the attention mask of some attention heads with M CHA in the original self-attention module without introducing new parameters. However, this affects the normal functioning of the replaced heads such that the pretrained model is disrupted.</p><p>Alternatively, we can introduce adapters into decoder layers <ref type="bibr" target="#b15">(Houlsby et al., 2019)</ref>. In the parallel architecture, an adapter is introduced in parallel to the original self-attention module. In contrast, an adapter is positioned subsequent to the original module in the pipeline architecture. Our adapter is defined as follows:</p><formula xml:id="formula_2">x 1 = FFN 1 (h i ), x 2 = Attention(W Q x 1 , W K x 1 , W V x 1 , M CHA ), h o = FFN 2 (LayerNorm(x 1 + x 2 )),</formula><p>where W Q , W K , W V are query/key/value projection matrices, FFN 1 /FFN 2 are down/up projection, h i is the input hidden states and h o is the output hidden states.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">Predicting Pointer</head><p>Following previous work <ref type="bibr" target="#b35">(Vinyals et al., 2015;</ref><ref type="bibr">Zhou et al., 2021b)</ref>, we reinterpret decoder selfattention heads as a pointer net. However, unlike the previous work, we use the average attention probabilities from multiple heads as the pointer probabilities instead of relying on a single head. Our preliminary experiments indicate that this modification results in a slight improvement.</p><p>A cross-entropy loss between the predicted pointer probabilities and the ground truth pointers is used for training. We disregard the associated loss at positions that do not have pointers and exclude their probabilities when calculating the entire pointer sequence's probability.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.4">Training and Inference</head><p>We optimize the sum of the standard sequence generation loss and the pointer loss:</p><formula xml:id="formula_3">L = L seq2seq + αL pointer ,</formula><p>where α is a scalar hyperparameter.</p><p>For decoding, the probability of a hypothesis is the product of the probabilities of the base layer, the coref sequence, and the optional struct layer. We enforce a constraint during decoding to ensure the validity of M CHA : the number of ) should not surpass the number of (, and two constraints to ensure the well-formedness of pointer: (1) coreference pointers can only point to positions with the same token, and (2) left boundary pointers in bottom-up generation cannot point to AMR relations (e.g., :ARG0).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Experiment</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1">Setup</head><p>Datasets We conduct experiments on two indistribution benchmarks: (1) AMR 2.0 <ref type="bibr" target="#b17">(Knight et al., 2017)</ref>, which contains 36521, 1368 and 1371 samples in the training, development and test set, and (2) AMR 3.0 <ref type="bibr" target="#b18">(Knight et al., 2020)</ref>, which has 55635, 1722 and 1898 samples in the training, development and test set, as well as three outof-distribution benchmarks: (1) The Little Prince (TLP), (2) BioAMR and (3) New3. Besides, we also explore the effects of using silver training data following previous work. To obtain silver data, we sample 200k sentences from the One Billion Word Benchmark data <ref type="bibr" target="#b6">(Chelba et al., 2014)</ref> and use a trained CHAP parser to annotate AMR graphs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Metrics</head><p>We report the Smatch score <ref type="bibr" target="#b5">(Cai and Knight, 2013)</ref> and other fine-grained metrics <ref type="bibr" target="#b10">(Damonte et al., 2017)</ref> averaged over three runs with different random seeds<ref type="foot" target="#foot_1">foot_1</ref> . All these metrics are invariant to different graph linearizations and exhibit better performance when they are higher. Additionally, to provide a more accurate comparison, we include the standard deviation (std dev) if Smatch scores are close.</p><p>Pre-/post-processing Owing to the sparsity of wiki tags<ref type="foot" target="#foot_2">foot_2</ref> in the training set, we follow previous work to remove wiki tags from AMR graphs in the pre-processing, and use the BLINK entity linker <ref type="bibr" target="#b38">(Wu et al., 2020)</ref> to add wiki tags in the postprocessing<ref type="foot" target="#foot_3">foot_3</ref> . In the post-processing, we also use the amrlib software<ref type="foot" target="#foot_4">foot_4</ref> to ensure graph validity.</p><p>Implementation details We use the BART-base model in analytical experiments and the BARTlarge model in comparison with baselines. We modify all decoder layers when using the BART-base model, while only modifying the top two layers when using the BART-large model<ref type="foot" target="#foot_5">foot_5</ref> . For the parallel and pipeline architectures, attention modules in adapters have four heads and a hidden size 512. For the inplace architecture, four attention heads are set to perform CHA. We reinterpret four self-attention heads of the top decoder layer as a pointer net. The weight for the pointer loss α is set to 0.075. We use a zero initialization for FFN 2 and MLP p , such that the modified models are equivalent to the original BART model at the beginning of training. More details are available at Appx. D</p><p>Baselines SPRING <ref type="bibr">(Bevilacqua et al., 2021</ref>) is a BART model fine-tuned with an augmented vocabulary and improved graph representations (as shown in Tab. 1.b). Ancestor <ref type="bibr" target="#b42">(Yu and Gildea, 2022)</ref> enhances the decoder of SPRING by incorporating ancestral information of graph nodes. BiBL <ref type="bibr" target="#b8">(Cheng et al., 2022)</ref> and AMRBART <ref type="bibr" target="#b1">(Bai et al., 2022)</ref> augment SPRING with supplementary training losses. LeakDistill <ref type="bibr" target="#b34">(Vasylenko et al., 2023)</ref> <ref type="foot" target="#foot_6">foot_6</ref> trains a SPRING using leaked information and then distills it into a standard SPRING.</p><p>All these baselines are translation-based models. Transition-based and factorization-based models are not included due to their inferior performance.   </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>CHA</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2">Results on Alternative Modeling Options</head><p>Structural modeling We report the results of different CHA options in Tab. 3. ⇓double exhibits a slightly better performance than ⇑ and ⇓single. Besides, we find that breaking structural localities, i.e., (1) allowing parent nodes to attend to nodes other than their immediate children (row 3, -0.13) and</p><p>(2) allowing non-parent nodes to attend to nodes that have been composed (row 2, -0.07), negatively impacts the performance. We present the attention masks of these two cases in Appx. A.2.</p><p>Architecture In Tab. 4, we can see that the inplace architecture has little improvement over the baseline, w/o CHA. This suggests that changing the functions of pretrained heads can be harmful. We also observe that the parallel architecture performs slightly better than the pipeline architecture. Based on the above results, we present CHAP, which adopts the parallel adapter and uses ⇓double. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Model</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.3">Main Results</head><p>Tab. 5 shows results on in-distribution benchmarks.</p><p>In the setting of no additional data (such that LeakDistill is excluded), CHAP outperforms all previous models by a 0.3 Smatch score on AMR 2.0 and 0.5 on AMR 3.0. Regarding fine-grained metrics, CHAP performs best on five metrics for AMR 3.0 and three for AMR 2.0. Compared to previous work, which uses alignment, CHAP matches LeakDistill on AMR 3.0 but falls behind it on AMR 2.0. One possible reason is that alignment as additional data is particularly valuable for a relatively small training set of AMR 2.0. We note that the contribution of LeakDistill is orthogonal to ours, and we can expect an enhanced performance by integrating their method with our parser. When using silver data, the performance of CHAP on AMR 2.0 can be significantly improved, achieving similar performance to LeakDistill. This result supports the above conjecture. However, on AMR 3.0, the gain from silver data is marginal as in previous work, possibly because AMR 3.0 is sufficiently large to train a model based on BART-large.</p><p>In out-of-distribution evaluation, CHAP is competitive with all baselines on both TLP and Bio, as shown in Tab. 6, indicating CHAP's strong ability of generalization thanks to the explicit structure modeling.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.4">Ablation Study</head><p>An ablation study is presented in The two rightmost columns in Tab. 7 present the ablation study results on OOD benchmarks. We find that the three proposed components contribute variably across different benchmarks. Specifically, CHA consistently enhances generalization, while the other two components slightly reduce performance on TLP.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Conclusion</head><p>We have presented an AMR parser with new target forms of AMR graphs, explicit structure modeling with causal hierarchical attention, and the integration of pointer nets. We discussed and empirically compared multiple modeling options of CHA and the integration of CHA with the Transformer decoder. Eventually, CHAP outperforms all previous models on in-distribution benchmarks in the setting of no additional data, indicating the benefit of structure modeling.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Limitations</head><p>We focus exclusively on training our models to predict AMR graphs using natural language sentences. Nevertheless, various studies suggest incorporating additional training objectives and strategies, such as BiBL and LeakDistill, to enhance performance. These methods also can be applied to our model.</p><p>There exist numerous other paradigms for semantic graph parsing, including Discourse Repre-sentation Structures. In these tasks, prior research often employs the PENMAN notation as the target form. These methodologies could also potentially benefit from our innovative target form and structural modeling. Although we do not conduct experiments within these tasks, results garnered from a broader range of tasks could provide more compelling conclusions. tokens, such as :arg0. Unlike other translationbased models, we do not add predicates (e.g., have-condition-91) into the vocabulary because they have ingorable effects on performance according to our preliminary experiments.</p><p>We train our models for 50,000 steps, using a batch size of 16. This amounts to approximately 22 epochs on AMR 2.0 and around 15 epochs on AMR 3.0. We use an AdamW optimizer <ref type="bibr" target="#b25">(Loshchilov and Hutter, 2019)</ref>, accompanied by a cosine learning rate scheduler <ref type="bibr" target="#b24">(Loshchilov and Hutter, 2017)</ref> with a warm-up phase of 5,000 steps. The peak learning rate is set at 5×10 -5 for base models and 3×10 -5 for large models. We use one NVIDIA TITAN V to train models based on BART base, costing about 6 hours, and use one NVIDIA A40 to train models based on BART large, costing about 15 hours.</p><p>Algorithm 2: M CHA for ⇑.</p><p>Data: sequence of token t with length N , sequence of pointers s with lengthN Result: attention mask </p><formula xml:id="formula_4">M CHA ∈ R N ×N S ← [ ] £ Empty stack M CHA ← -∞ for i ← 1 to N do if t[i] = ′ ■ ′ then £ compose j ← i while j &gt; s[i] do M CHA [ij] ← 0 j ← S.</formula></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head></head><label></label><figDesc>Figure 1: AMR of Employees liked their city tour.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head></head><label></label><figDesc>arg0 ( beta :arg0 ( delta ) :arg1 ( epsilon ) ) :arg1 ( gamma :arg0 ( zeta :arg0 ( eta ) ) :arg1 ( theta ) ) base layer in the ⇓single form.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 2 :</head><label>2</label><figDesc>Figure2: Demonstration of Causal Hierarchical Attention. We draw the aggregation on graphs performed at four steps in (a)-(d) and highlight the corresponding token for each step in (e) with green boxes. the The generation order is depth-first and left-to-right: alpha → beta → delta → epsilon → gamma → zeta → eta → theta. The node of interest at each step is highlighted in blue, gathering information from all solid nodes. Gray dashed nodes, on the other hand, are invisible.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head></head><label></label><figDesc>An example tree. ♦ denotes a non-leaf node.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: The target forms and the attention mask of the three variants of CHA for the tree in (a). Orange cells represent the compose operation, while blue cells with plaid represent the expand operation. White cells are masked out. The vertical and horizontal axis represent attending and attended tokens, respectively.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Figure 4 :</head><label>4</label><figDesc>Figure 4: Three architectures for applying CHA to pretrained decoder layers. Residual connections and layernorms are omitted.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>Figure 5 :</head><label>5</label><figDesc>Figure 5: The target forms and the attention mask of two variants of ⇓single. Black squares mean that the cell is changed.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>Table 1 :</head><label>1</label><figDesc>Graph representations. PM and S-DFS denote the PENMAN form and the SPRING DFS form, the DFS-based linearization proposed by Bevilacqua et al. (2021), respectively. (c)-(d) are our proposed representations. (</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 2 :</head><label>2</label><figDesc>Strengths, shortcomings of different types of models.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 3 :</head><label>3</label><figDesc>The influence of different CHA.</figDesc><table><row><cell cols="3">Architecture Smatch std dev</cell></row><row><cell>Parallel</cell><cell>82.63</cell><cell>0.02</cell></row><row><cell>Pipeline</cell><cell>82.59</cell><cell>0.05</cell></row><row><cell>Inplace</cell><cell>82.43</cell><cell>0.04</cell></row><row><cell>w/o CHA</cell><cell>82.38</cell><cell>0.12</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 4 :</head><label>4</label><figDesc>The influence of different architectures.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Table 5 :</head><label>5</label><figDesc>Extra Data Smatch NoWSD Wiki. Conc. NER Neg. Unlab Reent. SRL Fine-grained Smatch scores on in-domain benchmarks. Bold and underlined numbers represent the best and the second-best results, respectively. "A" in the Extra Data column denotes alignment. *Std dev is 0.04.</figDesc><table><row><cell>AMR 2.0</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="2">SPRING Ancestor BiBL LeakDistill CHAP (ours) AMRBART</cell><cell>---A -200K</cell><cell>83.8 84.8 84.6 85.7 85.1 85.4</cell><cell>84.4 85.3 85.1 86.2 85.6 85.8</cell><cell>84.3 90.2 90.6 74.4 86.1 70.8 79.6 84.1 90.5 91.8 74.0 88.1 75.1 83.4 83.6 90.3 92.5 73.9 87.8 74.4 83.1 83.9 91.0 91.1 76.8 88.6 74.2 81.8 86.4 90.9 90.4 73.4 88.0 73.0 81.0 81.4 91.2 91.5 74.0 88.3 73.5 81.5</cell></row><row><cell cols="2">LeakDistill CHAP (ours) AMR 3.0</cell><cell>A, 140K 200K</cell><cell>86.1 85.8</cell><cell>86.5 86.1</cell><cell>83.9 91.4 91.6 76.6 88.8 75.1 82.4 86.3 91.4 80.4 78.3 88.6 73.9 81.8</cell></row><row><cell cols="2">SPRING Ancestor BiBL LeakDistill CHAP (ours) AMRBART LeakDistill CHAP (ours)</cell><cell>---A -200K A, 140K 200K</cell><cell>83.0 83.5 83.9 84.5 84.4  *  84.2 84.6 84.6</cell><cell>83.5 84.0 84.3 84.9 84.8 84.6 84.9 85.0</cell><cell>82.7 89.8 87.2 73.0 85.4 70.4 78.9 81.5 89.5 88.9 72.6 86.6 74.2 82.2 83.7 89.8 93.2 68.1 87.2 73.8 81.9 80.7 90.5 88.5 73.7 87.5 73.1 80.7 84.7 90.5 87.9 73.5 87.3 72.6 80.1 78.9 90.2 88.5 72.1 87.1 72.4 80.3 81.3 90.7 87.8 73.0 87.5 73.4 80.9 84.5 90.7 88.4 75.2 87.5 73.1 80.7</cell></row><row><cell>Model</cell><cell cols="4">Extra Data TLP Bio New3</cell></row><row><cell>SPRING BiBL BiBL</cell><cell></cell><cell>--200K</cell><cell cols="2">77.3 59.7 73.7 78.6 61.0 75.4 78.3 61.1 75.4</cell></row><row><cell>AMRBART</cell><cell></cell><cell>200K</cell><cell cols="2">76.9 63.2 76.9</cell></row><row><cell>LeakDistill CHAP (ours) CHAP (ours)</cell><cell></cell><cell>A, 140K -200K</cell><cell cols="2">82.6 64.5 79.0 62.7 74.8 -79.8 63.5 75.1</cell></row><row><cell>CHAP (ours) CHAP (ours)</cell><cell></cell><cell>-200K</cell><cell cols="2">81.8 65.1 82.7 α 66.1 β --</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>Table 6 :</head><label>6</label><figDesc>Test results on out-of-distribution benchmarks. The scores represented in grey cells derive from a model trained on AMR 2.0, whereas the remaining scores come from a model trained on AMR 3.0. -: New3 is part of AMR 3.0, so these settings are excluded from OOD evaluation. α Std dev on TLP is 0.14. β Std dev on Bio is 0.46.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head>Table 7 .</head><label>7</label><figDesc>The first four rows demonstrate that, for a model based on BART-base, when we exclude the encoding of pointers, the CHA adapters, and the separation</figDesc><table><row><cell cols="3">EP Adapter CL</cell><cell>Base AMR3 AMR3 TLP Bio Large</cell></row><row><cell>✓ ✗</cell><cell>CHA CHA</cell><cell cols="2">✓ 82.91 84.44 81.8 65.1 ✓ 82.82 84.17 81.7 64.8</cell></row><row><cell cols="2">✓ --Causal ✗ CHA -✗</cell><cell cols="2">✓ 82.75 84.28 -✗ 82.63 84.09 82.1 64.6 -✗ 82.44 83.79 --✗ 82.38 83.84 81.6 64.3</cell></row><row><cell cols="4">Table 7: Ablation study. EP: Encoding Pointers. CL: Coreference Layer. Base(Large): BART-base(large).</cell></row><row><cell cols="4">of coreferences on AMR 3.0, there are declines</cell></row><row><cell cols="4">in Smatch scores of -0.09, -0.16, and -0.28, respectively and -0.27, -0.16, and -0.35 for a model based on BART-large. Additionally, we sub-</cell></row><row><cell cols="4">stitute CHA in adapters with standard causal atten-</cell></row><row><cell cols="4">tion to ascertain whether the improvement mainly</cell></row><row><cell cols="4">arises from an increased parameter count. From</cell></row><row><cell cols="4">the last three rows, it is evident that CHA has a</cell></row><row><cell cols="4">greater contribution (+0.25) than adding parame-</cell></row><row><cell cols="2">ters (+0.06).</cell><cell></cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_0"><p>For the sake of simplicity, we only discuss the target form of top-down generation. The additional struct layer in the bottom-up generation can be modeled similarly to p.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="3" xml:id="foot_1"><p>We use the amr-evaluation-enhanced software to compute scores, which is available at https : / / github . com / ChunchuanLv/amr-evaluation-tool-enhanced.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="4" xml:id="foot_2"><p>https : / / github . com / amrisi / amr -guidelines / blob/master/amr.md#named-entities</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="5" xml:id="foot_3"><p>We do not add wiki tags in analytical experiments.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="6" xml:id="foot_4"><p>https://github.com/bjascob/amrlib</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="7" xml:id="foot_5"><p>The training becomes unstable if we modify all decoder layers of the BART-large model.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="8" xml:id="foot_6"><p>Contemporary work.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" xml:id="foot_7"><p>Michele Bevilacqua, Rexhina Blloshmi, and Roberto Navigli. 2021. One spring to rule them both: Symmetric amr semantic parsing and generation without a complex pipeline. Proceedings of the AAAI Conference on Artificial Intelligence, 35(14):12564-12573. Deng Cai and Wai Lam. 2019. Core semantic first: A top-down approach for AMR parsing. In Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP), pages 3799-3809, Hong Kong, China. Association for Computational Linguistics.</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>Acknowledgments</head><p>We thank the anonymous reviewers for their constructive comments. This work was supported by the <rs type="funder">National Natural Science Foundation of China</rs> (<rs type="grantNumber">61976139</rs>).</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funding" xml:id="_WCeMgdc">
+					<idno type="grant-number">61976139</idno>
+				</org>
+			</listOrg>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A More Plots</head><p>A.1 Tree View of the Base Layer Fig. <ref type="figure">6</ref> demonstrates the tree structure of the base layer. There are two main differences from the DAG representation of AMR: (1) Non-leaf nodes have no label. Instead, the label is a child node. (2) relations are presented as nodes instead of labeled edges.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.2 Attention Mask with Broken Structural Locality</head><p>Fig. <ref type="figure">5</ref> shows the two variants of breaking structural localities, which is discussed in Sec 5.2.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B Generate Attention Mask for Bottom-up Generation</head><p>Alg. 2 shows the procedure of generating M CHA for ⇑.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C Metrics</head><p>We report following fine-grained metrics:</p><p>• No WSD: This process computes while disregarding PropBank senses.</p><p>• Wikification: This denotes the F-score related to the Wikification task.</p><p>• Concepts: This signifies the F-score for the Concept Identification task.</p><p>• NER: This pertains to the F-score associated with the Named Entity Recognition task.</p><p>• Negations: This involves the F-score for the Negation Detection task.</p><p>• Unlabeled: This involves computations on the predicted graphs after all edge labels have been removed.</p><p>• Reentrancy: This is computed solely on reentrant edges.</p><p>• Semantic Role Labeling (SRL): This is computed only for ':ARG-i roles'.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D Implementation Details</head><p>We use the BART-base and BART-large checkpoints downloaded from the transformer library to initialize our models. An augmented vocabulary is used, which includes additional AMR relation   </p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Towards string-to-tree neural machine translation</title>
+		<author>
+			<persName><forename type="first">Roee</forename><surname>Aharoni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoav</forename><surname>Goldberg</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/P17-2021</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 55th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 55th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Vancouver, Canada</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page" from="132" to="140" />
+		</imprint>
+	</monogr>
+	<note>Short Papers)</note>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Graph pre-training for AMR parsing and generation</title>
+		<author>
+			<persName><forename type="first">Xuefeng</forename><surname>Bai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yulong</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yue</forename><surname>Zhang</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2022.acl-long.415</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 60th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 60th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Dublin, Ireland</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="6001" to="6015" />
+		</imprint>
+	</monogr>
+	<note>Long Papers)</note>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">AMR parsing using stack-LSTMs</title>
+		<author>
+			<persName><forename type="first">Miguel</forename><surname>Ballesteros</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yaser</forename><surname>Al-Onaizan</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/D17-1130</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2017 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2017 Conference on Empirical Methods in Natural Language Processing<address><addrLine>Copenhagen, Denmark</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="1269" to="1275" />
+		</imprint>
+	</monogr>
+	<note>Association for Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Abstract Meaning Representation for sembanking</title>
+		<author>
+			<persName><forename type="first">Laura</forename><surname>Banarescu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Claire</forename><surname>Bonial</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shu</forename><surname>Cai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Madalina</forename><surname>Georgescu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kira</forename><surname>Griffitt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ulf</forename><surname>Hermjakob</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kevin</forename><surname>Knight</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Philipp</forename><surname>Koehn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martha</forename><surname>Palmer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nathan</forename><surname>Schneider</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 7th Linguistic Annotation Workshop and Interoperability with Discourse</title>
+		<meeting>the 7th Linguistic Annotation Workshop and Interoperability with Discourse<address><addrLine>Sofia, Bulgaria</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page" from="178" to="186" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">AMR parsing via graphsequence iterative inference</title>
+		<author>
+			<persName><forename type="first">Deng</forename><surname>Cai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wai</forename><surname>Lam</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 58th Annual Meeting of the Association for Computational Linguistics</meeting>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="1290" to="1301" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Smatch: an evaluation metric for semantic feature structures</title>
+		<author>
+			<persName><forename type="first">Shu</forename><surname>Cai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kevin</forename><surname>Knight</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.acl-main.119</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 51st Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 51st Annual Meeting of the Association for Computational Linguistics<address><addrLine>Sofia, Bulgaria</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page" from="748" to="752" />
+		</imprint>
+	</monogr>
+	<note>Short Papers)</note>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<monogr>
+		<title level="m" type="main">One billion word benchmark for measuring progress in statistical language modeling</title>
+		<author>
+			<persName><forename type="first">Ciprian</forename><surname>Chelba</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tomas</forename><surname>Mikolov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mike</forename><surname>Schuster</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qi</forename><surname>Ge</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thorsten</forename><surname>Brants</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Phillipp</forename><surname>Koehn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tony</forename><surname>Robinson</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">ATP: AMRize then parse! enhancing AMR parsing with Pseu-doAMRs</title>
+		<author>
+			<persName><forename type="first">Liang</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peiyi</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Runxin</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tianyu</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhifang</forename><surname>Sui</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Baobao</forename><surname>Chang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Findings of the Association for Computational Linguistics: NAACL 2022</title>
+		<imprint>
+			<publisher>Seattle, United States. Association for Computational Linguistics</publisher>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="2482" to="2496" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">BiBL: AMR parsing and generation with bidirectional Bayesian learning</title>
+		<author>
+			<persName><forename type="first">Ziming</forename><surname>Cheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zuchao</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hai</forename><surname>Zhao</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2022.findings-naacl.190</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 29th International Conference on Computational Linguistics</title>
+		<meeting>the 29th International Conference on Computational Linguistics<address><addrLine>Gyeongju, Republic of Korea</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="5461" to="5475" />
+		</imprint>
+	</monogr>
+	<note>International Committee on Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Scene graph parsing via Abstract Meaning Representation in pre-trained language models</title>
+		<author>
+			<persName><forename type="first">Suk</forename><surname>Woo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yu-Jung</forename><surname>Choi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dharani</forename><surname>Heo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Byoung-Tak</forename><surname>Punithan</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2nd Workshop on Deep Learning on Graphs for Natural Language Processing (DLG4NLP 2022)</title>
+		<meeting>the 2nd Workshop on Deep Learning on Graphs for Natural Language Processing (DLG4NLP 2022)<address><addrLine>Seattle, Washington</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="30" to="35" />
+		</imprint>
+	</monogr>
+	<note>Association for Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">An incremental parser for Abstract Meaning Representation</title>
+		<author>
+			<persName><forename type="first">Marco</forename><surname>Damonte</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shay</forename><forename type="middle">B</forename><surname>Cohen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Giorgio</forename><surname>Satta</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2022.dlg4nlp-1.4</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 15th Conference of the European Chapter</title>
+		<meeting>the 15th Conference of the European Chapter<address><addrLine>Long Papers; Valencia, Spain</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="536" to="546" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Unsupervised latent tree induction with deep inside-outside recursive auto-encoders</title>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Drozdov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Patrick</forename><surname>Verga</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mohit</forename><surname>Yadav</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mohit</forename><surname>Iyyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Mccallum</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/N19-1116</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</title>
+		<title level="s">Long and Short Papers</title>
+		<meeting>the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies<address><addrLine>Minneapolis, Minnesota</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="1129" to="1141" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Recurrent neural network grammars</title>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Dyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adhiguna</forename><surname>Kuncoro</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Miguel</forename><surname>Ballesteros</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noah</forename><forename type="middle">A</forename><surname>Smith</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/N16-1024</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2016 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</title>
+		<meeting>the 2016 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies<address><addrLine>San Diego, California</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="199" to="209" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Transition-based parsing with stack-transformers</title>
+		<author>
+			<persName><forename type="first">Ramón</forename><surname>Fernandez Astudillo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Miguel</forename><surname>Ballesteros</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tahira</forename><surname>Naseem</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Austin</forename><surname>Blodgett</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Radu</forename><surname>Florian</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Findings of the Association for Computational Linguistics: EMNLP 2020</title>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="1001" to="1007" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Guided neural language generation for abstractive summarization using Abstract Meaning Representation</title>
+		<author>
+			<persName><forename type="first">Hardy</forename><surname>Hardy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andreas</forename><surname>Vlachos</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/D18-1086</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2018 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2018 Conference on Empirical Methods in Natural Language Processing<address><addrLine>Brussels, Belgium</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="768" to="773" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Parameter-efficient transfer learning for NLP</title>
+		<author>
+			<persName><forename type="first">Neil</forename><surname>Houlsby</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrei</forename><surname>Giurgiu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stanislaw</forename><surname>Jastrzebski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bruna</forename><surname>Morrone</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Quentin</forename><surname>De Laroussilhe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrea</forename><surname>Gesmundo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mona</forename><surname>Attariyan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sylvain</forename><surname>Gelly</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 36th International Conference on Machine Learning</title>
+		<meeting>the 36th International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">97</biblScope>
+			<biblScope unit="page" from="2790" to="2799" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">R2D2: Recursive transformer based on differentiable tree for interpretable hierarchical language modeling</title>
+		<author>
+			<persName><forename type="first">Xiang</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Haitao</forename><surname>Mi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zujie</forename><surname>Wen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yafang</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yi</forename><surname>Su</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jing</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gerard</forename><surname>De</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Melo</forename></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2021.acl-long.379</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing</title>
+		<meeting>the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing</meeting>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="4897" to="4908" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">Kevin</forename><surname>Knight</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bianca</forename><surname>Badarau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Laura</forename><surname>Baranescu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Claire</forename><surname>Bonial</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Madalina</forename><surname>Bardocz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kira</forename><surname>Griffitt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ulf</forename><surname>Hermjakob</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Marcu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martha</forename><surname>Palmer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tim</forename><forename type="middle">O</forename><surname>'gorman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nathan</forename><surname>Schneider</surname></persName>
+		</author>
+		<idno>AMR) Annotation Release 2.0</idno>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">Abstract Meaning Representation</note>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">Kevin</forename><surname>Knight</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bianca</forename><surname>Badarau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Laura</forename><surname>Baranescu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Claire</forename><surname>Bonial</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kira</forename><surname>Griffitt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ulf</forename><surname>Hermjakob</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Marcu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O'</forename><surname>Tim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martha</forename><surname>Gorman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nathan</forename><surname>Palmer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Madalina</forename><surname>Schneider</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Bardocz</surname></persName>
+		</author>
+		<idno type="DOI">10.35111/S444-NP87</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note>Abstract Meaning Representation (AMR) Annotation Release 3.0.</note>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Neural AMR: Sequence-to-sequence models for parsing and generation</title>
+		<author>
+			<persName><forename type="first">Ioannis</forename><surname>Konstas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Srinivasan</forename><surname>Iyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mark</forename><surname>Yatskar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yejin</forename><surname>Choi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luke</forename><surname>Zettlemoyer</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/P17-1014</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 55th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 55th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Vancouver, Canada</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="146" to="157" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<monogr>
+		<title level="m" type="main">Amr parsing with instruction fine-tuned pre-trained language models</title>
+		<author>
+			<persName><forename type="first">Young-Suk</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ramón</forename><surname>Fernandez Astudillo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Radu</forename><surname>Florian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tahira</forename><surname>Naseem</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Salim</forename><surname>Roukos</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">Mike</forename><surname>Lewis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yinhan</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Naman</forename><surname>Goyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marjan</forename><surname>Ghazvininejad</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abdelrahman</forename><surname>Mohamed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Omer</forename><surname>Levy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Veselin</forename><surname>Stoyanov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luke</forename><surname>Zettlemoyer</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Denoising sequence-to-sequence pre-training for natural language generation, translation, and comprehension</title>
+		<author>
+			<persName><surname>Bart</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.acl-main.703</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 58th Annual Meeting of the Association for Computational Linguistics</meeting>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<biblScope unit="page" from="7871" to="7880" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Abstract Meaning Representation for multi-document summarization</title>
+		<author>
+			<persName><forename type="first">Kexin</forename><surname>Liao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Logan</forename><surname>Lebanoff</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fei</forename><surname>Liu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 27th International Conference on Computational Linguistics</title>
+		<meeting>the 27th International Conference on Computational Linguistics<address><addrLine>Santa Fe, New Mexico, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="1178" to="1190" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">SGDR: Stochastic gradient descent with warm restarts</title>
+		<author>
+			<persName><forename type="first">Ilya</forename><surname>Loshchilov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Frank</forename><surname>Hutter</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Decoupled weight decay regularization</title>
+		<author>
+			<persName><forename type="first">Ilya</forename><surname>Loshchilov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Frank</forename><surname>Hutter</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">7th International Conference on Learning Representations, ICLR 2019</title>
+		<meeting><address><addrLine>New Orleans, LA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2019-05-06">2019. May 6-9, 2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Rewarding Smatch: Transition-based AMR parsing with reinforcement learning</title>
+		<author>
+			<persName><forename type="first">Tahira</forename><surname>Naseem</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abhishek</forename><surname>Shah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hui</forename><surname>Wan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Radu</forename><surname>Florian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Salim</forename><surname>Roukos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Miguel</forename><surname>Ballesteros</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/P19-1451</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 57th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 57th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Florence, Italy</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="4586" to="4592" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">A conditional splitting framework for efficient constituency parsing</title>
+		<author>
+			<persName><forename type="first">Thanh-Tung</forename><surname>Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xuan-Phi</forename><surname>Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shafiq</forename><surname>Joty</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiaoli</forename><surname>Li</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2021.acl-long.450</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing</title>
+		<meeting>the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing</meeting>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="5795" to="5807" />
+		</imprint>
+	</monogr>
+	<note>Long Papers)</note>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Transparent semantic parsing with Universal Dependencies using graph transformations</title>
+		<author>
+			<persName><forename type="first">Rik</forename><surname>Wessel Poelman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Johan</forename><surname>Van Noord</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Bos</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 29th International Conference on Computational Linguistics</title>
+		<meeting>the 29th International Conference on Computational Linguistics<address><addrLine>Gyeongju, Re</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="4186" to="4192" />
+		</imprint>
+	</monogr>
+	<note>International Committee on Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Structural guidance for transformer language models</title>
+		<author>
+			<persName><forename type="first">Tahira</forename><surname>Peng Qian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Roger</forename><surname>Naseem</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ramón</forename><surname>Levy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Astudillo</forename><surname>Fernandez</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2021.acl-long.289</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing</title>
+		<meeting>the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="3735" to="3745" />
+		</imprint>
+	</monogr>
+	<note>Long Papers)</note>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Transformer Grammars: Augmenting Transformer Language Models with Syntactic Inductive Biases at Scale</title>
+		<author>
+			<persName><forename type="first">Laurent</forename><surname>Sartran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Samuel</forename><surname>Barrett</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adhiguna</forename><surname>Kuncoro</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Miloš</forename><surname>Stanojević</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Phil</forename><surname>Blunsom</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Dyer</surname></persName>
+		</author>
+		<idno type="DOI">10.1162/tacl_a_00526</idno>
+	</analytic>
+	<monogr>
+		<title level="j">Transactions of the Association for Computational Linguistics</title>
+		<imprint>
+			<biblScope unit="volume">10</biblScope>
+			<biblScope unit="page" from="1423" to="1439" />
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Generating semantically precise scene graphs from textual descriptions for improved image retrieval</title>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Schuster</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ranjay</forename><surname>Krishna</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Angel</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Li</forename><surname>Fei-Fei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><forename type="middle">D</forename><surname>Manning</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/W15-2812</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Fourth Workshop on Vision and Language</title>
+		<meeting>the Fourth Workshop on Vision and Language<address><addrLine>Lisbon, Portugal</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="70" to="80" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Get to the point: Summarization with pointergenerator networks</title>
+		<author>
+			<persName><forename type="first">Abigail</forename><surname>See</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><forename type="middle">J</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><forename type="middle">D</forename><surname>Manning</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/P17-1099</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 55th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 55th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Vancouver, Canada</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="1073" to="1083" />
+		</imprint>
+	</monogr>
+	<note>Long Papers)</note>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Improved semantic representations from tree-structured long short-term memory networks</title>
+		<author>
+			<persName><forename type="first">Kai</forename><surname>Sheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tai</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Richard</forename><surname>Socher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><forename type="middle">D</forename><surname>Manning</surname></persName>
+		</author>
+		<idno type="DOI">10.3115/v1/P15-1150</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 53rd Annual Meeting of the Association for Computational Linguistics and the 7th International Joint Conference on Natural Language Processing</title>
+		<meeting>the 53rd Annual Meeting of the Association for Computational Linguistics and the 7th International Joint Conference on Natural Language Processing<address><addrLine>Beijing, China</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="1556" to="1566" />
+		</imprint>
+	</monogr>
+	<note>Long Papers)</note>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Incorporating graph information in transformer-based AMR parsing</title>
+		<author>
+			<persName><forename type="first">Pavlo</forename><surname>Vasylenko</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pere</forename><surname>Lluís</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Huguet</forename><surname>Cabot</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abelardo</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Carlos</forename><forename type="middle">Martínez</forename><surname>Lorenzo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Roberto</forename><surname>Navigli</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Findings of the Association for Computational Linguistics: ACL 2023</title>
+		<meeting><address><addrLine>Toronto, Canada</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2023">2023</date>
+			<biblScope unit="page" from="1995" to="2011" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Pointer networks</title>
+		<author>
+			<persName><forename type="first">Oriol</forename><surname>Vinyals</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Meire</forename><surname>Fortunato</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Navdeep</forename><surname>Jaitly</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="volume">28</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Hierarchical curriculum learning for AMR parsing</title>
+		<author>
+			<persName><forename type="first">Peiyi</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Liang</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tianyu</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Damai</forename><surname>Dai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yunbo</forename><surname>Cao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Baobao</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhifang</forename><surname>Sui</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2022.acl-short.37</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 60th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 60th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Dublin, Ireland</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page" from="333" to="339" />
+		</imprint>
+	</monogr>
+	<note>Short Papers)</note>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Learning synchronous grammars for semantic parsing with lambda calculus</title>
+		<author>
+			<persName><forename type="first">Yuk</forename><forename type="middle">Wah</forename><surname>Wong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Raymond</forename><surname>Mooney</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 45th Annual Meeting of the Association of Computational Linguistics</title>
+		<meeting>the 45th Annual Meeting of the Association of Computational Linguistics<address><addrLine>Prague, Czech Republic</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2007">2007</date>
+			<biblScope unit="page" from="960" to="967" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Scalable zeroshot entity linking with dense entity retrieval</title>
+		<author>
+			<persName><forename type="first">Ledell</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fabio</forename><surname>Petroni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>Josifoski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Riedel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luke</forename><surname>Zettlemoyer</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.emnlp-main.519</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)</title>
+		<meeting>the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)</meeting>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="6397" to="6407" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Improving AMR parsing with sequence-to-sequence pre-training</title>
+		<author>
+			<persName><forename type="first">Dongqin</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junhui</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Muhua</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Min</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guodong</forename><surname>Zhou</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.emnlp-main.196</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)</title>
+		<meeting>the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)</meeting>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="2501" to="2511" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">A two-stream AMR-enhanced model for document-level event argument extraction</title>
+		<author>
+			<persName><forename type="first">Runxin</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peiyi</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tianyu</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shuang</forename><surname>Zeng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Baobao</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhifang</forename><surname>Sui</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2022.naacl-main.370</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2022 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</title>
+		<meeting>the 2022 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies<address><addrLine>Seattle, United States</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="5025" to="5036" />
+		</imprint>
+	</monogr>
+	<note>Association for Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Bottom-up constituency parsing and nested named entity recognition with pointer networks</title>
+		<author>
+			<persName><forename type="first">Songlin</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kewei</forename><surname>Tu</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2022.acl-long.171</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 60th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 60th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Dublin, Ireland</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="2403" to="2416" />
+		</imprint>
+	</monogr>
+	<note>Long Papers). Association for Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">Sequence-tosequence AMR parsing with ancestor information</title>
+		<author>
+			<persName><forename type="first">Chen</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Gildea</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2022.acl-short.63</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 60th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 60th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Dublin, Ireland</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page" from="571" to="577" />
+		</imprint>
+	</monogr>
+	<note>Short Papers)</note>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">Abstract Meaning Representation guided graph encoding and decoding for joint information extraction</title>
+		<author>
+			<persName><forename type="first">Zixuan</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Heng</forename><surname>Ji</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2021.naacl-main.4</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2021 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</title>
+		<meeting>the 2021 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</meeting>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="39" to="49" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">Improving constituent representation with hypertree neural networks</title>
+		<author>
+			<persName><forename type="first">Hao</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gongshen</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kewei</forename><surname>Tu</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2022.naacl-main.121</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2022 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</title>
+		<meeting>the 2022 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</meeting>
+		<imprint>
+			<publisher>Seattle, United States. Association for Computational Linguistics</publisher>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="1682" to="1692" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<title level="a" type="main">Ramón Fernandez Astudillo, and Radu Florian. 2021a. AMR parsing with action-pointer transformer</title>
+		<author>
+			<persName><forename type="first">Jiawei</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tahira</forename><surname>Naseem</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2021.naacl-main.443</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2021 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</title>
+		<meeting>the 2021 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<biblScope unit="page" from="5585" to="5598" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<analytic>
+		<title level="a" type="main">2021b. Structure-aware fine-tuning of sequence-to-sequence transformers for transitionbased AMR parsing</title>
+		<author>
+			<persName><forename type="first">Jiawei</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tahira</forename><surname>Naseem</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ramón</forename><surname>Fernandez Astudillo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Young-Suk</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Radu</forename><surname>Florian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Salim</forename><surname>Roukos</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2021.emnlp-main.507</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2021 Conference on Empirical Methods in Natural Language Processing</meeting>
+		<imprint>
+			<publisher>Dominican Republic. Association for Computational Linguistics</publisher>
+			<biblScope unit="page" from="6279" to="6290" />
+		</imprint>
+		<respStmt>
+			<orgName>Online and Punta Cana</orgName>
+		</respStmt>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

@@ -1,0 +1,1187 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Latent-Variable Generative Models for Data-Efficient Text Classification</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Xiaoan</forename><surname>Ding</surname></persName>
+							<email>xiaoanding@uchicago.edu</email>
+							<affiliation key="aff0">
+								<orgName type="institution">University of Chicago</orgName>
+								<address>
+									<postCode>60637</postCode>
+									<settlement>Chicago</settlement>
+									<region>IL</region>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Kevin</forename><surname>Gimpel</surname></persName>
+							<email>kgimpel@ttic.edu</email>
+							<affiliation key="aff1">
+								<orgName type="institution">Toyota Technological Institute at Chicago</orgName>
+								<address>
+									<postCode>60637</postCode>
+									<settlement>Chicago</settlement>
+									<region>IL</region>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Latent-Variable Generative Models for Data-Efficient Text Classification</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-14T17:27+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Generative classifiers offer potential advantages over their discriminative counterparts, namely in the areas of data efficiency, robustness to data shift and adversarial examples, and zero-shot learning <ref type="bibr" target="#b33">(Ng and Jordan, 2002;</ref><ref type="bibr" target="#b40">Yogatama et al., 2017;</ref><ref type="bibr" target="#b25">Lewis and Fan, 2019)</ref>. In this paper, we improve generative text classifiers by introducing discrete latent variables into the generative story, and explore several graphical model configurations. We parameterize the distributions using standard neural architectures used in conditional language modeling and perform learning by directly maximizing the log marginal likelihood via gradient-based optimization, which avoids the need to do expectation-maximization. We empirically characterize the performance of our models on six text classification datasets. The choice of where to include the latent variable has a significant impact on performance, with the strongest results obtained when using the latent variable as an auxiliary conditioning variable in the generation of the textual input. This model consistently outperforms both the generative and discriminative classifiers in small-data settings. We analyze our model by using it for controlled generation, finding that the latent variable captures interpretable properties of the data, even with very small training sets.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>The most widely-used neural network classifiers are discriminative, that is, they are trained to explicitly favor the gold standard label over others. The alternative is to design classifiers that are generative; these follow a generative story that includes predicting the label and then the data conditioned on the label. Discriminative classifiers are preferred because they generally outperform their generative counterparts on standard benchmarks. These benchmarks typically assume large annotated training sets, little mismatch between training and test distributions, relatively clean data, and a lack of adversarial examples <ref type="bibr" target="#b44">(Zue et al., 1990;</ref><ref type="bibr" target="#b28">Marcus et al., 1993;</ref><ref type="bibr" target="#b11">Deng et al., 2009;</ref><ref type="bibr" target="#b26">Lin et al., 2014)</ref>.</p><p>However, when conditions are not ideal for discriminative classifiers, generative classifiers can actually perform better. <ref type="bibr" target="#b33">Ng and Jordan (2002)</ref> showed theoretically that linear generative classifiers approach their asymptotic error rates more rapidly than discriminative ones. Based on this finding, <ref type="bibr" target="#b40">Yogatama et al. (2017)</ref> empirically characterized the performance of RNN-based generative classifiers, showing advantages in sample complexity, zero-shot learning, and continual learning. Recent work in generative question answering models <ref type="bibr" target="#b25">(Lewis and Fan, 2019)</ref> demonstrates better robustness to biased training data and adversarial testing data than state-of-the-art discriminative models.</p><p>In this paper, we focus on settings with small amounts of annotated data and improve generative text classifiers by introducing discrete latent variables into the generative story. Accordingly, the training objective is changed to log marginal likelihood of the data as we marginalize out the latent variables during learning. We parameterize the distributions with standard neural architectures used in conditional language models and include the latent variable by concatenating its embedding to the RNN hidden state before computing the softmax over words. While traditional latent variable learning in NLP uses the expectationmaximization (EM) algorithm <ref type="bibr" target="#b10">(Dempster et al., 1977)</ref>, we instead simply perform direct optimization of the log marginal likelihood using gradientbased methods. At inference time, we similarly marginalize out the latent variables while maximizing over the label.</p><p>We characterize the performance of our latentvariable generative classifiers on six text classification datasets introduced by <ref type="bibr" target="#b42">Zhang et al. (2015)</ref>. We observe that introducing latent variables leads to large and consistent performance gains in the small-data regime, though the benefits of adding latent variables reduce as the training set becomes larger.</p><p>To better understand the modeling space of latent variable classifiers, we explore several graphical model configurations. Our experimental results demonstrate the importance of including a direct dependency between the label and the input in the model. We study the relationship between the label, latent, and input variables in our strongest latent generative classifier, finding that the label and latent capture complementary information about the input. Some information about the textual input is encoded in the latent variable to help with generation.</p><p>We analyze our latent generative model by generating samples when controlling the label and latent variables. Even with small training data, the samples capture the salient characteristics of the label space while also conforming to the values of the latent variable, some of which we find to be interpretable. While discriminative classifiers excel at separating examples according to labels, generative classifiers offer certain advantages in practical settings that benefit from a richer understanding of the data-generating process.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Discriminative and Generative Text Classifiers</head><p>We begin by defining our baseline generative and discriminative text classifiers for document classification. Our models are essentially the same as those from <ref type="bibr" target="#b40">Yogatama et al. (2017)</ref>; we describe them in detail here because our latent-variable models will extend them. 1 Our classifiers are trained on datasets D of annotated documents. Each instance x, y ∈ D consists of a textual input x = {x 1 , x 2 , ..., x T }, where T is the length of the document, and a label y ∈ Y.</p><p>1 The main difference between our baselines and the models in <ref type="bibr" target="#b40">Yogatama et al. (2017)</ref> are: (1) their discriminative classifier uses an LSTM with "peephole connections"; (2) they evaluate a label-based generative classifier ("Independent LSTMs") that uses a separate LSTM for each label. They also evaluate the model we described here, which they call "Shared LSTMs". Their Independent and Shared LSTMs perform similarly across training set sizes.</p><p>The discriminative classifier is trained to maximize the conditional probability of labels given documents:</p><p>x,y ∈D log p(y | x). For our discriminative model, we encode a document x using an LSTM <ref type="bibr" target="#b16">(Hochreiter and Schmidhuber, 1997)</ref>, and use the average of the LSTM hidden states as the document representation. The classifier is built by adding a softmax layer on top of the LSTM state average to get a probability distribution over labels.</p><p>The generative classifier is trained to maximize the joint probability of documents and labels:</p><p>x,y ∈D log p(x, y). The generative classifier uses the following factorization:</p><formula xml:id="formula_0">p(x, y) = p(x | y)p(y)<label>(1)</label></formula><p>We parameterize log p(x | y) as a conditional LSTM language model using the standard sequential factorization:</p><formula xml:id="formula_1">log p(x | y) = T t=1 log p(x t | x &lt;t , y)<label>(2)</label></formula><p>We define a label embedding matrix V Y ∈ R d 1 ×|Y| . To predict the next word x t+1 , we concatenate the LSTM hidden state h t with the label embedding v y (a column of V Y ), and feed it to a softmax layer to get the probability distribution over the vocabulary. More details about the factorization and parameterization are discussed in Section 3. The label prior p(y) is acquired via maximum likelihood estimation and fixed during training of the remaining parameters. At inference time, the prediction is made by maximizing p(y | x) with respect to y for the discriminative classifier and maximizing p(x | y)p(y) for the generative classifier.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Latent-Variable Generative Classifiers</head><p>We now introduce discrete latent variables into the standard generative classifier as shown in Figure <ref type="figure" target="#fig_0">1</ref>. We refer to the latent-variable model as an auxiliary latent generative model, as we expect the latent variable to contain auxiliary information that can help with the generation of the input.</p><p>Following the graphical model structure in Figure <ref type="figure" target="#fig_0">1</ref>(b), we factorize the joint probability p(x, y, c) as follows: We parameterize p Θ (x | c, y) as a conditional LSTM language model using the same factorization as above:</p><formula xml:id="formula_2">p(x, y, c) = p Θ (x | c, y)p Φ (c)p Ψ (y)<label>(3)</label></formula><formula xml:id="formula_3">log p Θ (x | c, y) = T t=1 log p Θ (x t | x &lt;t , c, y) (4)</formula><p>where Θ is the set of parameters of the language model. As in the generative classifier, we use a label embedding matrix V Y . In addition, we define a latent variable embedding matrix</p><formula xml:id="formula_4">V C ∈ R d 2 ×|C|</formula><p>where C is the set of values for the discrete latent variable. Also like the generative classifier, we use an LSTM to predict each word with a softmax layer:</p><formula xml:id="formula_5">p Θ (x t | x &lt;t , c, y) ∝ exp{u xt ([h t ; v y ; v c ]) + b xt } (5)</formula><p>where h t is the hidden representation of x &lt;t from the LSTM, v y and v c are the embeddings for the label and the latent variable, respectively, [u; v] denotes vertical concatenation, u xt is the output word embedding, and b xt is a bias parameter.</p><p>The prior distribution of the latent variable is parameterized as follows:</p><formula xml:id="formula_6">p Φ (c) ∝ exp{w c v c + b c } (6)</formula><p>where Φ is the set of parameters for this distribution which includes the vector w c and scalar b c for each c.</p><p>As in the standard generative model, the label prior p Ψ (y) is acquired from the empirical label distribution in the training data and remains fixed during training.</p><p>Training. As is standard in latent-variable modeling, we train our models by maximizing the log marginal likelihood:</p><formula xml:id="formula_7">max Θ,Φ,V C ,V Y x,y ∈D log c∈C p Θ (x | c, y)p Φ (c)p Ψ (y) (7)</formula><p>In NLP, these sorts of optimization problems are traditionally solved with the EM algorithm. However, we instead directly optimize the above quantity using automatic differentiation. This is natural because we use softmax-transformed parameterizations; a more traditional parameterization would assign parameters directly to individual probabilities, which then requires constrained optimization.</p><p>Inference. The prediction is made by marginalizing out the latent variables as follows:</p><formula xml:id="formula_8">ŷ = argmax y∈Y c∈C p Θ (x | c, y)p Φ (c)p Ψ (y) (8)</formula><p>We experimented with other inference objectives and found similar results. More details can be found in Appendix C.</p><p>Differences with ensembles. Our latentvariable model resembles an ensemble of multiple generative classifiers, but there are two main differences. First, all parameters in the latent generative classifier are trained jointly, while a standard ensemble combines predictions from multiple, independently-trained models. Joint training leads to complementary information being captured by latent variable values, as shown in our analysis. Moreover, a standard ensemble will lead to far more parameters (10, 30, or 50 times as many in our experimental setup) since each generative classifier is a completely separate model. Our approach simply conditions on the embedding of the latent variable value and therefore does not add many parameters.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Experiments</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Datasets</head><p>We present our results on six publicly available text classification datasets introduced by <ref type="bibr" target="#b42">Zhang et al. (2015)</ref>, which include news categorization, sentiment analysis, question/answer topic classification, and article ontology classification.<ref type="foot" target="#foot_0">foot_0</ref> To compare classifiers across training set sizes, we follow the setup of <ref type="bibr" target="#b40">Yogatama et al. (2017)</ref> and construct multiple training sets by randomly sampling 5, 20, 100, 1k, 2k, 5k, and 10k instances per label from each dataset.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Training Details</head><p>In all experiments, the word embedding dimension and the LSTM hidden state dimension are set to 100. All LSTMs use one layer and are unidirectional. The label dimensionality of all generative classifiers is set to 100. We adopt the same parameter settings as <ref type="bibr" target="#b40">Yogatama et al. (2017)</ref> to ensure the results are comparable. For the latent-variable generative classifiers, we choose 10 or 30 latent variable values with embeddings of dimensionality 10, 50, or 100.</p><p>For optimization, we use Adam (Kingma and Ba, 2015) with learning rate 0.001. We do early stopping by evaluating the classification accuracy on the development set.</p><p>Due to memory limitations and computational costs, we truncate the length of the input sequences to 80 tokens before adding &lt;s&gt; and &lt;/s&gt; to indicate the start and end of the document. Though truncation decreases the performance of the models, all models use the same truncated inputs, so the comparison is still fair.<ref type="foot" target="#foot_1">foot_1</ref> </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">Baselines</head><p>To confirm we have built strong baselines, we first compare our implementation of the generative and discriminative classifiers to prior work. Our results in Appendix A show that our baselines are comparable to those of <ref type="bibr" target="#b40">Yogatama et al. (2017)</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Results</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1">Data Efficiency</head><p>Figure <ref type="figure" target="#fig_1">2</ref> shows results for the discriminative, generative, and latent generative classifiers in terms of data efficiency. Data efficiency is measured by comparing the accuracies of the classifiers when trained across varying sizes of training sets. Numerical comparisons on two datasets are shown in Table <ref type="table" target="#tab_0">1</ref>.</p><p>With small training sets, the latent generative classifier consistently outperforms both the generative and discriminative classifiers. When the generative classifier is better than the discriminative one, as in DBpedia, the latent classifier resembles the generative classifier. When the discriminative classifier is better, as in Yelp Polarity, the latent classifier patterns after the discriminative classifier. However, when the number of training examples is in the range of approximately 5,000 to 10,000 per class, the discriminative classifier tends to perform best.</p><p>With small training sets, the generative classifier outperforms the discriminative one in most cases except the very smallest training sets. For example, in the Yelp Review Polarity dataset, the first two points are from classifiers trained with only 10 and 40 instances in total. The other case in which generative classifiers underperform is when training over large training sets, which   agrees with the theoretical and empirical findings in prior work <ref type="bibr" target="#b40">(Yogatama et al., 2017;</ref><ref type="bibr" target="#b33">Ng and Jordan, 2002)</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2">Effect of Graphical Model Structure</head><p>There are multiple choices to factorize the joint probability of the variables x, y, and c, which correspond to different graphical models. Here we consider other graphical model structures, namely those shown in Figure <ref type="figure" target="#fig_3">3</ref>. We refer to the model in Figure <ref type="figure" target="#fig_3">3</ref>(b) as the "joint" latent generative classifier since it uses the latent variable to jointly generate x and y. We refer to the model in Figure <ref type="figure" target="#fig_3">3</ref>(c) as the "middle" latent generative classifier as the latent variable separates the textual input from the label. We use similar parameterizations for these models as for the auxiliary latent classifier, with conditional language models to generate x where the embedding of the latent variable is concatenated to the hidden state as in Section 3.</p><p>Figure <ref type="figure" target="#fig_4">4</ref> shows the comparison of the standard and the three latent generative classifiers on Yelp Review Polarity, AGNews, and DBpedia. <ref type="foot" target="#foot_2">4</ref> We observe that the auxiliary model consistently performs best, while the other two latent generative classifiers do not consistently improve over the standard generative classifier. On DBpedia, we see surprisingly poor performance when adding latent variables suboptimally. This suggests that the choice of where to include latent variables has a significant impact on performance.</p><p>Dependency between label and input variable.</p><p>We observe that the most prominent difference between the auxiliary and the other two latentvariable models is that the label variable y is directly linked to the input variable x in the auxiliary model, which is also the case in the standard generative model. In order to verify the importance of this direct dependency between the label and input, we create a new latent-variable model by adding a directed edge between y and x to the middle latent generative model. We refer to this model as the "hierarchical" latent generative classifier, which is shown in Figure <ref type="figure" target="#fig_3">3(d)</ref>. The results in Table <ref type="table" target="#tab_1">2</ref> show the performance gains after adding this edge, which are all positive and sometimes very large. The resulting hierarchical model is very close in performance to the auxiliary model, which is unsurprising because these two models differ only in the presence of the edge from y to c.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.3">Effect of Latent Variables</head><p>We conduct a comparison to demonstrate that the performance gains are due to the latent-variable structure instead of an increased number of parameters when adding the latent variables. <ref type="foot" target="#foot_3">5</ref>For the latent generative classifier, we choose 10 latent variable values with embeddings of di-  Table <ref type="table">3</ref>: Accuracy comparison of standard generative (Gen.) and latent (Lat.) classifiers under earlier experimental configurations and parameter-comparison configurations (PC). When controlling for the number of parameters, the latent classifier still outperforms the standard generative classifier, which indicates the performance gains are due to the latent variables instead of an increased number of parameters. mensionality 10, and a label dimensionality of 100 (Lat. PC in Table <ref type="table">3</ref>). For the standard generative classifier, we choose a label dimensionality of 110 (Gen. PC in Table <ref type="table">3</ref>). So, the numbers of parameters are comparable, since we ensure the same number of parameters in the "output" word embeddings in the softmax layer of the language model, which is the decision that most strongly affects the number of parameters.</p><p>Table <ref type="table">3</ref> shows the results with different configurations, including the choices mentioned above as well as the results from earlier configurations mentioned in the paper. We observe that the latent generative classifiers still perform better in terms of data efficiency, which shows that the latentvariable structure accounts for the performance gains.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.4">Learning via Expectation-Maximization</head><p>The results reported before are evaluated on the classifiers trained by directly maximizing the log marginal likelihood via gradient-based optimiza-  tion. In addition, we train our latent generative classifiers with the EM algorithm <ref type="bibr" target="#b37">(Salakhutdinov et al., 2003)</ref>. More training details can be found in Appendix B.</p><p>To speed convergence, we use a mini-batch version of EM, updating the parameters after each mini-batch. Our results in Table <ref type="table" target="#tab_4">4</ref> show that the direct approach and the EM algorithm have similar performance in terms of classification accuracy and convergence speed in optimizing the parameters of our latent models. Similar trends appear for the other datasets.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Analysis</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.1">Interpretation of Latent Variables</head><p>We take the strongest latent-variable model, the auxiliary latent generative classifier, and analyze the relationship among the latent, input, and label variables. We use the AGNews dataset, which contains 4 categories: world, sports, business, and sci/tech. The classifier we analyze has 10 values for the latent variable and is trained on a training set containing 1k instances per class.</p><p>We first investigate the relationship between the latent variable and the label by counting cooccurrences. For each instance in the development set, we calculate the posterior probability distribution over the latent variable, and pick the value with the highest probability as the preferred latent variable value for that instance. This is reasonable since in our trained model, the posterior distribution over latent variable values is peaked. Then we categorize the data by their preferred latent variable values and count the gold standard labels in each group. We observe that the labels are nearly uniformly distributed in each latent variable value, suggesting that the latent variables are not obviously being used to encode information about the label. Thus, we hypothesize there should be information other than that pertaining to the label that causes the data to cluster into different latent variable values. We study the differences of the input texts among the 10 clusters by counting frequent words, manually scanning through instances, and looking for high-level similarities and differences. We report our manual labeling for the latent variable values in Table <ref type="table" target="#tab_6">5</ref>.</p><p>For example, value 1 is mostly associated with future and progressive tenses; the words "will", "next", and "new" appear frequently. Value 2 tends to contain past and perfect verb tenses (the phrases "has been" and "have been" appear frequently). Value 3 contains region names like "VANCOUVER", "LONDON", and "New Brunswick", while value 7 contains countryoriented terms like "Indian", "Russian", "North Korea", and "Ireland". Our choice of only 10 latent variable values causes them to capture the coarse-grained patterns we observe here. It is possible that more fine-grained differences would appear with a larger number of values.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.2">Generation with Latent Variables</head><p>Another advantage of generative models is that they can be used to generate data in order to better understand what they have learned, especially in seeking to understand latent variables. We use our auxiliary latent generative classifier to generate multiple samples by setting the latent variable and the label. Instead of the soft mixture of discrete latent variable values that is used in classification (since we marginalize over the latent variable at test time), here we choose a single latent variable value when generating a textual sample.</p><p>To increase generation diversity, we use temperature-based sampling when choosing the next word, where higher temperature leads to higher variety and more noise. We set the temperature to 0.6. Note that the latent-variable model here is trained on only 4000 instances (1k for each label) from AGNews, so the generated samples do suffer from the small size of data used in training the language model. Table <ref type="table" target="#tab_7">6</ref> shows some generated examples. We observe that different combinations of the latent variable and label lead to generations that comport with both the labels and our interpretations of the latent variable values.</p><p>We speculate that the reason our generative classifiers perform well in the data-efficient setting is that they are better able to understand the data via language modeling rather than directly optimizing the classification objective. Our generated samples testify to the ability of generative classifiers to model the underlying data distribution even with only 4000 instances.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7">Related Work</head><p>Supervised Generative Models. Generative models have traditionally been used in supervised settings for many NLP tasks, including naive Bayes and other models for text classification <ref type="bibr" target="#b29">(Maron, 1961;</ref><ref type="bibr" target="#b40">Yogatama et al., 2017)</ref>, Markov models for sequence labeling <ref type="bibr" target="#b7">(Church, 1988;</ref><ref type="bibr" target="#b0">Bikel et al., 1999;</ref><ref type="bibr" target="#b3">Brants, 2000;</ref><ref type="bibr" target="#b43">Zhou and Su, 2002)</ref>, and probabilistic models for parsing <ref type="bibr" target="#b27">(Magerrnan and Marcus, 1991;</ref><ref type="bibr" target="#b1">Black et al., 1993;</ref><ref type="bibr" target="#b14">Eisner, 1996;</ref><ref type="bibr" target="#b8">Collins, 1997;</ref><ref type="bibr" target="#b13">Dyer et al., 2016)</ref>. Recent work in generative models for question answering <ref type="bibr" target="#b25">(Lewis and Fan, 2019)</ref> learns to generate questions instead of directly penalizing prediction errors, which encourages the model to better understand the input data. Our work is directly inspired by that of <ref type="bibr" target="#b40">Yogatama et al. (2017)</ref>, who build RNN-based generative text classifiers and show scenarios where they can be empirically useful.</p><p>Text Classification. Traditionally, linear classifiers <ref type="bibr" target="#b30">(McCallum and Nigam, 1998;</ref><ref type="bibr" target="#b18">Joachims, 1998;</ref><ref type="bibr" target="#b15">Fan et al., 2008)</ref> have been used for text classification. Recent work has scaled up text classification to larger datasets with models based on logistic regression <ref type="bibr" target="#b19">(Joulin et al., 2017)</ref>, convolutional neural networks <ref type="bibr" target="#b20">(Kim, 2014;</ref><ref type="bibr" target="#b42">Zhang et al., 2015;</ref><ref type="bibr" target="#b9">Conneau et al., 2017)</ref>, and recurrent neural networks <ref type="bibr" target="#b39">(Xiao and Cho, 2016;</ref><ref type="bibr" target="#b40">Yogatama et</ref>    2017), the latter of which is most closely-related to our models.</p><p>Latent-variable Models. Latent variables have been widely used in both generative and discriminative models to learn rich structure from data <ref type="bibr">(Petrov and</ref><ref type="bibr">Klein, 2007, 2008;</ref><ref type="bibr" target="#b2">Blunsom et al., 2008;</ref><ref type="bibr" target="#b41">Yu and Joachims, 2009;</ref><ref type="bibr" target="#b32">Morency et al., 2008)</ref>. Recent work in neural networks has shown that introducing latent variables leads to higher representational capacity <ref type="bibr" target="#b23">(Kingma and Welling, 2014;</ref><ref type="bibr" target="#b6">Chung et al., 2015;</ref><ref type="bibr" target="#b4">Burda et al., 2016;</ref><ref type="bibr" target="#b17">Ji et al., 2016)</ref>. However, unlike variational autoencoders <ref type="bibr" target="#b22">(Kingma and Ba, 2015)</ref> and related work that use continuous latent variables, our model is more similar to recent efforts that combine neural architectures with discrete latent variables and end-to-end training <ref type="bibr" target="#b17">(Ji et al., 2016;</ref><ref type="bibr" target="#b21">Kim et al., 2017;</ref><ref type="bibr" target="#b24">Kong et al., 2017;</ref><ref type="bibr" target="#b5">Chen and Gimpel, 2018;</ref><ref type="bibr">Wiseman et al., 2018, inter alia)</ref>.</p><p>8 Discussion and Future Work</p><p>An alternative solution to the small-data setting is to use language representations pretrained on large, unannotated datasets <ref type="bibr" target="#b31">(Mikolov et al., 2013;</ref><ref type="bibr" target="#b34">Pennington et al., 2014;</ref><ref type="bibr" target="#b12">Devlin et al., 2019)</ref>. In other experiments not reported here, we found that using pretrained word embeddings leads to larger performance improvements for the discriminative classifiers than the generative ones.</p><p>Future work will explore the performance of latent generative classifiers in other challenging experimental conditions, including testing robustness to data shift and adversarial examples as well as zero-shot learning. Another thread of future work is to explore the performance of discriminative models with latent variables, and investigate combining pretrained representations with both generative and discriminative classifiers.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="9">Conclusion</head><p>We focused in this paper on improving the data efficiency of generative text classifiers by introducing discrete latent variables into the generative story. Our experimental results demonstrate that, with small annotated training data, latent generative classifiers have larger and more stable performance gains over discriminative classifiers than their standard generative counterparts. Analysis reveals interpretable latent variable values and generated samples, even with very small training sets.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: Graphical models of (a) standard generative classifier and (b) auxiliary latent generative classifier.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: Comparison of classification accuracy of the discriminative (Disc.), standard generative (Gen.), and latent generative (Lat.) classifiers training across training set sizes.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head></head><label></label><figDesc>, Gen.): change in accuracy when moving from generative to latent generative classifier; ∆(Lat., Disc.): change in accuracy when moving from discriminative to latent generative classifier. The first column shows the number of training instances per class.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: Graphical models of (a) auxiliary, (b) joint, (c) middle, and (d) hierarchical latent generative classifiers.</figDesc><graphic coords="5,79.09,233.36,204.09,90.71" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 4 :</head><label>4</label><figDesc>Figure 4: Comparison of generative classifier (gen) and latent generative classifiers (middle gen, joint gen, aux gen).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>Table 1 :</head><label>1</label><figDesc>∆(Lat.</figDesc><table><row><cell></cell><cell cols="2">∆(Lat., Gen.)</cell><cell cols="2">∆(Lat., Disc.)</cell></row><row><cell></cell><cell cols="4">AGNews DBpedia AGNews DBpedia</cell></row><row><cell>5</cell><cell>+12.3</cell><cell>+3.3</cell><cell>+7.2</cell><cell>+34.0</cell></row><row><cell>20</cell><cell>+23.5</cell><cell>+3.3</cell><cell>+17.7</cell><cell>+41.8</cell></row><row><cell>100</cell><cell>+9.8</cell><cell>+1.8</cell><cell>+16.0</cell><cell>+17.5</cell></row><row><cell>1k</cell><cell>+2.0</cell><cell>+0.9</cell><cell>+8.0</cell><cell>+0.0</cell></row><row><cell>all</cell><cell>+0.1</cell><cell>-0.4</cell><cell>+0.3</cell><cell>-2.4</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 2 :</head><label>2</label><figDesc>Changes in accuracy when adding a directed edge from the label to the input, i.e., the improvement in accuracy when moving from the middle to the hierarchical latent generative classifier. Each column shows a different number of training instances per class.</figDesc><table><row><cell></cell><cell>5</cell><cell>20</cell><cell>100</cell><cell>1k</cell><cell>all</cell></row><row><cell>Yelp P</cell><cell>+6.4</cell><cell>+8.2</cell><cell>+6.6</cell><cell>+8.6</cell><cell>+3.4</cell></row><row><cell>Yelp F</cell><cell>+4.7</cell><cell>+7.7</cell><cell>+11.3</cell><cell>+9.0</cell><cell>+11.8</cell></row><row><cell cols="4">AGNews +13.4 +19.9 +27.9</cell><cell>+1.8</cell><cell>+0.4</cell></row><row><cell>Sogou</cell><cell cols="3">+22.3 +24.0 +13.9</cell><cell>+3.3</cell><cell>+2.8</cell></row><row><cell>Yahoo</cell><cell>+8.4</cell><cell cols="3">+17.7 +22.5 +11.1</cell><cell>+3.6</cell></row><row><cell cols="4">DBpedia +44.6 +44.6 +28.4</cell><cell>+8.8</cell><cell>+2.3</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 4 :</head><label>4</label><figDesc>Comparison of the classification accuracy and convergence speed of the classifiers trained with direct optimization (Direct) of the log marginal likelihood and the EM algorithm (EM). The numbers inside the parentheses are the numbers of epochs required to reach the classification accuracies listed outside the parentheses.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head></head><label></label><figDesc>al., Commission is likely to follow opinion in the U.S. on the merger suit ... ... to increase computer software exports is beginning to show results ... 2 past/perfect tense A screensaver targeting spam-related websites appears to have been too successful . Universal has signed a handful of artists to a digital-only record label . .. 3 region names, locations Newcastle manager Bobby Robson ... relieved of his duties ... Newcastle announced ... ABUJA ... its militias in Darfur before they would sign ... Louis advanced to the N.L. championship series for the third time in five years ... UAL ( UALAQ.OB : OTC BB -news -research ) ... ( UAIRQ.OB : OTC BB ... Egyptian diplomat said on Friday, and the abduction of ... earlier this month . ... expected Monday or Tuesday , ... doctors and nurses off for the holiday weekend ... Rwandan President ... in the Democratic Republic of the Congo after ... Pope John Paul II issued a new appeal for peace in Iraq and the Middle East ... 9 mixure 10 symbols, links ... A HREF = " http : / / www.reuters.co.uk / financeQuoteLookup.jhtml ... &amp; lt ; strong &amp; gt ; Analysis &amp; lt ; / strong &amp; gt ; Contracting out the blame ...</figDesc><table><row><cell>id</cell><cell>description</cell><cell>examples</cell></row><row><cell cols="3">1 ... 4 future/progressive tenses mixture</cell></row><row><cell cols="3">5 St. 6 abbreviations ...challenge larger rivals in the fast-growing 2.1 billion-a-year sleep aid market .... numbers, money-related ... to a $ 25,000 prize , and more importantly , into the history books ...</cell></row><row><cell cols="3">7 ... an 8 dates country-oriented terms</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>Table 5 :</head><label>5</label><figDesc>Latent variable values ("id"), our manually-defined descriptions, and examples of instances associated to them. Boldface is used to highlight cues to our labeling. We use the term "mixture" when we did not find clear signals to interpret the latent variable value. Oklahoma supporters unemployment claims that he plans to trying to restore access next season 's truce by ruling , saying a major parliament . sport The Dallas Cowboys today continued advantage today with Miami and the Hurricanes had to get the big rotation for the first time this year . business Las Vegas took one more high-stepping kick across the pond as casino operator Caesars Entertainment Inc . sci/tech SAN FRANCISCO -Sun Microsystems on Monday will surely offer the deal to sell up pioneer members into two years and archiving . Latent variable id = 6: numbers, money-related world An Israeli helicopter gunship fired a missile among $ 5 million in to Prime Minister Ariel Sharon on the streets of U.S. warming may not be short-lived . sport On Wednesday it would win the disgruntled one of the season opener in a # 36 ; 8.75 billion of World Cup final day for second . business Reuters -U.S. drug company Biogen Idec is considering an all-share bid of more than 8.5 billion euros ( # 36 ; 10.6 billion ) for Irish peer Elan , a newspaper reported on Sunday . sci/tech The JVC Everio GZ-MC100 ( $ 1199.95 ) and GZ-MC200 ( $ 1299.95 ) will use 4GB Microdrive cards , which are removable hard drives measuring 1.5 inches square , but will also lost vital " fans to recently over . Latent variable id = 10: symbols, links world A German court is set to hear all its secular oil , and western Kerik in Fallujah . &amp; lt ; A HREF = " http : / / www.investor.reuters.com / FullQuote.aspx ? ticker = Agency target = Army ... sport White Sox to an overpowering 49-0 victory over The world championship game . &amp; lt ; br &amp; gt ; &amp; lt ; br &amp; gt ; Comcast SportsNet business NEW YORK ( Reuters ) -U.S. stocks climbed on Monday , with a steep decline in commodity prices and lower crude oil dented shares of Alcoa Inc . &amp; lt ; A HREF = " http : / / www.investor.reuters.com / FullQuote.aspx ? ticker = GDT.N target = / stocks / quickinfo / fullquote " &amp; gt ; &amp; lt ; / A &amp; gt ;. sci/tech Spyware problems introduced a radio frequency code Thursday . &amp; lt ; FONT face = " verdana , MS Sans Serif , arial , helvetica " size = " -2 " color = " # 666666 " &amp; gt ; &amp; lt ; B &amp; gt ; -washingtonpost.com &amp; lt ; / B &amp; gt ; &amp; lt</figDesc><table><row><cell cols="2">Latent variable id = 3: region names, locations</cell></row><row><cell>world</cell><cell>BEIJING ( Reuters ) -</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head>Table 6 :</head><label>6</label><figDesc>Generated examples by controlling the latent variables and labels (world, sport, business, sci/tech) with our latent classifier trained on a small subset of the AGNews dataset.</figDesc><table /></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_0"><p>A more detailed dataset description is in Appendix E.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="3" xml:id="foot_1"><p>In other experiments, we compared performance with different truncation limits across training set sizes, finding the trends to be consistent with those presented here.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="4" xml:id="foot_2"><p>Similar trends are observed for all datasets, so we only show three for brevity.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="5" xml:id="foot_3"><p>The results in the preceding sections use the models with configurations tuned on the development sets. We follow the practice of<ref type="bibr" target="#b40">Yogatama et al. (2017)</ref> and fix label dimensionality to 100, as described in Section 4.2. The only tuned hyperparameters are the number of latent variable values and the dimensions of their embeddings.</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>Acknowledgments</head><p>We would like to thank <rs type="person">Lingyu Gao</rs>, <rs type="person">Qingming Tang</rs>, and <rs type="person">Lifu Tu</rs> for helpful discussions, <rs type="person">Michael Maire</rs> and <rs type="person">Janos Simon</rs> for their useful feedback, the anonymous reviewers for their comments that improved this paper, and <rs type="person">Google</rs> for a faculty research award to <rs type="person">K. Gimpel</rs> that partially supported this research.</p></div>
+			</div>			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">An algorithm that learns what&apos;s in a name</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Daniel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Richard</forename><surname>Bikel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ralph</forename><forename type="middle">M</forename><surname>Schwartz</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Weischedel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Machine learning</title>
+		<imprint>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="issue">1-3</biblScope>
+			<biblScope unit="page" from="211" to="231" />
+			<date type="published" when="1999">1999</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Towards history-based grammars: Using richer models for probabilistic parsing</title>
+		<author>
+			<persName><forename type="first">Ezra</forename><surname>Black</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fred</forename><surname>Jelinek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">John</forename><surname>Lafrerty</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><forename type="middle">M</forename><surname>Magerman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Robert</forename><surname>Mercer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Salim</forename><surname>Roukos</surname></persName>
+		</author>
+		<idno type="DOI">10.3115/981574.981579</idno>
+	</analytic>
+	<monogr>
+		<title level="m">31st Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting><address><addrLine>Columbus, Ohio, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="1993">1993</date>
+			<biblScope unit="page" from="31" to="37" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">A discriminative latent variable model for statistical machine translation</title>
+		<author>
+			<persName><forename type="first">Phil</forename><surname>Blunsom</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Trevor</forename><surname>Cohn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Miles</forename><surname>Osborne</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of ACL-08: HLT</title>
+		<meeting>ACL-08: HLT<address><addrLine>Columbus, Ohio</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2008">2008</date>
+			<biblScope unit="page" from="200" to="208" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">TnT -a statistical partof-speech tagger</title>
+		<author>
+			<persName><forename type="first">Thorsten</forename><surname>Brants</surname></persName>
+		</author>
+		<idno type="DOI">10.3115/974147.974178</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Sixth Applied Natural Language Processing Conference</title>
+		<meeting><address><addrLine>Washington, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2000">2000</date>
+			<biblScope unit="page" from="224" to="231" />
+		</imprint>
+	</monogr>
+	<note>Seattle</note>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Importance weighted autoencoders</title>
+		<author>
+			<persName><forename type="first">Yuri</forename><surname>Burda</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Roger</forename><surname>Grosse</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ruslan</forename><surname>Salakhutdinov</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of International Conference on Learning Representations (ICLR)</title>
+		<meeting>International Conference on Learning Representations (ICLR)</meeting>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Smaller text classifiers with discriminative cluster embeddings</title>
+		<author>
+			<persName><forename type="first">Mingda</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kevin</forename><surname>Gimpel</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/N18-2116</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2018 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</title>
+		<title level="s">Short Papers</title>
+		<meeting>the 2018 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies<address><addrLine>New Orleans, Louisiana</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page" from="739" to="745" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">A recurrent latent variable model for sequential data</title>
+		<author>
+			<persName><forename type="first">Junyoung</forename><surname>Chung</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kyle</forename><surname>Kastner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Laurent</forename><surname>Dinh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kratarth</forename><surname>Goel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aaron</forename><forename type="middle">C</forename><surname>Courville</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="2980" to="2988" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">A stochastic parts program and noun phrase parser for unrestricted text</title>
+		<author>
+			<persName><forename type="first">Kenneth</forename><forename type="middle">Ward</forename><surname>Church</surname></persName>
+		</author>
+		<idno type="DOI">10.3115/974235.974260</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Second Conference on Applied Natural Language Processing</title>
+		<meeting><address><addrLine>Austin, Texas, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="1988">1988</date>
+			<biblScope unit="page" from="136" to="143" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Three generative, lexicalised models for statistical parsing</title>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Collins</surname></persName>
+		</author>
+		<idno type="DOI">10.3115/976909.979620</idno>
+	</analytic>
+	<monogr>
+		<title level="m">35th Annual Meeting of the Association for Computational Linguistics and 8th Conference of the European Chapter</title>
+		<meeting><address><addrLine>Madrid, Spain</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="1997">1997</date>
+			<biblScope unit="page" from="16" to="23" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Very deep convolutional networks for text classification</title>
+		<author>
+			<persName><forename type="first">Alexis</forename><surname>Conneau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Holger</forename><surname>Schwenk</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Loïc</forename><surname>Barrault</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yann</forename><surname>Lecun</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 15th Conference of the European Chapter</title>
+		<title level="s">Long Papers</title>
+		<meeting>the 15th Conference of the European Chapter<address><addrLine>Valencia, Spain</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="1107" to="1116" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Maximum likelihood from incomplete data via the EM algorithm</title>
+		<author>
+			<persName><forename type="first">Arthur</forename><forename type="middle">P</forename><surname>Dempster</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nan</forename><forename type="middle">M</forename><surname>Laird</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Donald</forename><forename type="middle">B</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of the Royal Statistical Society: Series B (Methodological)</title>
+		<imprint>
+			<biblScope unit="volume">39</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="1" to="22" />
+			<date type="published" when="1977">1977</date>
+		</imprint>
+	</monogr>
+	<note>Rubin</note>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">ImageNet: A large-scale hierarchical image database</title>
+		<author>
+			<persName><forename type="first">Jia</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Richard</forename><surname>Socher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Li-Jia</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kai</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Li</forename><surname>Fei-Fei</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2009 IEEE conference on computer vision and pattern recognition</title>
+		<imprint>
+			<publisher>Ieee</publisher>
+			<date type="published" when="2009">2009</date>
+			<biblScope unit="page" from="248" to="255" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">BERT: Pre-training of deep bidirectional transformers for language understanding</title>
+		<author>
+			<persName><forename type="first">Jacob</forename><surname>Devlin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming-Wei</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kenton</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kristina</forename><surname>Toutanova</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/N19-1423</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</title>
+		<title level="s">Long and Short Papers</title>
+		<meeting>the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies<address><addrLine>Minneapolis, Minnesota</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="4171" to="4186" />
+		</imprint>
+	</monogr>
+	<note>Association for Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Recurrent neural network grammars</title>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Dyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adhiguna</forename><surname>Kuncoro</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Miguel</forename><surname>Ballesteros</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noah</forename><forename type="middle">A</forename><surname>Smith</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/N16-1024</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2016 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</title>
+		<meeting>the 2016 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies<address><addrLine>San Diego</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="199" to="209" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Three new probabilistic models for dependency parsing: An exploration</title>
+		<author>
+			<persName><forename type="first">Jason</forename><forename type="middle">M</forename><surname>Eisner</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">The 16th International Conference on Computational Linguistics</title>
+		<imprint>
+			<date type="published" when="1996">1996. 1996</date>
+			<biblScope unit="volume">1</biblScope>
+		</imprint>
+	</monogr>
+	<note>COL-ING</note>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">LIBLINEAR: A library for large linear classification</title>
+		<author>
+			<persName><forename type="first">Rong-En</forename><surname>Fan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kai-Wei</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Cho-Jui</forename><surname>Hsieh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiang-Rui</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chih-Jen</forename><surname>Lin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of machine learning research</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="page" from="1871" to="1874" />
+			<date type="published" when="2008-08">2008. Aug</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Long short-term memory</title>
+		<author>
+			<persName><forename type="first">Sepp</forename><surname>Hochreiter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jürgen</forename><surname>Schmidhuber</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Neural computation</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="issue">8</biblScope>
+			<biblScope unit="page" from="1735" to="1780" />
+			<date type="published" when="1997">1997</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">A latent variable recurrent neural network for discourse-driven language models</title>
+		<author>
+			<persName><forename type="first">Yangfeng</forename><surname>Ji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gholamreza</forename><surname>Haffari</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jacob</forename><surname>Eisenstein</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/N16-1037</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2016 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</title>
+		<meeting>the 2016 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies<address><addrLine>San Diego, California</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="332" to="342" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Text categorization with support vector machines: Learning with many relevant features</title>
+		<author>
+			<persName><forename type="first">Thorsten</forename><surname>Joachims</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">European conference on machine learning</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="1998">1998</date>
+			<biblScope unit="page" from="137" to="142" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Bag of tricks for efficient text classification</title>
+		<author>
+			<persName><forename type="first">Armand</forename><surname>Joulin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Edouard</forename><surname>Grave</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Piotr</forename><surname>Bojanowski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tomas</forename><surname>Mikolov</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 15th Conference of the European Chapter</title>
+		<meeting>the 15th Conference of the European Chapter<address><addrLine>Short Papers; Valencia, Spain</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page" from="427" to="431" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Convolutional neural networks for sentence classification</title>
+		<author>
+			<persName><forename type="first">Yoon</forename><surname>Kim</surname></persName>
+		</author>
+		<idno type="DOI">10.3115/v1/D14-1181</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2014 Conference on Empirical Methods in Natural Language Processing (EMNLP)</title>
+		<meeting>the 2014 Conference on Empirical Methods in Natural Language Processing (EMNLP)<address><addrLine>Doha, Qatar</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="1746" to="1751" />
+		</imprint>
+	</monogr>
+	<note>Association for Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Structured attention networks</title>
+		<author>
+			<persName><forename type="first">Yoon</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Carl</forename><surname>Denton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luong</forename><surname>Hoang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexander</forename><forename type="middle">M</forename><surname>Rush</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of International Conference on Learning Representations (ICLR)</title>
+		<meeting>International Conference on Learning Representations (ICLR)</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Adam: A method for stochastic optimization</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Diederik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jimmy</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Ba</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of International Conference on Learning Representations (ICLR)</title>
+		<meeting>International Conference on Learning Representations (ICLR)</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Autoencoding variational Bayes</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Diederik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of International Conference on Learning Representations (ICLR)</title>
+		<meeting>International Conference on Learning Representations (ICLR)</meeting>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Segmental recurrent neural networks</title>
+		<author>
+			<persName><forename type="first">Lingpeng</forename><surname>Kong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Dyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noah</forename><forename type="middle">A</forename><surname>Smith</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of International Conference on Learning Representations</title>
+		<meeting>International Conference on Learning Representations</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note>ICLR</note>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Generative question answering: Learning to answer the whole question</title>
+		<author>
+			<persName><forename type="first">Mike</forename><surname>Lewis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Angela</forename><surname>Fan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of International Conference on Learning Representations (ICLR)</title>
+		<meeting>International Conference on Learning Representations (ICLR)</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Microsoft COCO: Common objects in context</title>
+		<author>
+			<persName><forename type="first">Tsung-Yi</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Maire</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Serge</forename><surname>Belongie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><surname>Hays</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pietro</forename><surname>Perona</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Deva</forename><surname>Ramanan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Piotr</forename><surname>Dollár</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Lawrence</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zitnick</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">European conference on computer vision</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="740" to="755" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Pearl: A probabilistic chart parser</title>
+		<author>
+			<persName><forename type="first">David</forename><forename type="middle">M</forename><surname>Magerrnan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mitchell</forename><forename type="middle">P</forename><surname>Marcus</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Fifth Conference of the European Chapter</title>
+		<meeting><address><addrLine>Berlin, Germany</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="1991">1991</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Building a large annotated corpus of English: The Penn Treebank</title>
+		<author>
+			<persName><forename type="first">Mitchell</forename><forename type="middle">P</forename><surname>Marcus</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Beatrice</forename><surname>Santorini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mary</forename><forename type="middle">Ann</forename><surname>Marcinkiewicz</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Computational Linguistics</title>
+		<imprint>
+			<biblScope unit="volume">19</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="313" to="330" />
+			<date type="published" when="1993">1993</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Automatic indexing: An experimental inquiry</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">E</forename><surname>Maron</surname></persName>
+		</author>
+		<idno type="DOI">10.1145/321075.321084</idno>
+	</analytic>
+	<monogr>
+		<title level="j">J. ACM</title>
+		<imprint>
+			<biblScope unit="volume">8</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="404" to="417" />
+			<date type="published" when="1961">1961</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">A comparison of event models for naive Bayes text classification</title>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Mccallum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kamal</forename><surname>Nigam</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI-98 Workshop on Learning for Text Categorization</title>
+		<imprint>
+			<date type="published" when="1998">1998</date>
+			<biblScope unit="volume">752</biblScope>
+			<biblScope unit="page" from="41" to="48" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Distributed representations of words and phrases and their compositionality</title>
+		<author>
+			<persName><forename type="first">Tomas</forename><surname>Mikolov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ilya</forename><surname>Sutskever</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kai</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Greg</forename><forename type="middle">S</forename><surname>Corrado</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jeff</forename><surname>Dean</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page" from="3111" to="3119" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Modeling Latent-Dynamic in Shallow Parsing: A Latent Conditional Model with Improved Inference</title>
+		<author>
+			<persName><forename type="first">Louis-Philippe</forename><surname>Morency</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xu</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daisuke</forename><surname>Okanoharay</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jun'ichi</forename><surname>Tsujii</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">The 22nd International Conference on Computational Linguistics (COLING 2008)</title>
+		<meeting><address><addrLine>Manchester, UK.</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">On discriminative vs. generative classifiers: A comparison of logistic regression and naive Bayes</title>
+		<author>
+			<persName><forename type="first">Andrew</forename><forename type="middle">Y</forename><surname>Ng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Michael</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Jordan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2002">2002</date>
+			<biblScope unit="page" from="841" to="848" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Glove: Global vectors for word representation</title>
+		<author>
+			<persName><forename type="first">Jeffrey</forename><surname>Pennington</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Richard</forename><surname>Socher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Manning</surname></persName>
+		</author>
+		<idno type="DOI">10.3115/v1/D14-1162</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2014 Conference on Empirical Methods in Natural Language Processing (EMNLP)</title>
+		<meeting>the 2014 Conference on Empirical Methods in Natural Language Processing (EMNLP)<address><addrLine>Doha, Qatar</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="1532" to="1543" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Improved inference for unlexicalized parsing</title>
+		<author>
+			<persName><forename type="first">Slav</forename><surname>Petrov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dan</forename><surname>Klein</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Human Language Technologies 2007: The Conference of the North American Chapter of the Association for Computational Linguistics; Proceedings of the Main Conference</title>
+		<meeting><address><addrLine>Rochester, New York</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2007">2007</date>
+			<biblScope unit="page" from="404" to="411" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Discriminative log-linear grammars with latent variables</title>
+		<author>
+			<persName><forename type="first">Slav</forename><surname>Petrov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dan</forename><surname>Klein</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural processing systems</title>
+		<imprint>
+			<date type="published" when="2008">2008</date>
+			<biblScope unit="page" from="1153" to="1160" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<monogr>
+		<title level="m" type="main">Relationship between gradient and EM steps in latent variable models</title>
+		<author>
+			<persName><forename type="first">Ruslan</forename><surname>Salakhutdinov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sam</forename><surname>Roweis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zoubin</forename><surname>Ghahramani</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Learning neural templates for text generation</title>
+		<author>
+			<persName><forename type="first">Sam</forename><surname>Wiseman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stuart</forename><surname>Shieber</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexander</forename><surname>Rush</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/D18-1356</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2018 Conference on Empirical Methods in Natural Language Processing</title>
+		<meeting>the 2018 Conference on Empirical Methods in Natural Language Processing<address><addrLine>Brussels, Belgium</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="3174" to="3187" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<monogr>
+		<title level="m" type="main">Efficient character-level document classification by combining convolution and recurrent layers</title>
+		<author>
+			<persName><forename type="first">Yijun</forename><surname>Xiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kyunghyun</forename><surname>Cho</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1602.00367</idno>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<monogr>
+		<title level="m" type="main">Generative and discriminative text classification with recurrent neural networks</title>
+		<author>
+			<persName><forename type="first">Dani</forename><surname>Yogatama</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Dyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wang</forename><surname>Ling</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Phil</forename><surname>Blunsom</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1703.01898</idno>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Learning structural SVMs with latent variables</title>
+		<author>
+			<persName><forename type="first">Chun-Nam</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">John</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thorsten</forename><surname>Joachims</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page">5</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">Character-level convolutional networks for text classification</title>
+		<author>
+			<persName><forename type="first">Xiang</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junbo</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yann</forename><surname>Lecun</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 28th International Conference on Neural Information Processing Systems</title>
+		<meeting>the 28th International Conference on Neural Information Processing Systems<address><addrLine>Cambridge, MA, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>MIT Press</publisher>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="649" to="657" />
+		</imprint>
+	</monogr>
+	<note>NIPS&apos;15</note>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">Named entity recognition using an HMM-based chunk tagger</title>
+		<author>
+			<persName><forename type="first">Guodong</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian</forename><surname>Su</surname></persName>
+		</author>
+		<idno type="DOI">10.3115/1073083.1073163</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 40th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 40th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Philadelphia, Pennsylvania, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2002">2002</date>
+			<biblScope unit="page" from="473" to="480" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">Speech database development at MIT: TIMIT and beyond</title>
+		<author>
+			<persName><forename type="first">Stephanie</forename><surname>Victor Zue</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><surname>Seneff</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Glass</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Speech communication</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="351" to="356" />
+			<date type="published" when="1990">1990</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

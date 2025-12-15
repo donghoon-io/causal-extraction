@@ -1,0 +1,975 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Switching Linear Inverse-Regression Model for Tracking Head Pose *</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author role="corresp">
+							<persName><forename type="first">Vincent</forename><surname>Drouard</surname></persName>
+							<email>vincent.drouard@inria.fr</email>
+							<affiliation key="aff0">
+								<orgName type="institution">INRIA Grenoble Rhône-Alpes</orgName>
+								<address>
+									<country key="FR">France</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Silèye</forename><surname>Ba</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">INRIA Grenoble Rhône-Alpes</orgName>
+								<address>
+									<country key="FR">France</country>
+								</address>
+							</affiliation>
+							<affiliation key="aff1">
+								<orgName type="institution">VideoStitch</orgName>
+								<address>
+									<country key="FR">France</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Radu</forename><surname>Horaud</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">INRIA Grenoble Rhône-Alpes</orgName>
+								<address>
+									<country key="FR">France</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Switching Linear Inverse-Regression Model for Tracking Head Pose *</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+					<idno type="DOI">10.1109/WACV.2017.142</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-21T18:58+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>We propose to estimate the head-pose angles (pitch, yaw, and roll) by simultaneously predicting the pose parameters from observed high-dimensional feature vectors, and tracking these parameters over time. This is achieved by embedding a Gaussian mixture of linear inverse-regression model into a dynamic Bayesian model. The use of a switching Kalman filter (SKF) enables a principled way of carrying out this embedding. The SKF governs the temporal predictive distribution of the pose parameters (modeled as continuous latent variables) conditioned by the discrete variables associated with the mixture of linear inverse-regression formulation. We formally derive the equations of the proposed switching linear regression model, we propose an approximation that is both identifiable and computationally tractable, we design an EM procedure to estimate the SKF parameters in closed-form, and we carry out experiments and comparisons with other methods using recently released datasets. * Funding from the European Union FP7 ERC Advanced Grant VHIA (#340113) is greatly acknowledged.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1.">Introduction</head><p>Recent advances in computer vision have demonstrated the relevance of representing images and image regions with feature vectors lying in high-dimensional feature spaces, e.g. SIFT <ref type="bibr" target="#b19">[20]</ref>, HOG <ref type="bibr" target="#b6">[7]</ref>, SURF <ref type="bibr" target="#b2">[3]</ref>, and any of their variants, or CNN-based features which may be used in conjunction with regression <ref type="bibr" target="#b14">[15,</ref><ref type="bibr" target="#b33">34]</ref> and tracking <ref type="bibr" target="#b20">[21]</ref>. The rationale of representing image regions with high-dimensional feature vectors is that the latter supposedly embed hidden information, such as identity or pose. For example, in the case of face analysis, one can infer both face recognition and face orientation from such features. In the case of face orientation, or head pose, the task consists of extracting a low-dimensional parameterization, i.e. pitch, yaw and roll, from the high-dimensional feature space -a parameterization of the head-pose manifold. Not surprisingly, some of the best performing headpose estimation methods rely either on dimensionality reduction followed by regression, <ref type="bibr" target="#b34">[35,</ref><ref type="bibr" target="#b31">32,</ref><ref type="bibr" target="#b15">16,</ref><ref type="bibr" target="#b18">19,</ref><ref type="bibr" target="#b3">4,</ref><ref type="bibr" target="#b11">12,</ref><ref type="bibr" target="#b35">36]</ref>, or on high-dimensional-to-low-dimensional regression, e.g. <ref type="bibr" target="#b27">[28,</ref><ref type="bibr" target="#b21">22,</ref><ref type="bibr" target="#b7">8,</ref><ref type="bibr" target="#b9">10]</ref>.</p><p>Nevertheless, these feature-based approaches estimate the head-pose parameters from one image and are not designed to track the parameters over an image sequence. The observed feature vectors contain more than just head pose information, e.g. variabilities in illumination, appearance, shape, identity, background, clutter, etc. Moreover, errors in face localization are inherent, i.e. the bounding-box needed to extract the feature vector is not always correctly aligned with the face itself. All these time-varying phenomena may induce large oscillations and inconsistencies in the estimation of the parameter values, yielding non-smooth temporal trajectories.</p><p>In this paper we propose to simultaneously predict headpose parameters from observed feature vectors and to track these parameters over time, based on embedding regression into a dynamic Bayesian model. Without loss of generality, we adopt a HOG-based description of faces, hence we need to predict a low-dimensional output (head-pose parameters) from a high-dimensional input (HOG vectors). To solve the latter we train the regression of <ref type="bibr" target="#b7">[8]</ref> which is a generative Gaussian mixture of linear regression model. The proposed dynamic model is based on the switching Kalman filter (SKF) formulation. The proposed SKF governs the temporal predictive distribution of the pose parameters (which are continuous latent variables) conditioned by the state variables (the discrete latent variables associated with the mixture of linear regression formulation). The rationale of plugging regression into a dynamic Bayesian model is that the latter filters the prediction of the former while taking full advantage of the rich generative regression formulation.</p><p>We formally derive a switching dynamic Bayesian model, we devise an approximation of this model that is both identifiable and computationally tractable, we design an EM procedure that estimate the parameters, and we carry out experiments and comparisons with other methods. The principle of the tracker is summarized in Fig. <ref type="figure" target="#fig_0">1</ref> and an example is shown in Fig. <ref type="figure" target="#fig_1">2</ref>.</p><p>The remainder of the paper is organized as follows. Section 2 discusses the related work. Section 3 summarizes the mixture of linear regression method used to predict pose parameters form the observed data. Section 4 describes in detail the proposed dynamic Bayesian model and Section 5 formally derives closed-form formulas for estimating the model parameters, i.e. model training. Experiments and comparisons with other methods are described in Section 6. Section 7 draws some conclusions. <ref type="foot" target="#foot_0">1</ref></p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.">Related Work</head><p>Head-pose tracking has been an actively investigated topic; head-pose estimation and tracking methods were surveyed <ref type="bibr" target="#b28">[29]</ref>. Many approaches rely on extracting facial landmarks, on tracking these landmarks over the image sequence and on estimating a rigid transformation between consecutive images, e.g. <ref type="bibr" target="#b12">[13,</ref><ref type="bibr" target="#b38">39]</ref>, or between consecutive image pairs, e.g. <ref type="bibr" target="#b40">[41]</ref>. Similarly, <ref type="bibr" target="#b23">[24]</ref> builds a face graph based on the landmarks and tracks this graph over the image sequence. Another landmark-based approach <ref type="bibr" target="#b41">[42]</ref> consists of using a 3D model of a generic face that embeds model-centered coordinates of facial landmarks, e.g. nose tip, eyes, lip corners, etc. The model is first fitted to the face detected in the first image and then fitted to the subsequent faces by tracking the landmarks. These methods heavily rely on landmark detection and tracking as well as on the robust estimation of the 2D-landmark-to-3D-landmark rigid transformation, i.e. the pose parameters. Therefore these methods are limited to frontal views of faces, because the landmarks are partially or totally occluded in side views of faces. Moreover, they track the facial landmarks instead of the pose parameters, hence they do not yield smooth pose trajectories. The advantage of the proposed method is that it relies neither on facial landmark detection nor on landmark tracking. The proposed method, once trained based on pairs of HOG descriptors and pose parameters, can deal with side views of faces, unlike landmark-based methods.</p><p>Head-pose tracking was also addressed using sampling methods based on particle filters, which allow to sample the temporal predictive distribution e.g. <ref type="bibr" target="#b1">[2]</ref>. A principled way of combining a latent-variable temporal filter with the observed data is an important issue. In <ref type="bibr" target="#b37">[38]</ref> it is proposed to extract a high-dimensional feature vector from a face and then to apply PCA to reduce its dimensionality. This assumes that the high-dimensional to low-dimensional mapping is linear (which may not be the case) and it does not guarantee that the PCA output contains pose information. Particle filtering can also be combined with a 3D deformable model and with facial landmarks, e.g. <ref type="bibr" target="#b8">[9,</ref><ref type="bibr" target="#b36">37]</ref>. As already outlined, landmark extraction is not always possible. The advantage of the proposed method over these particle-filter trackers is both theoretical and methodological: the feature-space to parameter-space mapping is combined with a dynamic model, and the estimation of the model parameters yields closed-form EM procedures. Moreover, the proposed SKF approximation, which makes the model computationally tractable, amounts to a variational approximation, thus yielding an extremely efficient runtime method.</p><p>Switching state space models have also been used to solve tracking problems. For example, <ref type="bibr" target="#b13">[14]</ref>, <ref type="bibr" target="#b29">[30]</ref> and <ref type="bibr" target="#b17">[18]</ref> show that the use of switching linear models helps tracking. In <ref type="bibr" target="#b30">[31]</ref> switching models are applied for tracking people in videos in order to obtain motion-capture data, and three different approaches for inferring the parameters are compared, namely the Viterbi algorithm, variational inference, and the generalized pseudo Bayesian algorithm of order 2 (GPB2). The reported results obtained with these three approaches are quite similar. Viterbi has the lowest complexity, GPB2 yields the smoothest parameter trajectories, while the variational inference achieves a good compromise between low complexity and smooth trajectories.</p><p>The proposed method combines high-dimensional to low-dimensional mixture of linear regressions with a switching state-space model. In practice we adopt the GPB2 algorithm which, in combination with the generative regression model, yields closed-form expressions for the estimation of the tracked parameters. Hence, it is more efficient than sampling techniques which are often used in conjunction with generative tracking methods.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.">Mixture of Linear Inverse Regressions</head><p>In this section we summarize the mixture of linear inverse regressions of <ref type="bibr" target="#b7">[8]</ref>, which is named Gaussian locally linear mapping (GLLiM). GLLiM interchanges the roles of the input (high dimensional) and of the output (low dimensional), such that a low-to-high regression is being learned. The immediate consequence of this inverse regression strategy is a dramatic reduction in the number of model parameters, thus facilitating the task of training.</p><p>Let X and Y be two random variables, and let x and y denote their realizations, where X ∈ R L is the lowdimensional output (pose parameters) and Y ∈ R D (D L) is the high-dimensional input (feature vectors). Once trained, the goal is to predict x given both an input y and  </p><formula xml:id="formula_0">× p(x|Z = k; θ)p(Z = k; θ),<label>(1)</label></formula><p>where θ denotes the model parameters. Assuming that e k is a zero-mean Gaussian variable with a diagonal covariance matrix Σ k ∈ R D×D , we obtain that</p><formula xml:id="formula_1">p(y|x, Z = k; θ) = N (y; A k x + b k , Σ k ).<label>(2)</label></formula><p>If we further assume that X follows a mixture of Gaussians via the same assignment Z = k, we can write that</p><formula xml:id="formula_2">p(x|Z = k; θ) = N (x; c k , Γ k ), p(Z = k; θ) = π k , (<label>3</label></formula><formula xml:id="formula_3">)</formula><p>where </p><formula xml:id="formula_4">c k ∈ R L , Γ k ∈ R L×L and K k=1 π k = 1. Note that this representation induces a partition of R L into K regions R k ,</formula><formula xml:id="formula_5">= {c k , Γ k , π k , A k , b k , Σ k } K k=1 .</formula><p>The model parameters can be estimated via an EM algorithm. The expectation step computes the responsibilities, namely p(Z n = k|x n , y n ; θ (old) ), given the old parameter values θ (old) , while the maximization step computes new parameter values via maximization of the expected complete-data log-likelihood function, namely θ (new) = argmax E[log p(x, y, Z|θ (old) )], which yields a closed-form solution <ref type="bibr" target="#b7">[8]</ref>. Initial responsibilities are obtained by fitting a K-component GMM to the lowdimensional data {x n } N n=1 . Once the inverse parameter vector θ is estimated one obtains a low-dimensional to high-dimensional inverse predictive distribution <ref type="bibr" target="#b7">[8]</ref>. The high-dimensional to lowdimensional forward predictive distribution has a closedform expression:</p><formula xml:id="formula_6">p(x|y; θ * ) = K k=1 π * k N (y; c * k , Γ * k ) K j=1 π * j N (y; c * j .Γ * j ) N (x; A * k y+b * k , Σ * k ),<label>(4)</label></formula><p>which is a Gaussian mixture fully defined by the forward parameters</p><formula xml:id="formula_7">θ * = {c * k , Γ * k , π * k , A * k , b * k , Σ * k } K k=1</formula><p>, that can be obtained in analytically from the inverse parameters:</p><formula xml:id="formula_8">c * k = A k c k + b k , Γ * k = Σ k + A k Γ k A k , π * k = π k , (5) A * k = Σ * k A k Σ -1 k , b * k = Σ * k (Γ -1 k c k -A k Σ -1 k b k ), (6) Σ * k = (Γ -1 k + A k Σ -1 k A k ) -1 .<label>(7)</label></formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.">The Dynamic Bayesian Model</head><p>The main difference between the probabilistic regression model outlined in Section 3 and the proposed temporal model is that the conditional distribution p(x|y) is replaced with p (x t |y 1:t ), where t is the time index. The proposed graphical model is shown on Fig. <ref type="figure" target="#fig_3">3</ref>, where Z t is the discrete latent variable associated with the Gaussian mixture of linear regression, X t and Y t are the latent head pose and the observed high-dimensional feature vector at t, respectively. Using Bayes rule and marginalization we obtain: </p><formula xml:id="formula_9">(X t = x t |Y 1:t = y 1:t ) = K j=1 K i=1 Xt-1 1 p(y t ) ×p(x t , x t-1 , Z t = j, Z t-1 = i, y t |y 1:t-1 )dX t-1 . (8)</formula><p>Under the Markovian assumption and using the conditional independencies associated with the proposed graphical model of Fig. <ref type="figure" target="#fig_3">3</ref>, we can write the term inside the integral of (8) as follows:</p><formula xml:id="formula_10">p(x t , x t-1 , Z t = j, Z t-1 = i, y t |y 1:t-1 ) = p (y t |x t , Z t = j) p (x t |x t-1 , Z t = j) × p (Z t = j|Z t-1 = i) p x t-1 , Z t-1 = i|y 1:t-1 .<label>(9)</label></formula><p>The first probability on the right hand side of this equation, p (y t |x t , Z t = j) is the Gaussian distribution introduced in (2). The main difference between the static model and the dynamic model is that (3) is replaced with:</p><formula xml:id="formula_11">p(x t |x t-1 , Z t = j) = N (x t |C j x t-1 , Q j ),<label>(10)</label></formula><formula xml:id="formula_12">p(Z t = j|Z t-1 = i) = τ ij . (<label>11</label></formula><formula xml:id="formula_13">)</formula><p>The parameters of the temporal model will be jointly denoted by φ:</p><formula xml:id="formula_14">φ = {C j , Q j , τ ij , i, j = 1 . . . K}.<label>(12)</label></formula><p>By substituting (2), <ref type="bibr" target="#b9">(10)</ref>, and ( <ref type="formula" target="#formula_12">11</ref>) into (9), by using basic properties of Gaussian distributions (Gaussian product and Gaussian integral), e.g. <ref type="bibr" target="#b5">[6]</ref>, and after some derivations, one can show that (8) can be written as a K 2 -component GMM:</p><formula xml:id="formula_15">p(x t |y 1:t ; ψ t|t-1 ) = K i=1 K j=1 π ij t|t-1 N (x t |µ ij t|t-1 , W ij t|t-1 ),<label>(13)</label></formula><p>which in turn can be approximated with another Kcomponent GMM, namely:</p><formula xml:id="formula_16">p(x t |y 1:t ; λ t ) ≈ K j=1 ρ j t N (x t |η j t , V j t ). (<label>14</label></formula><formula xml:id="formula_17">)</formula><p>The parameters of the these two Gaussian mixtures are denoted with</p><formula xml:id="formula_18">ψ t|t-1 = {π ij t|t-1 , µ ij t|t-1 , W ij t|t-1 , i, j = 1 . . . K}<label>(15)</label></formula><p>and with</p><formula xml:id="formula_19">λ t = {ρ j t , η j t , V j t , j = 1 . . . K}.<label>(16)</label></formula><p>The K-component GMM approximation (13) of the K 2component GMM ( <ref type="formula" target="#formula_16">14</ref>) is necessary in order to avoid an exponential grow of the number of components, hence it guarantees the computational tractability of the temporal model. As discussed in <ref type="bibr" target="#b26">[27]</ref>, three approaches have been proposed to avoid the number of components to explode. Our approximation is based on the generalized pseudo Bayesian algorithm (GPBa) of order 2 (GPB2) which, according to <ref type="bibr" target="#b30">[31]</ref>, yields a smooth output.</p><p>One interesting consequence of replacing (3) with <ref type="bibr" target="#b9">(10)</ref> is that the parameter set θ in Section 3 is replaced with a reduced parameter set θ r = {A j , b j , Σ j } K j=1 . Consequently, the formulae in ( <ref type="formula">5</ref>) and ( <ref type="formula">6</ref>) are simplified:</p><formula xml:id="formula_20">A * j = Σ * j A j Σ -1 j , b * j = -A * j b j , Σ * j = (A j Σ -1 j A j ) -1 . (<label>17</label></formula><formula xml:id="formula_21">)</formula><p>It can be shown that the parameter set (15) can be written as a function of θ r , λ t-1 and φ:</p><formula xml:id="formula_22">W ij t|t-1 = Σ * j -1 + P ij t-1 -1 ,<label>(18)</label></formula><formula xml:id="formula_23">µ ij t|t-1 = W ij t|t-1 Σ * j -1 A * j y t + b * j + P ij t-1 C j η j t-1 ,<label>(19)</label></formula><formula xml:id="formula_24">π ij t|t-1 ∝ r ij t|t-1 = ρ i t-1 τ ij N (d ij t|t-1 |0, S ij t|t-1 ),<label>(20)</label></formula><p>where P ij t-1 , d ij t|t-1 , and S ij t|t-1 are defined by:</p><formula xml:id="formula_25">P ij t-1 = Q j + C j V i t-1 C j -1 ,<label>(21)</label></formula><formula xml:id="formula_26">d ij t|t-1 = y t -A j (C j η i t-1 ) -b j ,<label>(22)</label></formula><formula xml:id="formula_27">S ij t|t-1 = Σ j + A j (Q j + C j V i t-1 C j )A j .<label>(23)</label></formula><p>Eq. ( <ref type="formula" target="#formula_25">21</ref>) defines the covariance of the prediction variable dynamics, Eq. ( <ref type="formula" target="#formula_26">22</ref>) is the difference between the observation and the predicted observation, given η t-1 , and Eq. ( <ref type="formula" target="#formula_27">23</ref>) defines the associated covariance matrix.</p><p>The mean ( <ref type="formula" target="#formula_23">19</ref>) can be seen as a "weighted" linear combination of the dynamical prediction C j η j t-1 and of the prediction based on observation A * j y t + b * j , where the "weights" are covariance matrices. Thus the confidence related to the covariance matrices defines the weights of the dynamical prediction and the observation prediction in the final estimation. Eq. ( <ref type="formula" target="#formula_22">18</ref>) is the associated covariance matrix, which is the inverse of the sum of the precision matrix of the temporal prediction P ij t-1 and precision matrix Σ * j -1</p><p>of the observation y t . The GMM proportions in Eq. ( <ref type="formula" target="#formula_24">20</ref>) are defined as a product between three terms: the proportions of the i th components at t -1, ρ i t-1 , the switching filter transition probabilities τ ij , and</p><formula xml:id="formula_28">N (d ij t|t-1 |0, S ij t|t-1 ).</formula><p>Using the mixture reduction scheme explained in <ref type="bibr" target="#b32">[33]</ref>, the parameters of the K-component GMM λ t can now be evaluated from the parameters of the K 2 -component GMM ψ t|t-1 , with the following formulas:</p><formula xml:id="formula_29">η j t = K i=1 πij t|t-1 µ ij t|t-1 ,<label>(24)</label></formula><formula xml:id="formula_30">V j t = K i=1 πij t|t-1 W ij t|t-1 + (µ ij t|t-1 -η j t )(µ ij t|t-1 -η j t ) ,<label>(25)</label></formula><formula xml:id="formula_31">ρ j t = K i=1 π ij t|t-1 , with πij t|t-1 = π ij t|t-1 / k k=1 π kj t|t-1 . (<label>26</label></formula><formula xml:id="formula_32">)</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.">Estimating the Model Parameters</head><p>This section describes the estimation of the parameters φ in <ref type="bibr" target="#b11">(12)</ref> via learning (please consult <ref type="bibr" target="#b26">[27]</ref> for a detailed description). We remind that the estimation of the regression parameters θ is described in detail in <ref type="bibr" target="#b7">[8]</ref> and summarized in Section 3. We use an EM procedure to estimate the parameters C j , Q j K j=1 . During the E-step we compute the complete-data expected log-likelihood. First, we express the complete-data log-likelihood L as follows:</p><formula xml:id="formula_33">L = log p (x 1:T , Z 1:T , y 1:T ; θ) = T t=1 K j=1 δ(t, j) log N (y t ; A j x t + b j , Σ j ) + T t=2 K j=1 δ(t, j) log N (x t ; C j x t-1 , Q j ) + T t=2 K j=1 K i=1 δ(t, j)δ(t -1, i) log τ ij + log p (x 1 , Z 1 ) ,<label>(27)</label></formula><p>where δ(t, q) is equal to 1 if Z t = q and 0 otherwise. To complete the E-step we evaluate the above expected loglikelihood. The M-step maximizes it with respect to the parameters that must be estimated. Thus we obtain the following formulas for the estimation of the parameters φ:</p><formula xml:id="formula_34">C j = T t=2 p (Z t = j|y t ) E x t x T t-1 × T t=2 p (Z t = j|y t ) E x t-1 x T t-1 -1 ,<label>(28)</label></formula><formula xml:id="formula_35">Q j = 1 T t=2 p (Z t = j|y t ) × T t=2 p (Z t |y t ) E x t x T t -C j E x t-1 x T t ,<label>(29)</label></formula><p>where:</p><formula xml:id="formula_36">E x t x T t-1 = V t,t-1 + η t η t-1 , E x t-1 x T t-1 = V t-1 + η t-1 η t-1 .</formula><p>Parameters η t , η t-1 , V t-1 and V t,t-1 are obtained using the smoothing statistics p (x t |y 1:T ) which is expressed as follows:</p><formula xml:id="formula_37">p(x t |y 1:T ) = K j=1 K i=1 p (x t , Z t = j, Z t+1 = i|y 1:T ) = K j=1 K i=1 p (x t |Z t = j, Z t+1 = i, y 1:T ) ×p (Z t = j, Z t+1 = i|y 1:T ) ,<label>(30)</label></formula><p>where</p><formula xml:id="formula_38">p(x t |Z t = j, Z t+1 = i, y 1:T ) =p (x t |Z t = j, y 1:t ) p y t+1:T |Z t+1 = i, x t . (<label>31</label></formula><formula xml:id="formula_39">)</formula><p>The first term of (31) p (x t |Z t = j, y 1:t ) is the forward recursion and is defined in Section 4 as N x t |η j t , V j t . The second term p y t+1:T |Z t+1 = i, x t defines the backward recursion:</p><formula xml:id="formula_40">p(y t+1:T |Z t+1 = i, x t ) = Xt+1 p (x t+1 |x t , Z t+1 = i) ×p y t+1 |x t+1 , Z t+1 = i p y t+2:T |x t+1 dX t+1 ,<label>(32)</label></formula><p>where p y t+2:</p><formula xml:id="formula_41">T |x t+1 = N x t+1 |η b t+1 , V b t+1 .</formula><p>The second term of Eq. ( <ref type="formula" target="#formula_37">30</ref>) can be decomposed as follows, using <ref type="bibr" target="#b16">[17]</ref>:</p><formula xml:id="formula_42">p (Z t = j, Z t+1 = i|y 1:T ) p (Z t+1 = i|y 1:T ) p (Z t+1 = i|Z t = j) p (Z t = j|y 1:t ) p (Z t+1 = i|y 1:t ) ,<label>(33)</label></formula><p>where:</p><formula xml:id="formula_43">p (Z t = j|y 1:t ) = ρ j t<label>(34)</label></formula><formula xml:id="formula_44">p (Z t+1 = i|y 1:t ) = K j=1 p (Z t+1 = i|Z t = j) p (Z t = j|y 1:t )<label>(35)</label></formula><formula xml:id="formula_45">p (Z t+1 = i|y 1:T ) = K j=1 p (Z t+1 = i, Z t+2 = j|y 1:T )<label>(36)</label></formula><p>As outlined in Section 4, the number of component increases <ref type="bibr" target="#b29">(30)</ref>, hence we merge the Gaussians twice: first over Z t+1 to obtain a mixture of K Gaussian components with mean η jb t , covariance V jb t and proportions p (Z t = j|y 1:T ) = ρ jb t , second over Z t and thus we obtain a single Gaussian component, with mean η t and covariance V t .</p><p>To estimate the transition matrix {τ ij } K i,j=1 we employ the Lagrange multiplier method to maximize the loglikelihood with respect to τ ij , hence we obtain the following expression for the transition probabilities:</p><formula xml:id="formula_46">τ ij = T t=2 p (Z t = j|y 1:T ) p (Z t-1 = i|y 1:T ) T t=2 p (Z t-1 = i|y 1:T ) (37)</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.">Experiments</head><p>To gauge the performance of the proposed method we used two datasets: the Biwi-Kinect head-pose dataset <ref type="bibr" target="#b10">[11]</ref> and the EYEDIAP dataset <ref type="bibr" target="#b24">[25]</ref>. Biwi-Kinect comprises 24 videos of 20 different people (16 men and 4 women) recorded with a Kinect camera. During the recordings people were asked to move their heads freely in front of the camera. 3D head pose (pitch, yaw, and roll angles) annotations are automatically and accurately provided for each video frame using the face-shift software. The angle values range from -60 • to 60 • for pitch, -75 • to 75 • for yaw and -20 • to 20 • for roll. The dataset provides RGB and depth images as well as the calibration matrices. The 3D nose positions are provided as well. EYEDIAP is a dataset for gaze and head-pose estimation. It provides 94 videos of 16 people recorded using different configurations, such as static and turning heads. The dataset provides RGB videos (in both HD and GVA quality) and depth videos with the associated calibrations matrices. For each video, annotations of both head-pose and gaze are provided for each frame. The angle values range from -40 • to 40 • for pitch and -50 • to 50 • for yaw. In our experiments we only used the RGB images where people are looking at a moving object (named A FT M in the dataset).</p><p>The proposed model, referred to as HPE SKF (headpose estimation based on SKF) is compared to the following methods: (i) a landmark-based approach that uses the facial landmark localization method of <ref type="bibr" target="#b38">[39]</ref> (Flandmarks) combined with 2D-to-3D landmark-based pose estimation method, namely the PnP (perspective n-point) algorithm available with OpenCV, (ii) a depth head model based on method <ref type="bibr" target="#b25">[26]</ref> that learns a 3D head model using 16 manually annotated facial landmarks on multiple frames to learn the model, and ICP (iterative closest point algorithm) to estimate the transformation (rotation and translation) of the head pose between two consecutive frames in order to track the pose over time, (iii) the regression-based method of <ref type="bibr" target="#b9">[10]</ref> which is referred to as HPE-GLLiM, and (iv) the regression method <ref type="bibr" target="#b9">[10]</ref> combined with a standard Kalman filter <ref type="bibr" target="#b0">[1,</ref><ref type="bibr" target="#b5">6]</ref>. Both (i) and (ii) perform tracking. For evaluation, on the Biwi-Kinect dataset we used the leave-one-out protocol: all the data related to one person are put aside and the remaining data of the other persons are used to train the model.</p><p>Using the EYEDIAP dataset, we compared our method against the baseline method of <ref type="bibr" target="#b25">[26]</ref> which requires to learn a person based on his/her 3D head model. In this case we did not apply the leave-one-out protocol but instead we learned a person based head-pose regression model (θ) on a subsample of the frames associated with each person. Then, for each person we estimate the tracking parameters (φ) over the whole video. Thus, we obtain a person-based tracking model for head pose. As a measure of performance, we use the mean absolute deviation between the ground-truth and the estimated pose.</p><p>Face regions are extracted from images with a face detector <ref type="bibr" target="#b39">[40]</ref>. This detector is efficient and robust with both frontal-and side-views of faces. Using the detection we run a face tracker using particle filtering to extract a face at each frames of the videos. Nevertheless, the obtained face regions are noisy, i.e. the bounding boxes are not always nicely aligned onto the faces. This yields extremely realistic input data for the tested methods, unlike other head-pose benchmarks that use manually extracted bounding boxes, e.g. using the nose tip as the bounding box center. From each face region thus detected, we extract HOG features with different cell resolutions (in a pyramid-like fashion), namely 32 × 32, 16 × 16 and 8 × 8 pixels, with block size of 2 × 2 cells and 8 bins to quantize the gradient orientation. This results in feature vectors of size D = 1888.</p><p>The regression parameters θ (Section 3) and the SKF parameters φ Eq. ( <ref type="formula" target="#formula_14">12</ref>) are learned separately. First, the regression parameters θ are estimated using the EM algorithm described in <ref type="bibr" target="#b7">[8]</ref>. Second, the filtering parameters φ are estimated using the method described in Section 5. The covariances are initialized with identity matrices and the transition matrix {τ ij } K i,j=1 is initialized with the Battacharrya distance <ref type="bibr" target="#b4">[5]</ref> between two subspaces obtained using the parameters θ of the low dimensional space defined by Z.  The results obtained with the Biwi-Kinect and EYE-DIAP datasets are summarized in Table <ref type="table" target="#tab_0">1</ref> and Table <ref type="table" target="#tab_1">2</ref>, respectively, namely the average and standard deviations of the absolute error between the head-pose estimated values and the ground-truth values. The proposed tracking method improves head-pose parameter tracking, compared to all the other methods. For example, the average error for the yaw angles in Table <ref type="table" target="#tab_0">1</ref> is of 8.6 • while all other methods yield an error larger than 12 • . We observe the same behavior for the pitch angle. Moreover, our method also reduces the standard deviation. Compared to the landmark-based method of <ref type="bibr" target="#b38">[39]</ref>, our method is able to provide an estimation for each test input, whereas the method based on landmarks is unable to provide an output when some of the landmarks are not visible due to extreme head orientations. In this case <ref type="bibr" target="#b38">[39]</ref> yields very large errors, e.g. first row of Table <ref type="table" target="#tab_0">1</ref>. We also note that the proposed HPE SKF method performs much better than a standard Kalman filter. On Table <ref type="table" target="#tab_1">2</ref> the global average error and standard deviations are lower than Table <ref type="table" target="#tab_0">1</ref> due to the person-based model learning. The behavior shown in Table <ref type="table" target="#tab_1">2</ref> follows the same as the one of Table <ref type="table" target="#tab_0">1</ref>, i.e. our tracking method decreases the head pose estimation average error and standard deviation with respect to the HPE GLLiM and the classic Kalman filtering. <ref type="bibr" target="#b25">[26]</ref> (that released the EYEDIAP dataset) achieves better results for pitch, while our method obtains better results for yaw.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7.">Conclusions</head><p>Head-pose trackers have the advantage of combining information from both past and present, and hence they avoid oscillations between consecutive estimations solely based on independent observations, as it is the case with many head-pose estimation methods, e.g. Fig. <ref type="figure" target="#fig_1">2</ref> and Fig. <ref type="figure" target="#fig_4">4</ref>. Overall, the output of our tracking method is both more accurate and smoother than the output of several head-pose methods (with and without tracking). Moreover, noisy observations, e.g. due to badly aligned bounding boxes or to partial occlusions, do not impact too much the proposed tracker because the temporal model, once properly trained, does not allow oscillations between consecutive estimations. Furthermore, our approach does not only reduce both the estimation error and the standard deviation, it smoothes the estimation of head poses over the whole video. This is very useful for other temporal tasks, such as the estimation of eye gaze or of the visual focus of attention <ref type="bibr" target="#b22">[23]</ref>.</p><p>The method presented in this paper is very general and it is limited neither to head pose nor to HOG features. It can be applied to estimate and track the pose parameters of objects of all kinds, provided that their image appearance varies as a function of their 3D orientation in a consistent way. Therefore, one can combine our tracker with other types of features, such as features obtained by training a neural network and by substituting the last layer of the latter with the generative regression model used above.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 .</head><label>1</label><figDesc>Figure 1. The method starts by learning a mixture of linear regression that allows the prediction of a head-pose from a HOG vector estimated from the bounding box of a face. Hence, Eq. (4) (Section 3) is applied at t -1 (top) and at t (bottom) and head poses are thus predicted, they are denoted A on the figure. Notice that, because of various perturbations in the data and of inherent flaws in face detection, the two predictions use two different affine transformations and hence they are associated with two different Gaussian components in the mixture, e.g. magenta and green on the figure. The proposed dynamic model combines the temporal prediction of the filter from t -1 to t, denoted B on the figure, with the pose predicted at t, to yield a filtered pose estimate, denoted C on the figure. The mixture of linear regression is plugged in the SKF model in a principled way.</figDesc><graphic coords="4,99.61,72.00,396.00,169.69" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 .</head><label>2</label><figDesc>Figure 2. Yaw angles predicted with the mixture of linear regression method [10] (top sequence and red plot) and with the proposed method (bottom sequence and green plot). The ground-truth yaw trajectory is shown in blue.</figDesc><graphic coords="4,50.11,477.27,495.03,123.75" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head></head><label></label><figDesc>where R k is the region where the transformation (A k , b k ) is most likely invoked, e.g. Fig. 1. This model is described by the inverse parameter set θ</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 3 .</head><label>3</label><figDesc>Figure 3. Proposed graphical model</figDesc><graphic coords="5,315.61,216.53,222.75,182.28" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 4 .</head><label>4</label><figDesc>Figure 4. Comparison between the estimated pitch angle (top) and yaw angle with three different methods: HPE GLLiM (red), Kalman Filter (blue), and the proposed HPE SKF (green) for the Biwi-Kinect dataset.</figDesc><graphic coords="8,308.86,72.00,236.24,150.38" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>Table 1 .</head><label>1</label><figDesc>Average (Avg.) and standard deviation (Std.) of the absolute error (in degrees) for the pitch, yaw and roll angles (when applicable) on the Biwi-Kinect dataset. Head bounding boxes are extracted using a face detection algorithm.</figDesc><table><row><cell></cell><cell cols="2">Pitch</cell><cell>Yaw</cell><cell>Roll</cell></row><row><cell cols="2">Methods Avg.</cell><cell>Std. Avg.</cell><cell>Std. Avg. Std.</cell></row><row><cell>[39]</cell><cell cols="3">13.12 10.79 21.1 14.16 -</cell><cell>-</cell></row><row><cell>[10]</cell><cell cols="3">14.35 13.73 12.52 13.52 10.89 9.82</cell></row><row><cell>[1, 6]</cell><cell cols="3">27.43 17.61 15.13 12.09 14.62 9.94</cell></row><row><cell cols="3">HPE SKF 10.03 8.73 8.6</cell><cell>7.21 8.48 8.01</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 2 .</head><label>2</label><figDesc>Average (Avg.) and standard deviation (Std.) of the absolute error (in degrees) for the pitch and yaw angles on the EYE-DIAP dataset. Head bounding boxes are extracted using a face detection algorithm combined with a face tracker.</figDesc><table><row><cell></cell><cell cols="2">Pitch</cell><cell cols="2">Yaw</cell></row><row><cell>Methods</cell><cell>Avg.</cell><cell>Std.</cell><cell>Avg.</cell><cell>Std.</cell></row><row><cell cols="2">Funes Mora et al. [26] 4.17</cell><cell>5.59</cell><cell cols="2">6.89 14.42</cell></row><row><cell>HPE GLLiM [10]</cell><cell>7.94</cell><cell cols="3">9.23 10.62 11.95</cell></row><row><cell>Kalman filter [1, 6]</cell><cell cols="4">23.17 18.67 25.55 21.22</cell></row><row><cell>HPE SKF</cell><cell>5.34</cell><cell>8.30</cell><cell>6.68</cell><cell>9.76</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>Supplementary material for this paper can be found at https://team.inria.fr/perception/research/ head-pose-tracking/</p></note>
+		</body>
+		<back>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">A tutorial on particle filters for online nonlinear/non-Gaussian Bayesian tracking</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">S</forename><surname>Arulampalam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Maskell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Gordon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Clapp</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Signal Processing</title>
+		<imprint>
+			<biblScope unit="volume">50</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="174" to="188" />
+			<date type="published" when="2002-02">February 2002</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">A probabilistic framework for joint head tracking and pose estimation</title>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">O</forename><surname>Ba</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J.-M</forename><surname>Odobez</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE ICPR</title>
+		<imprint>
+			<date type="published" when="2004">2004</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<monogr>
+		<title level="m" type="main">Speeded-up robust features (surf). Computer vision and image understanding</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Bay</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Ess</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Tuytelaars</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Van Gool</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2008-06">June 2008</date>
+			<biblScope unit="volume">110</biblScope>
+			<biblScope unit="page" from="346" to="359" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Robust head pose estimation using supervised manifold learning</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Benabdelkader</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ECCV</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">On a measure of divergence between two statistical population defined by their population distributions</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bhattachayya</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Bulletin Calcutta Mathematical Society</title>
+		<imprint>
+			<biblScope unit="volume">35</biblScope>
+			<biblScope unit="page" from="99" to="109" />
+			<date type="published" when="1943-07">July 1943</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<monogr>
+		<title level="m" type="main">Pattern recognition and machine learning</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Bishop</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Histograms of oriented gradients for human detection</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Dalal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Triggs</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE CVPR</title>
+		<imprint>
+			<date type="published" when="2005-06">June 2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">High-dimensional regression with Gaussian mixtures and partially-latent response variables</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Deleforge</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Forbes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Horaud</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Statistics and Computing</title>
+		<imprint>
+			<biblScope unit="volume">25</biblScope>
+			<biblScope unit="issue">5</biblScope>
+			<biblScope unit="page" from="893" to="911" />
+			<date type="published" when="2015-09">September 2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Head and facial animation tracking using appearance-adaptive models and particle filters</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Dornaika</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Davoine</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE CVPRW</title>
+		<imprint>
+			<date type="published" when="2004-06">June 2004</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Head pose estimation via probabilistic highdimensional regression</title>
+		<author>
+			<persName><forename type="first">V</forename><surname>Drouard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ba</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Evangelidis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Deleforge</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Horaud</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE ICIP</title>
+		<imprint>
+			<date type="published" when="2015-09">September 2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Random forests for real time 3d face analysis</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Fanelli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Dantone</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Gall</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Fossati</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Van Gool</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IJCV</title>
+		<imprint>
+			<biblScope unit="volume">101</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="437" to="458" />
+			<date type="published" when="2013-02">February 2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">A two-layer framework for piecewise linear manifold-based head pose estimation</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Foytik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Asari</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">International Journal of Computer Vision</title>
+		<imprint>
+			<biblScope unit="volume">101</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="270" to="287" />
+			<date type="published" when="2013-01">January 2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Fast visual tracking by temporal consensus</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Gee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Cipolla</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Image and Vision Computing</title>
+		<imprint>
+			<biblScope unit="volume">14</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="105" to="114" />
+			<date type="published" when="1996-03">March 1996</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<monogr>
+		<title level="m" type="main">Switching state-space models</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Ghahramani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><forename type="middle">E</forename><surname>Hinton</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1996">1996</date>
+			<pubPlace>Citeseer</pubPlace>
+		</imprint>
+	</monogr>
+	<note type="report_type">Technical report</note>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Rich feature hierarchies for accurate object detection and semantic segmentation</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Girshick</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Donahue</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Darrell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Malik</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE CVPR</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Head pose estimation by non-linear embedding and mapping</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ranganath</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE ICIP</title>
+		<imprint>
+			<date type="published" when="2005-09">September 2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Dynamic linear models with markov-switching</title>
+		<author>
+			<persName><forename type="first">C.-J</forename><surname>Kim</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Econometrics</title>
+		<imprint>
+			<biblScope unit="volume">60</biblScope>
+			<biblScope unit="issue">1-2</biblScope>
+			<biblScope unit="page" from="1" to="22" />
+			<date type="published" when="1994-02">January-February 1994</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">A nonparametric hierarchical model to discover behavior dynamics from tracks</title>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">F</forename><surname>Kooij</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Englebienne</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">M</forename><surname>Gavrila</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ECCV</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Query driven localized linear discriminant models for head pose estimation</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Fu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Yuan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE International Conference on Multimedia and Expo</title>
+		<imprint>
+			<date type="published" when="2007-07">July 2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Distinctive image features from scaleinvariant keypoints</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">G</forename><surname>Lowe</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">International journal of computer vision</title>
+		<imprint>
+			<biblScope unit="volume">60</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="91" to="110" />
+			<date type="published" when="2004-11">November 2004</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Hierarchical convolutional features for visual tracking</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J.-B</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M.-H</forename><surname>Yang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE ICCV</title>
+		<imprint>
+			<date type="published" when="2015-12">December 2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Detecting people looking at each other in videos</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Marin-Jimenez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Zisserman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Eichner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Ferrari</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">International Journal of Computer Vision</title>
+		<imprint>
+			<biblScope unit="volume">106</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="282" to="296" />
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Simultaneous estimation of gaze direction and visual focus of attention for multi-personto-robot interaction</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Massé</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ba</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Horaud</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE International Conference on Multimedia and Expo</title>
+		<imprint>
+			<date type="published" when="2016-07">July 2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Tracking and learning graphs and pose on image sequences of faces</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Maurer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Der Malsburg</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Automatic Face and Gesture Recognition</title>
+		<imprint>
+			<date type="published" when="1996-10">October 1996</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Eyediap: a database for the development and evaluation of gaze estimation algorithms from rgb and rgb-d cameras</title>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">A F</forename><surname>Mora</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Monay</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J.-M</forename><surname>Odobez</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ACM Symposium on Eye Tracking Research and Applications</title>
+		<imprint>
+			<date type="published" when="2014-03">March 2014</date>
+			<biblScope unit="page" from="255" to="258" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Gaze estimation from multimodal kinect data</title>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">A F</forename><surname>Mora</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J.-M</forename><surname>Odobez</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE CVPRW</title>
+		<imprint>
+			<date type="published" when="2012-06">June 2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<monogr>
+		<title level="m" type="main">Switching kalman filters</title>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">P</forename><surname>Murphy</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1998">1998</date>
+			<publisher>Citeseer</publisher>
+		</imprint>
+	</monogr>
+	<note type="report_type">Technical report</note>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Head pose estimation for driver assistance systems: A robust algorithm and experimental evaluation</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>Murphy-Chutorian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Doshi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Trivedi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE Intelligent Transportation Systems Conference</title>
+		<imprint>
+			<date type="published" when="2007-09">Sept 2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Head pose estimation in computer vision: a survey</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>Murphy-Chutorian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">M</forename><surname>Trivedi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE TPAMI</title>
+		<imprint>
+			<biblScope unit="volume">31</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="607" to="626" />
+			<date type="published" when="2009-04">April 2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Learning and inference in parametric switching linear dynamic systems</title>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">M</forename><surname>Oh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">M</forename><surname>Rehg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Balch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Dellaert</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE ICCV</title>
+		<imprint>
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Learning switching linear models of human motion</title>
+		<author>
+			<persName><forename type="first">V</forename><surname>Pavlovic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">M</forename><surname>Rehg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Maccormick</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Conference on Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2000">2000</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Head pose estimation by nonlinear manifold learning</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Raytchev</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Yoda</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Sakaue</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE ICPR</title>
+		<imprint>
+			<date type="published" when="2004-08">August 2004</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Mixture reduction algorithms for point and extended object tracking in clutter</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Salmond</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Aerospace and Electronic Systems</title>
+		<imprint>
+			<biblScope unit="volume">45</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="667" to="686" />
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Cnn features off-the-shelf: an astounding baseline for recognition</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Sharif Razavian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Azizpour</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Sullivan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Carlsson</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE CVPRW</title>
+		<imprint>
+			<date type="published" when="2014-06">June 2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Head pose estimation using view based eigenspaces</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Srinivasan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">L</forename><surname>Boyer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE ICPR</title>
+		<imprint>
+			<date type="published" when="2002-06">June 2002</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Head pose estimation in the wild using approximate view manifolds</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Sundararajan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">L</forename><surname>Woodard</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE CVPRW</title>
+		<imprint>
+			<date type="published" when="2015-06">June 2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Joint albedo estimation and pose tracking from video</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Taheri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">C</forename><surname>Sankaranarayanan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Chellappa</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE TPAMI</title>
+		<imprint>
+			<biblScope unit="volume">35</biblScope>
+			<biblScope unit="issue">7</biblScope>
+			<biblScope unit="page" from="1674" to="1689" />
+			<date type="published" when="2013-07">July 2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Accurate head pose tracking in low resolution video</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Tao</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE International Conference on Automatic Face and Gesture Recognition</title>
+		<imprint>
+			<date type="published" when="2006-04">April 2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Detector of facial landmarks learned by the structured output SVM</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Uřičář</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Franc</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Hlaváč</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Computer Vision Theory and Applications</title>
+		<imprint>
+			<date type="published" when="2012-02">February 2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Rapid object detection using a boosted cascade of simple features</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Viola</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Jones</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE CVPR</title>
+		<imprint>
+			<date type="published" when="2001-06">June 2001</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Model-based head pose tracking with stereovision</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE International Conference on Automatic Face and Gesture Recognition</title>
+		<imprint>
+			<date type="published" when="2002-05">May 2002</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Using affine correspondence to estimate 3-d facial pose</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Yao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Evans</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Calway</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE ICIP</title>
+		<imprint>
+			<date type="published" when="2001-10">October 2001</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

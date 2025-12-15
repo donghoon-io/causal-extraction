@@ -1,0 +1,1855 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">β-INTACT-VAE: IDENTIFYING AND ESTIMATING CAUSAL EFFECTS UNDER LIMITED OVERLAP</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability  status="unknown">
+					<licence/>
+				</availability>
+				<date type="published" when="2021-10-11">11 Oct 2021</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author role="corresp">
+							<persName><forename type="first">Kenji</forename><surname>Fukumizu</surname></persName>
+							<email>fukumizu@ism.ac.jp</email>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Statistical Science</orgName>
+								<orgName type="institution" key="instit1">The Graduate University for Advanced Studies</orgName>
+								<orgName type="institution" key="instit2">The Institute of Statistical Mathematics Tachikawa</orgName>
+								<address>
+									<settlement>Tokyo</settlement>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">β-INTACT-VAE: IDENTIFYING AND ESTIMATING CAUSAL EFFECTS UNDER LIMITED OVERLAP</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2021-10-11">11 Oct 2021</date>
+						</imprint>
+					</monogr>
+					<idno type="arXiv">arXiv:2110.05225v1[stat.ML]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-28T22:23+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>As an important problem in causal inference, we discuss the identification and estimation of treatment effects (TEs) under limited overlap; that is, when subjects with certain features belong to a single treatment group. We use a latent variable to model a prognostic score which is widely used in biostatistics and sufficient for TEs; i.e., we build a generative prognostic model. We prove that the latent variable recovers a prognostic score, and the model identifies individualized treatment effects. The model is then learned as β-Intact-VAE--a new type of variational autoencoder (VAE). We derive the TE error bounds that enable representations balanced for treatment groups conditioned on individualized features. The proposed method is compared with recent methods using (semi-)synthetic datasets.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">INTRODUCTION</head><p>Causal inference <ref type="bibr" target="#b24">(Imbens &amp; Rubin, 2015;</ref><ref type="bibr" target="#b45">Pearl, 2009)</ref>, i.e, inferring causal effects of interventions, is a fundamental field of research. In this work, we focus on treatment effects (TEs) based on a set of observations comprising binary labels T for treatment/control (non-treated), outcome Y , and other covariates X. Typical examples include estimating the effects of public policies or new drugs based on the personal records of the subjects. The fundamental difficulty of causal inference is that we never observe counterfactual outcomes that would have been if we had made the other decision (treatment or control). While randomized controlled trials (RCTs) control biases through randomization and are ideal protocols for causal inference, they often have ethical and practical issues, or suffer from expensive costs. Thus, causal inference from observational data is important.</p><p>Causal inference from observational data has other challenges as well. One is confounding: there may be variables, called confounders, that causally affect both the treatment and the outcome, and spurious correlation/bias follows. The other is the systematic imbalance (difference) of the distributions of the covariates between the treatment and control groups--that is, X depends on T , which introduces bias in estimation. A majority of studies on causal inference, including the current work, have relied on unconfoundedness; this means that appropriate covariates are collected so that the confounding can be controlled by conditioning on the covariates. However, such high-dimensional covariates tend to introduce a stronger imbalance between treatment and control.</p><p>The current work studies the issue of imbalance in estimating individualized TEs conditioned on X. Classical approaches aim for covariate balance, X independent of T , by matching and re-weighting <ref type="bibr" target="#b57">(Stuart, 2010;</ref><ref type="bibr" target="#b47">Rosenbaum, 2020)</ref>. Machine learning methods have also been exploited; there are semi-parametric methods--e.g., <ref type="bibr">Van der Laan &amp; Rose (2018, TMLE)</ref>--which improve finite sample performance, as well as non-parametric methods--e.g., <ref type="bibr">Wager &amp; Athey (2018, CF)</ref>. Notably, from <ref type="bibr" target="#b27">Johansson et al. (2016)</ref>, there has been a recent increase in interest in balanced representation learning (BRL) to learn representations Z of the covariates, such that Z independent of T .</p><p>The most serious form of imbalance is the limited (or weak) overlap of covariates, which means that sample points with certain covariate values belong to a single treatment group. In this case, a straightforward estimation of TEs is not possible at non-overlapping covariate values due to lack of data. Some works have focused on providing robustness to limited overlap <ref type="bibr" target="#b2">(Armstrong &amp; Kolesár, 2021)</ref>, trimming non-overlapping sample points <ref type="bibr" target="#b71">(Yang &amp; Ding, 2018)</ref>, or studying convergence rates based on overlap <ref type="bibr" target="#b21">(Hong et al., 2020)</ref>. Limited overlap is particularly relevant to machine learning methods that exploit high-dimensional covariates. This is because, with higher-dimensional covariates, overlap is harder to satisfy and verify <ref type="bibr" target="#b11">(D'Amour et al., 2020)</ref>.</p><p>To address imbalance and limited overlap, we use a prognostic score <ref type="bibr" target="#b17">(Hansen, 2008)</ref>; it is a sufficient statistic of outcome predictors and is among the key concepts of sufficient scores for TE estimation. As a function of covariates, it can map some non-overlapping values to an overlapping value in a space of lower-dimensions. For individualized TEs, we consider conditionally balanced representation Z, such that Z is independent of T given X--which, as we will see, is a necessary condition for a balanced prognostic score. Moreover, prognostic score modeling can benefit from methods in predictive analytics and exploit rich literature, particularly in medicine and health <ref type="bibr" target="#b16">(Hajage et al., 2017)</ref>. Thus, it is promising to combine the predictive power of prognostic modeling and machine learning. With this idea, our method builds on a generative prognostic model that models the prognostic score as a latent variable and factorizes to the score distribution and outcome distribution.</p><p>As we consider latent variables and causal inference, identification is an issue that must be discussed before estimation is considered. "Identification" means that the parameters of interest (in our case, representation function and TEs) are uniquely determined and expressed using the true observational distribution. Without identification, a consistent estimator is impossible to obtain, and a model would fail silently; in other words, the model may fit perfectly but will return an estimator that converges to a wrong one, or does not converge at all <ref type="bibr">(Lewbel, 2019, particularly Sec. 8)</ref>. Identification is even more important for causal inference; because, unlike usual (non-causal) model misspecification, causal assumptions are often unverifiable through observables <ref type="bibr" target="#b66">(White &amp; Chalak, 2013)</ref>. Thus, it is critical to specify the theoretical conditions for identification, and then the applicability of the methods can be judged by knowledge of an application domain.</p><p>A major strength of our generative model is that the latent variable is identifiable. This is because the factorization of our model is naturally realized as a combination of identifiable VAE <ref type="bibr">(Khemakhem et al., 2020a, iVAE)</ref> and conditional VAE <ref type="bibr">(Sohn et al., 2015, CVAE)</ref>. Based on model identifiability, we develop two identification results for individualized TEs under limited overlap. A similar VAE architecture was proposed in <ref type="bibr">Wu &amp; Fukumizu (2020b;</ref><ref type="bibr">2021a)</ref>; the current study is different in setting, theory, learning objective, and experiments. The previous work studies unobserved confounding but not limited overlap, with different set of assumptions and identification theories. The current study further provides bounds on individualized TE error, and the bounds justify a conditionally balancing term controlled by hyperparameter β, as an interpolation between the two identifications.</p><p>In summary, we study the identification (Sec. 3) and estimation (Sec. 4) of individualized TEs under limited overlap. Our approach is based on recovering prognostic scores from observed variables. To this end, our method exploits recent advances in identifiable representation--particularly iVAE. The code is in Supplementary Material, and the proofs are in Sec. A. Our main contributions are: 1) TE identification under limited overlap of X, via prognostic scores and an identifiable model; 2) bounds on individualized TE error, which justify our conditional BRL; 3) a new regularized VAE, β-Intact-VAE, realizing the identification and conditional balance; 4) experimental comparison to the state-of-the-art methods on (semi-)synthetic datasets.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1.1">RELATED WORK</head><p>Limited overlap. Under limited overlap, <ref type="bibr" target="#b42">Luo et al. (2017)</ref> estimate the average TE (ATE) by reducing covariates to a linear prognostic score. <ref type="bibr" target="#b12">Farrell (2015)</ref> estimates a constant TE under a partial linear outcome model. D <ref type="bibr">'Amour &amp; Franks (2021)</ref> study the identification of ATE by a general class of scores, given the (linear) propensity score and prognostic score. Machine learning studies on this topic have focused on finding overlapping regions <ref type="bibr" target="#b44">(Oberst et al., 2020;</ref><ref type="bibr" target="#b8">Dai &amp; Stultz, 2020)</ref>, or indicating possible failure under limited overlap <ref type="bibr" target="#b26">(Jesson et al., 2020)</ref>, but not remedies. An exception is <ref type="bibr">Johansson et al. (2020)</ref>, which provides bounds under limited overlap. To the best of our knowledge, our method is the first machine learning method that provides identification under limited overlap.</p><p>Prognostic scores have been recently combined with machine learning approaches, mainly in the biostatistics community. For example, <ref type="bibr" target="#b22">Huang &amp; Chan (2017)</ref> estimate individualized TE by reducing covariates to a linear score which is a joint propensity-prognostic score. <ref type="bibr" target="#b59">Tarr &amp; Imai (2021)</ref> use SVM to minimize the worst-case bias due to prognostic score imbalance. However, in the machine learning community, few methods consider prognostic scores; <ref type="bibr">Zhang et al. (2020a)</ref> and Hassanpour &amp; Greiner (2019) learn outcome predictors, without mentioning prognostic score--while <ref type="bibr">Johansson et al. (2020)</ref> conceptually, but not formally, connects BRL to prognostic score. Our work is the first to formally connect generative learning and prognostic scores for TE estimation.</p><p>Identifiable representation. Recently, independent component analysis (ICA) and representation learning--both ill-posed inverse problems--meet together to yield nonlinear ICA and identifiable representation; for example, using VAEs <ref type="bibr">(Khemakhem et al., 2020a)</ref>, and energy models <ref type="bibr">(Khemakhem et al., 2020b)</ref>. The results are exploited in causal discovery <ref type="bibr">(Wu &amp; Fukumizu, 2020a</ref>) and out-of-distribution generalization <ref type="bibr" target="#b58">(Sun et al., 2020)</ref>. This study is the first to explore identifiable representations in TE identification.</p><p>BRL and related methods amount to a major direction. Early BRL methods include BLR/BNN <ref type="bibr" target="#b27">(Johansson et al., 2016)</ref> and TARnet/CFR <ref type="bibr" target="#b51">(Shalit et al., 2017)</ref>. In addition, <ref type="bibr" target="#b72">Yao et al. (2018)</ref> exploit the local similarity between data points. <ref type="bibr" target="#b52">Shi et al. (2019)</ref> use similar architecture to TARnet, considering the importance of treatment probability. There are also methods that use GAN <ref type="bibr">(Yoon et al., 2018, GANITE)</ref> and Gaussian processes (Alaa &amp; van der Schaar, 2017). Our method shares the idea of BRL, and further extends to conditional balance--which is natural for individualized TE.</p><p>Others. Our work can lay conceptual and theoretical foundations of VAE methods for TEs (e.g., <ref type="bibr" target="#b40">Louizos et al., 2017;</ref><ref type="bibr" target="#b41">Lu et al., 2020)</ref>. In addition, some studies consider monotonicity, which is injectivity on R, together with overlap <ref type="bibr">(Johansson et al., 2020;</ref><ref type="bibr">Zhang et al., 2020b)</ref>. See Sec. D.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">SETUP AND PRELIMINARIES</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.1">COUNTERFACTUALS, TREATMENT EFFECTS, AND IDENTIFICATION</head><p>Following <ref type="bibr" target="#b24">Imbens &amp; Rubin (2015)</ref>, we assume there exist potential outcomes Y (t) ∈ R d , t ∈ {0, 1}. Y (t) is the outcome that would have been observed if the treatment value T = t was applied. We see Y (t) as the hidden variables that give the factual outcome Y under factual assignment T = t. Formally, Y (t) is defined by the consistency of counterfactuals:</p><formula xml:id="formula_0">Y = Y (t) if T = t; or simply Y = Y (T ).</formula><p>The fundamental problem of causal inference is that, for a unit under research, we can observe only one of Y (0) or Y (1)--w.r.t. the treatment value applied. That is, "factual" refers to Y or T , which is observable; or estimators built on the observables. We also observe relevant covariate(s) X ∈ X ⊆ R m , which is associated with individuals, with distribution D := (X, Y, T ) ∼ p(x, y, t). We use upper-case (e.g. T ) to denote random variables, and lower-case (e.g. t) for realizations.</p><p>The expected potential outcome is denoted by</p><formula xml:id="formula_1">µ t (x) = E(Y (t)|X = x) conditioned on X = x.</formula><p>The estimands in this work are the conditional ATE (CATE) and ATE, defined, respectively, by: τ</p><formula xml:id="formula_2">(x) = µ 1 (x) -µ 0 (x), ν = E(τ (X)).<label>(1)</label></formula><p>CATE is seen as an individual-level, personalized, treatment effect, given highly discriminative X.</p><p>Standard results (Rubin, 2005) <ref type="bibr">(Hernan &amp; Robins, 2020, Ch. 3)</ref> show sufficient conditions for TE identification in general settings. They are Exchangeability: Y (t) |= T |X, and Overlap: p(t|x) &gt; 0 for any x ∈ X . Both are required for t ∈ {0, 1}. When t appears in statements without quantification, we always mean "for both t". Often, Consistency is also listed; however, as mentioned, it is better known as the well-definedness of counterfactuals. Exchangeability means, just as in RCTs, but additionally given X, that there is no correlation between factual T and potential Y (t). Note that the popular assumption</p><formula xml:id="formula_3">Y (0), Y (1) |= T |X is stronger than Y (t)</formula><p>|= T |X and is not necessary for identification <ref type="bibr">(Hernan &amp; Robins, 2020, pp. 15)</ref>. Overlap means that the supports of p(x|t = 0) and p(x|t = 1) should be the same, and this ensures that there are data for µ t (x) on any (x, t).</p><p>We rely on consistency and exchangeability, but in Sec. 3.2, will relax the condition of the overlapping covariate to allow some non-overlapping values x--that is, covariate X is limited-overlapping. In this paper, we also discuss overlapping variables other than X (e.g., prognostic scores), and provide a definition for any random variable V with support V as follows:</p><formula xml:id="formula_4">Definition 1. V is Overlapping if p(t|V = v) &gt; 0 for any t ∈ {0, 1}, v ∈ V.</formula><p>If the condition is violated at some value v, then v is non-overlapping and V is limited-overlapping.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.2">PROGNOSTIC SCORES</head><p>Our method aims to recover a prognostic score <ref type="bibr" target="#b17">(Hansen, 2008)</ref>, adapted as a Pt-score in Definition 2. On the other hand, balancing scores <ref type="bibr" target="#b48">(Rosenbaum &amp; Rubin, 1983</ref>) b(X) are defined by T |= X|b(X), of which the propensity score p(t = 1|X) is a special case. See Sec. B.1 for detail.</p><formula xml:id="formula_5">Definition 2. A Pt-score (PtS) is two functions P t (X) (t = 0, 1) such that Y (t) |= X|P t (X). A PtS is called a P-score (PS) if P 0 = P 1 .</formula><p>Note that a PtS is by definition two functions; thus, overlapping P t (X) means both P 0 (X) and P 1 (X) are overlapping. Why not balancing scores? While balancing scores b(X) have been widely used in causal inference, PtSs are more suitable for discussing overlap. Our purpose is to recover an overlapping score for limited-overlapping X. It is known that overlapping b(X) implies overlapping X (D' <ref type="bibr">Amour et al., 2020)</ref>, which counters our purpose. In contrast, overlapping PS does not imply overlapping b(X) (see Sec. C.1 for an example). Moreover, with theoretical and experimental evidence, it is recently conjectured that PtSs maximize overlap among a class of sufficient scores, including b(X) <ref type="bibr" target="#b9">(D'Amour &amp; Franks, 2021)</ref>. In general, <ref type="bibr" target="#b16">Hajage et al. (2017)</ref> show that prognostic score methods perform better--or as well as--propensity score methods.</p><p>Below is a corollary of Proposition 5 in <ref type="bibr" target="#b17">Hansen (2008)</ref>; note that P t (X) satisfies exchangeability. Proposition 1 (Identification via PtS). If P t is a PtS and Y |P t(X ), T ∼ p Y |P t,T (y|P, t) where t ∈ {0, 1} is a counterfactual assignment, then CATE and ATE are identified, using (1) and</p><formula xml:id="formula_6">µ t(x) = E(Y ( t)|P t(X ), X = x) = E(Y |P t(x), T = t) = p Y |P t,T (y|P t(x), t)ydy (2)</formula><p>With the knowledge of P t and p Y |P t,T , we choose one of P 0 , P 1 and set t = t in the density function, w.r.t the µ t of interest. This counterfactual assignment resolves the problem of non-overlap at x. Note that a sample point with X = x may not have T = t.</p><p>We mainly consider additive noise models for Y (t), which ensures the existence of PtSs.</p><p>(G1)<ref type="foot" target="#foot_0">foot_0</ref> (Additive noise model) the data generating process (DGP) for Y is Y = f * (M(X), T ) + e where f * , M are functions, and e denotes a zero-mean exogenous (external) noise.</p><p>The potential outcomes can be defined by the DGP as Y (t) := f * (M(X), t) + e. The DGP also specifies how other variables causally affect Y . For example, X affects Y through M; and thus M(X) is the effect modifier (Hansen, 2008)--which is often components of X affecting Y directly.</p><p>Additive noise models are used in nonparametric regression methods for TEs <ref type="bibr" target="#b3">(Caron et al., 2020)</ref>.</p><p>Under (G1), we can find natural examples of PS and PtS. 1) P t (X) := f * t (M(X)) = µ t (X)<ref type="foot" target="#foot_1">foot_1</ref> is a PtS and not PS; 2) M is a PS (X is a trivial PS); and 3) P(X) := (µ 0 (X), µ 1 (X)) is a PS.</p><p>We use PS and PtS to construct a representation for CATE estimation, and their balance is important. Obviously, a PS P(X) is a conditionally balanced representation (defined as Z |= T |X in Introduction), because P(X) does not depend on T given X. Note that a PtS is conditionally balanced if and only if it is a PS. Thus, we introduce the notion of balanced PtS in a non-rigorous way: a PtS P t is called balanced if the value of a measure for the conditional independence P T (X) |= T |X is small. In Sec. 3.1, we specify the generative prognostic model p(y, z|x, t), and show its identifiability. In Sec. 3.2, we prove the identification of CATEs, which is one of our main contributions. The theoretical analysis involves only our generative model (i.e., prior and decoder), but not the encoder. The encoder is not part of the generative model and is involved as an approximate posterior in the estimation, which is studied in Sec. 4.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">IDENTIFICATION UNDER GENERATIVE PROGNOSTIC MODEL</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">MODEL, ARCHITECTURE, AND IDENTIFIABILITY</head><p>We present the necessary definitions and results, and defer more explanations to Sec. C.2. The contents of this subsection are essentially taken from <ref type="bibr">Wu &amp; Fukumizu (2021b)</ref>, but included here for completeness.</p><p>Our goal is to build a model that can be learned by VAE from observational data to obtain a PtS, or better, a PS, via the latent variable Z. The generative prognostic model of the proposed method is as follows:</p><formula xml:id="formula_7">p θ (y, z|x, t) = p f (y|z, t)p λ (z|x, t), p f (y|z, t) = p (y -f t (z)), p λ (z|x, t) ∼ N (z; h t (x), diag(k t (x))).</formula><p>(3)</p><p>The factor p f (y|z, t) is our decoder, which models p Y |Pt,T (y|P, t) in (2); and p λ (z|x, t) is the conditional prior, which models P T (X). The outcome assumes an additive noise model such that ∼ p denotes the noise model. The prior is a factorized Gaussian, where λ T (X) := diag -1 (k T (X))(h T (X), -1 2 ) T is the natural parameter as in the exponential family. θ := (f , λ) = (f , h, k) contains the functional parameters. We denote n := dim(Z).</p><p>For inference, the standard argument derives the ELBO: log p(y|x, t) ≥ E z∼q log p f (y|z, t) -D KL (q(z|x, y, t) p λ (z|x, t)).</p><p>(4)</p><p>Note that the encoder q conditions on all the observables (X, Y, T ); this fact plays an important role in Section 4.1. This architecture is called Intact-VAE (Identifiable treatment-conditional VAE). See Figure <ref type="figure" target="#fig_0">1</ref> for comparison in terms of graphical models. See Sec. B.2 for basics of VAEs.</p><p>Our model identifiability extends the theory of iVAE, and the following conditions are inherited.</p><p>(M1) i) f t is injective, and ii) f t is differentiable.</p><p>(D1) λ t (X) is non-degenerate, i.e., the linear hull of its support is 2n-dimensional.</p><p>Under (M1) and (D1), we obtain the following identifiability of the parameters in the model: if p θ (y|x, t) = p θ (y|x, t), we have, for any y t in the image of f t :</p><formula xml:id="formula_8">f -1 t (y t ) = diag(a)f t -1 (y t ) + b =: A t (f t -1 (y t ))<label>(5)</label></formula><p>where diag(a) is an invertible n-diagonal matrix and b is an n-vector, both of which depend on λ t (x) and λ t (x). The essence of the result is that f t = f t • A t ; that is, f t can be identified (learned) up to an affine transformation A t . See Sec. A for the proof and a relaxation of (D1). In this paper, symbol (prime) always indicates another parameter (variable, etc.): θ = (f , λ ).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">IDENTIFICATIONS UNDER LIMITED-OVERLAPPING COVARIATE</head><p>In this subsection, we present two results of CATE identification based on the recovery of equivalent PS and PtS, respectively. Since PtSs are functions of X, the theory assumes a noiseless prior for simplification, i.e., k(X) = 0; the prior Z λ,t ∼ p λ (z|x, t) degenerates to function h t (x).</p><p>PtSs with dimensionality lower than or equal to d = dim(Y ) are essential to address limited overlapping, as shown below. We set n = d because µ t is a PtS of the same dimension as Y under (G1).</p><p>In practice, n = d means that we seek a low-dimensional representation of X. (G2) makes the dimensionality explicit and reduces to (G1) if the only possibility is that P t = µ t and j t is identity.</p><p>(G2) (Low-dimensional PtS) Under (G1), µ t (X) = j t (P t (X)) for some P t and injective j t .</p><p>We use (G2) instead of (G1) hereafter. Clearly, P t in (G2) is PtS. In addition, injectivity and n = d ensure that n = dim(Y ) ≥ dim(P t ). Similarly, (G2') ensures that n ≥ dim(P) for PS.</p><p>(G2') (Low-dimensional PS) Under (G1), µ t (X) = j t (P(X)) for some P and injective j t .</p><p>(G2') means that CATEs are given by µ 0 and an invertible function i := j 1 • j -1 0 . See Sec. C.3 for more discussions and real-world examples.</p><p>With (G2) or (G2'), overlapping X can be relaxed to overlapping PS or PtS plus the following:</p><p>(M2) (Score partition preserving) For any x, x ∈ X , if P t (x) = P t (x ), then h t (x) = h t (x ).</p><p>Note that (M2) is only required for optimal h that satisfies E p θ (Y |X, T ) = E(Y |X, T ) in Proposition 2, or p θ (y|x, t) = p(y|x, t) in Theorem 1. The intuition is that P t maps non-overlapping x to an overlapping value, and h t preserves this property through learning. Linear P t and h t imply (M2) and are often assumed, e.g., in <ref type="bibr" target="#b22">Huang &amp; Chan (2017)</ref>; <ref type="bibr" target="#b42">Luo et al. (2017);</ref><ref type="bibr" target="#b9">D'Amour &amp; Franks (2021)</ref>. Linear outcome models <ref type="bibr" target="#b12">(Farrell, 2015;</ref><ref type="bibr" target="#b50">Schuler et al., 2020)</ref> are also common.</p><p>Our first identification, Proposition 2, relies on (G2') and our generative model, without model identifiability (so differentiable f t is not needed).</p><p>Proposition 2 (Identification via recovery of PS). Suppose we have DGP (G2') and model (3) with n = d. Assume (M1)-i) and (M3) (PS matching) h 0 (X) = h 1 (X) and k(X) = 0. Then, if </p><formula xml:id="formula_9">E p θ (Y |X, T ) = E(Y |X, T ),</formula><formula xml:id="formula_10">= E p λ (Z|x,t) E p f (Y |Z, t) = f t (h t (x)).</formula><p>In essence, i) the true DGP is identified up to an invertible mapping v, such that f t = j t • v -1 and h t = v • P t ; and ii) P t is recovered up to v, and Y (t) |= X|P t (X) is preserved--with same v for both t. Theorem 1 below also achieves the essence i) and ii), under P 0 = P 1 .</p><p>The existence of PS is more preferred, because it satisfies overlap and (M2) more easily than PtS which requires the conditions for each of the two functions of PtS. However, the existence of lowdimensional PS is uncertain in practice when our knowledge of the DGP is limited. Thus, we depend on Theorem 1 based on the model identifiability to work under PtS which generally exists.</p><p>Theorem 1 (Identification via recovery of PtS). Suppose we have DGP (G2) and model (3) with n = d. For the model, assume (M1) and (M3') (Noise matching) p e = p and k(X) = kk (X), k → 0. Assume further that (D1) and (D2) (Balance from data) A 0 = A 1 in (5). Then, if p θ (y|x, t) = p(y|x, t); conclusions 1) and 2) in Proposition 2 hold with P replaced with P t in (G2); and the domain of v becomes P := {P t (x)|p(t, x) &gt; 0}.</p><p>Theorem 1 implies that, without PS, we need to know or learn the distribution of hidden noise to have p e = p . Proposition 2 and Theorem 1 achieve recovery and identification in a complementary manner; the former starts from the prior by P 0 = P 1 and h 0 = h 1 , while the latter starts from the decoder by A 0 = A 1 and p e = p . We see that A 0 = A 1 acts as a kind of balance because it replaces P 0 = P 1 (balanced PtS) in Proposition 2. We show in Sec. A a sufficient and necessary condition (D2') on data that ensures A 0 = A 1 . Note that the singularities due to k → 0 (e.g., λ → 0) cancel out in (5). See Sec. C.4 for more on the complementarity between the two identifications.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">ESTIMATION BY β-INTACT-VAE</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">PRIOR AS PS, POSTERIOR AS PTS, AND β AS REGULARIZATION STRENGTH</head><p>In Sec. 3.2, we see that the existence of PS (Proposition 2) is preferable in identifying the true DGP up to an equivalent expression--while Theorem 1 allows us to deal with PtS by adding other conditions. In learning our model with data, we assume that there is a PtS, and the decomposition of (G2) holds. However, such decompositions are not unique in general, and they are equivalent for CATE identification; and those with more balanced equivalent PtS are preferable. In this sense, we want to not only recover PtS, but also discover equivalent PS, if possible. This idea is common in practice. For example, in a real-world nutrition study <ref type="bibr" target="#b22">(Huang &amp; Chan, 2017)</ref>, a reduction of 11 covariates discovers a 1-dimensional linear PS.</p><p>We consider two ways to discover and recover a equivalent PS (or balanced PtS) by a VAE. One is to use a prior which does not depend on t, indicating a preference for PS. Namely, we set λ 0 = λ 1 =: Λ and have p Λ (z|x) as the prior in (3). The decoder and encoder are factorized Gaussians:</p><formula xml:id="formula_11">p f ,g (y|z, t) = N (y; f t (z), diag(g t (z))), q φ (z|x, y, t) = N (z; r t (x, y), diag(s t (x, y))), (6)</formula><p>where φ = (r, s). The other is to introduce a hyperparameter β in the ELBO as in β-VAE <ref type="bibr" target="#b19">(Higgins et al., 2017)</ref>. The modified ELBO with β, up to the additive constant, is derived as:</p><formula xml:id="formula_12">E D {-βD KL (q φ p Λ ) -E z∼q φ [(y -f t (z)) 2 /2g 2 t (z)] -E z∼q φ log |g t (z)|}.<label>(7)</label></formula><p>For convenience, here and in L f in Sec. 4.2, we omit the summation as if Y is univariate. The encoder q φ depends on t and can realize a PtS. With β, we control the trade-off between the first and second terms: the former is the divergence of the posterior from the balanced prior, and the latter is the reconstruction of the outcome. Note that a larger β encourages the conditional balance Z |= T |X on the posterior. By choosing β appropriately, e.g., by validation, the ELBO can recover a balanced PtS while fitting the outcome well. In summary, we base the estimation on Proposition 2 and PS as much as possible, but step into Theorem 1 and noise modeling required by p e = p when necessary.</p><p>Note also that the parameters g and k, which model the outcome noise and express the uncertainty of the prior, respectively, are both learned by the ELBO. This deviates from the theoretical conditions described in Sec. 3.2, but it is more practical and yields better results in our experiments. See Sec. C.5 for more ideas and connections behind the ELBO.</p><p>Once the VAE is learned<ref type="foot" target="#foot_2">foot_2</ref> by the ELBO, the estimate of the expected potential outcomes is given by: μt</p><formula xml:id="formula_13">(x) = E q(z|x) f t(z) = E D|x∼p(y,t|x) E z∼q φ f t(z), t ∈ {0, 1},<label>(8)</label></formula><p>where q(z|x) := E p(y,t|x) q φ (z|x, y, t) is the aggregated posterior. We mainly consider the case where x is observed in the data, and the sample of (Y, T ) is taken from the data given X = x. When x is not in the data, we replace q φ with p Λ in (8) (see Sec. C.7 for details and E for results). Note that t in (8) indicates a counterfactual assignment that may not be the same as the factual T = t in the data. That is, we set T = t in the decoder. The assignment is not applied to the encoder which is learned from factual X, Y, T (see also the explanation of CF,t in Sec. 4.2). The overall algorithm steps are i) train the VAE using ( <ref type="formula" target="#formula_12">7</ref>), and ii) infer CATE τ (x) = μ1 (x) -μ0 (x) by ( <ref type="formula" target="#formula_13">8</ref>).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">CONDITIONALLY BALANCED REPRESENTATION LEARNING</head><p>We formally justify our ELBO (7) from the BRL viewpoint. We show that the conditional BRL via the first term of the ELBO results from bounding a CATE error; particularly, the error due to the imprecise recovery of j t in (G2) is controlled by the ELBO. Previous works <ref type="bibr" target="#b51">(Shalit et al., 2017;</ref><ref type="bibr" target="#b41">Lu et al., 2020)</ref> instead focus on unconditional balance and bound PEHE which is marginalized on X. Sec. 5.2 experimentally shows the advantage of our bounds and ELBO. Further, we connect the bounds to identification and consider noise modeling through g t (z). Sec Sec. C.8 for detail.</p><p>We introduce the objective that we bound. Using (8) to estimate CATE, τf (z) := f 1 (z) -f 0 (z) is marginalized on q(z|x). On the other hand, the true CATE, given the covariate x or score z, is:</p><formula xml:id="formula_14">τ (x) = j 1 (P 1 (x)) -j 0 (P 0 (x)), τ j (z) = j 1 (z) -j 0 (z),<label>(9)</label></formula><p>where j t is associated with a balanced PtS P t discovered as the target of recovery by our VAE. Accordingly, given x, the error of posterior CATE, with or without knowing P t , is defined as</p><formula xml:id="formula_15">* f (x) := E q(z|x) (τ f (z) -τ (x)) 2 ; f (x) := E q(z|x) (τ f (z) -τ j (z)) 2 . (<label>10</label></formula><formula xml:id="formula_16">)</formula><p>We bound f instead of * f because the error between τ (X) and τ j (Z) is small--if the balanced P t is recovered, then z ≈ P 0 (x) ≈ P 1 (x) in (9). We consider the error between τf and τ j below. We define the risks of outcome regression, into which f is decomposed.</p><formula xml:id="formula_17">Definition 3 (CATE risks). Let Y ( t)|P t(X ) ∼ p Y ( t)|P t (</formula><p>y|P ) and q t (z|x) := q(z|x, t) = E p(y|x,t) q φ . The potential outcome loss at (z, t), factual risk, and counterfactual risk are:</p><formula xml:id="formula_18">L f (z, t) := E p Y (t)|P t (y|P =z) (y -f t(z)) 2 /g t(z) 2 = g t(z) -2 (y -f t(z)) 2 p Y ( t)|P t (y|z)dy; F,t (x) := E qt(z|x) L f (z, t); CF,t (x) := E q1-t(z|x) L f (z, t).</formula><p>With Y (t) involved, L f is a potential outcome loss on f , weighted by g. The factual and counterfactual counterparts, F,t and CF,t , are defined accordingly. In F,t , unit u = (x, y, t) is involved in the learning of q t (z|x), as well as in</p><formula xml:id="formula_19">L f (z, t) since Y (t) = y for the unit. In CF,t , however, unit u = (x, y , 1 -t) is involved in q 1-t (z|x), but not in L f (z, t) since Y (t) = y = Y (1 -t).</formula><p>Thus, the regression error (second) term in ELBO (7) controls F,t via factual data. On the other hand, CF,t is not estimable due to the unobservable Y (1 -T ), but is bounded by F,t plus M D(x) in Theorem 2 below--which, in turn, bounds f by decomposing it to F,t , CF,t , and</p><formula xml:id="formula_20">V Y . Theorem 2 (CATE error bound). Assume |L f (z, t)| ≤ M and |g t (z)| ≤ G, then: f (x) ≤ 2[G 2 ( F,0 (x) + F,1 (x) + M D(x)) -V Y (x)]<label>(11)</label></formula><p>where D(x) := t D KL (q t q 1-t )/2, and</p><formula xml:id="formula_21">V Y (x) := E q(z|x) t E p Y (t)|P t (y|z) (y -j t (z)) 2 .</formula><p>D(x) measures the imbalance between q t (Z|x) and is symmetric for t. Correspondingly, the KL term in ELBO (7) is also symmetric for t and balances q t (z|x) by encouraging Z |= T |X for the posterior. V Y (x) reflects the intrinsic variance in the DGP and can not be controlled.</p><p>Estimating G, M is nontrivial. Instead, we rely on β in the ELBO to weight the terms in (11). We do not need two hyperparameters since G is implicitly controlled by the third term in ELBO (7), which is a norm constraint. β is a trade-off between the conditional balance of learned PtS (affected by f t ), and precision/effective sample size of outcome regression--and can be seen as the probabilistic counterpart of <ref type="bibr" target="#b59">Tarr &amp; Imai (2021)</ref> and <ref type="bibr" target="#b30">Kallus et al. (2018)</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">EXPERIMENTS</head><p>We compare our method with existing methods on three types of datasets. Here, we present two experiments; the remaining one on the Pokec dataset is deferred to Sec. E.3. As in previous works <ref type="bibr" target="#b51">(Shalit et al., 2017;</ref><ref type="bibr" target="#b40">Louizos et al., 2017)</ref>, we report the absolute error of ATE ate := |E D (y(1) - <ref type="bibr" target="#b20">(Hill, 2011)</ref>, which is the average square CATE error.</p><formula xml:id="formula_22">y(0)) -E D τ (x)| and, as a surrogate of square CATE error cate (x) = E D|x [(y(1) -y(0)) -τ (x)] 2 , the empirical PEHE pehe := E D cate (x)</formula><p>Unless otherwise indicated, for each function f , g, h, k, r, s in ELBO ( <ref type="formula" target="#formula_12">7</ref>), we use a multilayer perceptron, with 3 * 200 hidden units, and ReLU activations. Further, Λ = (h, k) depends only on X. The Adam optimizer with initial learning rate 10 -4 and batch size 100 is employed. All experiments use early-stopping of training by evaluating the ELBO on a validation set. More details on hyper-parameters and settings are given in each experiment.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1">SYNTHETIC</head><formula xml:id="formula_23">DATASET W |X ∼ N (h(X), k(X)); T |X ∼ Bern(Logi(ωl(X))); Y |W, T ∼ N (f T (W ), g T (W )). (12)</formula><p>We generate synthetic datasets following (12). Both X ∼ N (µ, σ) and W are factorized Gaussians. µ, σ are randomly sampled. The functions h, k, l are linear. Outcome models f 0 , f 1 are built by NNs with invertible activations. Y is univariate, dim(X) = 30, and dim(W ) ranges from 1 to 5. W is a PS, but the dimensionality is not low enough to satisfy the injectivity in (G2'), when dim(W ) &gt; 1. We have 5 different overlap levels controlled by ω that multiplies the logit value. See Sec. E.1 for details and more results on synthetic datasets.  With the same (dim(W ), ω), we evaluate our method and CFR on 10 random DGPs, with different sets of functions f, g, h, k, l in (12). For each DGP, we sample 1500 data points, and split them into 3 equal sets for training, validation, and testing. We show our results for different hyperparameter β. For CFR, we try different balancing parameters and present the best results (see the Appendix for detail).</p><p>In each panel of Figure <ref type="figure">2</ref>, we adjust one of ω, dim(W ), with the other fixed to the lowest. As implied by our theory, our method, with only 1-dimensional Z, performs much better in the left panel (where dim(W ) = 1 satisfies (G2')) than in the right panel (when dim(W ) &gt; 1). Although CFR uses 200-dimensional representation, in the left panel our method performs much better than CFR; moreover, in the right panel CFR is not much better than ours. Further, our method is much more robust against different DGPs than CFR (see the error bars). Thus, the results indicate the power of identification and recovery of scores. (see Figure <ref type="figure" target="#fig_4">3</ref>   Under the lowest overlap level (ω = 22), large β(= 2.5, 3) shows the best results, which accords with the intuition and bounds in Sec. 4. When dim(W ) &gt; 1, f t in ( <ref type="formula">12</ref>) is noninjecitve and learning of PtS is necessary, and thus, larger β has a negative effect. In fact, β = 1 is significantly better than β = 3 when dim(W ) &gt; 2. We note that our method, with a higher-dimensional Z, outperforms or matches CFR also under dim(W ) &gt; 1 (see Appendix Figure <ref type="figure">5</ref>). Thus, the performance gap under dim(W ) &gt; 1 in Figure <ref type="figure">2</ref> should be due to the capacity of NNs in β-Intact-VAE. In Appendix Figure <ref type="figure" target="#fig_9">7</ref> for ATE error, CFR drops performance w.r.t overlap levels. This is evidence that CFR and its unconditional balance overly focus on PEHE (see Sec. 5.2 for detail).</p><p>When dim(W ) = 1, there are no better PSs than W , because f t is invertible and no information can be dropped from W . Thus, our method stably learns Z as an approximate affine transformation of the true W , showing identification. An example is shown in Figure <ref type="figure" target="#fig_4">3</ref>, and more plots are in Appendix Figure <ref type="figure" target="#fig_12">9</ref>. For comparison, we run CEVAE <ref type="bibr" target="#b40">(Louizos et al., 2017)</ref>, which is also based on VAE but without identification; CEVAE shows much lower quality of recovery. As expected, both recovery and estimation are better with the balanced prior p Λ (z|x), and we can see examples of bad recovery using p λ (z|x, t) in Appendix Figure <ref type="figure" target="#fig_13">10</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2">IHDP BENCHMARK DATASET</head><p>This experiment shows our conditional BRL matches state-of-the-art BRL methods and does not overly focus on PEHE. The IHDP (Hill, 2011) is a widely used benchmark dataset; while it is less known, its covariates are limited-overlapping, and thus it is used in <ref type="bibr">Johansson et al. (2020)</ref> which considers limited overlap. The dataset is based on an RCT, but Race is artificially introduced as a confounder by removing all treated babies with nonwhite mothers in the data. Thus, Race is highly limited-overlapping, and other covariates that have high correlation to Race, e.g, Birth weight <ref type="bibr" target="#b31">(Kelly et al., 2009)</ref>, are also limited-overlapping. See Sec. E.2 for detail and more results.</p><p>There is a linear PS (linear combination of the covariates). However, most of the covariates are binary, so the support of the PS is often on small and separated intervals. Thus, the Gaussian latent Z in our model is misspecified. We use 10-dimensional Z to address this, similar to <ref type="bibr" target="#b40">Louizos et al. (2017)</ref>. We set β = 1 since it works well on synthetic datasets with limited overlap.</p><p>As shown in Table <ref type="table">1</ref>, β-Intact-VAE outperforms or matches the state-of-the-art methods. Notably, our method outperforms other generative models (CEVAE and GANITE) by large margins. Our method has the best ATE estimation and is only slightly worse than CFR for pehe . This fact reflects that pehe is not a good criterion for CATE estimation because it is the marginalized CATE error--one expects less ATE error with overall less CATE error on individual-level, while PEHE focuses on those X = x with high probability and/or large cate (x). Indeed, the unconditional balance in <ref type="bibr" target="#b51">Shalit et al. (2017)</ref> is based on bounding PEHE, thus results in sub-optimal ATE estimation (see also Appendix Figure <ref type="figure" target="#fig_9">7</ref> where CFR gives larger ATE errors with less overlap).</p><p>Table <ref type="table">1</ref>: Errors on IHDP over 1000 random DGPs. "Mod. *" indicates the modified version with unconditional balancing hyperparameter of value "*". Italic indicates where the modified version is significantly worse than the original. Bold indicates method(s) which is significantly better than others. The results of other methods are taken from <ref type="bibr" target="#b51">Shalit et al. (2017)</ref>, GANITE <ref type="bibr" target="#b73">(Yoon et al., 2018)</ref>, and CEVAE <ref type="bibr" target="#b40">(Louizos et al., 2017)</ref> </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">CONCLUSION</head><p>We proposed a method for CATE estimation under limited overlap. Our method exploits identifiable VAE, a recent advance in generative models, and is fully motivated and theoretically justified by causal considerations: identification, prognostic score, and balance. Experiments show evidence that the injectivity of f t in our model is possibly unnecessary because dim(Z) &gt; dim(Y ) yields better results. A theoretical study of this is an interesting future direction. We believe that VAEs are suitable for principled causal inference owing to their probabilistic nature, if not compromised by ad hoc heuristics (see Sec. D.2). <ref type="bibr">Wu &amp; Fukumizu (2021b, Sec. 4</ref>.2) introduce some newest ideas of this project.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A PROOFS</head><p>We restate our model identifiability formally.</p><p>Lemma 1 (Model identifiability). Given model (3) under (M1), for T = t, assume (D1') (Non-degenerated data for λ) there exist 2n + 1 points x 0 , ..., x 2n ∈ X such that the 2n-square matrix L t := [γ t,1 , ..., γ t,2n ] is invertible, where γ t,k := λ t (x k ) -λ t (x 0 ).</p><p>Then, given T = t, the family is identifiable up to an equivalence class. That is, if p θ (y|x, t) = p θ (y|x, t), we have the relation between parameters: for any y t in the image of f t ,</p><formula xml:id="formula_24">f -1 t (y t ) = diag(a)f t -1 (y t ) + b =: A t (f t -1 (y t ))<label>(13</label></formula><p>) where diag(a) is an invertible n-diagonal matrix and b is a n-vector, both depend on λ t and λ t .</p><p>Note, (D1) in the main text implies (D1'), see Sec. B.2.3 in <ref type="bibr">Khemakhem et al. (2020a)</ref>. The main part of our model identifiability is essentially the same as that of Theorem 1 in <ref type="bibr">Khemakhem et al. (2020a)</ref>, but now adapted to include the dependency on t. Here we give an outline of the proof, and the details can be easily filled by referring to <ref type="bibr">Khemakhem et al. (2020a)</ref>. In the proof, subscripts t are omitted for convenience.</p><p>Proof of Lemma 1. Using (M1) i) and ii) , we transform p f ,λ (y|x, t) = p f ,λ (y|x, t) into equality of noiseless distributions, that is,</p><formula xml:id="formula_25">q f ,λ (y) = q f ,λ (y) := p λ (f -1 (y)|x, t)vol(J f -1 (y))I Y (y)<label>(14</label></formula><p>) where p λ is the Gaussian density function of the conditional prior defined in (3) and vol(A) := √ det AA T . q f ,λ is defined similarly to q f ,λ .</p><p>Then, apply model ( <ref type="formula">3</ref>) to ( <ref type="formula" target="#formula_25">14</ref>), plug the 2n + 1 points from (D1') into it, and re-arrange the resulting 2n + 1 equations in matrix form, we have</p><formula xml:id="formula_26">F (Y ) = F(Y ) := L T t(f -1 (Y )) -β<label>(15</label></formula><p>) where t(Z) := (Z, Z 2 ) T is the sufficient statistics of factorized Gaussian, and β t := (α t (x 1 )α t (x 0 ), ..., α t (x 2n ) -α t (x 0 )) T where α t (X; λ t ) is the log-partition function of the conditional prior in (3). F is defined similarly to F, but with f , λ , α Since L is invertible, we have</p><formula xml:id="formula_27">t(f -1 (Y )) = At(f -1 (Y )) + c (16) where A = L -T L T and c = L -T (β -β ).</formula><p>The final part of the proof is to show, by following the same reasoning as in Appendix B of <ref type="bibr" target="#b54">Sorrenson et al. (2019)</ref>, that A is a sparse matrix such that</p><formula xml:id="formula_28">A = diag(a) O diag(u) diag(a 2 ) (<label>17</label></formula><formula xml:id="formula_29">)</formula><p>where A is partitioned into four n-square matrices. Thus</p><formula xml:id="formula_30">f -1 (Y ) = diag(a)f -1 (Y ) + b (18) where b is the first half of c.</formula><p>Proof of Proposition 2. Under (G2'), and (M3), we have</p><formula xml:id="formula_31">E p θ (Y |X, T ) = E(Y |X, T ) =⇒ f t • h(x) = j t • P(x) on (x, t) such that p(t, x) &gt; 0. (19) We show the solution set of (19) on overlapping x is {(f , h)|f t = j t • ∆ -1 , h = ∆ • P, ∆ : P → R n is injective}. (<label>20</label></formula><formula xml:id="formula_32">)</formula><p>By (G2')(M1), and with injective f t , j t and dim(Z) = dim(Y ) ≥ dim(P), for any ∆ above, there exists a functional parameter f t such that j t = f t • ∆. Thus, set ( <ref type="formula" target="#formula_31">20</ref>) is non-empty, and any element is indeed a solution because</p><formula xml:id="formula_33">f t • h = j t • ∆ -1 • ∆ • P = j t • P.</formula><p>Any solution of ( <ref type="formula">19</ref>) should be in <ref type="bibr">(20)</ref>. A solution should satisfy h(x) = f -1 t</p><p>• j t • P(x) for both t since x is overlapping. This means the injective function f -1 t • j t should not depend on t, thus it is one of the ∆ in (20).</p><p>We proved conclusion 1) with v := ∆. And, on overlapping x, conclusion 2) is quickly seen from μt</p><formula xml:id="formula_34">(x) = f t (h(x)) = j t • v -1 (v • P(x)) = j t (P(x)) = µ t (x).<label>(21)</label></formula><p>We rely on overlapping P to work for non-overlapping x. For any x t with p(1 -t|x t ) = 0, to ensure p(1 -t|P(x t )) &gt; 0, there should exist x 1-t such that P(x 1-t ) = P(x t ) and p(1 -t|x 1-t ) &gt; 0.</p><p>And we also have h(x 1-t ) = h(x t ) due to (M2). Then, we have</p><formula xml:id="formula_35">μ1-t (x t ) = f 1-t (h(x t )) = f 1-t (h(x 1-t )) = j 1-t (P(x 1-t )) = j 1-t (P(x t )) = µ 1-t (x t ). (22)</formula><p>The third equality uses (19) on (x 1-t , 1 -t).</p><p>Below we prove Theorem 1 with (D2) replaced by (D2') (Spontaneous balance) there exist 2n + 1 points x 0 , ..., x 2n ∈ X , 2n-square matrix C, and 2n-vector d, such that L -1 0 L 1 = C and β 0 -C -T β 1 = d/k for optimal λ t (see below), where L t is defined in (D1'), β t := (α t (x 1 ) -α t (x 0 ), ..., α t (x 2n ) -α t (x 0 )) T , and α t (X; λ t ) is the log-partition function of the prior in (3).</p><p>(D2') restricts the discrepancy between λ 0 , λ 1 on 2n + 1 values of X, thus is relatively easy to satisfy with high-dimensional X. (D2') is general despite (or thanks to) the involved formulation. Let us see its generality even under a highly special case: C = cI and d = 0. Then, L -1 0 L 1 = cI requires that, h 1 (x k ) -ch 0 (x k ) is the same for 2n + 1 points x k . This is easily satisfied except for n m where m is the dimension of X, which rarely happens in practice. And, β 0 -C -T β 1 = d becomes just β 1 = cβ 0 . This is equivalent to α 1 (x k ) -cα 0 (x k ) same for 2n + 1 points, again fine in practice. However, the high generality comes with price. Verifying (D2') using data is challenging, particularly with high-dimensional covariate and latent variable. Although we believe fast algorithms for this purpose could be developed, the effort would be nontrivial. This is another motivation to use the extreme case λ 0 = λ 1 in Sec. 4.1, which corresponds to C = I and d = 0.</p><p>Proof of Theorem 1. By (M1) and (G2), for any injective function ∆ : P → R n , there exists a functional parameter f * t such that j t = f * t • ∆. Let h * t = ∆ • P t , then, clearly from (M3'), such parameters θ * = (f * , h * ) are optimal: p θ * (y|x, t) = p(y|x, t).</p><p>Since have all assumptions for Lemma 1, we have</p><formula xml:id="formula_36">∆ • j -1 (y) = f * -1 (y) = A • f -1 (y)| t , on (y, t) ∈ {(j t • P t (x), t)|p(t, x) &gt; 0},<label>(23)</label></formula><p>where f is any optimal parameter, and "| t " collects all subscripts t. Note, except for ∆, all the symbols should have subscript t.</p><p>Nevertheless, using (D2'), we can further prove A 0 = A 1 .</p><p>We repeat the core quantities from Lemma 1 here:</p><formula xml:id="formula_37">A t = L -T t L T t and c t = L -T t (β t -β t ). From (D2'), we immediately have L -1 0 L 1 = L -1 0 L 1 = C ⇐⇒ A 0 = A 1<label>(24)</label></formula><p>And also,</p><formula xml:id="formula_38">L -1 0 L 1 = C ⇐⇒ L -T 0 C -T = L -T 1 β 0 -C -T β 1 = β 0 -C -T β 1 = d/k ⇐⇒ C T (β 0 -β 0 ) = β 1 -β 1 (25)</formula><p>Multiply right hand sides of the two lines, we have c 0 = c 1 . Now we have A 0 = A 1 := A. Apply this to (23), we have</p><formula xml:id="formula_39">f t = j t • v -1 , v := A -1 • ∆<label>(</label></formula><p>26) for any optimal parameters θ = (f , h). Again, from (M3'), we have p θ (y|x, t) = p(y|x, t) =⇒ p (y -f t (h t (x))) = p e (y -j t (P t (x))) (27) where p = p e . And the above is only possible when f t •h t = j t •P t . Combined with f t = j t •v -1 , we have conclusion 1).</p><p>And conclusion 2) follows from the same reasoning as Proposition 2, applied to both P 0 and P 1 . Note, when multiplying the two lines of (25), the effects of k → 0 cancel out, and c t is finite and well-defined. Also, it is apparent from above proof that (D2') is a necessary and sufficient condition for A 0 = A 1 , if other conditions of Theorem 1 are given.</p><p>Below, we prove the results in Sec. 4.2. The definitions and results work for the prior; simply replace q t (x|x) with p t (z|x) := p λ (z|x, t) in definitions and statements, and the proofs below hold as the same. The dependence on f prevail, and the superscripts are omitted. The arguments x are sometimes also omitted. Lemma 2 (Counterfactual risk bound). Assume |L f (z, t)| ≤ M , we have</p><formula xml:id="formula_40">CF (x) ≤ t q(1 -t|x) F,t (x) + M D(x)<label>(28)</label></formula><p>where CF (x) := t p(1 -t|x) CF,t (x), and D(x) := t D KL (q t q 1-t )/2.</p><p>Proof of Lemma 2.</p><formula xml:id="formula_41">CF - t p(1 -t|x) F,t = p(0|x)( CF,1 -F,1 ) + p(1|x)( CF,0 -F,0 ) = p(0|x) L f (z, 1)(q 0 (z|x) -q 1 (z|x))dz + p(1|x) L f (z, 0)(q 1 (z|x) -q 0 (z|x))dz ≤ 2M TV(q 1 , q 0 ) ≤ M D.</formula><p>TV(p, q) := 1 2 E|p(z) -q(z)| is the total variance distance between probability density p, q. The last inequality uses Pinsker's inequality TV(p, q) ≤ D KL (p q)/2 twice, to get the symmetric D.</p><p>Theorem 2 is a direct corollary of Lemma 2 and the following. Lemma 3. Define F = t p(t|x) F,t . We have</p><formula xml:id="formula_42">f ≤ 2(G 2 ( F + CF ) -V Y ).<label>(29)</label></formula><p>Simply bound CF in (29) by Lemma 2, we have Theorem 2. To prove Lemma 3, we first examine a bias-variance decomposition of F and CF .</p><formula xml:id="formula_43">CF,t = E q1-t(z|x) g t (z) -2 E p Y (t)|P t (y|z) (y -f t (z)) 2 ≥ G -2 E q1-t(z|x) E p Y (t)|P t (y|z) (y -f t (z)) 2 = G -2 E q1-t(z|x) E p Y (t)|P t (y|z) ((y -j t (z)) 2 + (j t (z) -f t (z)) 2 )<label>(30)</label></formula><p>The second line uses |g t (z)| ≤ G, and the third line is a bias-variance decomposition. Now we can define V CF,t (x) := E q1-t(z|x) E p Y (t)|P t (y|z) (y -j t (z)) 2 and B CF,t (x) := E q1-t(z|x) (j t (z)f t (z)) 2 , and we have</p><formula xml:id="formula_44">CF,t ≥ G -2 (V CF,t (x) + B CF,t (x)) =⇒ CF ≥ G -2 (V CF (x) + B CF (x))<label>(31)</label></formula><p>where</p><formula xml:id="formula_45">V CF := t p(1 -t|x)V CF,t = t E q(z,1-t|x) E p Y (t)|P t (y|z) (y -j t (z)) 2 and similarly B CF = t E q(z,1-t|x) (j t (z) -f t (z)) 2 .</formula><p>Repeat the above derivation for F , we have</p><formula xml:id="formula_46">F ≥ G -2 (V F (x) + B F (x)) (32) where V F = t E q(z,t|x) E p Y (t)|P t (y|z) (y -j t (z)) 2 and B F = t E q(z,t|x) (j t (z) -f t (z)) 2</formula><p>. Now, we are ready to prove Lemma 3.</p><p>Proof of Lemma 3.</p><formula xml:id="formula_47">f = E q(z|x) ((f 1 -f 0 ) -(j 1 -j 0 )) 2 = E q ((f 1 -j 1 ) + (j 0 -f 0 )) 2 ≤ 2E q ((f 1 -j 1 ) 2 + (j 0 -f 0 ) 2 ) = 2 [(f 1 -j 1 ) 2 q(z, 1|x) + (j 0 -f 0 ) 2 q(z, 0|x)+ (f 1 -j 1 ) 2 q(z, 0|x) + (j 0 -f 0 ) 2 q(z, 1|x)]dz = 2(B F + B CF ) ≤ 2(G 2 ( F + CF ) -V Y )</formula><p>The first inequality uses (a + b) 2 ≤ 2(a 2 + b 2 ). The next equality splits q(z|x) into q(z, 0|x) and q(z, 1|x) and rearranges to get B F and B CF . The last inequality uses the two bias-variance decompositions, and</p><formula xml:id="formula_48">V Y = V F + V CF .</formula><p>B ADDITIONAL BACKGROUNDS</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B.1 PROGNOSTIC SCORE AND BALANCING SCORE</head><p>In the fundamental work of <ref type="bibr" target="#b17">(Hansen, 2008)</ref>, prognostic score is defined equivalently to our P 0 (P0score), but it in addition requires no effect modification to work for Y (1). Thus, a useful prognostic score corresponds to our PtS. We give main properties of PtS as following. Proposition 3. If V gives exchangeability, and</p><formula xml:id="formula_49">P t (V ) is a PtS, then Y (t) |= V, T |P t .</formula><p>The following three properties of conditional independence will be used repeatedly in proofs.</p><p>Proposition 4 (Properties of conditional independence). <ref type="bibr">(Pearl, 2009, Sec. 1.1.55</ref>) For random variables W, X, Y, Z. We have:</p><formula xml:id="formula_50">X |= Y |Z ∧ X |= W |Y, Z =⇒ X |= W, Y |Z (Contraction). X |= W, Y |Z =⇒ X |= Y |W, Z (Weak union). X |= W, Y |Z =⇒ X |= Y |Z (Decomposition). Proof of Proposition 3. From Y (t) |= T |V (exchangeability of V ), and since P t is a function of V , we have Y (t) |= T |P t , V<label>(1).</label></formula><p>From (1) and</p><formula xml:id="formula_51">Y (t) |= V |P t (V ) (definition of Pt-score), using contraction rule, we have Y (t) |= T, V |P t for both t.</formula><p>Prognostic scores are closely related to the important concept of balancing score <ref type="bibr" target="#b48">(Rosenbaum &amp; Rubin, 1983)</ref>. Note particularly, the proposition implies Y (t) |= T |P t (using decomposition rule). Thus, if P(V ) is a P-score, then P also gives weak ignorability (exchangeability and overlap), which is a nice property shared with balancing score, as we will see immediately. Definition 4 (Balancing score). b(V ), a function of random variable V , is a balancing score if T |= V |b(V ). Proposition 5. Let b(V ) be a function of random variable V . b(V ) is a balancing score if and only if f (b(V )) = p(T = 1|V ) := e(V ) for some function f (or more formally, e(V ) is b(V )measurable). Assume further that V gives weak ignorability, then so does b(V ).</p><p>Obviously, the propensity score e(V ) := p(T = 1|V ), the propensity of assigning the treatment given V , is a balancing score (with f be the identity function). Also, given any invertible function v, the composition v • b is also a balancing score since f</p><formula xml:id="formula_52">• v -1 (v • b(V )) = f (b(V )) = e(V ).</formula><p>Compare the definition of balancing score and prognostic score, we can say balancing score is sufficient for the treatment</p><formula xml:id="formula_53">T (T |= V |b(V )), while prognostic score (Pt-score) is sufficient for the potential outcomes Y (t) (Y (t) |= V |P t (V ))</formula><p>. They complement each other; conditioning on either deconfounds the potential outcomes from treatment, with the former focuses on the treatment side, the latter on the outcomes side.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B.2 VAE, CONDITIONAL VAE, AND IVAE</head><p>VAEs <ref type="bibr" target="#b35">(Kingma et al., 2019)</ref> are a class of latent variable models with latent variable Z, and observable Y is generated by the decoder p θ (y|z). In the standard formulation <ref type="bibr" target="#b34">(Kingma &amp; Welling, 2013)</ref>, the variational lower bound L(y; θ, φ) of the log-likelihood is derived as: log p(y) ≥ log p(y) -D KL (q(z|y) p(z|y)) = E z∼q log p θ (y|z) -D KL (q φ (z|y) p(z)),</p><p>where D KL denotes KL divergence and the encoder q φ (z|y) is introduced to approximate the true posterior p(z|y). The decoder p θ and encoder q φ are usually parametrized by NNs. We will omit the parameters θ, φ in notations when appropriate.</p><p>The parameters of the VAE can be learned with stochastic gradient variational Bayes. With Gaussian latent variables, the KL term of L has closed form, while the first term can be evaluated by drawing samples from the approximate posterior q φ using the reparameterization trick <ref type="bibr" target="#b34">(Kingma &amp; Welling, 2013)</ref>, then, optimizing the evidence lower bound (ELBO) E y∼D (L(y)) with data D, we train the VAE efficiently.</p><p>Conditional VAE (CVAE) <ref type="bibr" target="#b53">(Sohn et al., 2015;</ref><ref type="bibr" target="#b36">Kingma et al., 2014)</ref> adds a conditioning variable C, usually a class label, to standard VAE (See Figure <ref type="figure" target="#fig_0">1</ref>). With the conditioning variable, CVAE can give better reconstruction of each class. The variational lower bound is log p(y|c) ≥ E z∼q log p(y|z, c) -D KL (q(z|y, c) p(z|c)).</p><p>(34) The conditioning on C in the prior is usually omitted <ref type="bibr" target="#b10">(Doersch, 2016)</ref>, i.e., the prior becomes Z ∼ N (0, I) as in standard VAE, since the dependence between C and the latent representation is also modeled in the encoder q. Moreover, unconditional prior in fact gives better reconstruction because it encourages learning representation independent of class, similarly to the idea of beta-VAE <ref type="bibr" target="#b19">(Higgins et al., 2017)</ref>.</p><p>As mentioned, identifiable VAE (iVAE) <ref type="bibr">(Khemakhem et al., 2020a)</ref> provides the first identifiability result for VAE, using auxiliary variable X. It assumes Y |= X|Z, that is, p(y|z, x) = p(y|z). The variational lower bound is log p(y|x) ≥ log p(y|x) -D KL (q(z|y, x) p(z|y, x))</p><formula xml:id="formula_55">= E z∼q log p f (y|z) -D KL (q(z|y, x) p T ,λ (z|x)),<label>(35)</label></formula><p>where Y = f (Z) + , is additive noise, and Z has exponential family distribution with sufficient statistics T and parameter λ(X). Note that, unlike CVAE, the decoder does not depend on X due to the independence assumption.</p><p>Here, identifiability of the model means that the functional parameters (f , T , λ) can be identified (learned) up to certain simple transformation. Further, in the limit of → 0, iVAE solves the nonlinear ICA problem of recovering Z = f -1 (Y ).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C EXPOSITIONS</head><p>The order of subsections below follows that they are referred in the main text.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.1 PROGNOSTIC SCORE IS MORE APPLICABLE THAN BALANCING SCORE</head><p>Proposition 3 in D' <ref type="bibr">Amour et al. (2020)</ref> shows that overlapping balancing score implies overlapping X, and Footnote 5 in D' <ref type="bibr">Amour et al. (2020)</ref> shows that overlapping X implies overlapping PS.</p><p>Here is a simple example showing overlapping PS does not imply overlapping balancing score. Let T = I(X + &gt; 0) and Y = f (|X|, T ) + e, where I is the indicator function, and e are exogenous zero-mean noises, and the support of X is on the entire real line while is bounded. Now, X itself is a balancing score and |X| is a PS; and |X| is overlapping but X is not.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.2 DETAILS AND EXPLANATIONS ON INTACT-VAE</head><p>Generative models are useful to solve the inverse problem of recovering Pt-score. Our goal is to build a model that can be learned by VAE from observational data to obtain a PtS, or more ideally PS, via the latent variable Z. That is, a generative prognostic model.</p><p>With the above goal, the generative model of our VAE is built as (3). Conditioning on X in the joint model p(y, z|x, t) reflects that our estimand is CATE given X. Modeling the score by a conditional distribution rather than a deterministic function is more flexible.</p><p>The ELBO of our model can be derived from standard variational lower bound as following: log p(y|x, t) ≥ log p(y|x, t) -D KL (q(z|x, y, t) p(z|x, y, t)) = E z∼q log p(y|z, t) -D KL (q(z|x, y, t) p(z|x, t)).</p><p>(36)</p><p>We naturally have an identifiable conditional VAE (CVAE), as the name suggests. Note that (3) has a similar factorization with the generative model of iVAE <ref type="bibr">(Khemakhem et al., 2020a)</ref>, that is p(y, z|x) = p(y|z)p(z|x); the first factor does not depend on X. Further, since we have the conditioning on T in both the factors of (3), our VAE architecture is a combination of iVAE and CVAE <ref type="bibr" target="#b53">(Sohn et al., 2015;</ref><ref type="bibr" target="#b36">Kingma et al., 2014)</ref>, with T as the conditioning variable. See Figure <ref type="figure" target="#fig_0">1</ref> for the comparison in terms of graphical models. The core idea of iVAE is reflected in our model identifiability (see Lemma 1).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.3 DISCUSSIONS AND EXAMPLES OF (G2')</head><p>We focus on univariate outcome on R which is the most practical case and the intuitions apply to more general types of outcomes. Then, i, the mapping between µ 0 and µ 1 , is monotone, i.e, either increasing or decreasing. The increasing i means, if a change of the value of X increases (decreases) the outcome in the treatment group, then it is also the case for the controlled group. This is often true because the treatment does not change the mechanism how the covariates affect the outcome, under the principle of "independence of causal mechanisms (ICM)" <ref type="bibr" target="#b25">(Janzing &amp; Scholkopf, 2010)</ref>.</p><p>The decreasing i corresponds to another common interpretation when ICM does not hold. Now, the treatment does change the way covariates affect Y , but in a global manner: it acts like a "switch" on the mechanism: the same change of X always has opposite effects on the two treatment groups.</p><p>We support the above reasoning by real world examples. First we give two examples where µ 0 and µ 1 are both monotone increasing. This, and also that both µ t are monotone decreasing, are natural and sufficient conditions for increasing i, though not necessary. The first example is form Health. <ref type="bibr" target="#b56">(Starling et al., 2019)</ref> mentions that gestational age (length of pregnancy) has a monotone increasing effect on babies' birth weight, regardless of many other covariates. Thus, if we intervene on one of the other binary covariates (say, t = receive healthcare program or not), both µ t should be monotone increasing in gestational age. The next example is from economics. <ref type="bibr" target="#b14">(Gan &amp; Li, 2016)</ref> shows that job-matching probability is monotone increasing in market size. Then, we can imagine that, with t = receive training in job finding or not, the monotonicity is not changed. Intuitively, the examples corresponds to two common scenarios: the causal effects are accumulated though time (the first example), or the link between a covariate and the outcome is direct and/or strong (the second example).</p><p>Examples for decreasing i are rarer and the following is a bit deliberate. This example is also about babies' birth weight as the outcome. <ref type="bibr" target="#b0">(Abrevaya et al., 2015)</ref> shows that, with t = mother smokes or not and X = mother's age, the CATE τ (x) is monotone decreasing for 20 &lt; x &lt; 26 (smoking decreases birth weight, and the absolute causal effect is larger for older mother). On the other hand, it is shown that birth weight slightly increases (by about 100g) in the same age range in a surveyed population <ref type="bibr" target="#b65">(Wang et al., 2020)</ref>. Thus, it is convince that, smoking changes the the tendency of birth weight w.r.t mother's age from increasing to decreasing, and gives the large decreasing of birth weight (by about 300g) as its causal effect. This could be understood: the negative effects of smoking on mother's heath and in turn on birth weight are accumulated during the many years of smoking.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.4 COMPLEMENTARITY BETWEEN THE TWO IDENTIFICATIONS</head><p>We examine the complementarity between the two identifications more closely. The conditions (M3) / (M3') and (G2') / (D2') form two pairs, and are complementary inside each pair. The first pair matches model and truth, while the second pair restricts the discrepancy between the treatment groups. In Theorem 1, (G2') (P 0 = P 1 ) is replaced by (D2') which instead makes A 0 = A 1 := A in (5). And (D2') is easily satisfied with high-dimensional X, even if the possible values of C, d are restricted to C = cI and d = 0 (see below). On the other hand, p = p e in (M3') is impractical, but it ensures that p θ (y|x, t) = p(y|x, t) so that (5) can be used. In Sec. 4.1, we consider practical estimation method and introduce the regularization that encourages learning a PtS similar to PS so that p = p e can be relaxed.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.5 IDEAS AND CONNECTIONS BEHIND THE ELBO (7)</head><p>Bayesian approach is favorable to express the prior belief that balanced PtSs exist and the preference for them, and to still have reasonable posterior estimation when the belief fails and learning general PtS is necessary. This is the causal importance of VAE as an estimation method for us.</p><p>By the unconditional but still flexible Λ, and also the identifications, the ELBO encourages the discovery of an equivalent DGP with a balanced PtS and the recovery of it as the posterior, which still learns the dependence on T if necessary. Moreover, β expresses our additional knowledge (or, inductive bias) about whether or not there exist balanced PtSs (e.g., from domain expertise).</p><p>In fact, β connects our VAE to β-VAE <ref type="bibr" target="#b19">(Higgins et al., 2017)</ref>, which is closely related to noise and variance control <ref type="bibr">(Doersch, 2016, Sec. 2.4</ref>) <ref type="bibr" target="#b43">(Mathieu et al., 2019)</ref>.</p><p>Considerations on noise modeling. In Theorem 1, with large and mismatched noises (then (M3') is easily violated), the identification of outcome model f t = j t • v -1 would fail, and, in turn, the prior would learn confounding bias, by confusing the causal effect of T on P T and the correlation between T and X. This is another reason to prefer λ 0 = λ 1 , besides balancing. On the other hand, the posterior conditioning on Y provides information of noise e, and it is shown in (Bonhomme &amp; Weidner, 2021) that posterior effect estimation has minimum worst-case error under model misspecification (of the noise and prior, in our case).</p><p>Under large e, a relatively small β implicitly encourages g smaller than the scale of e, through stressing the third term in ELBO <ref type="bibr">(7)</ref>. And the the model as a whole would still learn p(y|x, t) well, because the uncertainty of e can be moved to and modeled by the prior. This is why k is not set to zero because learnable prior noise (variance) allows us to implicitly control g via β. Intuitively, smaller g strengthens the correlation between Y and Z in our model, and this naturally reflects that posterior conditioning on Y is more important under larger e. Hopefully, precise learning of outcome noise (M3') is not required, as in Proposition 2. Now, it is clear that β naturally controls at the same time noise scale and balancing. And the regularization can also be understood as an interpolation between Proposition 2 and Theorem 1: relying on PS, or on model identifiability; learning loosely, or precisely, the outcome regression.</p><p>When the noise scale is different from truth, there would be error due to imperfect recovery of j. Sec. 4.2 shows that this error and balancing form a trade-off, which is adjusted by β.</p><p>Importance of balancing from misspecification view. If we must learn an unbalanced PtS, we have larger misspecification under a balanced prior and rely more on Y in the posterior. Both are bad because it is shown in (Bonhomme &amp; Weidner, 2021) that posterior only helps under bounded (small) misspecification, and posterior estimator has higher variance than prior estimator (see below for an extreme case). Again, we want a regularizer to encourage learning of PS, so that we can explore the middle ground: relatively low-dimensional P, or relatively small e.</p><p>Example. Assume the true outcome noise is (near) zero. By setting → 0 in our model, the posterior p θ (z|x, y, t) = p θ (y, z|x, t)/p θ (y|x, t)</p><formula xml:id="formula_56">degenerates to f -1 T (Y ) = f -1 T (j T (P T )) = v -1 (P T ), a factual PtS. However, f -1 1-T (Y ) = f -1 1-T (j T (P T )) = v -1 (j -1 1-T • j T (P T )) = v -1 (P 1-T )</formula><p>, the score recovered by posterior does not work for counterfactual assignment! The problem is, unlike X, the outcome Y = Y (T ) is affected by T , and, the degenerated posterior disregards the information of X from the prior and depends exclusively on factual (Y, T ).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.6 CONSISTENCY OF VAE AND PRIOR ESTIMATION</head><p>The following is a refined version of Theorem 4 in <ref type="bibr">Khemakhem et al. (2020a)</ref>. The result is proved by assuming: i) our VAE is flexible enough to ensure the ELBO is tight (equals to the true log likelihood) for some parameters; ii) the optimization algorithm can achieve the global maximum of ELBO (again equals to the log likelihood). Proposition 6 (Consistency of Intact-VAE). Given model (3)&amp;(6), and let p * (x, y, t) be the true observational distribution, assume i) there exists ( θ, φ) such that p θ (y|x, t) = p * (y|x, t) and p θ (z|x, y, t) = q φ(z|x, y, t); ii) the ELBO E D∼p * (L(x, y, t; θ, φ)) (4) can be optimized to its global maximum at (θ , φ ); Then, in the limit of infinite data, p θ (y|x, t) = p * (y|x, t) and p θ (z|x, y, t) = q φ (z|x, y, t).</p><p>Proof. From i), we have L(x, y, t; θ, φ) = log p * (y|x, t). But we know L is upper-bounded by log p * (y|x, t). So, E D∼p * (log p * (y|x, t)) should be the global maximum of the ELBO (even if the data is finite). Moreover, note that, for any (θ, φ), we have D KL (p θ (z|x, y, t) q φ (z|x, y, t) ≥ 0 and, in the limit of infinite data, E D∼p * (log p θ (y|x, t)) ≤ E D∼p * (log p * (y|x, t)). Thus, the global maximum of ELBO is achieved only when p θ (y|x, t) = p * (y|x, t) and p θ (z|x, y, t) = q φ (z|x, y, t).</p><p>Consistent prior estimation of CATE follows directly from the identifications. The following is a corollary of Theorem 1. Corollary 1. Under the conditions of Theorem 1, further require the consistency of Intact-VAE. Then, in the limit of infinite data, we have µ t (X) = f t (h t (X)) where f , h are the optimal parameters learned by the VAE.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.7 PRE/POST-TREATMENT PREDICTION</head><p>Sampling posterior requires post-treatment observation (y, t). Often, it is desirable that we can also have pre-treatment prediction for a new subject, with only the observation of its covariate X = x. To this end, we use the prior as a pre-treatment predictor for Z: replace q φ with p Λ in (8) and get rid of the average taken on D; all the others remain the same. We also have sensible pre-treatment prediction even without true low-dimensional PSs, because p Λ gives the best balanced approximation of the target PtS. The results of pre-treatment prediction are given in the experimental section E.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.8 ADDITIONAL NOTES ON NOVELTIES OF THE BOUNDS IN SEC. 4.2</head><p>We give details and additional points regarding the novelties. <ref type="bibr" target="#b41">Lu et al. (2020)</ref> also use a VAE and derive bounds most related to ours. Still, our method strengthens <ref type="bibr" target="#b41">Lu et al. (2020)</ref>, in a simpler and principled way: we distinguish true score and latent Z and show that identification is the link; considering both prior and posterior, we show the symmetric nature of the balancing term and relate it to our KL term in (7), without ad hoc regularization; moreover, we consider outcome noise modeling which is a strength of VAE and relate it to hyperparameter β. Particularly, in <ref type="bibr" target="#b41">(Lu et al., 2020)</ref>, latent variable Z is confused with the true representation (P t up to invertible mapping in our case). Without identification, the method in fact has unbounded error. Note that <ref type="bibr" target="#b51">Shalit et al. (2017)</ref> do not consider connection to identification and noise modeling as well. The error between τf and τ j , which we bound, is due to the unknown outcome noise that is not accounted by our Theorem 1; thus, the theory in Sec. 4.2 is complementary to that in Sec. 3.2.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D OTHER RELATED WORK D.1 INJECTIVITY, INVERTIBILITY, MONOTONICITY, AND OVERLAP</head><p>Let us note that any injective mapping defines an invertible mapping, by restrict the domain of the inverse function to the range of the injective mapping. Also note that injectivity is weaker than monotonicity; a monotone mapping can be defined by an injective and order-preserving mapping between ordered sets. Particularly, an injective and continuous mapping on R is monotone, and many works in econometrics give examples of this case.</p><p>Many classical and recent works (with many real world applications, see C.1) in econometrics are based on monotonicity. Particularly, there is a long line of work based on monotonicity of treatment <ref type="bibr" target="#b23">(Huber &amp; Wüthrich, 2018)</ref>. More related to our method is another line of work based on monotonicity of outcome, see <ref type="bibr" target="#b4">(Chernozhukov &amp; Hansen, 2013)</ref> and references therein for early results. Some recent works apply monotonicity of outcome to nonparametric IV regression (NPIV) <ref type="bibr" target="#b13">(Freyberger &amp; Horowitz, 2015;</ref><ref type="bibr" target="#b39">Li et al., 2017;</ref><ref type="bibr" target="#b5">Chetverikov &amp; Wilhelm, 2017)</ref>, where the structural equation of the outcome is assumed to be Y = f (T ) + , and f is monotone and T (the treatment) is often continuous. Particularly, <ref type="bibr" target="#b5">(Chetverikov &amp; Wilhelm, 2017)</ref> combines monotonicity of both treatment and outcome, and <ref type="bibr" target="#b13">(Freyberger &amp; Horowitz, 2015)</ref> considers discrete treatment (note continuity or differentiability is not necessary for monotonicity). NPIV with monotone f is closely related to our method, but the difference is that T is replaced by a PtS in our method, and the PtS is recovered from observables. Finally, as we mentioned in Sec. 3.2, monotonicity is a kind of shape restriction which also includes, e.g., concavity and symmetry and attracts recent interests <ref type="bibr" target="#b6">(Chetverikov et al., 2018)</ref>. However, most of NPIV works focus on identifying f but not directly on TEs, and we do not know any works that use monotonicity to address limited overlap.</p><p>Recently in machine learning, <ref type="bibr" target="#b28">(Johansson et al., 2019;</ref><ref type="bibr">Zhang et al., 2020b;</ref><ref type="bibr">Johansson et al., 2020)</ref> note the relationship between invertibility and overlap. As mentioned, <ref type="bibr">(Johansson et al., 2020)</ref> gives bounds without overlap, but the relationship between invertibility and overlap is not explicit in their theory. <ref type="bibr" target="#b28">(Johansson et al., 2019)</ref> explicitly discuss overlap and invertibility, but does not focus on TEs. <ref type="bibr">(Zhang et al., 2020b)</ref> assumes overlap so that identification is given, and then focuses on learning overlapping representation that preserves the overlapping the covariate. However, it does not relate invertibility and overlap, but uses invertible representation function to preserve exchangeability given the covariate, and linear outcome regression to simply the model. Related, our identifications required (M2), of which linearity of PtS and representation function is a sufficient condition, and our outcome model is injective, to preserve the exchangeability given the PtS. Thus, our method works under more general setting, and arguably under weaker conditions.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D.2 VAES FOR TE ESTIMATION</head><p>VAEs are suitable for causal estimation thanks to its probabilistic nature. However, most VAE methods for TEs, e.g. <ref type="bibr" target="#b40">(Louizos et al., 2017;</ref><ref type="bibr">Zhang et al., 2020a;</ref><ref type="bibr" target="#b63">Vowels et al., 2020;</ref><ref type="bibr" target="#b41">Lu et al., 2020)</ref>, add ad hoc heuristics into their VAEs, and thus break down probabilistic modeling, not to mention identifiable representation. Moreover, the methods rely on learning sufficient representations from proxy variables, leading to either impractical assumptions or conceptual inconsistency, in causal identification.</p><p>On identification. First, as to causal identification, <ref type="bibr" target="#b40">(Louizos et al., 2017)</ref> assumes unobserved confounder can be recovered, which is rarely possible even under further structural assumptions <ref type="bibr" target="#b60">(Tchetgen et al., 2020)</ref>, and <ref type="bibr" target="#b46">(Rissanen &amp; Marttinen, 2021)</ref> recently gives evidence that the method often fails. Other methods <ref type="bibr">(Zhang et al., 2020a;</ref><ref type="bibr" target="#b63">Vowels et al., 2020;</ref><ref type="bibr" target="#b41">Lu et al., 2020)</ref> assume unconfoundedness but still rely on proxy at least intuitively; particularly, <ref type="bibr" target="#b41">(Lu et al., 2020)</ref> factorizes the decoder as in the proxy setting. However, unconfoundedness and proxy should not be put together. The conceptual inconsistency is that, by definition, unconfoundedness means covariates fully control confounding, while the motivation for proxy is that unconfoundedness is often not satisfied in practice and covariates are at best proxies of confounding, which are non-confounders causally connected to confounders <ref type="bibr" target="#b60">(Tchetgen et al., 2020)</ref>. Second, without identifiable representation, the empirical results of the methods lacks solid ground; under settings not covered by their experiments, the methods would silently fail to learn proper representations, as we show in Sec. 5.1.</p><p>On ad hoc heuristics. Ad hoc heuristics break down probabilistic modeling and / or give ELBOs that do not estimate the probabilistic models. For example, <ref type="bibr" target="#b40">(Louizos et al., 2017)</ref> uses separated NNs for the two potential outcomes to mimic TARnet <ref type="bibr" target="#b51">(Shalit et al., 2017)</ref>. And, to have pre-treatment estimation, q(T |X) and q(Y |X, T ) are added into the encoder. As a result, the ELBO of <ref type="bibr" target="#b40">(Louizos et al., 2017)</ref> has two additional likelihood terms corresponding to the two distributions. <ref type="bibr">(Zhang et al., 2020a)</ref> is even more ad hoc because it splits the latent variable Z into three components, and applies the ad hoc tricks of <ref type="bibr" target="#b40">(Louizos et al., 2017)</ref> to each of the component. Particularly, when constructing the encoder, <ref type="bibr">(Zhang et al., 2020a)</ref> implicitly assumes the three components of Z are conditional independent give X, which violates the intended graphical model.</p><p>Our method is motivated by the important concept of prognostic score, and is naturally based on (2). As a consequence, our VAE architecture is a natural combination of iVAE and CVAE (see Figure <ref type="figure" target="#fig_0">1</ref>). Our ELBO (4) is derived by standard variational lower bound. Moreover, in our β-Intact-VAE, pre-treatment prediction is given naturally by our conditional prior, thanks to the correspondence between our model and (2).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E DETAILS AND ADDITIONS OF EXPERIMENTS</head><p>We evaluate the post-treatment performance on training and validation set jointly (This is non-trivial. Recall the fundamental problem of causal inference). The treatment and (factual) outcome should not be observed for pre-treatment predictions, so we report them on a testing set. See also Sec. C.7 the pre/post-treatment distinction. We detail how the random parameters in the DGPs are sampled. µ i and σ i are uniformly sampled in range (-0.2, 0.2) and (0, 0.2), respectively. The weights of linear functions h, k, l are sampled from standard normal distributions. The NNs f 0 , f 1 use leaky ReLU activation with α = 0.5 and are of 3 to 8 layers randomly, and the weights of each layer are sampled from (-1.1, -0.9). To have a large but still reasonable outcome variance, the output of f t is divided by C t := Var {D|T =t} (f t (Z)). When generating DGPs with dependent noise, the variance parameter g t for the outcome is generated by adding a softplus layer after respective f t , and then normalized to range (0, 2).</p><p>We use the original implementation of CFR<ref type="foot" target="#foot_3">foot_3</ref> . Very possibly due to bugs in implementation, the CFR version using Wasserstein distance has error of TensorFlow type mismatch on our synthetic dataset, and the CFR version using MMD diverges with very large loss value on one or two of the 10 random DGPs. We use MMD version, and, when the divergence of training happens, report the results from trained models before divergence, which still give reasonable results. We search the balancing parameter alpha in [0.16, 0.32, 0.64, 0.8, 1.28], and fix other hyperparameters as they were in the default config file. We characterize the degree of limited overlap by examining the percentage of observed values x that give probability less than 0.001 for one of p(t|x). The threshold is chosen so that all sample points near those values x almost certainly belong to a single group since we have 500 sample point in total. If we regard a DGP as very limited-overlapping when the above percentage is larger than 50%, then, as shown in Figure <ref type="figure" target="#fig_5">4</ref>, non (all) of the 10 DGPs are very limited-overlapping with ω = 6 (ω = 22).</p><p>For diversity of the datasets, we set g t (W ) = 1 in DGPs in Appendix. Figure <ref type="figure">5</ref> shows, with dim(Z) = 200, our method works better than CFR under dim(W ) = 1 and as well as CFR under dim(W ) &gt; 1. As mentioned in Conclusion, this indicates that the theoretical requirement of injective f t in our model might be relaxed. Interestingly, larger β seems to give better results here, this is understandable because β controls the tradeoff between fitting and balancing, and the fitting capacity of our decoder is much increased with dim(Z) = 200. Note that the above observations on dim(Z) are not caused by fixing g t (W ) = 1 (compare Figure <ref type="figure">5</ref> with Figure <ref type="figure" target="#fig_8">6</ref> below).  Figure <ref type="figure" target="#fig_8">6</ref> shows the importance of noise modeling. Compared to Figure <ref type="figure">2</ref> in the main text, where g t (W ) in DGPs is not fixed, our method works worse here, particularly for large β, because now noise modeling (g, k in the ELBO) only adds unnecessary complexity. The changes of performance w.r.t different ω should be unrelated to overlap levels, but to the complexity of random DGPs; compare to Figure <ref type="figure">5</ref>, with larger NNs in our VAE, the changes become much insignificant. The drop of error for dim(W ) &gt; 3 is due to the randomness of f in (36). In Sec. 2.2, we saw that the 2-dimsensional PS P := (µ 0 (X), µ 1 (X)) always exists under ANMs. Thus, when dim(W ) &gt; 2, our method tries to recover that P, and generally performs not worse than under dim(W ) = 2, but still not better than under dim(W ) = 1.</p><p>Figure <ref type="figure" target="#fig_9">7</ref> shows results of ATE estimation. Notably, CFR drops performance w.r.t degree of limited overlap. Our method does not show this tendency except for very large β (β = 3). This might be another evidence that CFR and its unconditional balancing overfit to PEHE (see Sec. 5.2). Also note that, under dim(W ) = 1, β = 3 gives the best results for ATE although it does not work well for PEHE, and we do not know if this generalizes to the conclusion that large β gives better ATE estimation under the existence of PS, but leave this for future investigation. Figure <ref type="figure" target="#fig_10">8</ref> shows results of pre-treatment prediction. In left panel, both our method and CFR perform only slightly worse than post-treatment. This is reasonable because here we have PS W with dim(W ) = 1, there is no need to learn PtS. In the right panel, we also do not see significant drop of performance compared to post-treatment. This might be due to the hardness of learning balanced PtS in this dataset, and posterior estimation does not give much improvements.</p><p>You can find more plots for latent recovery at the end of the paper.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E.2 IHDP</head><p>IHDP is based on an RCT where each data point represents a baby with 25 features (6 continuous, 19 binary) about their birth and mothers. Race is introduced as a confounder by artificially removing all treated children with nonwhite mothers. There are 747 subjects left in the dataset. The outcome is synthesized by taking the covariates (features excluding Race) as input, hence unconfoundedness holds given the covariates. Following previous work, we split the dataset by 63:27:10 for training, validation, and testing. Note, there is no ethical concerns here, because the treatment assignment mechanism is artificial by processing the data. Also our results are only quantitative and we make no ethical conclusions. The generating process is as following <ref type="bibr">(Hill, 2011, Sec. 4.1)</ref>. X+b) , 1), Y (1) ∼ N (a T X -c, 1), (37) where a is a random coefficient, b is a constant bias with all elements equal to 0.5, and c is a random parameter adjusting degree of overlapping between the treatment groups. As we can see, a T X is a true PS. As mentioned in the main text, the PS might be discrete. Thus, this experiment also shows the importance of VAE, even if an apparent PS exists. Under discrete PSs, training an regression based on Proposition 2 is hard, but our VAE works well.</p><formula xml:id="formula_57">Y (0) ∼ N (e a T (</formula><p>The two added components in the modified version of our method are as following. First, we build the two outcome functions f t (Z), t = 0, 1 in our learning model (3), using two separate NNs. Second, we add to our ELBO (4) a regularization term, which is the Wasserstein distance <ref type="bibr" target="#b7">(Cuturi, 2013</ref>) between E D∼p(X|T =t) p Λ (Z|X), t ∈ {0, 1}. As shown in Table <ref type="table" target="#tab_2">2</ref>, best unconditional balancing parameter is 0.1. Larger parameters gives much worse PEHE and does not improve ATE estimation. Smaller parameters are more reasonable but still do not improve the results. The overall tendency is clear. Compared to ours, CFR with its unconditional balancing does not improve ATE estimation, it may improve PEHE results with fine tuned parameter, but possibly at the price of worse ATE estimation.</p><p>Table <ref type="table">3</ref> shows pre-treatment results, All methods gives reasonable results. Table <ref type="table">3</ref>: Pre-treatment Errors on IHDP over 1000 random DGPs. We report results with dim(Z) = 10. Bold indicates method(s) which is significantly better. The results are taken from <ref type="bibr" target="#b51">Shalit et al. (2017)</ref>, except GANITE <ref type="bibr" target="#b73">(Yoon et al., 2018)</ref> and CEVAE <ref type="bibr" target="#b40">(Louizos et al., 2017)</ref> This experiment shows our method is the best compared with the methods specialized for networked deconfounding, a challenging problem in its own right. Thus, our method has the potential to work under unobserved confounding, but we leave detailed experimental and theoretical investigation to future.</p><p>Pokec <ref type="bibr" target="#b38">(Leskovec &amp; Krevl, 2014</ref>) is a real world social network dataset. We experiment on a semisynthetic dataset based on Pokec, which was introduced in <ref type="bibr" target="#b62">(Veitch et al., 2019)</ref>, and use exactly the same pre-processing and generating procedure. The pre-processed network has about 79,000 vertexes (users) connected by 1.3 ×10 6 undirected edges. The subset of users used here are restricted to three living districts which are within the same region. The network structure is expressed by binary adjacency matrix G. Following <ref type="bibr" target="#b62">(Veitch et al., 2019)</ref>, we split the users into 10 folds, test on each fold and report the mean and std of pre-treatment ATE predictions. We further separate the rest of users (in the other 9 folds) by 6 : 3, for training and validation.</p><p>Each user has 12 attributes, among which district, age, or join date is used as a confounder U to build 3 different datasets, with remaining 11 attributes used as covariate X. Treatment T and outcome Y are synthesised as following: T ∼ Bern(g(U )), Y = T + 10(g(U ) -0.5) + ,</p><p>where is standard normal. Note that district is of 3 categories; age and join date are also discretized into three bins. g(U ), which is a PS, maps these three categories and values to {0.15, 0.5, 0.85}.</p><p>β-Intact-VAE is expected to learn a PS from G, X, if we can exploit the network structure effectively. Given the huge network structure, most users can practically be identified by their attributes and neighborhood structure, which means U can be roughly seen as a deterministic function of G, X. This idea is comparable to Assumptions 2 and 4 in <ref type="bibr" target="#b62">(Veitch et al., 2019)</ref>, which postulate directly that a balancing score can be learned in the limit of infinite large network. To extract information from the network structure, we use Graph Convolutional Network (GCN) <ref type="bibr" target="#b37">(Kipf &amp; Welling, 2017)</ref> in conditional prior and encoder of β-Intact-VAE. The implementation details are given at the end of this subsection.</p><p>Table <ref type="table" target="#tab_4">4</ref> shows the results. The pre-treatment √ pehe for District, and Join date confounders are 1.085, 0.686, and 0.699 respectively, practically the same as the ATE errors. Note that, <ref type="bibr" target="#b62">Veitch et al. (2019)</ref> does not give individual-level prediction.</p><p>To extract information from the network structure, we use Graph Convolutional Network (GCN) <ref type="bibr" target="#b37">(Kipf &amp; Welling, 2017)</ref> in conditional prior and encoder of β-Intact-VAE. A difficulty is that, the network G and covariates X of all users are always needed by GCN, regardless of whether it is in training, validation, or testing phase. However, the separation can still make sense if we take care that the treatment and outcome are used only in the respective phase, e.g., (y m , t m ) of a testing user m is only used in testing.  <ref type="bibr">(38)</ref>. "Unadjusted" estimates ATE by ED(y1) -ED(y0). "Parametric" is a stochastic block model for networked data <ref type="bibr" target="#b15">(Gopalan &amp; Blei, 2013)</ref>. "Embed-" denotes the best alternatives given by <ref type="bibr" target="#b62">(Veitch et al., 2019)</ref>. Bold indicates method(s) which is significantly better than all the others. We report results with 20-dimensional latent Z. The results of the other methods are taken from <ref type="bibr" target="#b62">(Veitch et al., 2019)</ref> GCN takes the network matrix G and the whole covariates matrix X := (x T 1 , . . . , x T M ) T , where M is user number, and outputs a representation matrix R, again for all users. During training, we select the rows in R that correspond to users in training set. Then, treat this training representation matrix as if it is the covariates matrix for a non-networked dataset, that is, the downstream networks in conditional prior and encoder are the same as in the other two experiments, but take (R m,: ) T where x m was expected as input. And we have respective selection operations for validation and testing. We can still train β-Intact-VAE including GCN by Adam, simply setting the gradients of non-seleted rows of R to 0.</p><p>Note that GCN cannot be trained using mini-batch, instead, we perform batch gradient decent using full dataset for each iteration, with initial learning rate 10 -2 . We use dropout <ref type="bibr" target="#b55">(Srivastava et al., 2014)</ref> with rate 0.1 to prevent overfitting.   </p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: CVAE, iVAE, and Intact-VAE: Graphical models of the decoders.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head></head><label></label><figDesc>Figure 2: √ pehe on synthetic datasets. Error bar on 10 random DGPs.</figDesc><graphic coords="8,353.52,649.64,150.48,55.68" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head></head><label></label><figDesc>also).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: Plots of recovered -true latent. Blue: t = 0, Orange: t = 1.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>EFigure 4 :</head><label>4</label><figDesc>Figure 4: Degree of limited overlap w.r.t ω.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head></head><label></label><figDesc>Figure 5: √ pehe on synthetic dataset, with gt(W ) = 1 in DGPs, and dim(Z) = 200 in our model. Error bar on 10 random DGPs.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head>Figure 6 :</head><label>6</label><figDesc>Figure 6: √ pehe on synthetic dataset, with gt(W ) = 1 in DGPs. Error bar on 10 random DGPs.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_9"><head>Figure 7 :</head><label>7</label><figDesc>Figure 7: ate on synthetic dataset, with gt(W ) = 1 in DGPs. Error bar on 10 random DGPs.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_10"><head>Figure 8 :</head><label>8</label><figDesc>Figure 8: Pre-treatment √ pehe on synthetic dataset. Error bar on 10 random DGPs.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_11"><head>E. 4</head><label>4</label><figDesc>ADDITIONAL PLOTS ON SYNTHETIC DATASETS See next pages.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_12"><head>Figure 9 :</head><label>9</label><figDesc>Figure 9: Plots of recovered-true latent. Rows: first 10 nonlinear random models, columns: outcome noise level.</figDesc><graphic coords="28,126.56,74.68,356.38,534.58" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_13"><head>Figure 10 :</head><label>10</label><figDesc>Figure 10: Plots of recovered-true latent. Conditional prior depends on t. Rows: first 10 nonlinear random models, columns: outcome noise level. Compare to the previous figure, we can see the transformations for t = 0, 1 are not the same, confirming the importance of balanced prior.</figDesc><graphic coords="29,126.56,122.26,356.38,534.58" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head></head><label></label><figDesc>. 30±.01 .37±.03 .25±.01 .18±.01 .34±.01 .43±.05 .177±.007 .196±.008 .177±.007 .167±.005 .177±.006 .179±.006 √ pehe 5.0±.2 2.2±.1 .71±.02 3.8±.2 2.7±.1 1.9±.4 .843±.030 1.979±.082 1.116±.046 .777±.026 .894±.039 .841±.029 To examine conditional v.s unconditional balance clearly, we modify our method and add two components for unconditional balance from Shalit et al. (2017) (see the Appendix), and compare the modified version to the original. The over-focus on PEHE of the unconditional balance from CFR is seen more clearly in the modified version. With different values of the hyperparameter, unconditional balance does not improve (and barely affects) ATE estimation; it does affect PEHE more significantly, but often gives worse PEHE unless the hyperparameter is fine-tuned (with value 0.1).</figDesc><table><row><cell>Method TMLE BNN</cell><cell>CFR</cell><cell>CF</cell><cell>CEVAE GANITE Ours</cell><cell>Mod. 1</cell><cell>Mod. 0.2 Mod. 0.1 Mod. 0.05 Mod. 0.01</cell></row></table><note><p><p>ate</p>.</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 2 :</head><label>2</label><figDesc>Performance of modified version with different unconditional balancing parameter, the values of which are shown after "Mod.". 177±.007 .196±.008 .177±.007 .167±.005 .177±.006 .179±.006 .25±.01 √ pehe .843±.030 1.979±.082 1.116±.046 .777±.026 .894±.039 .841±.029 .71±.02</figDesc><table><row><cell>Method</cell><cell>Ours</cell><cell>Mod. 1</cell><cell>Mod.</cell><cell>Mod.</cell><cell>Mod.</cell><cell>Mod.</cell><cell>CFR</cell></row><row><cell></cell><cell></cell><cell></cell><cell>0.2</cell><cell>0.1</cell><cell>0.05</cell><cell>0.01</cell><cell></cell></row></table><note><p><p>ate</p>.</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head></head><label></label><figDesc>.</figDesc><table><row><cell>Method</cell><cell cols="2">TMLE BNN</cell><cell>CFR</cell><cell>CF</cell><cell>CEVAE GANITE Ours</cell></row><row><cell>pre-ate</cell><cell>NA</cell><cell cols="4">.42±.03 .27±.01 .40±.03 .46±.02 .49±.05 .211±.011</cell></row><row><cell>pre-√</cell><cell>NA</cell><cell cols="4">2.1±.1 .76±.02 3.8±.2 2.6±.1</cell><cell>2.4±.4</cell><cell>.946±.048</cell></row><row><cell>pehe</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="4">E.3 POKEC SOCIAL NETWORK DATASET</cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 4 :</head><label>4</label><figDesc>Pre-treatment ATE on Pokec. Ground truth ATE is 1, as we can see in</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head></head><label></label><figDesc>.</figDesc><table><row><cell></cell><cell>Age</cell><cell>District</cell><cell>Join Date</cell></row><row><cell>Unadjusted</cell><cell>4.34 ± 0.05</cell><cell>4.51 ± 0.05</cell><cell>4.03 ± 0.06</cell></row><row><cell>Parametric</cell><cell>4.06 ± 0.01</cell><cell>3.22 ± 0.01</cell><cell>3.73 ± 0.01</cell></row><row><cell>Embedding-Reg.</cell><cell>2.77 ± 0.35</cell><cell>1.75 ± 0.20</cell><cell>2.41 ± 0.45</cell></row><row><cell>Embedding-IPW</cell><cell>3.12 ± 0.06</cell><cell>1.66 ± 0.07</cell><cell>3.10 ± 0.07</cell></row><row><cell>Ours</cell><cell>2.08 ± 0.32</cell><cell>1.68 ± 0.10</cell><cell>1.70 ± 0.13</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>The symbols G, M, and D in the labels of conditions stand for Generating process, Model, and Data.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_1"><p>We often write t of the function argument in subscripts, indicating possible counterfactual assignments.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="3" xml:id="foot_2"><p>As usual, we expect the variational inference and optimization procedure to be (near) optimal; that is, consistency of VAE. Consistent estimation using the prior is a direct corollary of the consistent VAE. see Sec. C.6 for formal statements and proofs. Under Gaussian models, it is possible to prove the consistency of the posterior estimation, as shown inBonhomme &amp; Weidner (2021).</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="4" xml:id="foot_3"><p>https://github.com/clinicalml/cfrnet</p></note>
+		</body>
+		<back>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Estimating conditional average treatment effects</title>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Abrevaya</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yu-Chin</forename><surname>Hsu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Robert</forename><forename type="middle">P</forename><surname>Lieli</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Business &amp; Economic Statistics</title>
+		<imprint>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="485" to="505" />
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Bayesian inference of individualized treatment effects using multi-task gaussian processes</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Ahmed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alaa</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mihaela</forename><surname>Van Der Schaar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="3424" to="3432" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Finite-sample optimal estimation and inference on average treatment effects under unconfoundedness</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Timothy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michal</forename><surname>Armstrong</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Kolesár</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1906.06360v5</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Stéphane Bonhomme and Martin Weidner. Posterior average effects</title>
+		<imprint>
+			<date type="published" when="2021">2021. 2021</date>
+			<biblScope unit="volume">89</biblScope>
+			<biblScope unit="page" from="1141" to="1177" />
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<title level="m" type="main">Estimating individual treatment effects using non-parametric regression models: a review</title>
+		<author>
+			<persName><forename type="first">Alberto</forename><surname>Caron</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ioanna</forename><surname>Manolopoulou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gianluca</forename><surname>Baio</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2009.06472</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Quantile models with endogeneity</title>
+		<author>
+			<persName><forename type="first">Victor</forename><surname>Chernozhukov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christian</forename><surname>Hansen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Annu. Rev. Econ</title>
+		<imprint>
+			<biblScope unit="volume">5</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="57" to="81" />
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Nonparametric instrumental variable estimation under monotonicity</title>
+		<author>
+			<persName><forename type="first">Denis</forename><surname>Chetverikov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Wilhelm</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Econometrica</title>
+		<imprint>
+			<biblScope unit="volume">85</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="1303" to="1320" />
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">The econometrics of shape restrictions</title>
+		<author>
+			<persName><forename type="first">Denis</forename><surname>Chetverikov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andres</forename><surname>Santos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Azeem</forename><forename type="middle">M</forename><surname>Shaikh</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Annual Review of Economics</title>
+		<imprint>
+			<biblScope unit="volume">10</biblScope>
+			<biblScope unit="page" from="31" to="63" />
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Sinkhorn distances: Lightspeed computation of optimal transport</title>
+		<author>
+			<persName><forename type="first">Marco</forename><surname>Cuturi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="page" from="2292" to="2300" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Quantifying common support between multiple treatment groups using a contrastive-vae</title>
+		<author>
+			<persName><forename type="first">Wangzhi</forename><surname>Dai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Collin</forename><forename type="middle">M</forename><surname>Stultz</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Machine Learning for Health</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="41" to="52" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<monogr>
+		<title level="m" type="main">Deconfounding scores: Feature representations for causal effect estimation with weak overlap</title>
+		<author>
+			<persName><forename type="first">D'</forename><surname>Alexander</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexander</forename><surname>Amour</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Franks</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2104.05762</idno>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<author>
+			<persName><forename type="first">Carl</forename><surname>Doersch</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1606.05908</idno>
+		<title level="m">Tutorial on variational autoencoders</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Overlap in observational studies with high-dimensional covariates</title>
+		<author>
+			<persName><forename type="first">Peng</forename><surname>Alexander D'amour</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Avi</forename><surname>Ding</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lihua</forename><surname>Feller</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jasjeet</forename><surname>Lei</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Sekhon</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Econometrics</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Robust inference on average treatment effects with possibly more covariates than observations</title>
+		<author>
+			<persName><forename type="first">Max</forename><forename type="middle">H</forename><surname>Farrell</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Econometrics</title>
+		<imprint>
+			<biblScope unit="volume">189</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="1" to="23" />
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Identification and shape restrictions in nonparametric instrumental variables estimation</title>
+		<author>
+			<persName><forename type="first">Joachim</forename><surname>Freyberger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joel</forename><forename type="middle">L</forename><surname>Horowitz</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Econometrics</title>
+		<imprint>
+			<biblScope unit="volume">189</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="41" to="53" />
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Efficiency of thin and thick markets</title>
+		<author>
+			<persName><forename type="first">Li</forename><surname>Gan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qi</forename><surname>Li</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Econometrics</title>
+		<imprint>
+			<biblScope unit="volume">192</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="40" to="54" />
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Efficient discovery of overlapping communities in massive networks</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Prem</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><forename type="middle">M</forename><surname>Gopalan</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Blei</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Proceedings of the National Academy of Sciences</title>
+		<imprint>
+			<biblScope unit="volume">110</biblScope>
+			<biblScope unit="issue">36</biblScope>
+			<biblScope unit="page" from="14534" to="14539" />
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Estimation of conditional and marginal odds ratios using the prognostic score</title>
+		<author>
+			<persName><forename type="first">David</forename><surname>Hajage</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yann</forename><surname>De Rycke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillaume</forename><surname>Chauvet</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Florence</forename><surname>Tubach</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Statistics in medicine</title>
+		<imprint>
+			<biblScope unit="volume">36</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="687" to="716" />
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Learning disentangled representations for counterfactual regression</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Ben</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Russell</forename><surname>Hansen</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Greiner</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2008">2008. 2019</date>
+			<biblScope unit="volume">95</biblScope>
+			<biblScope unit="page" from="481" to="488" />
+		</imprint>
+	</monogr>
+	<note>The prognostic analogue of the propensity score</note>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<monogr>
+		<title level="m" type="main">Causal Inference: What If</title>
+		<author>
+			<persName><forename type="first">Miguel</forename><forename type="middle">A</forename><surname>Hernan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><forename type="middle">M</forename><surname>Robins</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<publisher>CRC Press</publisher>
+		</imprint>
+	</monogr>
+	<note>1st edition</note>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">beta-vae: Learning basic visual concepts with a constrained variational framework</title>
+		<author>
+			<persName><forename type="first">Irina</forename><surname>Higgins</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Loïc</forename><surname>Matthey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arka</forename><surname>Pal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Burgess</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xavier</forename><surname>Glorot</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthew</forename><surname>Botvinick</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shakir</forename><surname>Mohamed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexander</forename><surname>Lerchner</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=Sy2fzU9gl" />
+	</analytic>
+	<monogr>
+		<title level="m">5th International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Bayesian nonparametric modeling for causal inference</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Jennifer</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Hill</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Computational and Graphical Statistics</title>
+		<imprint>
+			<biblScope unit="volume">20</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="217" to="240" />
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Inference on finite-population treatment effects under limited overlap</title>
+		<author>
+			<persName><forename type="first">Han</forename><surname>Hong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><forename type="middle">P</forename><surname>Leung</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jessie</forename><surname>Li</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">The Econometrics Journal</title>
+		<imprint>
+			<biblScope unit="volume">23</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="32" to="47" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Joint sufficient dimension reduction and estimation of conditional and average treatment effects</title>
+		<author>
+			<persName><forename type="first">Ming-Yueh</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kwun</forename><surname>Chuen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gary</forename><surname>Chan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Biometrika</title>
+		<imprint>
+			<biblScope unit="volume">104</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="583" to="596" />
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Local average and quantile treatment effects under endogeneity: a review</title>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>Huber</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kaspar</forename><surname>Wüthrich</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Econometric Methods</title>
+		<imprint>
+			<biblScope unit="volume">8</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<monogr>
+		<title level="m" type="main">Causal inference in statistics, social, and biomedical sciences</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Guido</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Donald</forename><forename type="middle">B</forename><surname>Imbens</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Rubin</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<publisher>Cambridge University Press</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Causal inference using the algorithmic markov condition</title>
+		<author>
+			<persName><forename type="first">Dominik</forename><surname>Janzing</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bernhard</forename><surname>Scholkopf</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Information Theory</title>
+		<imprint>
+			<biblScope unit="volume">56</biblScope>
+			<biblScope unit="issue">10</biblScope>
+			<biblScope unit="page" from="5168" to="5194" />
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Identifying causal-effect inference failure with uncertainty-aware models</title>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Jesson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sören</forename><surname>Mindermann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Uri</forename><surname>Shalit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yarin</forename><surname>Gal</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">33</biblScope>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Learning representations for counterfactual inference</title>
+		<author>
+			<persName><forename type="first">Fredrik</forename><surname>Johansson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Uri</forename><surname>Shalit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Sontag</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International conference on machine learning</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="3020" to="3029" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Support and invertibility in domaininvariant representations</title>
+		<author>
+			<persName><forename type="first">David</forename><surname>Fredrik D Johansson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rajesh</forename><surname>Sontag</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Ranganath</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">The 22nd International Conference on Artificial Intelligence and Statistics</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="527" to="536" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<monogr>
+		<title level="m" type="main">Generalization bounds and representation learning for estimation of potential outcomes and causal effects</title>
+		<author>
+			<persName><forename type="first">Uri</forename><surname>Fredrik D Johansson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nathan</forename><surname>Shalit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Kallus</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Sontag</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2001.07426</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<monogr>
+		<title level="m" type="main">More robust estimation of sample average treatment effects using kernel optimal matching in an observational study of spine surgical interventions</title>
+		<author>
+			<persName><forename type="first">Nathan</forename><surname>Kallus</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Brenton</forename><surname>Pennicooke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michele</forename><surname>Santacatterina</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1811.04274</idno>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Why does birthweight vary among ethnic groups in the uk? findings from the millennium cohort study</title>
+		<author>
+			<persName><forename type="first">Yvonne</forename><surname>Kelly</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lidia</forename><surname>Panico</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mel</forename><surname>Bartley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Marmot</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><surname>Nazroo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amanda</forename><surname>Sacker</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of public health</title>
+		<imprint>
+			<biblScope unit="volume">31</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="131" to="137" />
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Variational autoencoders and nonlinear ica: A unifying framework</title>
+		<author>
+			<persName><forename type="first">Ilyes</forename><surname>Khemakhem</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Diederik</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ricardo</forename><surname>Monti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aapo</forename><surname>Hyvarinen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Artificial Intelligence and Statistics</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="2207" to="2217" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Ice-beem: Identifiable conditional energy-based deep models based on nonlinear ica</title>
+		<author>
+			<persName><forename type="first">Ilyes</forename><surname>Khemakhem</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ricardo</forename><surname>Monti</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Diederik Kingma, and Aapo Hyvarinen</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">33</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<monogr>
+		<title level="m" type="main">Auto-encoding variational bayes</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Diederik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1312.6114</idno>
+		<ptr target="http://arxiv.org/abs/1312.6114" />
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">An introduction to variational autoencoders</title>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Diederik P Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Foundations and Trends® in Machine Learning</title>
+		<imprint>
+			<biblScope unit="volume">12</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="307" to="392" />
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Semi-supervised learning with deep generative models</title>
+		<author>
+			<persName><forename type="first">Shakir</forename><surname>Durk P Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danilo</forename><surname>Mohamed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Jimenez Rezende</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="3581" to="3589" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Semi-supervised classification with graph convolutional networks</title>
+		<author>
+			<persName><forename type="first">Thomas</forename><forename type="middle">N</forename><surname>Kipf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Welling</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=SJU4ayYgl" />
+	</analytic>
+	<monogr>
+		<title level="m">5th International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Arthur Lewbel. The identification zoo: Meanings of identification in econometrics</title>
+		<author>
+			<persName><forename type="first">Jure</forename><surname>Leskovec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrej</forename><surname>Krevl</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Snap datasets: Stanford large network dataset collection</title>
+		<imprint>
+			<date type="published" when="2014">2014. 2019</date>
+			<biblScope unit="volume">57</biblScope>
+			<biblScope unit="page" from="835" to="903" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Nonparametric knn estimation with monotone constraints</title>
+		<author>
+			<persName><forename type="first">Zheng</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guannan</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qi</forename><surname>Li</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Econometric Reviews</title>
+		<imprint>
+			<biblScope unit="volume">36</biblScope>
+			<biblScope unit="issue">6-9</biblScope>
+			<biblScope unit="page" from="988" to="1006" />
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Causal effect inference with deep latent-variable models</title>
+		<author>
+			<persName><forename type="first">Christos</forename><surname>Louizos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Uri</forename><surname>Shalit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Joris</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Mooij</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Richard</forename><surname>Sontag</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Zemel</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="6446" to="6456" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Reconsidering generative objectives for counterfactual reasoning</title>
+		<author>
+			<persName><forename type="first">Danni</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chenyang</forename><surname>Tao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Junya</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fan</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Feng</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lawrence</forename><surname>Carin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">33</biblScope>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">On estimating regression-based causal effects using sufficient dimension reduction</title>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Luo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yeying</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Debashis</forename><surname>Ghosh</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Biometrika</title>
+		<imprint>
+			<biblScope unit="volume">104</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="51" to="65" />
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">Disentangling disentanglement in variational autoencoders</title>
+		<author>
+			<persName><forename type="first">Emile</forename><surname>Mathieu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tom</forename><surname>Rainforth</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nana</forename><surname>Siddharth</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yee</forename><forename type="middle">Whye</forename><surname>Teh</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="4402" to="4412" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">Characterization of overlap in observational studies</title>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Oberst</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fredrik</forename><surname>Johansson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dennis</forename><surname>Wei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tian</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gabriel</forename><surname>Brat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Sontag</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kush</forename><surname>Varshney</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Artificial Intelligence and Statistics</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="788" to="798" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<monogr>
+		<title level="m" type="main">Causality: models, reasoning and inference</title>
+		<author>
+			<persName><forename type="first">Judea</forename><surname>Pearl</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+			<publisher>Cambridge University Press</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<monogr>
+		<title level="m" type="main">A critical look at the identifiability of causal effects with deep latent variable models</title>
+		<author>
+			<persName><forename type="first">Severi</forename><surname>Rissanen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pekka</forename><surname>Marttinen</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2102.06648</idno>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<analytic>
+		<title level="a" type="main">Modern algorithms for matching in observational studies</title>
+		<author>
+			<persName><surname>Paul R Rosenbaum</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Annual Review of Statistics and Its Application</title>
+		<imprint>
+			<biblScope unit="volume">7</biblScope>
+			<biblScope unit="page" from="143" to="176" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<analytic>
+		<title level="a" type="main">The central role of the propensity score in observational studies for causal effects</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Paul</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Donald</forename><forename type="middle">B</forename><surname>Rosenbaum</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Rubin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Biometrika</title>
+		<imprint>
+			<biblScope unit="volume">70</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="41" to="55" />
+			<date type="published" when="1983">1983</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<analytic>
+		<title level="a" type="main">Causal inference using potential outcomes: Design, modeling, decisions</title>
+		<author>
+			<persName><surname>Donald B Rubin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of the American Statistical Association</title>
+		<imprint>
+			<biblScope unit="volume">100</biblScope>
+			<biblScope unit="issue">469</biblScope>
+			<biblScope unit="page" from="322" to="331" />
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<monogr>
+		<title level="m" type="main">Increasing the efficiency of randomized trial estimates via linear adjustment for a prognostic score</title>
+		<author>
+			<persName><forename type="first">Alejandro</forename><surname>Schuler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Walsh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Diana</forename><surname>Hall</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jon</forename><surname>Walsh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Charles</forename><surname>Fisher</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2012.09935</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b51">
+	<analytic>
+		<title level="a" type="main">Estimating individual treatment effect: generalization bounds and algorithms</title>
+		<author>
+			<persName><forename type="first">Uri</forename><surname>Shalit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Fredrik D Johansson</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Sontag</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="3076" to="3085" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b52">
+	<analytic>
+		<title level="a" type="main">Adapting neural networks for the estimation of treatment effects</title>
+		<author>
+			<persName><forename type="first">Claudia</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Blei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Victor</forename><surname>Veitch</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="2507" to="2517" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b53">
+	<analytic>
+		<title level="a" type="main">Learning structured output representation using deep conditional generative models</title>
+		<author>
+			<persName><forename type="first">Kihyuk</forename><surname>Sohn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Honglak</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xinchen</forename><surname>Yan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="3483" to="3491" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b54">
+	<analytic>
+		<title level="a" type="main">Disentanglement by nonlinear ica with general incompressible-flow networks (gin)</title>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Sorrenson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Carsten</forename><surname>Rother</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ullrich</forename><surname>Köthe</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b55">
+	<analytic>
+		<title level="a" type="main">Dropout: a simple way to prevent neural networks from overfitting</title>
+		<author>
+			<persName><forename type="first">Nitish</forename><surname>Srivastava</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Geoffrey</forename><surname>Hinton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alex</forename><surname>Krizhevsky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ilya</forename><surname>Sutskever</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ruslan</forename><surname>Salakhutdinov</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">The journal of machine learning research</title>
+		<imprint>
+			<biblScope unit="volume">15</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="1929" to="1958" />
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b56">
+	<monogr>
+		<title level="m" type="main">Monotone function estimation in the presence of extreme data coarsening: Analysis of preeclampsia and birth weight in urban uganda</title>
+		<author>
+			<persName><forename type="first">Jennifer</forename><forename type="middle">E</forename><surname>Starling</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Catherine</forename><forename type="middle">E</forename><surname>Aiken</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jared</forename><forename type="middle">S</forename><surname>Murray</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Annettee</forename><surname>Nakimuli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><forename type="middle">G</forename><surname>Scott</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1912.06946</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b57">
+	<analytic>
+		<title level="a" type="main">Matching Methods for Causal Inference: A Review and a Look Forward</title>
+		<author>
+			<persName><forename type="first">Elizabeth</forename><forename type="middle">A</forename><surname>Stuart</surname></persName>
+		</author>
+		<idno type="DOI">10.1214/09-STS313</idno>
+		<ptr target="https://doi.org/10.1214/09-STS313" />
+	</analytic>
+	<monogr>
+		<title level="j">Statistical Science</title>
+		<imprint>
+			<biblScope unit="volume">25</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="1" to="21" />
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b58">
+	<monogr>
+		<author>
+			<persName><forename type="first">Xinwei</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Botong</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chang</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiangyu</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tao</forename><surname>Qin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tie-Yan</forename><surname>Liu</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2011.02203</idno>
+		<title level="m">Latent causal invariant model</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b59">
+	<monogr>
+		<title level="m" type="main">Estimating average treatment effects with support vector machines</title>
+		<author>
+			<persName><forename type="first">Alexander</forename><surname>Tarr</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kosuke</forename><surname>Imai</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2102.11926</idno>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b60">
+	<monogr>
+		<title level="m" type="main">An introduction to proximal causal learning</title>
+		<author>
+			<persName><forename type="first">Eric J Tchetgen</forename><surname>Tchetgen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Ying</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yifan</forename><surname>Cui</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xu</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wang</forename><surname>Miao</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2009.10982</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b61">
+	<monogr>
+		<title level="m" type="main">Targeted learning in data science: causal inference for complex longitudinal studies</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Mark</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sherri</forename><surname>Van Der Laan</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Rose</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<publisher>Springer</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b62">
+	<analytic>
+		<title level="a" type="main">Using embeddings to correct for unobserved confounding in networks</title>
+		<author>
+			<persName><forename type="first">Victor</forename><surname>Veitch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yixin</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Blei</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="13792" to="13802" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b63">
+	<monogr>
+		<title level="m" type="main">Targeted vae: Structured inference and targeted learning for causal parameter estimation</title>
+		<author>
+			<persName><forename type="first">Matthew</forename><forename type="middle">James</forename><surname>Vowels</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Necati</forename><surname>Cihan Camgoz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Richard</forename><surname>Bowden</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2009.13472</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b64">
+	<analytic>
+		<title level="a" type="main">Estimation and inference of heterogeneous treatment effects using random forests</title>
+		<author>
+			<persName><forename type="first">Stefan</forename><surname>Wager</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Susan</forename><surname>Athey</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of the American Statistical Association</title>
+		<imprint>
+			<biblScope unit="volume">113</biblScope>
+			<biblScope unit="issue">523</biblScope>
+			<biblScope unit="page" from="1228" to="1242" />
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b65">
+	<analytic>
+		<title level="a" type="main">Changing trends of birth weight with maternal age: a cross-sectional study in xi&apos;an city of northwestern china</title>
+		<author>
+			<persName><forename type="first">Shanshan</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Liren</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Li</forename><surname>Shang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wenfang</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Cuifang</forename><surname>Qi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Liyan</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guilan</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ruiqi</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mei</forename><surname>Chun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chung</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">BMC Pregnancy and Childbirth</title>
+		<imprint>
+			<biblScope unit="volume">20</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="1" to="8" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b66">
+	<analytic>
+		<title level="a" type="main">Identification and identification failure for treatment effects using structural systems</title>
+		<author>
+			<persName><forename type="first">Halbert</forename><surname>White</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Karim</forename><surname>Chalak</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Econometric Reviews</title>
+		<imprint>
+			<biblScope unit="volume">32</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="273" to="317" />
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b67">
+	<analytic>
+		<title level="a" type="main">Causal mosaic: Cause-effect inference via nonlinear ica and ensemble method</title>
+		<author>
+			<persName><forename type="first">Pengzhou</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kenji</forename><surname>Fukumizu</surname></persName>
+		</author>
+		<ptr target="http://proceedings.mlr.press/v108/wu20b.html" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Artificial Intelligence and Statistics</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="1157" to="1167" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b68">
+	<monogr>
+		<title level="m" type="main">Intact-vae: Estimating treatment effects under unobserved confounding</title>
+		<author>
+			<persName><forename type="first">Pengzhou</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kenji</forename><surname>Fukumizu</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2101.06662</idno>
+		<imprint/>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+	<note>v2, 2021a</note>
+</biblStruct>
+
+<biblStruct xml:id="b69">
+	<monogr>
+		<title level="m" type="main">Towards principled causal effect estimation by deep identifiable models</title>
+		<author>
+			<persName><forename type="first">Pengzhou</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kenji</forename><surname>Fukumizu</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2109.15062</idno>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b70">
+	<monogr>
+		<title level="m" type="main">Identifying treatment effects under unobserved confounding by causal representation learning</title>
+		<author>
+			<persName><forename type="first">Abel</forename><surname>Pengzhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kenji</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Fukumizu</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=D3TNqCspFpM" />
+		<imprint/>
+	</monogr>
+	<note>submitted to ICLR 2021, 2020b</note>
+</biblStruct>
+
+<biblStruct xml:id="b71">
+	<analytic>
+		<title level="a" type="main">Asymptotic inference of causal effects with observational studies trimmed by the estimated propensity scores</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Ding</surname></persName>
+		</author>
+		<idno type="DOI">10.1093/biomet/asy008</idno>
+		<ptr target="https://doi.org/10.1093/biomet/asy008" />
+	</analytic>
+	<monogr>
+		<title level="j">Biometrika</title>
+		<idno type="ISSN">0006-3444</idno>
+		<imprint>
+			<biblScope unit="volume">105</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="487" to="493" />
+			<date type="published" when="2018">03 2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b72">
+	<analytic>
+		<title level="a" type="main">Representation learning for treatment effect estimation from observational data</title>
+		<author>
+			<persName><forename type="first">Liuyi</forename><surname>Yao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sheng</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yaliang</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mengdi</forename><surname>Huai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jing</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aidong</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="2633" to="2643" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b73">
+	<analytic>
+		<title level="a" type="main">GANITE: Estimation of individualized treatment effects using generative adversarial nets</title>
+		<author>
+			<persName><forename type="first">Jinsung</forename><surname>Yoon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><surname>Jordon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mihaela</forename><surname>Van Der Schaar</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=ByKWUeWA-" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b74">
+	<monogr>
+		<title level="m" type="main">Treatment effect estimation with disentangled latent factors</title>
+		<author>
+			<persName><forename type="first">Weijia</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lin</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiuyong</forename><surname>Li</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2001.10652</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b75">
+	<analytic>
+		<title level="a" type="main">Learning overlapping representations for the estimation of individualized treatment effects</title>
+		<author>
+			<persName><forename type="first">Yao</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexis</forename><surname>Bellot</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mihaela</forename><surname>Schaar</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Artificial Intelligence and Statistics</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="1005" to="1014" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

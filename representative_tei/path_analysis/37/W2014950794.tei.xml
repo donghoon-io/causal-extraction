@@ -1,0 +1,1564 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Exploring and Enforcing Security Guarantees via Program Dependence Graphs</title>
+				<funder>
+					<orgName type="full">Air Force Research Laboratory</orgName>
+				</funder>
+				<funder ref="#_RJegSVe #_fMghjqC">
+					<orgName type="full">National Science Foundation</orgName>
+				</funder>
+				<funder ref="#_DVPrC5u">
+					<orgName type="full">Department of the Air Force under Air Force</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Andrew</forename><surname>Johnson</surname></persName>
+							<email>ajohnson@seas.harvard.edu</email>
+							<affiliation key="aff0">
+								<orgName type="laboratory">MIT Lincoln Laboratory</orgName>
+								<orgName type="institution">Harvard University</orgName>
+								<address>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Lucas</forename><surname>Waye</surname></persName>
+							<email>lwaye@seas.harvard.edu</email>
+							<affiliation key="aff1">
+								<orgName type="institution">Harvard University</orgName>
+								<address>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Scott</forename><surname>Moore</surname></persName>
+							<email>sdmoore@seas.harvard.edu</email>
+							<affiliation key="aff1">
+								<orgName type="institution">Harvard University</orgName>
+								<address>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Stephen</forename><surname>Chong</surname></persName>
+							<email>chong@seas.harvard.edu</email>
+							<affiliation key="aff1">
+								<orgName type="institution">Harvard University</orgName>
+								<address>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Exploring and Enforcing Security Guarantees via Program Dependence Graphs</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+					<idno type="DOI">10.1145/2737924.2737957</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-29T00:55+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<textClass>
+				<keywords>
+					<term>D.4.6 [Operating Systems]: Security and Protection-Information flow controls</term>
+					<term>F.3.2 [Programming Languages]: Semantics of Programming Languages-Program analysis</term>
+					<term>F.3.1 [Programming Languages]: Specifying and Verifying and Reasoning about Programs-Specification techniques Application-specific security, program dependence graph, graph query language</term>
+				</keywords>
+			</textClass>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>We present PIDGIN, a program analysis and understanding tool that enables the specification and enforcement of precise applicationspecific information security guarantees. PIDGIN also allows developers to interactively explore the information flows in their applications to develop policies and investigate counter-examples.</p><p>PIDGIN combines program dependence graphs (PDGs), which precisely capture the information flows in a whole application, with a custom PDG query language. Queries express properties about the paths in the PDG; because paths in the PDG correspond to information flows in the application, queries can be used to specify global security policies.</p><p>PIDGIN is scalable. Generating a PDG for a 330k line Java application takes 90 seconds, and checking a policy on that PDG takes under 14 seconds. The query language is expressive, supporting a large class of precise, application-specific security guarantees. Policies are separate from the code and do not interfere with testing or development, and can be used for security regression testing.</p><p>We describe the design and implementation of PIDGIN and report on using it: (1) to explore information security guarantees in legacy programs; (2) to develop and modify security policies concurrently with application development; and (3) to develop policies based on known vulnerabilities.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1.">Introduction</head><p>Many applications store and compute with sensitive information, including confidential and untrusted data. Thus, application developers must be concerned with the information security guarantees their application provides, such as how public outputs may reveal confidential information and how potentially dangerous operations may be influenced by untrusted data. These guarantees will necessarily be application specific, since different applications handle different kinds of information, with different requirements for the correct handling of information. Moreover, these guarantees are properties of the entire application, rather than properties that arise from the correctness of a single component.</p><p>Current tools and techniques fall short in helping developers address information security. Testing cannot easily verify information-flow requirements such as "no information about the password is revealed except via the encryption function." Existing tools for information-flow security are inadequate for a variety of reasons, since they either unsoundly ignore important information flows, require widespread local annotations, prevent functional testing and deployment, or fail to support the specification and enforcement of application-specific policies.</p><p>We present PIDGIN, a system that uses program dependence graphs (PDGs) <ref type="bibr" target="#b15">[16]</ref> to precisely and intuitively capture the information flows within an entire program <ref type="foot" target="#foot_0">1</ref> and a custom PDG query language to allow the exploration, specification, and enforcement of information security guarantees. PDGs express the control and data dependencies in a program and abstract away unimportant details such the sequential order of non-interacting statements. They are a great fit for reasoning about information security guarantees, since paths in the PDG correspond to information flows in the application. Our queries express properties of PDGs which thus correspond to information-flow guarantees about the application. Our approach has several benefits: • PIDGIN security policies are expressive, precise, and application specific, since they are queries in a query language designed specifically for finding and describing information flows in a program. Queries can succinctly express global security guarantees such as noninterference <ref type="bibr" target="#b17">[18]</ref>, absence of explicit information flows, trusted declassification <ref type="bibr" target="#b23">[24]</ref>, and mediation of information-flow by access control checks. • Developers can interactively explore an application's information security guarantees. If there is no predefined security specification then PIDGIN can be used to quickly explore securityrelevant information flows and discover and specify the precise security policies that an application satisfies. If a policy is specified but not satisfied, then PIDGIN can help a developer understand why by finding information flows that violate the policy. • PIDGIN security policies are not embedded in the code. PIDGIN policies are specified separate from the code. The code doesn't require program annotations nor does it mention or depend on PIDGIN policies. This enables the use of PIDGIN to specify secu-rity guarantees for legacy applications without requiring annotations or other modifications. • Enforcement of security policies does not prevent development or testing. Because the program code does not mention or depend on PIDGIN policies, the policies do not prevent compilation or execution. This allows developers to balance development of new functionality and maintenance of security policies. • PIDGIN enables regression testing of information security guarantees. PIDGIN can be incorporated into a build process to warn developers if recent code changes violate a security policy that previously held. This includes information-flow properties that traditional test cases can not easily detect.</p><p>These benefits stand in contrast to existing techniques such as security-type systems (e.g., <ref type="bibr" target="#b57">[58]</ref>, Jif <ref type="bibr" target="#b40">[41]</ref> and FlowCaml <ref type="bibr" target="#b48">[49]</ref>) and existing PDG-based approaches to security (e.g., JOANA <ref type="bibr" target="#b20">[21]</ref>).</p><p>In security-typed languages, global security policies are broken into many pieces and expressed via annotations throughout the program. This is problematic for at least three reasons. First, it is difficult to determine from these annotations how sensitive information is handled by the whole system, particularly in the presence of declassification <ref type="bibr" target="#b47">[48]</ref>. Second, changing the security policy may require modifying many annotations. Third, supporting legacy applications using these techniques is often infeasible, as they require significant annotations or modifications to applications.</p><p>Dynamic or hybrid information-flow enforcement mechanisms (e.g., <ref type="bibr" target="#b2">[3,</ref><ref type="bibr" target="#b3">4,</ref><ref type="bibr" target="#b9">10,</ref><ref type="bibr" target="#b26">27,</ref><ref type="bibr" target="#b30">31,</ref><ref type="bibr" target="#b52">53]</ref>) are sometimes able to specify security policies separate from code, but interfere with the deployment of systems: they must be used during testing in order to ensure that enforcement does not conflict with important functionality.</p><p>Taint analysis tools (e.g., <ref type="bibr" target="#b10">[11,</ref><ref type="bibr" target="#b14">15,</ref><ref type="bibr" target="#b31">32,</ref><ref type="bibr" target="#b54">55,</ref><ref type="bibr" target="#b55">56,</ref><ref type="bibr" target="#b60">61]</ref>) are inevitably unsound because they do not account for information flow through control channels, and often do not support expressive applicationspecific policies. One of the most recent, FlowDroid <ref type="bibr" target="#b1">[2]</ref>, works with a pre-defined (i.e., not application-specific) set of sources and sinks and does not support sanitization, declassification, or access control policies. Because PIDGIN supports more expressive policies, we detect 159 of the 163 (=98%) vulnerabilities in the SecuriBench Micro <ref type="bibr" target="#b35">[36]</ref> 1.08 test suite compared to Flowdroid's 117 (=72%).</p><p>Pre-defined policies (such as policies that might be enforced on all Android apps) can capture many security requirements of broad classes of applications. However, applications handle different types of sensitive information (e.g., bank account information, health records, school records, etc.) and what constitutes correct handling of this information differs between applications. Predefined policies cannot express these application-specific security requirements.</p><p>Previous PDG-based information security tools (e.g., <ref type="bibr" target="#b20">[21,</ref><ref type="bibr" target="#b21">22]</ref>) have many of the same issues as security-typed languages. For all but the simplest security policies, these tools require program annotations to specify policies, with the concomitant issues regarding legacy applications, modifying security policies, and understanding the system-wide security guarantees implied by the annotations.</p><p>Moreover, these techniques focus almost exclusively on enforcement of security guarantees and do not support exploration.</p><p>The primary contributions of this work are: 1. The novel insight that PDGs offer a unified approach that enables exploration, specification, and enforcement of security guarantees. 2. The design of an expressive language for precise, applicationspecific security policies, based on queries evaluated against PDGs. 3. The realization and demonstration of these insights and techniques in an effective and scalable tool.</p><p>PIDGIN produces PDGs for Java bytecode and then evaluates queries against these PDGs, either interactively or in batch mode. Our techniques are applicable to other languages. 2  PIDGIN is both useful and scalable. We have used PIDGIN to discover diverse information security guarantees in legacy Java applications, and to specify and enforce information security policies as part of the development process for two new applications. We have analyzed programs ranging in size up to 330,000 lines of code (including library code); even for the largest program, construction of the PDG (including pointer analysis and dataflow analyses to improve precision) takes 90 seconds, and checking each of our policies on the PDG takes less than 14 seconds.</p><p>Security guarantees we have established using PIDGIN include: in a password manager, the master password is not improperly leaked; in a chat server application, punished users are restricted to certain kinds of messages; and in a course management system, the class list is correctly protected by access control checks. Moreover, we have developed security guarantees based on reported vulnerabilities in Apache Tomcat, and PIDGIN verifies that the security guarantees hold after the vulnerability is patched and fail to hold in earlier versions.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.">PIDGIN By Example</head><p>Consider the Guessing Game program presented in Figure <ref type="figure" target="#fig_0">1a</ref>. This program randomly chooses a secret number from 1 to 10, prompts the user for a guess, and then prints a message indicating whether the guess was correct.</p><p>A program dependence graph (PDG) representation of this program is shown in Figure <ref type="figure" target="#fig_0">1b</ref>. Shaded nodes are program-counter nodes, representing the control flow of the program. All other nodes represent the value of an expression or variable at a certain program point. There is a single summary node representing the formal argument to the output function. There are three nodes representing actual arguments, one for each call to output, and an edge from each to the formal argument. Edges labeled CD indicate control dependencies and other edges indicate data dependencies. Dashed edges and clouds show where we have elided parts of the PDG for clarity. (All other emphasis is for the exposition below. Program-counter nodes that are not relevant to the discussion have been removed for simplicity.)</p><p>Although Guessing Game is simple, it has interesting security properties that can be expressed as queries on the PDG.</p><p>No cheating! The program should not be able to cheat by choosing a secret value that is deliberately different from the user's guess. That is, the choice of the secret should be independent of the user's input. This policy holds if the following PIDGINQL query returns an empty graph:</p><formula xml:id="formula_0">let input = pgm.returnsOf(''getInput'') in let secret = pgm.returnsOf(''getRandom'') in pgm.forwardSlice(input) ∩ pgm.backwardSlice(secret)</formula><p>PIDGINQL is a domain specific graph query language that enables exploration of a program's information flows, and specification of information security policies. Constant pgm, short for program, is bound to the PDG of the program. Primitive expressions (such as forwardSlice) compute a subgraph of the graph to the left of the dot. Query expression pgm.returnsOf(''getInput'') evaluates to the node in the program PDG that represents the value returned from function getInput (shown in a rectangle in Figure <ref type="figure" target="#fig_0">1b</ref>). This is the user's input. Similarly, the second line identifies the value re-  Query expression pgm.forwardSlice(input) evaluates to the subgraph of the PDG that is reachable by a path starting from the query variable input. This is the subgraph that depends on the user input, either via control dependency, data dependency, or some combination thereof. Similarly, pgm.backwardSlice(secret) is the subgraph of the PDG that can reach the node representing the secret value. The entire query evaluates to the intersection of the subgraphs that depend on the user input and on which the secret depends, i.e., all paths from the user input to the secret.</p><p>For the PDG in Figure <ref type="figure" target="#fig_0">1b</ref>, this query evaluates to an empty subgraph. This means that there are no paths from the input to the secret, and thus the secret does not depend in any way on user input.</p><p>Finding all nodes in the PDG that lie on a path between two sets of nodes is a common query, and we can define it as a reusable function in PIDGINQL as follows:</p><formula xml:id="formula_1">let between(G, from, to) = G.forwardSlice(from) ∩ G.backwardSlice(to)</formula><p>This allows us to simplify our query. We can also turn our PIDGINQL query into a security policy (i.e., a statement of the security guarantee offered by the program) by asserting that the result of this query should be an empty graph. This is done in PIDGINQL by appending "is empty" to the query.</p><p>Noninterference Noninterference <ref type="bibr" target="#b17">[18,</ref><ref type="bibr" target="#b46">47]</ref> requires that information does not flow from confidential inputs to public outputs. For our purposes, the secret number (line 1, Figure <ref type="figure" target="#fig_0">1a</ref>) is a confidential input, and output statements (lines 3, 9, 12) are publicly observable.</p><p>We can check whether noninterference holds between the secret and the outputs using a query similar to the one above: let secret = pgm.returnsOf(''getRandom'') in let outputs = pgm.formalsOf(''output'') in pgm.between(secret, outputs) Unlike our previous example the query does not result in an empty subgraph: there are paths from the secret to the output (marked in Figure <ref type="figure" target="#fig_0">1b</ref> with bold lines). Indeed, this program does not satisfy noninterference, as the functionality of this program requires that some information about the secret is released.</p><p>From secret to output By characterizing all paths from the secret to the output we can provide a guarantee about what the program's public output may reveal about the secret.</p><p>Inspecting the result of the noninterference query above, we see there are two paths from the secret to the public outputs. (If there were many paths, we could have isolated one path to examine, by changing the last line to pgm.shortestPath(secret, outputs).) Both paths pass through the node for the value of expression "secret == guess". This means that the public output depends on the secret only via the comparison between the secret and the user's guess. We can confirm this by removing this node from the graph and checking whether any paths remain between the secret and the outputs. This can be expressed in PIDGINQL as: Expression pgm.forExpression(''secret == guess'') <ref type="foot" target="#foot_3">3</ref> <ref type="foot" target="#foot_6">3</ref> evaluates to the node for the conditional expression (outlined in Figure <ref type="figure" target="#fig_0">1b</ref> with a dotted line). The fourth line removes this node from the PDG then computes the subgraph of paths from secret to outputs.</p><p>This query results in an empty subgraph, meaning we have described all paths from secret to outputs. Thus the program satisfies the policy: The secret does not influence the output except by comparison with the user's guess.</p><p>This is an example of trusted declassification <ref type="bibr" target="#b23">[24]</ref> and is a pattern found in many applications. We capture this with a userdefined policy function asserting that all flows from srcs to sinks pass through a node in declassifiers. let declassifies(G, declassifiers, srcs, sinks) = G.removeNodes(declassifiers).between(srcs, sinks) is empty Note that our policy is weaker than noninterference: the output does depend on the secret. Noninterference is too strong to hold in many real programs, and weaker, application-specific guaran-tees are common. PDGs often contain enough structure to characterize these (potentially complex) security guarantees, which can be stated succinctly and intuitively given an expressive language to describe and restrict permitted information flows.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.">PDGs and Security Guarantees</head><p>PIDGIN allows programmers to explore a program's information flows and to express and enforce security policies that restrict permitted information flows. We achieve this using programdependence graphs (PDGs) <ref type="bibr" target="#b15">[16]</ref> to explicitly represent the data and control dependencies within a program. PIDGIN's PDGs represent control and data dependencies within a whole program. Annotations and meta-information encoded in PIDGIN PDGs enable precise and useful queries and security policies. In this section, we describe the structure of PIDGIN's PDGs and the different kinds of security guarantees that can be obtained from them.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Structure of PIDGIN PDGs</head><p>There are several kinds of nodes in PIDGIN PDGs. Expression nodes represent the value of an expression, variable, or heap location at a program point. Program-counter nodes represent the control flow of a program, and can be thought of as boolean expressions that are true exactly when program execution is at the program point represented by the node. In addition, procedure summary nodes facilitate the interprocedural construction of the PDG by summarizing a procedure's entry point, arguments, return value, etc. Finally, merge nodes represent merging from different control flow branches, similar to the use of phi nodes in static single assignment form <ref type="bibr" target="#b12">[13]</ref>. Nodes also contain metadata, such as the position in the source code of the expression a node represents.</p><p>PIDGIN PDGs are context sensitive, object sensitive, and field sensitive. They are flow sensitive for local variables and flow insensitive for heap locations.</p><p>Edges of the PDG indicate data and control dependencies between nodes. To improve precision and enable more complex queries, edges in PIDGIN PDGs have labels that indicate how the target node of the edge depends on the value represented by the source node of the edge. Examples of these edge labels can be seen in Figure <ref type="figure" target="#fig_0">1b</ref>. COPY indicates that the value represented by the target is a copy of the source. EXP indicates that the target is the result of some computation involving the source. Edges labeled MERGE are used for all edges whose target is a merge or summary node.</p><p>Label CD indicates a control dependency from a programcounter node to an expression node. An expression is control dependent on a program-counter node if it is evaluated only when control flow reaches the corresponding program point. An edge labeled TRUE or FALSE from an expression node to a programcounter node indicates that control flow depends on the boolean value represented by the expression node.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Security Guarantees from PDGs</head><p>As Section 2 demonstrated, paths in a PDG can correspond to information flows in a program, and PIDGIN allows developers to discover, specify, and enforce security guarantees.</p><p>Information security guarantees are application specific, since what is regarded as sensitive information and what is regarded as correct handling of that information varies greatly between applications. The query language PIDGINQL (described in Section 4) provides several convenient ways for developers to indicate sources and sinks, such as queries that select the values returned from a particular function. The ability for PIDGINQL to specify relevant parts of the graph means that the program does not require annotations for security policies. PIDGIN can be used to describe many complex policies. We next describe several kinds of security guarantees that developers can express using PIDGINQL.</p><p>Noninterference The absence of a path in a PDG from a source to a sink indicates that noninterference holds between the source and the sink. This result was proved formally by Wasserrab et al. <ref type="bibr" target="#b58">[59]</ref>. As seen in Section 2, this is equivalent to the PIDGINQL query pgm.between(source, sink) evaluating to an empty graph.</p><p>Noninterference is a strong guarantee, and many applications that handle sensitive information will not satisfy it: the query pgm.between(source,sink) will result in a non-empty graph. For example, an authentication module doesn't satisfy noninterference because it needs to reveal some information about passwords (specifically, whether a user's guess matches the password).</p><p>Even when noninterference does not hold, developers need assurance that the program handles sensitive information correctly. For example, a developer may want the result of the authentication module to depend on the password only via an equality test with the guess. In the remainder of this section, we describe security guarantees that are weaker than noninterference and can be expressed as queries on PDGs.</p><p>No explicit flows A coarse-grained notion of information-flow control considers only explicit information flows and ignores implicit information flows <ref type="bibr" target="#b13">[14]</ref>. This is also known as taint tracking and corresponds to considering only data dependencies and ignoring control dependencies.</p><p>Although arbitrary information may flow due to control dependencies, it can be useful and important to show that there are no explicit information flows from sensitive sources to dangerous sinks. Indeed, the prevalence of taint-tracking mechanisms (e.g., Perl's taint mode, and numerous systems <ref type="bibr" target="#b1">[2,</ref><ref type="bibr" target="#b31">32,</ref><ref type="bibr" target="#b55">56,</ref><ref type="bibr" target="#b60">61]</ref>) show that it is intuitive and appealing for developers to consider just explicit flows. Moreover, tracking only explicit flows leads to fewer false positives (albeit at the cost of more false negatives) <ref type="bibr" target="#b14">[15,</ref><ref type="bibr" target="#b28">29]</ref>.</p><p>Restricting attention to data dependencies is straightforward with a PDG. Specifically, if all paths from sensitive sources to sensitive sinks have at least one edge labeled CD (i.e., a control dependency from a program-counter node to an expression node), then there are no explicit flows from the source to the sink. This can be expressed by the following PIDGINQL policy function: let noExplicitFlows(sources, sinks) = pgm.removeEdges(pgm.selectEdges(CD))</p><p>.between(sources, sinks) is empty Expression pgm.removeEdges(pgm.selectEdges(CD)) selects all edges labeled CD in the PDG and removes them from the graph. Using this graph, expression between(sources, sinks) finds the subgraph containing all paths between sources and sinks. If this results in an empty graph the policy holds, and there are no explicit flows from the sources to the sinks.</p><p>Often a program intentionally contains explicit flows (e.g., a program that prints the last four digits of a credit card number). To obtain guarantees in this case, a more precise policy is needed.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Describe all information flows</head><p>In general, a developer can specify a security policy by describing all permitted paths from sensitive sources to dangerous sinks. This is because paths in the PDG correspond to information flows in the program. Using the query language, the developer can enumerate the ways in which information is permitted to flow. If, after removing paths corresponding to these permitted information flows, only an empty graph remains then all information flows in the program are permitted, and the program satisfies the security policy. The "no explicit flows" example can be viewed in this light (i.e., all paths from a source to a sink must involve a control dependency), but more expressive characterizations of paths are often necessary, useful, and interesting.</p><p>For example, consider a program which takes a (secret) credit card number and prints the last four digits. This is an intentional explicit flow, though most taint analysis frameworks would mark it Recall that pgm.declassifies(lastFourRet, ccNum, output) (seen in Section 2) removes the nodes lastFourRet from pgm, and asserts that in the resulting graph there are no paths from ccNum to output. This policy treats method lastFour as a trusted declassifier <ref type="bibr" target="#b23">[24]</ref>: information is allowed to flow from ccNum to output provided it goes through the return value of lastFour because lastFour is trusted to release only limited information about credit card numbers. Determining whether lastFour is in fact trustworthy is beyond the scope of this work. Trustworthiness of lastFour could, for example, be achieved through a code review, or through formal verification of its correctness. Nonetheless, this PIDGINQL policy provides a strong security guarantee, and reduces the question of correct information flow in the entire program to the trustworthiness of one specific method.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Describe conditions for information-flow</head><p>In some cases it is important to know not just the flows from sensitive sources to dangerous sinks, but also under what conditions these flows occur. Using PDGs, we can extract this information by considering control dependencies of nodes within a path. This is difficult for most existing information-flow analyses, as the conditions under which a flow occurs are not properties of the paths from sources to sinks.</p><p>For example, consider the program in Figure <ref type="figure">2a</ref>, which is a simple model of an access control check guarding information flow. Secret information is output at line 3, but only if the user provided the correct password (line 1) and the user is the administrator (line 2). If we look at the relevant fragment of the PDG for this program (Figure <ref type="figure">2b</ref>) we see that there is a single path from a sensitive source (the double-circled node for the return from the getSecret function) to a dangerous sink (the bold node representing the formal argument to output). By examining the control dependencies for one of the nodes on this path, we can determine that this flow happens only if both access control checks pass. All paths from the source to the sink are control dependent on both "checkPassword" and "isAdmin" returning true. We can describe this with:</p><p>1 let sec = pgm.returnsOf(''getSecret'') in 2 let out = pgm.formalsOf(''output'') in 3 let isPassRet = pgm.returnsOf(''checkPassword'') in 4 let isAdRet = pgm.returnsOf(''isAdmin'') in 5 let guards = pgm.findPCNodes(isPassRet, TRUE) ∩ 6 pgm.findPCNodes(isAdRet, TRUE) in 7 pgm.removeControlDeps(guards).between(sec, out) is empty  In the example above, access control checks protect information flow from a source to a sink. A simpler pattern is when access control checks guard execution of a sensitive operation. The following policy function asserts that execution of sensitiveOps (representing sensitive operations, such as calls to a dangerous procedure) occurs only when access control checks represented by checks succeed: let accessControlled(G, checks, sensitiveOps) = G.removeControlDeps(checks) ∩ sensitiveOps is empty</p><formula xml:id="formula_2">Query Q ::= F Q | E Policy P ::= F P | E is empty | p(A0, . . . , An) Function F ::= let f (x0, . . . , xn) = E ; Definition | let p(x0, . . . , xn) = E is empty; Expression E ::= pgm | E .PE | E1 ∪ E2 | E1 ∩ E2 | let x = E1 in E2 | x | f (A0, . . . , An) Argument A ::= E | EdgeType | NodeType | JavaExpression | ProcedureName Primitive PE ::= forwardSlice(E ) | backwardSlice(E ) Expression | shortestPath(E1, E2) | removeNodes(E ) | removeEdges(E ) | selectEdges(EdgeType) | selectNodes(NodeType) | forExpression(JavaExpression) | forProcedure(ProcedureName) | findPCNodes(E , EdgeType) | removeControlDeps(E ) EdgeType ::= CD | EXP | TRUE | FALSE | . . . NodeType ::= PC | ENTRYPC | FORMAL | . . .</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.">Querying PDGs with PidginQL</head><p>We have developed PIDGINQL, a domain-specific language that allows a developer to explore information flows in a program, and to specify security policies that restrict information flows. PIDGINQL is a graph query language, specialized to express readable and intuitive queries relevant to information security. The grammar for PIDGINQL is shown in Figure <ref type="figure">3</ref>. The grammar includes let statements, functions, graph composition operations, and primitives that are useful for expressing information security conditions.</p><p>Queries and expressions A query Q is a sequence of function definitions followed by a single expression. Expressions evaluate to graphs. There is a single constant expression, pgm (short for program), which always evaluates to the original program dependence graph for the program under consideration. A primitive expression PE is a function on a graph: E0.PE evaluates expression E0 to a graph G0 and then the primitive expression returns a subgraph of G0, computed according to the semantics of the specified operation (which we describe in more detail below and throughout the paper). Expression E 1 ∪E 2 evaluates E1 and E2 to graphs G1 and G2 respectively and returns the union of G1 and G2. Similarly, E 1 ∩E 2 evaluates both E1 and E2 and returns the intersection of the results. Expressions also include let bindings, variable uses, and invocations of user-defined functions.</p><p>Policies A policy P is a sequence of function definitions followed either by an assertion that expression E evaluates to an empty graph (E is empty) or an invocation of a user-defined policy function (which will assert that some expression evaluates to an empty graph). As discussed in Sections 2 and 3, if a query, Q, considers all information flows from sources to sinks, and removes only permitted flows, and Q results in an empty graph when evaluated on a program's PDG, the program contains only permitted information flows. Evaluating a policy results in an error if the assertion fails, i.e., if the query does not evaluate to an empty graph.</p><p>Queries are typically used when interactively exploring information flows, since non-empty query results can be examined and further explored to understand the information flows present in a program and discover security violations. Policies are useful for enforcement and regression testing (i.e., determining whether a modified program still satisfies a security guarantee).</p><p>Primitive expressions PIDGINQL contains several primitive operations for exploring information flows in programs and specifying restrictions on permitted information flows. These are described throughout the paper; due to space constraints we only briefly describe some here.</p><p>Expression forwardSlice is useful for selecting everything influenced by sensitive sources and backwardSlice for selecting everything that influences critical sinks. Both forwardSlice and backwardSlice may take another argument (not shown in the grammar) that controls the depth of the slice, for example to select immediate successors of a node.</p><p>For example, expression E 0 .forwardSlice(E 1 ) evaluates the subexpressions to graphs G0 and G1 and computes the subgraph of G0 that is reachable from any node in G1. We improve the precision of slicing by including only nodes of G0 that are reachable from a node in G1 by a feasible path (i.e., a path where method calls and returns are appropriately matched). The call graph we use to construct the PDG is necessarily a finite approximation of the actual control flow of the program. Removing infeasible paths from slices, an example of CFL-reachability <ref type="bibr" target="#b43">[44]</ref>, greatly improves the precision of queries and policies, as it helps mitigate the imprecision that arises from this finite approximation. <ref type="foot" target="#foot_7">4</ref>Expression E 0 .shortestPath(E 1 ,E 2 ) is useful during exploration to find a simple (feasible) path remaining after executing a query. This helps identify vulnerabilities or missing security conditions.</p><p>Expression E 0 .findPCNodes(E 1 , EdgeType) is used to find program counter nodes in E0 that correspond to control-flow decisions based on expressions in E1. Edge type EdgeType must be either TRUE or FALSE. If E0 and E1 evaluate to graphs G0 and G1 respectively, E 0 .findPCNodes(E 1 , TRUE) evaluates to the program counter nodes in G0 that are reachable only by a TRUE edge from some expression node in G1. That is, the program point corresponding to a program counter node in E 0 .findPCNodes(E 1 , TRUE) will be reached only if some expression in G1 evaluates to true. Expression E 0 .removeControlDeps(E 1 ) can be used in combination with findPCNodes, for removing nodes that are control dependent on a boolean expression. In Section 3, we use removeControlDeps to define access control policies.</p><p>Any primitive expression that takes a ProcedureName or JavaExpression as an argument will raise an error if it evaluates to an empty graph. This ensures that API changes, such as changing a method name, will trigger an error until a corresponding change is made to the PIDGINQL policy.</p><p>User-defined functions PIDGINQL functions are defined with let f (x 0 , . . . , xn) = E and let p(x 0 , . . . , xn) = E is empty. Function definitions are either graph functions (which will evaluate to a graph) or policy functions (which assert that some expression evaluates to an empty graph). <ref type="foot" target="#foot_8">5</ref> Functions are invoked with syntax f (A 0 , . . . , An). We also support A 0 .f (A 1 , . . . , An) as alternative syntax to allow user-defined functions to be easily composed with other operations.</p><p>Examples of user-defined functions in Sections 2 and 3 are between, formalsOf, and returnsOf. For example, function entriesOf, which finds entry program-counter nodes in G for procedures matching ProcedureName, is defined as:</p><formula xml:id="formula_3">let entries(G, ProcedureName) = G.forProcedure(ProcedureName).selectNodes(ENTRYPC)</formula><p>User-defined functions are a powerful tool for building complex queries and policies. We have identified useful (non-primitive) operations and defined them as functions. In our query evaluation tool, these definitions are included by default, providing a rich library of useful functions, including between, formalsOf, returnsOf, entriesOf, declassifies, noExplicitFlows, and flowAccessControlled.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.">Implementation</head><p>PIDGIN has two distinct components. The first component analyzes Java bytecode, including JDK (up to 1.6) and library code, and produces PDGs. The second component evaluates queries against a PDG, and can be used either interactively or in "batch mode." Interactive mode displays results of queries in a variety of formats and is useful to explore information flows in a program, for example, to explore security guarantees in legacy programs or to find information flows that violate a given policy. The ability to interactively query a program to discover and describe information flows is a novel contribution of this work. Batch mode simply evaluates PIDGINQL queries and policies and is useful for checking that a program enforces a previously specified policy (e.g., as part of a nightly build process). PDG construction Our implementation, which uses the WALA framework, <ref type="foot" target="#foot_9">6</ref> is approximately 22,700 lines of code. Of this, 7,500 lines implement a custom multi-threaded pointer analysis engine. A scalable pointer analysis is key to the scalability of PIDGIN; the multi-threaded engine significantly outperforms WALA's pointer analysis. The remaining code implements the PDG construction, including various dataflow analyses to improve the precision of the PDG. For example, we determine the precise types of exceptions that can be thrown, improving control-flow analysis, and therefore enabling more precise enforcement of security policies.</p><p>We construct a PDG for all code reachable from a specified main method via an interprocedural dataflow analysis. We use an object-sensitive pointer analysis (a 2-type-sensitive analysis with a 1-type-sensitive heap <ref type="bibr" target="#b49">[50]</ref>). We use additional precision for Java  standard library container classes (3-type-sensitive with a 2-typesensitive heap) and string builders (1-full-object-sensitive <ref type="bibr" target="#b49">[50]</ref>) to reduce false dependencies in these commonly used classes. The PDG construction analysis is context sensitive, object sensitive, and field sensitive. It is flow insensitive for heap locations, but achieves a form of flow sensitivity for local variables due to WALA's static single assignment representation <ref type="bibr" target="#b12">[13]</ref>.</p><p>We handle all Java language features except reflection. The PDG captures all control and data dependencies, but not dependencies due to concurrent races. Because our analysis is flowinsensitive for heap locations, all reads of a given heap location depend on all writes to that location, which soundly approximates concurrent access to shared data.</p><p>Like other practical Java pointer analyses (e.g., WALA's pointer analysis and Doop <ref type="bibr" target="#b7">[8]</ref>), in order to scale we use a single abstract object to represent all java.lang.Strings. For increased precision in the PDG, we (soundly) treat methods on String objects and objects of immutable primitive wrapper classes (java.lang.Integer, etc.) as primitive operations by replacing method calls with edges describing their effects. This is key to PIDGIN's scalability and precision. Different Strings contain different information, and must be distinguished to enforce realistic security policies. Treating Strings like primitive values in the PDG provides sufficient precision while permitting a scalable pointer analysis. In addition, we provide analysis result signatures for some native methods. For native methods without signatures, we assume that the return values of the methods depend only on the arguments and the receiver, and that the methods have no heap side-effects. These assumptions are potential sources of unsoundness in our analysis.</p><p>PidginQL Query Engine We implemented a custom query engine for PIDGINQL that evaluates queries against PDGs. Although PIDGINQL could be implemented using an existing graph query language and engine (such as Cypher 7 or Gremlin <ref type="bibr" target="#b24">[25]</ref>), we used a custom engine for flexibility and fast prototyping.</p><p>The query evaluator is 8,700 lines of Java code. It implements call-by-need semantics and caches subquery results. Call-by-need reduces the graph expressions that must be evaluated. Caching improves performance, particularly when used interactively, since subqueries are often reused. When exploring information flows with PIDGIN, a user typically submits a sequence of similar queries.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.">Case Studies</head><p>In this section we present the results of applying PIDGIN. For three legacy applications there was no predefined specification and we used PIDGIN to explore the information flows and discover precise security policies that these applications satisfy. These were a webbased Course Management System (CMS); and two open-source applications, Free Chat-Server (FreeCS) and Universal Password Manager (UPM). For a fourth legacy application, the Apache Tomcat web server, we developed policies based on reported vulnerabilities and confirmed that the policies hold after patching, but fail on  the unpatched version. We used our system to support simultaneous application and policy development for a small tax application we wrote ourselves, PTax. The diversity and specificity of these policies demonstrate the flexibility and expressivity of PIDGINQL.</p><p>In addition we apply PIDGIN to the SecuriBench Micro benchmark <ref type="bibr" target="#b35">[36]</ref>, and in Appendices A and B we discuss using PIDGIN both to explore security guarantees of a legacy application and to specify and enforce policies during development of an application.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.1">Analysis Performance</head><p>The first column of Figure <ref type="figure" target="#fig_2">4</ref> presents the lines of code analyzed, i.e., lines reachable from the specified main method, including JDK 1.6 and library code. For each Tomcat vulnerability, we wrote a test harness that exercises the component(s) containing the vulnerability, and ran PIDGIN on the harness. PIDGIN thus analyzes all code reachable from the test harness, which does not include all Tomcat components. Figure <ref type="figure" target="#fig_2">4</ref> shows results for only the largest harness.</p><p>Figure <ref type="figure" target="#fig_2">4</ref> also presents the performance of the pointer and PDG construction analyses, giving the mean and standard deviation (SD) of ten runs. Analyses were performed on a 16 vCPU Amazon EC2 instance using Intel Xeon E5-2666 processors with 30GB of RAM.</p><p>Figure <ref type="figure" target="#fig_3">5</ref> summarizes policy evaluation times for all policies discussed in this section, based on ten evaluations. Policy times are reported for a cold cache (i.e., with no previously cached results for subqueries). Each policy evaluates in under 14 seconds. The last column in Figure <ref type="figure" target="#fig_3">5</ref> gives the number of lines for each policy.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.2">Course Management System (CMS)</head><p>CMS <ref type="bibr" target="#b6">[7]</ref> is a J2EE web application for course management that has been used at Cornell University since 2005. We used a version of CMS that replaces the relational database backend with an inmemory object database. This version has previously been used to test performance in a distributed computing system <ref type="bibr" target="#b32">[33]</ref>. CMS uses the model/view/controller design pattern. We examined the security of the model and controller logic; views simply display the results.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Policy B1. Only CMS administrators can send a message to all CMS users.</head><p>This is a typical access control policy, ensuring that the function used to send messages to all users, is called only when the current user is an administrator. let addNotice = pgm.entriesOf("addNotice") in let isAdmin = pgm.returnsOf("isCMSAdmin") in let isAdminTrue = pgm.findPCNodes(isAdmin,TRUE) in pgm.accessControlled(isAdminTrue, addNotice)</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Policy B2. Only users with correct privileges can add students to a course.</head><p>This five line policy is similar to Policy B1.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.3">Free Chat-Server</head><p>Free Chat-Server is an open-source Java chat server that has been downloaded nearly 100,000 times. <ref type="foot" target="#foot_10">8</ref> Once the chat server has started, users can send messages, maintain friend lists, create, join and manage group chat sessions, etc. Administrators can ban, kick, and punish misbehaving users. Policy C1. Only superusers can send broadcast messages.</p><p>We used PIDGIN to confirm that the ability to send messages to all users is available only to users with the right ROLE_GOD. This can be described with an access control policy similar to others previously presented. However, while exploring the information flows present in this program, we realized that our initial definition of what constituted a "broadcast message" was imprecise. PIDGIN enabled us to quickly find this apparent violation of the policy and refine our security policy appropriately. Policy C2. Punished users may perform limited actions.</p><p>Misbehaving users can be disciplined by setting a punished flag in the object representing the user. In the PDG for Free Chat-Server, there are 357 sites where actions can be performed, all of which are invocations of the same method. We developed a PIDGINQL policy that precisely describes which actions a punished user may perform by using PIDGIN to interactively explore information flows, focusing on calls to the "perform action" method that were not access controlled by the punished flag. The final policy is 31 lines of PIDGINQL, the largest we have developed.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.4">Universal Password Manager (UPM)</head><p>UPM is an open-source password manager. Users store encrypted account and password information in the application's database and decrypt them by entering a single master password. It has been downloaded over 90,000 times. <ref type="foot" target="#foot_11">9</ref>Policy D1. The user's master password entry does not explicitly flow to the GUI, console, or network except through trusted cryptographic operations.</p><p>When we consider only the data dependencies in the program, the user's master password entry flows to public outputs only via the encryption and decryption operations in the trusted Bouncy Castle cryptography library. Policy D2. The user's master password entry does not influence the GUI, console, or network inappropriately.</p><p>When we consider control dependencies, we find that the user's master password entry may influence public outputs, but only in appropriate ways (through trusted declassifiers). For example, an incorrect or invalid password triggers an error dialog box, and our policy accounts for this flow.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.5">Apache Tomcat</head><p>Apache Tomcat <ref type="foot" target="#foot_12">10</ref> is a popular open source web server. Tomcat provides application developers with Java Servlet and Java Server Pages APIs, an HTTP server, and tools and management interfaces for server administrators. For several reported Tomcat vulnerabilities from the CVE database, <ref type="foot" target="#foot_13">11</ref> we developed PIDGINQL policies and confirmed that the policies fail to hold on vulnerable versions of Tomcat, and successfully hold on patched versions.</p><p>Note that the use of PIDGIN on a test harness provides stronger guarantees than a simple test case. Most importantly, PIDGIN can test information-flow properties (e.g., noninterference) which are not testable by a single test case. In addition, a single PIDGINQL policy on a test harness provides guarantees on many possible executions. For the Tomcat test harnesses, we effectively test all possible parameters of server requests, because PIDGINQL policies and the PDG construction do not examine specific string values. Policy E1. CVE-2010-1157: The BASIC and DIGEST authentication HTTP headers do not leak the local host name or IP address of the machine running Tomcat.</p><p>The PIDGINQL policy asserts that there are no paths from the sources of the host name and IP address to the authentication headers. This is a standard noninterference policy and ensures the completeness of the fix. Policy E2. CVE-2011-0013: Data from web applications must be properly sanitized before being displayed in the HTML Manager.</p><p>It should not be possible for client web applications to run arbitrary scripts in the HTML Manager, a component for use by Tomcat administrators. This vulnerability arose because some data from client web applications was not properly sanitized. The PIDGINQL policy identifies the sanitization functions and asserts that all data from client applications that is displayed by the HTML manager passes through a sanitization function. Note that the policy does not ensure the proper implementation of the sanitization functions, but identifies them as trusted code that needs to be inspected.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Policy E3. CVE-2011-2204: A user's password should not flow into an exception which gets written to the log file.</head><p>The PIDGINQL policy is a noninterference policy asserting that the password does not influence the arguments to any exception method. This includes the creation of exceptions that leaked the password prior to the fix for CVE-2011-2204, but also ensures that there were no similar leaks elsewhere in the code. Policy E4. CVE-2014-0033: Session IDs provided in the URL should be ignored when URL rewriting is disabled.</p><p>The session ID from the request should not be used if URL rewriting is explicitly disabled. The PIDGINQL policy is a flow access controlled policy asserting that, if URL rewriting is disabled, then the session ID in the URL does not influence the session to which a request is associated.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.6">PTax</head><p>PTax is a toy tax computation application. PTax supports multiple users who login with a username and password and input their tax information. This sensitive information is stored in a file to be accessed by the user at a later time, provided the user supplies the correct password. Before development, we defined a number of PIDGINQL policies we expected to hold. As development progressed, the policies were iteratively refined to reflect implementation choices (e.g., names of methods, signature of the authentication module), although the intent of the policies remained the same. Policy F1. Public outputs do not depend on a user's password, unless it has been cryptographically hashed.</p><p>let passwords = pgm.returnsOf(''getPassword'') in let outputs = pgm.formalsOf(''writeToStorage'') ∪ pgm.formalsOf(''print'') in let hashFormals = pgm.formalsOf(''computeHash'') in pgm.declassifies(hashFormals, passwords, outputs) This is a trusted-declassification policy. The declassifies function ensures that the only information flow from the user's password to public outputs are through the argument to the hash function. Policy F2. Tax information is encrypted before being written to disk and decrypted only when the password is entered correctly.</p><p>Policy F2 is a combined declassification policy and access control policy, whose exact statement depends on the specification of the userLogin method.  To compare with other Java analysis tools, we ran PIDGIN on the SecuriBench Micro <ref type="bibr" target="#b35">[36]</ref> 1.08 suite of 123 small test cases. We develop PIDGIN policies for each test and detect 159 out of a total of 163 vulnerabilities. We do not detect vulnerabilities due to reflection. We also miss an incorrectly written sanitization function, though our policy marks it as a trusted declassifier, and thus indicates it should be inspected or otherwise verified.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.7">Micro-benchmark Results</head><p>For many tests the policy is a simply noninterference, requiring that sensitive values from an HTTP request do not affect public output. For some tests there is an allowed implicit flow, and we developed appropriate policies. Some tests require domain-specific policies (e.g., the Sanitizers tests required application-specific declassification policies).</p><p>False positives were caused by known limitations of our tool, including imprecise reasoning about individual array elements, dead code elimination that required arithmetic reasoning (Pred), and flow-insensitive tracking of heap locations (Strong Update).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7.">Related Work</head><p>PDGs for security In a series of papers, Snelting and Hammer (and collaborators) argue for the use of PDGs for information-flow control, due to the precision and scalability of PDGs. They have developed JOANA <ref type="bibr" target="#b20">[21]</ref>, an object sensitive and context sensitive tool for checking noninterference in Java bytecode <ref type="bibr" target="#b21">[22]</ref>, shown their techniques to be sound <ref type="bibr" target="#b58">[59]</ref>, and considered information flow in concurrent programs <ref type="bibr" target="#b16">[17]</ref>. They also use path conditions to improve precision by ruling out impossible paths <ref type="bibr" target="#b53">[54]</ref>. Hammer et al. <ref type="bibr" target="#b22">[23]</ref> consider enforcement of a form of where declassification <ref type="bibr" target="#b47">[48]</ref>.</p><p>The key differences between our work and previous work using PDGs for information-flow control is that (1) our query language allows for expressive, precise, application-specific policies that are separate from code, whereas JOANA requires program annotations and supports a limited class of policies; (2) we seek to use the PDG to enable exploration of security guarantees of programs in addition to enforcement of explicitly specified security guarantees; and (3) PIDGIN scales to larger programs. The largest reported use of JOANA is on a program with about 63,000 lines of code (excluding the JDK 1.4 library, which is approximately 100k lines of code total) for a scalability test where no security policy is specified. For this example JOANA is only able to generate a context-insensitive PDG and this takes about a day <ref type="bibr" target="#b19">[20,</ref><ref type="bibr" target="#b51">52]</ref>.</p><p>Program dependence graphs were introduced by Ferrante et al. <ref type="bibr" target="#b15">[16]</ref>, along with an algorithm to produce them. PDGs were presented as an ideal data structure for certain intra-procedural optimizations. Program slicing for an interprocedural extension to PDGs is introduced by Horwitz et al. <ref type="bibr" target="#b25">[26]</ref> and made more precise by Reps <ref type="bibr" target="#b43">[44]</ref> using CFL reachability. Program slicing is useful for describing security guarantees and is built into PIDGINQL as primitive expressions forwardSlice and backwardSlice. Reps and Rosay <ref type="bibr" target="#b44">[45]</ref> define program chopping, of which the PIDGINQL function between, defined in Section 2, is an example. Abadi et al. <ref type="bibr" target="#b0">[1]</ref> develop a core calculus of dependency. Although they do not directly consider program dependence graphs, they show that program slicing and information flow type systems can be translated to this calculus. Cartwright and Felleisen <ref type="bibr" target="#b8">[9]</ref> give a denotational semantics to PDGs derived from the semantics of the original program. Bergeretti and Carré <ref type="bibr" target="#b5">[6]</ref> use structures similar to PDGs to automatically find bugs in while programs and increase program understanding.</p><p>Yamaguchi et al. <ref type="bibr" target="#b59">[60]</ref> use intraprocedural PDGs together with abstract syntax trees to detect vulnerabilities in C code. Vulnerabilities (e.g., buffer overflows) are identified using graph traversals, which are similar to some of our graph queries. Unlike PIDGIN, the vulnerabilities their tool found were each contained within a single function, and their tool does not support whole program security policies. Furthermore, they consider only properties of a single program execution rather than application-specific information-flow properties such as those described in Sections 3 and 6. As common with bug-finding tools, their tool does not attempt to guarantee the absence of vulnerabilities even if none are found.</p><p>Kashyap and Hardekopf <ref type="bibr" target="#b27">[28]</ref> use PDGs to infer security signatures describing how information flows within small (under 5k lines) JavaScript browser add-ons. These signatures can then by used by an auditor to decide whether an add-on should be accepted. PIDGIN is similarly focused on increasing program understanding. Unlike our work, where policies can be application specific, they use a predefined set of sources and sinks. In addition to distinguishing control and data dependencies, their PDG edges contain annotations to indicate which edges may be more likely to carry relevant information. These additional annotations could also benefit PIDGIN, for example to help prioritize potential policy violations to present to the user.</p><p>Legacy applications and policy inference PIDGIN supports discovering information security guarantees for legacy applications. Rocha et al. <ref type="bibr" target="#b45">[46]</ref> present a framework that allows declassification policies to be specified for legacy applications. Policies are separate from code and enforcement of policies is checked using expression graphs, which, like PDGs, capture data and control dependencies. Policies are specified as graphs that describe which expression graphs can be declassified. Unlike the framework of Rocha et al., PIDGIN supports a rich class of policies and allows developers to explore the information flows in an application, and thus provides support for deciding what policy is appropriate for an application. By contrast, Rocha et al. only discuss declassification and do not consider how developers produce policies. Moreover, we have implemented our approach for Java bytecode; to the best of our knowledge, Rocha et al. do not implement their framework, nor consider how to extend to a full-fledged programming language.</p><p>Other work seeks to infer security policies for existing programs. Vaughan and Chong <ref type="bibr" target="#b56">[57]</ref> use a data-flow analysis to infer expressive information security policies that describe what sensitive information may be revealed by a program. King et al. <ref type="bibr" target="#b28">[29]</ref>, Pottier and Conchon <ref type="bibr" target="#b42">[43]</ref>, Smith and Thober <ref type="bibr" target="#b50">[51]</ref>, and the Jif compiler <ref type="bibr" target="#b39">[40,</ref><ref type="bibr" target="#b40">41]</ref> all perform various forms of type inference for security-typed languages. Mastroeni and Banerjee <ref type="bibr" target="#b38">[39]</ref> use refinement to derive a program's semantic declassification policy. We do not currently support automatic inference of security policies from a PDG. We instead provide the developer with tools and abstractions to help them explore the information flows in a program.</p><p>Several analyses infer explicit information flows (e.g., <ref type="bibr" target="#b33">[34,</ref><ref type="bibr" target="#b34">35,</ref><ref type="bibr" target="#b36">37]</ref>). While efficient and practical, these analyses do not track implicit flows and may be inadequate in settings where strong information security is required. As described in Section 3, PIDGIN also supports exploration of explicit information flows, and policies for explicit information flows.</p><p>Enforcement of expressive policies Many tools and techniques seek to enforce expressive and strong information security policies. Security-type systems (e.g., <ref type="bibr" target="#b40">[41,</ref><ref type="bibr" target="#b48">49,</ref><ref type="bibr" target="#b57">58]</ref>) are the main technique used to enforce such policies. The survey by Sabelfeld and Myers <ref type="bibr" target="#b46">[47]</ref> provides an overview of these security policies and enforcement techniques. More recently, Banerjee et al. <ref type="bibr" target="#b4">[5]</ref> combine security-types with an expressive logic for describing a program's declassification policy, and Nanevski et al. <ref type="bibr" target="#b41">[42]</ref> use an expressive type-theoretic verification framework to specify and enforce rich information-flow properties. The security guarantees we consider in Section 3.2 are related to the security policies considered in these previous works. The absence of paths from sources to sinks corresponds to noninterference. Requiring all paths to go through certain nodes (such as the formal argument of a sanitization function) is a form of trusted declassification (e.g. <ref type="bibr" target="#b23">[24,</ref><ref type="bibr" target="#b37">38]</ref>). Reasoning about the conditions under which potentially dangerous information flows occur is similar to reasoning about when declassification is permitted <ref type="bibr" target="#b11">[12,</ref><ref type="bibr" target="#b47">48]</ref>. Restricting attention to only explicit information flows is equivalent to a static taint analysis (e.g., <ref type="bibr" target="#b1">[2,</ref><ref type="bibr" target="#b18">19,</ref><ref type="bibr" target="#b33">34,</ref><ref type="bibr" target="#b34">35,</ref><ref type="bibr" target="#b36">37,</ref><ref type="bibr" target="#b55">56]</ref>).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="8.">Conclusion</head><p>Program dependence graphs precisely capture the informationflows within programs. We present the novel insight that because individual paths within a PDG correspond to particular information-flows within a program, queries on PDGs offer a unified approach for the exploration, specification, and enforcement of security guarantees.</p><p>Using this insight, we have designed and implemented PIDGIN. PIDGIN combines program dependence graphs (PDGs) with an expressive query language. By using the query language to describe paths in the PDG, developers can understand how information flows within a program and express precise, application-specific security guarantees including noninterference, trusted declassification, and access-controlled information flows.</p><p>PIDGIN is a practical tool. We have used PIDGIN to explore the information security of legacy applications, to specify and enforce information security during development, and to extract policies from known vulnerabilities. PIDGIN scales to Java applications with over 300k lines. Our case studies demonstrate that PIDGIN can express (and verify enforcement of) interesting applicationspecific security policies, some of which are difficult or impossible to express using existing tools and techniques.  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Using PIDGIN for legacy code</head><p>The interactivity of PIDGIN was essential to understanding the security guarantees provided by legacy case-study programs and writing queries that describe these guarantees. We illustrate the interactive query and policy generation process by describing how we developed Policy D1 for Universal Password Manager (UPM).</p><p>Find sources and sinks UPM protects a user's passwords by encrypting them with a single master password. We investigated confidentiality guarantees regarding the master password that is entered by the user and used to decrypt the database containing the user's password. Inspecting the application code, we found that the master password is returned from the askUserForPassword method. These return values are sources.</p><p>By regarding the return values of askUserForPassword as sensitive sources, we are trusting the implementation to correctly handle data from the input: a Java Swing widget. The method is 11 lines of code and uses standard Java Swing API calls. We also trust the Swing library. This is a common way to use PIDGIN: to reduce trust in an entire application to trust in well-designed and wellmaintained libraries and a small amount of application code.</p><p>We identified three different places that data may leave the application: 1) the GUI (via the Swing API); 2) the console; and 3) the network (via a custom java.net.HTTPTransport class). Formal arguments to methods in these three locations are sinks.</p><p>Try simple queries Unsurprisingly, most of the interesting work is done by the application after asking for a password and before presenting or sending results and there are paths between the sources and sinks. We first narrowed our focus to data dependencies, and tried a simple policy, pgm.noExplicitFlows(sources, sinks).</p><p>Investigate counterexamples This policy failed, revealing that there are some paths via only data dependencies. We wanted a strong policy that describes how data dependencies allow information about the master password to leak from the application. To begin this process, we found a counterexample using the shortestPath query, pgm.explicit.shortestPath(sources, sinks), where the expression pgm.explicit returns the data dependencies in pgm.</p><p>The resulting path converts the password to bytes and uses those bytes in a decryption function in the Bouncy Castle cryptography library to decrypt the password database. Bouncy Castle (<ref type="url" target="https://www.bouncycastle.org/">https: //www.bouncycastle.org/</ref>) is one of the most widely used open source Java cryptography libraries and is clearly trusted by the UPM code. Therefore we can trust the password to not leak (except via cryptographic computations) once it enters the Bouncy Castle decryption and encryption functions. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Using PIDGIN for new development</head><p>Often new development begins with an incomplete and imprecise security specification that evolves as development progresses. PIDGIN policies are flexible and, because they are not embedded in the program text, can be easily modified along with the informal security specification and the code itself. They can also be used for regression testing as the code changes.</p><p>We illustrate this process by describing the use of PIDGIN throughout the development of a toy conference management system, PChair. Access control policies in conference management systems can be intricate and complex. In the end there were fourteen separate PIDGIN security policies for PChair. Most of these policies restrict access to sensitive data (author names, reviews, etc.) and ensure proper permissions for sensitive operations (e.g., accepting a paper).</p><p>Define an informal policy. Before beginning development we wrote down the policies we desired informally. For example, one policy was initially: Only authors of a paper, reviewers of a paper, and PC members can see a paper's reviews.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Implement initial version of the program and PIDGIN policy.</head><p>PChair uses role-based access control. We used simple functions to check whether the current user has a particular role, and then referred to these functions in our policies. Thus, our policies rely on the correctness of these functions, which were deliberately designed to be easy to understand. This implementation simplified PIDGINQL policy specification; most policies used flowAccessControlled to check whether the correct roles were held on every path where sensitive information was accessed.</p><p>Update policies when the specification is modified. As the functionality of the application evolved, the security policies also evolved. For example, we added a system administrator role. System administrators have superuser-like abilities, and we modified our informal specifications and PIDGIN policies accordingly. Because PIDGIN policies are not spread out throughout the code base (as, e.g., security-type annotations) updating the policies was straightforward, and accomplished easily.</p><p>Regression testing security policies. We automated regression testing, checking policies before accepting a commit to our source repository. Timely notification of the security policy failure allowed us to easily identify and fix several violations. An interesting failure happened for Policy 1, shown below. Policy 1. A paper's acceptance status can be released only to an author of the paper after the notification deadline, or to PC members without conflicts.</p><p>The PIDGIN policy ensures that all flows from return values of isAccepted to the client are protected by the correct access check. During development, we discovered that this policy was not enforced. After the notification deadline, only accepted papers can be updated. If a user tries to update a rejected paper or update a paper before the deadline, an error message is displayed. However, which error message was displayed revealed information about whether or not the paper had been accepted. This implicit information flow leaked information about the paper's acceptance. PIDGIN provided enough information to identify and fix this subtle violation.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: Guessing Game program and simplified PDG</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure</head><label></label><figDesc>Figure 3: PIDGINQL grammar</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 4 :</head><label>4</label><figDesc>Figure 4: Program sizes and analysis results</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 5 :</head><label>5</label><figDesc>Figure 5: Policy evaluation times</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 6 :</head><label>6</label><figDesc>Figure 6: SecuriBench Micro results</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Figure 7 :</head><label>7</label><figDesc>Figure 7: PIDGINQL policy expressing Policy D1</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head></head><label></label><figDesc>Create a PIDGINQL policy The final policy is shown in Figure7. Whereas the informal description of Policy D1 is vague, the PIDGINQL policy is strong, precise, checkable, and clarifies when flows from the master password to public output are appropriate.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head></head><label></label><figDesc>... // output = errors or responses sent to the client ... // define deadline, role, and conflict checks let isAccepted = pgm.returnsOf(''isAccepted'') in let check = (pgm.findPCNodes(isAuthorOf, TRUE) ∩ pgm.findPCNodes(notifyDeadlinePast, TRUE)) ∪ (pgm.findPCNodes(isPC, TRUE) ∩ pgm.findPCNodes(hasConflict, FALSE)) in pgm.flowAccessControlled(check, isAccepted, output)</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0"><head></head><label></label><figDesc></figDesc><graphic coords="1,-13.00,-28.11,370.00,180.00" type="bitmap" /></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>PDGs for a whole program are also called system-dependence graphs<ref type="bibr" target="#b25">[26]</ref>.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_1"><p>let secret = pgm.returnsOf(''getRandom'') in</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_2"><p>let outputs = pgm.formalsOf(''output'') in</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="3" xml:id="foot_3"><p>let check = pgm.forExpression(''secret == guess'') in</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="4" xml:id="foot_4"><p>pgm.removeNodes(check).between(secret, outputs)</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="5" xml:id="foot_5"><p>is empty</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="3" xml:id="foot_6"><p>For presentation reasons we refer to the specific Java expression ''secret == guess''. In a more realistic example, a policy would likely refer instead to a function or class, which is less brittle with respect to code changes. However, the ability to refer to specific expressions allows developers to precisely specify queries and policies if needed.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="4" xml:id="foot_7"><p>Faster, but less precise primitive expressions (not shown in the grammar) are also provided that compute slices that may include infeasible paths.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="5" xml:id="foot_8"><p>For presentation purposes, we syntactically distinguish graph and policy functions; in the implementation using a policy function where a graph function is expected will result in an evaluation error not a parsing error.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="6" xml:id="foot_9"><p>http://wala.sf.net/</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="8" xml:id="foot_10"><p>http://sourceforge.net/projects/freecs/</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="9" xml:id="foot_11"><p>http://upm.sourceforge.net/</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="10" xml:id="foot_12"><p>http://tomcat.apache.org/</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="11" xml:id="foot_13"><p>http://cve.mitre.org/</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>Acknowledgments</head><p>We thank <rs type="person">Eddie Kohler</rs>, <rs type="person">Andrew Myers</rs>, the <rs type="institution">Programming Languages Group at Harvard</rs>, and the reviewers for their helpful comments. This work is supported by the <rs type="funder">National Science Foundation</rs> under Grant No. <rs type="grantNumber">1054172</rs> and Grant No. <rs type="grantNumber">1421770</rs> and by the <rs type="funder">Air Force Research Laboratory</rs>. The <rs type="institution">Lincoln Laboratory</rs> portion of this work was sponsored by the <rs type="funder">Department of the Air Force under Air Force</rs> Contract <rs type="grantNumber">FA8721-05-C-0002</rs>. Opinions, interpretations, conclusions and recommendations are those of the authors and are not necessarily endorsed by the <rs type="institution">United States Government</rs>.</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funding" xml:id="_RJegSVe">
+					<idno type="grant-number">1054172</idno>
+				</org>
+				<org type="funding" xml:id="_fMghjqC">
+					<idno type="grant-number">1421770</idno>
+				</org>
+				<org type="funding" xml:id="_DVPrC5u">
+					<idno type="grant-number">FA8721-05-C-0002</idno>
+				</org>
+			</listOrg>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">A core calculus of dependency</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Abadi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Banerjee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Heintze</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">G</forename><surname>Riecke</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. 26th ACM SIGPLAN-SIGACT Symposium on Principles of Programming Languages</title>
+		<meeting>26th ACM SIGPLAN-SIGACT Symposium on Principles of Programming Languages</meeting>
+		<imprint>
+			<date type="published" when="1999">1999</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">FlowDroid: Precise context, flow, field, object-sensitive and lifecycle-aware taint analysis for Android apps</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Arzt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Rasthofer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Fritz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Bodden</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bartel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Klein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Le Traon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Octeau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Mcdaniel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. ACM Conf. on Program Language Design and Implementation</title>
+		<meeting>ACM Conf. on Program Language Design and Implementation</meeting>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Efficient purely-dynamic information flow analysis</title>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">H</forename><surname>Austin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Flanagan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. ACM SIGPLAN Fourth Workshop on Programming Languages and Analysis for Security</title>
+		<meeting>ACM SIGPLAN Fourth Workshop on Programming Languages and Analysis for Security</meeting>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Multiple facets for dynamic information flow</title>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">H</forename><surname>Austin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Flanagan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. 39th Annual ACM SIGPLAN-SIGACT Symposium on Principles of Programming Languages</title>
+		<meeting>39th Annual ACM SIGPLAN-SIGACT Symposium on Principles of Programming Languages</meeting>
+		<imprint>
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Expressive declassification policies and modular static enforcement</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Banerjee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">A</forename><surname>Naumann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Rosenberg</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. 2008 IEEE Symposium on Security and Privacy</title>
+		<meeting>2008 IEEE Symposium on Security and Privacy</meeting>
+		<imprint>
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Information-flow and data-flow analysis of while-programs</title>
+		<author>
+			<persName><forename type="first">J.-F</forename><surname>Bergeretti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">A</forename><surname>Carré</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Trans. on Programming Languages and Systems</title>
+		<imprint>
+			<date type="published" when="1985">1985</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Supporting workflow in a course management system</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Botev</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Chao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Chao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Cheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Doyle</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Grankin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Guarino</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Guha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P.-C</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Perry</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Re</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Rifkin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Yuan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Abdullah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Carpenter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Gries</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Kozen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Myers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Schwartz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Shanmugasundaram</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. 36th SIGCSE technical symposium on Computer science education</title>
+		<meeting>36th SIGCSE technical symposium on Computer science education</meeting>
+		<imprint>
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Strictly declarative specification of sophisticated points-to analyses</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Bravenboer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Smaragdakis</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. 24th ACM SIGPLAN conference on Object oriented programming, systems, languages, and applications</title>
+		<meeting>24th ACM SIGPLAN conference on Object oriented programming, systems, languages, and applications<address><addrLine>New York, NY, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">The semantics of program dependence</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Cartwright</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Felleisen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. ACM SIGPLAN Conference on Programming Language Design and Implementation</title>
+		<meeting>ACM SIGPLAN Conference on Programming Language Design and Implementation</meeting>
+		<imprint>
+			<date type="published" when="1989">1989</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Fine-grained information flow analysis and enforcement in a java virtual machine</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Chandra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Franz</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. 23rd Annual Computer Security Applications Conference</title>
+		<meeting>23rd Annual Computer Security Applications Conference</meeting>
+		<imprint>
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Efficient character-level taint tracking for Java</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>Chin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wagner</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. 2009 ACM workshop on Secure web services</title>
+		<meeting>2009 ACM workshop on Secure web services</meeting>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Security policies for downgrading</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Chong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">C</forename><surname>Myers</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. 11th ACM conference on Computer and communications security</title>
+		<meeting>11th ACM conference on Computer and communications security</meeting>
+		<imprint>
+			<date type="published" when="2004">2004</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Efficiently computing static single assignment form and the control dependence graph</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Cytron</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ferrante</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">K</forename><surname>Rosen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">N</forename><surname>Wegman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><forename type="middle">K</forename><surname>Zadeck</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Trans. on Programming Languages and Systems</title>
+		<imprint>
+			<date type="published" when="1991">1991</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">A lattice model of secure information flow</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">E</forename><surname>Denning</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Communications of the ACM</title>
+		<imprint>
+			<date type="published" when="1976">1976</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">TaintDroid: an information-flow tracking system for realtime privacy monitoring on smartphones</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Enck</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Gilbert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B.-G</forename><surname>Chun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">P</forename><surname>Cox</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Jung</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Mcdaniel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">N</forename><surname>Sheth</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. Usenix Conference on Operating Systems Design and Implementation</title>
+		<meeting>Usenix Conference on Operating Systems Design and Implementation</meeting>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">The program dependence graph and its use in optimization</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ferrante</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">J</forename><surname>Ottenstein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">D</forename><surname>Warren</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Trans. on Programming Languages and Systems</title>
+		<imprint>
+			<date type="published" when="1987">1987</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">A new algorithm for low-deterministic security</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Giffhorn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Snelting</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">International Journal of Information Security</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Security policies and security models</title>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">A</forename><surname>Goguen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Meseguer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. IEEE Symposium on Security and Privacy</title>
+		<meeting>IEEE Symposium on Security and Privacy</meeting>
+		<imprint>
+			<date type="published" when="1982">1982</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Information flow analysis of android applications in droidsafe</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">I</forename><surname>Gordon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Perkins</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Gilham</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Rinard</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. 2015 Network and Distributed System Security Symposium</title>
+		<meeting>2015 Network and Distributed System Security Symposium</meeting>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Speeding up context-, object-and field-sensitive SDG generation</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Graf</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. of the 10th IEEE Working Conference on Source Code Analysis and Manipulation</title>
+		<meeting>of the 10th IEEE Working Conference on Source Code Analysis and Manipulation</meeting>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<monogr>
+		<title level="m" type="main">Information Flow Control for Java -A Comprehensive Approach based on Path Conditions in Dependence Graphs</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Hammer</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+			<publisher>Fak. f. Informatik</publisher>
+		</imprint>
+		<respStmt>
+			<orgName>Universität Karlsruhe (TH)</orgName>
+		</respStmt>
+	</monogr>
+	<note type="report_type">PhD thesis</note>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Flow-sensitive, context-sensitive, and object-sensitive information flow control based on program dependence graphs</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Hammer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Snelting</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">International Journal of Information Security</title>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Intransitive noninterference in dependence graphs</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Hammer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Krinke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Nodes</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2nd International Symposium on Leveraging Application of Formal Methods, Verification and Validation</title>
+		<imprint>
+			<date type="published" when="2006">2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Trusted declassification: high-level policy for a security-typed language</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Hicks</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>King</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Mcdaniel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Hicks</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. ACM SIGPLAN Workshop on Programming Languages and Analysis for Security</title>
+		<meeting>ACM SIGPLAN Workshop on Programming Languages and Analysis for Security</meeting>
+		<imprint>
+			<date type="published" when="2006">2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Performance of graph query languages: Comparison of Cypher, Gremlin and native access in Neo4j</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Holzschuher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Peinl</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. Joint EDBT/ICDT 2013 Workshops</title>
+		<meeting>Joint EDBT/ICDT 2013 Workshops</meeting>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Interprocedural slicing using dependence graphs</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Horwitz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Reps</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Binkley</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">SIGPLAN Not</title>
+		<imprint>
+			<date type="published" when="1988">1988</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">All your IFCException are belong to us</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Hritcu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Greenberg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Karel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">C</forename><surname>Pierce</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Morrisett</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. 2013 IEEE Symposium on Security and Privacy</title>
+		<meeting>2013 IEEE Symposium on Security and Privacy</meeting>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Security signature inference for javascript-based browser addons</title>
+		<author>
+			<persName><forename type="first">V</forename><surname>Kashyap</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Hardekopf</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. 2015 IEEE/ACM International Symposium on Code Generation and Optimization</title>
+		<meeting>2015 IEEE/ACM International Symposium on Code Generation and Optimization</meeting>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Implicit flows: Can&apos;t live with &apos;em, can&apos;t live without &apos;em</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>King</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Hicks</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Hicks</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Jaeger</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. International Conference on Information Systems Security</title>
+		<meeting>International Conference on Information Systems Security</meeting>
+		<imprint>
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">LLVM: A compilation framework for lifelong program analysis &amp; transformation</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Lattner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Adve</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. 2004 International Symposium on Code Generation and Optimization</title>
+		<meeting>2004 International Symposium on Code Generation and Optimization</meeting>
+		<imprint>
+			<date type="published" when="2004">2004</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Automatabased confidentiality monitoring</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Le Guernic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Banerjee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Jensen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">A</forename><surname>Schmidt</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. 11th Annual Asian Computing Science Conference</title>
+		<meeting>11th Annual Asian Computing Science Conference</meeting>
+		<imprint>
+			<date type="published" when="2006">2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Dynamic tainting for deployed Java programs</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Li</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. ACM international conference companion on Object oriented programming systems languages and applications</title>
+		<meeting>ACM international conference companion on Object oriented programming systems languages and applications</meeting>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Fabric: a platform for secure distributed computation and storage</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">D</forename><surname>George</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Vikram</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Qi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Waye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">C</forename><surname>Myers</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. ACM SIGOPS Symposium on Operating systems principles</title>
+		<meeting>ACM SIGOPS Symposium on Operating systems principles</meeting>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Static analysis for inference of explicit information flow</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Milanova</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. 8th ACM SIGPLAN-SIGSOFT Workshop on Program Analysis for Software Tools and Engineering</title>
+		<meeting>8th ACM SIGPLAN-SIGSOFT Workshop on Program Analysis for Software Tools and Engineering</meeting>
+		<imprint>
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Practical static analysis for inference of security-related program properties</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Milanova</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. IEEE 17th International Conference on Program Comprehension</title>
+		<meeting>IEEE 17th International Conference on Program Comprehension</meeting>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">B</forename><surname>Livshits</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Securibench Micro</surname></persName>
+		</author>
+		<ptr target="http://suif.stanford.edu/~livshits/work/securibench-micro/" />
+		<imprint>
+			<date type="published" when="2006">2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Merlin: Specification inference for explicit information flow problems</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Livshits</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">V</forename><surname>Nori</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">K</forename><surname>Rajamani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Banerjee</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. ACM SIGPLAN 2009 Conference on Programming Language Design and Implementation</title>
+		<meeting>ACM SIGPLAN 2009 Conference on Programming Language Design and Implementation</meeting>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Controlled Declassification based on Intransitive Noninterference</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Mantel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Sands</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. 2nd ASIAN Symposium on Programming Languages and Systems</title>
+		<meeting>2nd ASIAN Symposium on Programming Languages and Systems</meeting>
+		<imprint>
+			<date type="published" when="2004">2004</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Modelling declassification policies using abstract domain completeness</title>
+		<author>
+			<persName><forename type="first">I</forename><surname>Mastroeni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Banerjee</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Mathematical Structures in Computer Science</title>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Mostly-Static Decentralized Information Flow Control</title>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">C</forename><surname>Myers</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">MIT</title>
+		<imprint>
+			<date type="published" when="1999">1999</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">PhD thesis</note>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<monogr>
+		<title level="m" type="main">Jif: Java information flow</title>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">C</forename><surname>Myers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Zdancewic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Chong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Nystrom</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Arden</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Vikram</surname></persName>
+		</author>
+		<ptr target="http://www.cs.cornell.edu/jif" />
+		<imprint>
+			<biblScope unit="page" from="2001" to="2014" />
+		</imprint>
+	</monogr>
+	<note>Software release.</note>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Dependent type theory for verification of information flow and access control policies</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Nanevski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Banerjee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Garg</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Trans. on Programming Languages and Systems</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">Information flow inference for free</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Pottier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Conchon</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. 5th ACM SIGPLAN International Conference on Functional Programming</title>
+		<meeting>5th ACM SIGPLAN International Conference on Functional Programming</meeting>
+		<imprint>
+			<date type="published" when="2000">2000</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">Program analysis via graph reachability</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Reps</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. 1997 International Symposium on Logic Programming</title>
+		<meeting>1997 International Symposium on Logic Programming</meeting>
+		<imprint>
+			<date type="published" when="1997">1997</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">Precise interprocedural chopping</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Reps</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Rosay</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. 3rd ACM SIGSOFT symposium on Foundations of software engineering</title>
+		<meeting>3rd ACM SIGSOFT symposium on Foundations of software engineering</meeting>
+		<imprint>
+			<date type="published" when="1995">1995</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<title level="a" type="main">Towards static flow-based declassification for legacy and untrusted programs</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Rocha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Bandhakavi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Hartog</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Winsborough</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Etalle</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. 2010 IEEE Symposium on Security and Privacy</title>
+		<meeting>2010 IEEE Symposium on Security and Privacy</meeting>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<analytic>
+		<title level="a" type="main">Language-based information-flow security</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Sabelfeld</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">C</forename><surname>Myers</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Journal on Selected Areas in Communications</title>
+		<imprint>
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<analytic>
+		<title level="a" type="main">Dimensions and principles of declassification</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Sabelfeld</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Sands</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. 18th IEEE Computer Security Foundations Workshop</title>
+		<meeting>18th IEEE Computer Security Foundations Workshop</meeting>
+		<imprint>
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<monogr>
+		<title level="m" type="main">The Flow Caml System: documentation and user&apos;s manual</title>
+		<author>
+			<persName><forename type="first">V</forename><surname>Simonet</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2003">2003</date>
+		</imprint>
+		<respStmt>
+			<orgName>Institut National de Recherche en Informatique et en Automatique (INRIA)</orgName>
+		</respStmt>
+	</monogr>
+	<note type="report_type">Technical report</note>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<analytic>
+		<title level="a" type="main">Pick your contexts well: understanding object-sensitivity</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Smaragdakis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Bravenboer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Lhoták</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. 38th annual ACM SIGPLAN-SIGACT symposium on Principles of programming languages</title>
+		<meeting>38th annual ACM SIGPLAN-SIGACT symposium on Principles of programming languages</meeting>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<analytic>
+		<title level="a" type="main">Improving usability of information flow security in Java</title>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">F</forename><surname>Smith</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Thober</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. 2007 Workshop on Programming Languages and Analysis for Security</title>
+		<meeting>2007 Workshop on Programming Languages and Analysis for Security</meeting>
+		<imprint>
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b51">
+	<analytic>
+		<title level="a" type="main">Checking probabilistic noninterference using JOANA</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Snelting</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Giffhorn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Graf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Hammer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Hecker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Mohr</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wasserrab</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Information Technology</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b52">
+	<analytic>
+		<title level="a" type="main">Flexible dynamic information flow control in Haskell</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Stefan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Russo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">C</forename><surname>Mitchell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Mazières</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. 4th ACM Symposium on Haskell</title>
+		<meeting>4th ACM Symposium on Haskell</meeting>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b53">
+	<analytic>
+		<title level="a" type="main">Information flow analysis via path condition refinement</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Taghdiri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Snelting</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Sinz</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Workshop on Formal Aspects of Security and Trust</title>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b54">
+	<analytic>
+		<title level="a" type="main">TAJ: Effective taint analysis of web applications</title>
+		<author>
+			<persName><forename type="first">O</forename><surname>Tripp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Pistoia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">J</forename><surname>Fink</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Sridharan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Weisman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. ACM SIGPLAN 2009 Conference on Programming Language Design and Implementation</title>
+		<meeting>ACM SIGPLAN 2009 Conference on Programming Language Design and Implementation</meeting>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b55">
+	<analytic>
+		<title level="a" type="main">AN-DROMEDA: accurate and scalable security analysis of web applications</title>
+		<author>
+			<persName><forename type="first">O</forename><surname>Tripp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Pistoia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Cousot</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Cousot</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Guarnieri</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Fundamental Approaches to Software Engineering</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b56">
+	<analytic>
+		<title level="a" type="main">Inference of expressive declassification policies</title>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">A</forename><surname>Vaughan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Chong</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. 2011 IEEE Symposium on Security and Privacy</title>
+		<meeting>2011 IEEE Symposium on Security and Privacy</meeting>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b57">
+	<analytic>
+		<title level="a" type="main">A sound type system for secure flow analysis</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Volpano</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Smith</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Irvine</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Computer Security</title>
+		<imprint>
+			<date type="published" when="1996">1996</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b58">
+	<analytic>
+		<title level="a" type="main">On PDG-based noninterference and its modular proof</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wasserrab</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Lohner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Snelting</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. ACM SIGPLAN Fourth Workshop on Programming Languages and Analysis for Security</title>
+		<meeting>ACM SIGPLAN Fourth Workshop on Programming Languages and Analysis for Security</meeting>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b59">
+	<analytic>
+		<title level="a" type="main">Modeling and discovering vulnerabilities with code property graphs</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Yamaguchi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Golde</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Arp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Rieck</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proc. 2014 IEEE Symposium on Security and Privacy</title>
+		<meeting>2014 IEEE Symposium on Security and Privacy</meeting>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b60">
+	<monogr>
+		<title level="m" type="main">TaintEraser: Protecting sensitive data leaks using application-level taint tracking</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">Y</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Jung</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Kohno</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wetherall</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+			<publisher>ACM Operating Systems Review</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

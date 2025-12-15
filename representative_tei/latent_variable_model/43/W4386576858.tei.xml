@@ -1,0 +1,1430 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Translate First Reorder Later: Leveraging Monotonicity in Semantic Parsing</title>
+				<funder ref="#_bDSv952">
+					<orgName type="full">European Research Council</orgName>
+					<orgName type="abbreviated">ERC</orgName>
+				</funder>
+				<funder>
+					<orgName type="full">European Union ERDF</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Francesco</forename><surname>Cazzaro</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Universitat Politècnica de Catalunya</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Davide</forename><surname>Locatelli</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Universitat Politècnica de Catalunya</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Ariadna</forename><surname>Quattoni</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Universitat Politècnica de Catalunya</orgName>
+							</affiliation>
+						</author>
+						<author role="corresp">
+							<persName><forename type="first">Xavier</forename><surname>Carreras</surname></persName>
+							<email>xavier.carreras@dmetrics.com</email>
+							<affiliation key="aff0">
+								<orgName type="institution">Universitat Politècnica de Catalunya</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Translate First Reorder Later: Leveraging Monotonicity in Semantic Parsing</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-28T22:21+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Prior work in semantic parsing has shown that conventional seq2seq models fail at compositional generalization tasks. This limitation led to a resurgence of methods that model alignments between sentences and their corresponding meaning representations, either implicitly through latent variables or explicitly by taking advantage of alignment annotations. We take the second direction and propose TPOL, a two-step approach that first translates input sentences monotonically and then reorders them to obtain the correct output. This is achieved with a modular framework comprising a Translator and a Reorderer component. We test our approach on two popular semantic parsing datasets. Our experiments show that by means of the monotonic translations, TPOL can learn reliable lexico-logical patterns from aligned data, significantly improving compositional generalization both over conventional seq2seq models, as well as over other approaches that exploit gold alignments. Our code is publicly available at <ref type="url" target="https://github.com/interact-erc/TPol.git">https://github. com/interact-erc/TPol.git</ref> </p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>The goal of a semantic parser is to map natural language sentences (NLs) into meaning representations (MRs). Most current semantic parsers are based on deep sequence-to-sequence (seq2seq) approaches and presume that it is unnecessary to model token alignments between NLs and MRs because the attention mechanism can automatically learn the correspondences <ref type="bibr" target="#b8">(Dong and Lapata, 2016;</ref><ref type="bibr" target="#b13">Jia and Liang, 2016)</ref>. However, recent work has shown that such seq2seq models find compositional generalization challenging, i.e., they struggle to predict unseen structures made up of components observed at training <ref type="bibr" target="#b17">(Lake and Baroni, 2018;</ref><ref type="bibr" target="#b10">Finegan-Dollak et al., 2018)</ref>. * Equal contribution This limitation motivated the resurgence of approaches that model alignments between NL sentences and their corresponding MRs more similarly to classical grammar and translation-based parsers <ref type="bibr" target="#b12">(Herzig and Berant, 2021)</ref>. Alignments can be modeled either implicitly through latent variables <ref type="bibr" target="#b36">(Wang et al., 2021)</ref>, or explicitly by leveraging gold alignment annotations <ref type="bibr" target="#b34">(Shi et al., 2020;</ref><ref type="bibr">Liu et al., 2021a)</ref>. We take the second direction and exploit a recently released multilingual dataset for semantic parsing annotated with word alignments: GEOALIGNED <ref type="bibr" target="#b24">(Locatelli and Quattoni, 2022)</ref>, which augments the popular GEO benchmark <ref type="bibr" target="#b42">(Zelle and Mooney, 1996)</ref>.</p><p>Figure <ref type="figure" target="#fig_0">1</ref> shows some examples of the annotations provided. One key observation is that a significant percentage of the alignments are monotonic, i.e., they require no reordering of the target MR (Figure <ref type="figure" target="#fig_0">1a</ref>), as opposed to non-monotonic alignments (Figure <ref type="figure" target="#fig_0">1b</ref>). This suggests that learning reliable lexico-logical translation patterns from aligned data should be possible. If there are simple patterns, shouldn't an ideal model be able to exploit them?</p><p>With this in mind, we propose TPOL, a Twostep Parsing approach that leverages monotonic translations. TPOL introduces a modular framework with two components: a Monotonic Translator and a Reorderer. The Translator is trained from pairs of NLs and MRs, where the MRs have been permuted to be monotonically aligned. Hence, the Translator's output will be an MR whose order might not correspond to that of the gold truth. For this reason, the Reorderer is trained to restore the correct order of the original MR.</p><p>Our experiments on GEOALIGNED demonstrate that compared to a multilingual BART model <ref type="bibr" target="#b23">(Liu et al., 2020)</ref>, TPOL achieves similar performance on the random test split but significantly outperforms on the compositional split across all languages. For example, on the query split in English, mBART obtains 69.4% in exact-match accuracy and TPOL obtains 87.8%. This result also improves on the 74.6% obtained by SPANBASED <ref type="bibr" target="#b12">(Herzig and Berant, 2021)</ref>, another approach that leverages alignment annotations.</p><p>Because most semantic parsing datasets do not contain alignment information, we experiment with alignments generated automatically. On GEO, TPOL trained with automatic alignments still outperforms mBART, and in particular on the English query split it improves by almost 10 points. Furthermore, we show competitive results on the popular SCAN dataset <ref type="bibr" target="#b17">(Lake and Baroni, 2018)</ref>.</p><p>In summary, the main contributions of this paper are:</p><p>1. We propose TPOL, a modular two-step approach for semantic parsing which explicitly leverages monotonic alignments; 2. Our experiments show that TPOL improves compositional generalization without compromising overall performance;</p><p>3. We show that even without gold alignments TPOL can achieve competitive results.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Related Work</head><p>Recently, the semantic parsing community has raised the question of whether current models can generalize compositionally, along with an effort to test for it <ref type="bibr" target="#b17">(Lake and Baroni, 2018;</ref><ref type="bibr" target="#b10">Finegan-Dollak et al., 2018;</ref><ref type="bibr" target="#b16">Kim and Linzen, 2020)</ref>. The consensus is that conventional seq2seq models struggle to generalize compositionally <ref type="bibr" target="#b25">(Loula et al., 2018;</ref><ref type="bibr" target="#b15">Keysers et al., 2020)</ref>. Moreover, large pre-trained language models have been shown not to improve compositional generalization <ref type="bibr" target="#b27">(Oren et al., 2020;</ref><ref type="bibr">Qiu et al., 2022b)</ref>. This has prompted the community to realize that parsers should be designed intentionally with compositionality in mind <ref type="bibr" target="#b18">(Lake, 2019;</ref><ref type="bibr" target="#b11">Gordon et al., 2020;</ref><ref type="bibr" target="#b37">Weißenhorn et al., 2022)</ref>.</p><p>It has also been pointed out that compositional architectures are often designed for synthetic datasets and that compositionality on non-synthetic data is under-tested <ref type="bibr" target="#b33">(Shaw et al., 2021)</ref>. Data augmentation techniques have been proposed to improve compositional generalization <ref type="bibr" target="#b1">(Andreas, 2020;</ref><ref type="bibr" target="#b41">Yang et al., 2022;</ref><ref type="bibr">Qiu et al., 2022a)</ref>. Another strategy is to exploit some level of word alignments. In general, there has been a resurgent interest in alignments as it has been shown that they can be beneficial to neural models <ref type="bibr" target="#b34">(Shi et al., 2020)</ref>. It has also been conjectured that the lack of alignment information might hamper progress in semantic parsing <ref type="bibr">(Zhang et al., 2019)</ref>. As a result, the field has seen some annotation efforts in this regard <ref type="bibr" target="#b34">(Shi et al., 2020;</ref><ref type="bibr" target="#b12">Herzig and Berant, 2021;</ref><ref type="bibr" target="#b24">Locatelli and Quattoni, 2022)</ref>.</p><p>Alignments have been modeled implicitly: <ref type="bibr" target="#b36">Wang et al. (2021)</ref> treat alignments as discrete structured latent variables within a neural seq2seq model, employing a framework that first reorders the NL and then decodes the MR. Explicit use of alignment information has also been explored: Herzig and Berant (2021) use alignments and predict a span tree over the NL. <ref type="bibr" target="#b35">Sun et al. (2022)</ref> recently proposed an approach to data augmentation via sub-tree substitutions. In text-to-SQL, attention-based models that try to capture alignments have been proposed <ref type="bibr" target="#b19">(Lei et al., 2020;</ref><ref type="bibr">Liu et al., 2021b)</ref>, as well as attempts that try to leverage them directly <ref type="bibr" target="#b35">(Sun et al., 2022)</ref>.</p><p>Our two-step approach resembles statistical machine translation, which decomposes the translation task into lexical translation and reordering <ref type="bibr" target="#b6">(Chang et al., 2022)</ref>. Machine translation techniques have previously been applied to semantic parsing. The first attempt was by <ref type="bibr" target="#b39">Wong and Mooney (2006)</ref>, who argued that a parsing model can be viewed as a syntax-based translation model and used a statistical word alignment algorithm. Later a machine translation approach was used on the GEO dataset, obtaining what was at the time state-of-the-art results <ref type="bibr" target="#b2">(Andreas et al., 2013)</ref>. More recently, <ref type="bibr" target="#b0">Agarwal et al. (2020)</ref> employed machine translation to aid semantic parsing.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Preliminaries: Word Alignments</head><p>This section briefly explains word alignments, showing the difference between monotonic and non-monotonic alignments, and illustrates the notion of monotonic translations.</p><p>Assume that we have a pair of sequences x = x 1 , . . . , x n and y = y 1 , . . . , y m , where n and m are the respective sequence lengths. A bi-sequence is defined as the tuple (x, y). In our application, x is a NL sentence, and y is its corresponding MR. For example:</p><p>x = which city has the highest population density? y = answer(largest(density(city(all))))</p><p>A word alignment is a set of bi-symbols A, where each bi-symbol defines an alignment from a token in the NL to a token in the MR. For instance, the bi-symbol (x i , y j ) aligns token x i to token y j . In our example, the tokens "which" and "answer" could be paired by a bi-symbol (which, answer).</p><p>If a token x i does not align to anything in y, an ε is introduced in y: the resulting bi-symbol (x i , ε) corresponds to a deletion. In our example, the token "has" in the NL can be deleted with a bi-symbol (has, ε). Similarly, if a token y j is not aligned to a token in x, an ε is introduced in x: (ε, y j ) is an insertion. In our example, the token "all" in the MR is inserted with bi-symbol (ε, all).</p><p>The bi-symbols in A are all one-to-one. Hence, to map a single token to a phrase, i.e., to multiple tokens, it is necessary to choose a head token in the phrase, while the remaining tokens require insertion or deletion. In our example, the token "density" in the MR corresponds to "population density" in the NL, and, if "density" is chosen as the head token in the NL, "population" needs a deletion: the alignment will be given by the bi-symbols (population, ε) and (density, density).<ref type="foot" target="#foot_0">foot_0</ref> Following this strategy, this notation can account for one-tomany and many-to-one alignments with deletion and insertion operations.</p><p>Figure <ref type="figure" target="#fig_1">2a</ref> shows a possible bi-sequence word alignment for the aforementioned example. Each bi-symbol is conveniently represented by a horizontal line connecting the tokens it aligns.</p><p>Alignments can be monotonic or non-monotonic. An alignment is monotonic if it does not involve any crossing, i.e., a mapping that does not require reordering tokens. In our example, the alignment is non-monotonic because the bi-symbol (city,city) crosses over others. By permuting the MR, we can obtain a monotonic translation of the NL: Figure 2b shows such permutation. The next section illustrates how TPOL can leverage these translations.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Translate First Reorder Later</head><p>We propose TPOL, a two-step parsing approach with a modular framework made up of two components: a Monotonic Translator and a Reorderer. Figure <ref type="figure" target="#fig_2">3</ref> shows how our semantic parser takes an input sentence x and predicts the corresponding MR y. In the first step, x is fed to the Translator, which outputs a monotonic translation z. In other words, z is the target MR that has been permuted so that it aligns monotonically to the input NL. Then, in a second step, z is fed to the Reorderer, which is trained to place the MR tokens back into the correct order to produce the final prediction y.</p><p>The main idea behind TPOL is decomposing the task into lexical translation and reordering, to learn more reliable translation patterns. We purport that modeling monotonic alignments eases the learning of novel pattern combinations of seen structures, improving compositional generalization.</p><p>An alternative approach would be to permute the NL inputs rather than the MRs monotonically. We do not follow this direction due to the observation that in semantic parsing, multiple NLs can map to the same MR. In other words, the NL domain is larger than that of the MRs, and thus we believe that learning to reorder the MRs is more feasible.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Monotonic Translator</head><p>The Monotonic Translator is responsible for making an initial prediction of the MR sequence, which will contain the correct tokens in monotonic order. To create the training bi-sequences, we use alignment information and permute the gold MR sequences to obtain a monotonic mapping with the NL. As a concrete example, consider the nonmonotonic alignment in Figure <ref type="figure" target="#fig_1">2a</ref>, and its monotonic translation in Figure <ref type="figure" target="#fig_1">2b</ref>.</p><p>The translation task can be formulated in various ways. In our implementation, we work with two alternative approaches: a seq2seq Translator, and a tagger Translator. In the seq2seq formulation, x is fed into an encoder network, which produces a hidden vector. The hidden vector is fed to a decoder network which produces the output z, i.e., the monotonically aligned MR. This can be implemented, for example, with a BART model <ref type="bibr" target="#b20">(Lewis et al., 2020)</ref>, which uses a bidirectional encoder and a left-to-right decoder. In our experiments, we use the multilingual version of BART <ref type="bibr" target="#b23">(Liu et al., 2020)</ref>. In the tagging formulation, the Translator assigns an MR token to each token in x, obtaining the monotonic translation z by explicitly aligning in a token-by-token fashion. We implement this with a BERT model <ref type="bibr" target="#b7">(Devlin et al., 2019)</ref> and we use its classification head as the tagger.</p><p>A crucial difference between the seq2seq and the tagger Translator is that the latter needs x and z to be the same length. The seq2seq Translator can learn to perform deletion operations from the raw NL, without needing epsilons in the input to perform insertions. By contrast, the tagger Translator needs insertions to be performed on x before predicting z. In general, NL sequences are significantly longer than the MR sequences, i.e., most epsilons are in the MR sequence. In other words, deletions are more frequent than insertions.</p><p>However, for some datasets, some alignments contain epsilons in the NL sequence: at prediction time, we will not know where insertions might occur, and thus we need a way to predict them. For this purpose, for every token followed by an epsilon in the train split, we add an epsilon after it at test time. We saw that this strategy was sufficient in our experiments. Alternatively, this step could be done by a trained model or with a rule-based system similar to <ref type="bibr" target="#b32">Ribeiro et al. (2018)</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Reorderer</head><p>The Reorderer module is responsible for taking the monotonic predictions of the Translator and putting them back into the correct order to obtain the final prediction. This model is trained from pairs of MR sequences (z, y) where the input z is a monotonically permuted MR and the output y is the target MR in its correct order. These training pairs can be generated from the alignment annotations.</p><p>Similarly to the Translator module, the Reorderer can be implemented both as a seq2seq model and as a tagger. We use mBART in the seq2seq formulation and BERT as a tagger in our experiments. Note that we do not enforce the output to be a permutation of the input.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Experiments</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1">Datasets</head><p>We test TPOL on two semantic parsing datasets, training with gold and automatically generated alignments in multiple languages, on standard IID partitions and the more challenging compositional ones.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1.1">GEOALIGNED</head><p>GEOALIGNED <ref type="bibr" target="#b24">(Locatelli and Quattoni, 2022)</ref> augments the popular GEO semantic parsing benchmark <ref type="bibr" target="#b42">(Zelle and Mooney, 1996)</ref> with token alignment annotations. The dataset contains questions about US geography and corresponding meaning representation using the FunQL formalism <ref type="bibr" target="#b14">(Kate et al., 2005)</ref>. In total, there are 880 examples, all annotated with token alignments. We evaluate on three partitions: question (?), query (Q) and length <ref type="bibr">(LEN)</ref>. The question partition is a standard IID split where test and train are sampled from the same distribution. The query partition, introduced by Finegan-Dollak et al. <ref type="bibr">(2018)</ref>, is designed to be compositional by ensuring that the templates of the MRs in the test set are never seen during training. The length partition, introduced by Herzig and Berant (2021), assigns the longest sequences to the test.</p><p>The dataset comes in English, Italian and German: in this way we can test our approach across different languages. In our experiments, we do not anonymize constants: in other words, we keep the original NL and MR sequences which include names of cities, states, etc. We follow <ref type="bibr" target="#b36">Wang et al. (2021)</ref> in removing brackets.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1.2">SCANSP</head><p>SCANSP <ref type="bibr" target="#b12">(Herzig and Berant, 2021</ref>) is a set of navigational commands presented in natural language paired with action sequences. It is based on the SCAN dataset by Lake and Baroni (2018), which does not contain program MRs. <ref type="bibr" target="#b12">Herzig and Berant (2021)</ref> translated the sequences into programs to obtain a semantic parsing version of the dataset. Besides the IID split, we test on the compositional partitions based on the "right" (RX) and "around right" (ARX) primitives from <ref type="bibr" target="#b25">Loula et al. (2018)</ref>. SCANSP has 20,910 commands distributed roughly as 12,000 train, 3,000 validation, and 4,000 test examples.</p><p>The SCANSP dataset does not come with alignments. Therefore we employ the IBM models <ref type="bibr" target="#b5">(Brown et al., 1993)</ref> to generate them automatically using the GIZA++ toolkit <ref type="bibr" target="#b26">(Och and Ney, 2003)</ref>. We also do this for GEO to compare the performance of TPOL when trained with gold and automatic alignment annotations.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2">Models for comparisons</head><p>We compare with competitive baselines and state-of-the-art models that do not leverage alignments and competing models that do.</p><p>• LSTM: a standard seq2seq model with a bidirectional LSTM encoder and an LSTM decoder with attention <ref type="bibr" target="#b3">(Bahdanau et al., 2015)</ref>. We use pre-trained GloVe embeddings for the three languages: English <ref type="bibr" target="#b28">(Pennington et al., 2014)</ref>, Italian and German <ref type="bibr" target="#b9">(Ferreira et al., 2016)</ref>.</p><p>• mBART <ref type="bibr" target="#b23">(Liu et al., 2020)</ref>: a multilingual version of BART <ref type="bibr" target="#b20">(Lewis et al., 2020)</ref>, a pre-trained Transformer-based seq2seq model that has been successfully applied to parsing <ref type="bibr" target="#b4">(Bevilacqua et al., 2021)</ref>.</p><p>• mT5 <ref type="bibr">(Xue et al., 2021)</ref>: a multilingual version of T5 <ref type="bibr" target="#b31">(Raffel et al., 2020)</ref>, pre-trained on the mC4 dataset <ref type="bibr">(Xue et al., 2021)</ref>.</p><p>• SPANBASED (Herzig and Berant, 2021): a semantic parser that predicts a span tree over an input utterance trained with gold alignment trees. The authors provided annotations for the English version of GEO and SCANSP. For the other languages of GEO we train without gold alignments. We use their model without the lexicon, as that would be unfair with respect to the other models.</p><p>• LEAR <ref type="bibr">(Liu et al., 2021a)</ref>: a model that learns to recombine structures recursively by predicting a latent syntax tree and assigning semantic operations to non-terminal nodes. LEAR explicitly uses alignments using a phrase table.</p><p>• REMOTO <ref type="bibr" target="#b36">(Wang et al., 2021)</ref>: a model that first reorders the tokens in the NL and then predicts the MR. REMOTO is not trained with gold alignments.<ref type="foot" target="#foot_1">foot_1</ref> </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.3">Evaluation metric</head><p>We follow the standard practice of using exactmatch accuracy for evaluation: the predicted MR is correct only if it is the same as the gold.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.4">Main Results</head><p>We report the results of our experiments in Table <ref type="table">1</ref>. For TPOL, the choice of the modules' architecture is validated on the development set, and we report a performance breakdown in Section 7.</p><p>We first consider the results of TPOL trained with gold alignments. On the GEO dataset, the LSTM and mT5 achieve the lowest performance in all the partitions. Looking at the question partition (?), the models show similar performance to mBART and SPANBASED, which is not surprising as the test split does not require compositional generalization. On the query partition (Q), designed to test for compositional generalization, TPOL shows significant improvements over all the other models across all languages. In English it obtains 87.3% outperforming mBART (69.4%), SPANBASED (74.6%) and LEAR (84.1%). In Italian and German, it obtains 81.6% and 69.4% respectively, while mBART 67.4% and 56.3%. On  <ref type="table">1</ref>: Exact-match accuracy of all models on GEOALIGNED and SCANSP datasets. ? stands for question, Q for query and LEN for the length partition. RX stands for right and ARX for around right partitions. LEAR and REMOTO both anonymize constants in GEO, and the results are taken directly from the respective papers.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>GEO</head><p>the length partition (LEN), TPOL does better than all the baselines across all languages, except for SPANBASED, which fares better on LEN(English). This is only the case, however, when gold alignments are provided.</p><p>Looking at the results obtained without gold alignments, TPOL shows considerable improvements over REMOTO and SPANBASED. In particular, it improves on the English query partition obtaining 79% against 43.2% and 51.8%, respectively. Furthermore, the accuracy does not drop significantly compared to TPOL trained with gold alignments. We tested using automatic alignments from IBM models 3, 4, and 5 and picked the best out of the three. In general, all lead TPOL to achieve similar performance.</p><p>Finally, looking at SCANSP, as expected, the models designed for compositional generalization achieve perfect performance on the dataset. What is surprising is that also mBART can do so, contrary to other deep models. With some internal testing, we have seen that this is not the case for English BART, as opposed to the multilingual version. We hypothesize that model size and pre-training might be a factor of success for mBART.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Error Analysis</head><p>Table <ref type="table" target="#tab_1">3</ref> shows a breakdown of performance of TPOL on the English version of GEOALIGNED. The results indicate the exact-match accuracy achieved by the two modules: we can check whether the model struggles more with the trans-lation or reordering step. To analyze the Translator's performance, we regard the monotonically aligned MRs as the gold truth. For the Reorderer, we provide it with the monotonically aligned MRs in input. In other words, the evaluation of the Reorderer assumes that the Translator makes a correct prediction.</p><p>The performance of the two modules is fairly similar, and, by comparing these results with Table <ref type="table">1</ref>, we see that the accuracy of each component is not much higher than the overall accuracy, suggesting that neither component is hampering performance more than the other. The only exception seems to be in the length partition, where the Reorderer does considerably better than the Translator.</p><p>Table <ref type="table">2</ref> shows the breakdown of the performance over monotonically and non-monotonically aligned MRs. We can observe that, compared to SPAN-BASED, TPOL generally presents smaller drops in performance over the non-monotonic sequences. For instance, in the question partition, SPANBASED drops from 94.7% over the monotonic examples to 73.7% over the non-monotonic, while TPOL drops from 89.9% to 81.4%. When we look at the query partition, we see that for both of these models, the drop is much higher than the one on the question partition: SPANBASED goes from 89.6% to 39.8%, while TPOL drops from 93.7% to 69.9%. In other words, both models struggle more with non-monotonic examples when compositional generalization is required. TPOL, however, still performs significantly better.  Surprisingly, mBART shows the opposite trend on the query partition, with the non-monotonic accuracy being higher than the monotonic one. By contrast, most of TPOL's improved performance comes from better modeling of the monotonic sequences (67.1% → 93.7%). TPOL's results suggest that regular patterns in the non-monotonic sequences can be learned. Its generalization problems can be attributed to the difficulty of learning the more challenging non-regular patterns in a small dataset. On the other hand, mBART appears to have the capacity to model these challenging reorderings better. Still, this comes at the cost of failing on the regular monotonic ones, leading to a lower performance overall.</p><p>Interestingly, the SPANBASED approach shows a similar improvement on monotonic sequences compared to mBART (67.1% → 89.6%). This suggests that exploiting lexico-logical alignments allows models to capture the simpler patterns that mBART fails to learn. Most of TPOL's gains over SPANBASED come from better modeling the non-monotonic examples in the query partition (39.8% → 69.9%). This shows that the two-step approach offers the best of both worlds: it can capture the simple monotonic patterns while maintaining reasonable performance over the more complex alignments on which SPANBASED fails.</p><p>Figure <ref type="figure" target="#fig_4">4</ref> shows the average drop in performance of the different models trained with automatic IBM alignments compared to the same model trained with gold alignments. We also report the corresponding alignment error, calculated as the percentage of bi-symbols that differ from the gold annotations from GEOALIGNED. We observe that, in general, higher alignment error is associated with a higher drop in performance. This validates the importance of the alignment information and points to improving the unsupervised alignment algorithm as a natural line of future work. We believe that one possible reason for the drop in performance when training with IBM alignments might be because the GEO dataset is of relatively small size, and the IBM models might have difficulty learning good alignments. That would explain why in contrast to GEO, the performance over SCAN is not affected by automatic alignments since SCAN is a much larger dataset. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>GEO</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7">Architecture study</head><p>We emphasize here that our approach is an abstract, high-level methodology and does not place any constraint on the underlying architectures of the two components. We believe that different architectures, particularly specialized ones for each module, could be beneficial for parsing performance. We encourage further work to be carried out in this regard. To this purpose, we present some architectural studies using BERT <ref type="bibr" target="#b7">(Devlin et al., 2019)</ref> and mBART <ref type="bibr" target="#b23">(Liu et al., 2020)</ref> as components. We employ them as both Translator and Reorderer, examining all possible combinations. As explained in Section 4.1, mBART is used as a standard seq2seq model, and BERT is employed with a classification head to function as a tagger for every input token.</p><p>Additionally, when mBART is used as a Reorderer, we introduce a silver training setting. In the normal setting, the Reorderer is trained by taking the gold alignment annotations and outputting the meaning representation. In the silver setting, we use the predictions of the Translator model as training input. By doing so, the Reorderer trains on inputs that mimic more closely what it will actually receive at test time: this is done straightforwardly for a seq2seq model like mBART, while for our BERT tagger, every token in input needs to be aligned with a token in output, and when the input is corrupt it is not possible to achieve the same training technique.</p><p>In Table <ref type="table" target="#tab_2">4</ref>, we present the results for our different architectural components. To distinguish among the different model combinations, we use a [Translator]2[Reorderer] naming convention, meaning that mBART2BERT uses mBART as the Translator and BERT as the Reorderer. We observe that our two-step approach seems to be robust overall.</p><p>We can discern trends in different architecture combinations, which can be helpful when choosing an architecture for a specific task. One important observation is that the architectures that use BERT as a Translator are consistently better than the ones using mBART over the compositional partitions. We hypothesize that the BERT Translator can achieve higher compositional generalization because it can better leverage alignment information to predict unseen combinations of observed training patterns. We believe this is because a tagger's predictions can be more naturally broken into parts that can be recombined. In contrast, encoderdecoder architectures fare better on the IID partition but struggle to generalize to unseen patterns. One possible reason is that these models have a harder time inducing local patterns that can be recombined since they encode and decode complete structures all at once.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="8">Conclusion</head><p>Seq2seq models have become increasingly popular in semantic parsing. However, they are limited in their abilities to generalize to unobserved structures. Here, we proposed TPOL: a two-step parsing approach that leverages alignment annotations with a modular framework composed of a Translator and a Reorderer.</p><p>We showed that TPOL improves compositional generalization over conventional seq2seq models and over competing models that also leverage alignment information. Our results also showed that our approach is robust when trained with automatically generated alignments, demonstrating competitive results on two semantic parsing datasets.</p><p>We have experimented with two possibilities for the Translator and Reorderer, but we believe that different architectural components could further improve performance. The divide-and-conquer strategy of breaking the problem into two simpler sub-tasks is designed to enable further component specialization.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="9">Limitations</head><p>Regarding the limitations of our approach, our experiments used the standard FunQL meaning representation. Transitioning to a different meaning representation might need some adaptation of the framework. In particular, the alignments between NL and MRs for other meaning representations might require more insertion and deletion operations. We might also expect that other MRs might require more reordering.</p><p>A second limitation of our work is training with gold alignments. We partially address this by training TPOL with automatic alignments obtained with the IBM models. Still, we believe there is room for more work to be done so that this approach can be more easily scaled to datasets that do not have alignment annotations. Despite TPOL's partial improvements on the length test splits, this type of partition remains challenging for all models. Here, models are required to generate predictions of greater length than what they have seen during training. This requires complex compositional productivity skills, i.e., recombining known constituents into larger structures. Further work is needed to address the limitation of the current state-of-the-art on compositional productivity benchmarks.</p><p>Sheng <ref type="bibr">Zhang, Xutai Ma, Kevin Duh, and Benjamin Van Durme. 2019</ref>. AMR parsing as sequence-tograph transduction. In Proceedings of the 57th Annual Meeting of the Association for Computational Linguistics, pages 80-94, Florence, Italy. Association for Computational Linguistics.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A Experimental details</head><p>For our experiments with TPOL we report the average of three runs for every result. We select the hyperparameters with grid search on the development set performance stopping when there is no more improvement. We choose the learning rate among 1e -4 , 1e -5 and 1e -6 and the batch size between the bounds of 4 and 32. Usually the best performing models choose a learning rate of 1e -5 and batch size of 8. An experiment takes about 20 minutes on a single Nvidia V100 GPU. Our BERT (110M parameters) and mBART (680M parameters) implementations are taken from the transformers library <ref type="bibr" target="#b38">(Wolf et al., 2020)</ref>. We use for English bertbase-uncased, for Italian dbmdz/bert-base-italianuncased and for German dbmdz/bert-base-germanuncased. For mBART we use facebook/mbartlarge-50. For mT5 we use the google/mt5-small pre-trained checkpoint from the Transformers library.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B GEOALIGNED statistics</head><p>Table <ref type="table" target="#tab_4">5</ref> provides statistics from the English version of GEOALIGNED <ref type="bibr" target="#b24">(Locatelli and Quattoni, 2022)</ref>.</p><p>In particular, we report the number of examples that fall in the monotonic (MN) and non-monotonic (NMN) categories.  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>GEO EN</head><note type="other">Category</note></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: Examples from the GEOALIGNED dataset. (a) is a monotonic alignment, (b) is non-monotonic.</figDesc><graphic coords="1,306.14,212.60,218.28,99.55" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: (a) A possible alignment for an NL-MR pair. (b) The corresponding monotonic translation. For simplicity, we removed the brackets and question mark.</figDesc><graphic coords="3,306.14,70.85,218.27,140.15" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 3 :</head><label>3</label><figDesc>Figure3: The TPOL parsing approach. An input sentence x is fed to the Monotonic Translator that predicts an intermediate monotonic MR z. This is in turn fed to the Reorderer, which outputs the final prediction y.</figDesc><graphic coords="4,70.86,70.84,453.56,116.80" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head></head><label></label><figDesc>Performance breakdown of TPOL over monotonic (MN) and non-monotonic (NMN) sequences in GEOALIGNED English. In Appendix B we report the number of MN and NMN examples.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 4 :</head><label>4</label><figDesc>Figure 4: Average error of IBM alignment models over all partitions and languages on GEOALIGNED. We also plot the average drop in performance for each TPOL model trained with IBM alignments with respect to the corresponding one trained with gold alignments.</figDesc><graphic coords="7,306.14,233.38,218.28,188.56" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>Table</head><label></label><figDesc></figDesc><table><row><cell>Model</cell><cell></cell><cell></cell><cell>EN</cell><cell></cell><cell></cell><cell>IT</cell><cell></cell><cell></cell><cell>DE</cell><cell></cell><cell></cell><cell>SCANSP</cell></row><row><cell></cell><cell></cell><cell>?</cell><cell>Q</cell><cell>LEN</cell><cell>?</cell><cell>Q</cell><cell>LEN</cell><cell>?</cell><cell>Q</cell><cell cols="4">LEN IID RX ARX</cell></row><row><cell>LSTM</cell><cell></cell><cell cols="11">52.9 24.9 5.0 46.4 18.1 4.3 42.9 17.6 3.2 100 24.4</cell><cell>1.1</cell></row><row><cell>mT5</cell><cell></cell><cell cols="12">80.0 60.0 19.3 73.2 44.9 20.4 68.2 47.8 18.6 100 41.2 99.8</cell></row><row><cell cols="2">mBART</cell><cell cols="12">87.5 69.4 27.5 86.6 76.4 23.3 75.5 56.3 18.2 100 99.4 100</cell></row><row><cell>LEAR</cell><cell></cell><cell>-</cell><cell>84.1</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell>-</cell></row><row><cell cols="13">--gold 66.4 51.8 24.6 49.6 37.3 10.4 40.4 21.4 5.0 100 100 -----100 100 SPANBASED 87.7 74.6 55.0</cell><cell>100 100</cell></row><row><cell cols="2">REMOTO</cell><cell cols="3">75.2 43.2 23.2</cell><cell>-</cell><cell>-</cell><cell>-</cell><cell cols="4">55.6 22.3 16.6 100</cell><cell>-</cell><cell>-</cell></row><row><cell>TPOL</cell><cell cols="13">--gold 85.8 79.0 35.6 83.6 75.1 20.2 73.8 60.7 17.5 100 99.4 100 --87.3 87.8 41.9 85.9 81.6 31.3 73.3 69.4 22.9</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 3 :</head><label>3</label><figDesc>Performance breakdown of TPOL modules.</figDesc><table /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 4 :</head><label>4</label><figDesc>Performance breakdown of TPOL for different module architectures on GEOALIGNED.</figDesc><table><row><cell>Model</cell><cell></cell><cell>EN</cell><cell></cell><cell></cell><cell>IT</cell><cell></cell><cell></cell><cell>DE</cell></row><row><cell></cell><cell>?</cell><cell>Q</cell><cell>LEN</cell><cell>?</cell><cell>Q</cell><cell>LEN</cell><cell>?</cell><cell>Q</cell><cell>LEN</cell></row><row><cell>BERT2BERT BERT2mBART BERT2mBART SILVER mBART2BERT</cell><cell cols="9">74.9 84.6 41.9 74.0 74.2 31.3 62.5 67.5 22.9 82.1 87.8 36.4 76.9 81.6 27.5 63.2 68.9 20.0 82.5 87.0 34.6 76.6 81.1 27.0 65.4 69.4 19.9 74.5 70.7 24.5 77.7 76.1 24.2 65.7 56.1 17.5</cell></row><row><cell cols="10">mBART2mBART mBART2mBART SILVER 86.4 71.5 24.9 85.9 75.8 20.0 73.2 59.5 17.0 87.3 72.2 25.2 85.7 76.3 23.1 73.3 59.2 16.3</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 5 :</head><label>5</label><figDesc>Number of examples that belong to the monotonic (MN) and non-monotonic (NMN) categories in GEOALIGNED English.</figDesc><table /></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p><ref type="bibr" target="#b24">Locatelli and Quattoni (2022)</ref> showed that annotators are consistent in the way they pick head-tokens, and reported high inter-annotator agreement scores on GEOALIGNED.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_1"><p>For LEAR and REMOTO, we report results directly from the respective papers, noting that in their setting constants, such as names of states, cities, and so on, are anonymized.</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>Acknowledgements</head><p>We would like to thank the EACL area chair and the anonymous reviewers for their feedback, as well as the other members of the INTERACT group at the <rs type="institution">Universitat Politècnica de Catalunya</rs> for fruitful discussions on an earlier draft of this work. This work is supported by the <rs type="funder">European Research Council (ERC)</rs> under the European Union's <rs type="programName">Horizon 2020 research and innovation program</rs> (grant agreement No.<rs type="grantNumber">853459</rs>). This paper reflects the authors' view only, and the funding agencies are not responsible for any use that may be made of the information it contains. The authors gratefully acknowledge the computer resources at Artemisa, funded by the <rs type="funder">European Union ERDF</rs> and <rs type="person">Comunitat Valenciana</rs>, as well as the technical support provided by the <rs type="institution">Instituto de Fisica Corpus-cular, IFIC (CSIC-UV</rs>).</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funding" xml:id="_bDSv952">
+					<idno type="grant-number">853459</idno>
+					<orgName type="program" subtype="full">Horizon 2020 research and innovation program</orgName>
+				</org>
+			</listOrg>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Machine translation aided bilingual data-to-text generation and semantic parsing</title>
+		<author>
+			<persName><forename type="first">Oshin</forename><surname>Agarwal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mihir</forename><surname>Kale</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Heming</forename><surname>Ge</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Siamak</forename><surname>Shakeri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rami</forename><surname>Al-Rfou</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 3rd International Workshop on Natural Language Generation from the Semantic Web (WebNLG+)</title>
+		<meeting>the 3rd International Workshop on Natural Language Generation from the Semantic Web (WebNLG+)<address><addrLine>Dublin, Ireland</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="125" to="130" />
+		</imprint>
+	</monogr>
+	<note>Association for Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Good-enough compositional data augmentation</title>
+		<author>
+			<persName><forename type="first">Jacob</forename><surname>Andreas</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.acl-main.676</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 58th Annual Meeting of the Association for Computational Linguistics</meeting>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="7556" to="7566" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Semantic parsing as machine translation</title>
+		<author>
+			<persName><forename type="first">Jacob</forename><surname>Andreas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andreas</forename><surname>Vlachos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephen</forename><surname>Clark</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 51st Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 51st Annual Meeting of the Association for Computational Linguistics<address><addrLine>Sofia, Bulgaria</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2013">2013</date>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page" from="47" to="52" />
+		</imprint>
+	</monogr>
+	<note>Short Papers)</note>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Neural machine translation by jointly learning to align and translate</title>
+		<author>
+			<persName><forename type="first">Dzmitry</forename><surname>Bahdanau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kyunghyun</forename><surname>Cho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yoshua</forename><surname>Bengio</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">3rd International Conference on Learning Representations, ICLR 2015</title>
+		<meeting><address><addrLine>San Diego, CA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2015-05-07">2015. May 7-9, 2015</date>
+		</imprint>
+	</monogr>
+	<note>Conference Track Proceedings</note>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">One SPRING to Rule Them Both: Symmetric AMR Semantic Parsing and Generation without a Complex Pipeline</title>
+		<author>
+			<persName><forename type="first">Michele</forename><surname>Bevilacqua</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rexhina</forename><surname>Blloshmi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Roberto</forename><surname>Navigli</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the AAAI Conference on Artificial Intelligence</title>
+		<meeting>the AAAI Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="volume">35</biblScope>
+			<biblScope unit="page" from="12564" to="12573" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">The mathematics of statistical machine translation: Parameter estimation</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Peter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephen</forename><forename type="middle">A</forename><surname>Brown</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vincent</forename><forename type="middle">J</forename><surname>Della Pietra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Robert</forename><forename type="middle">L</forename><surname>Della Pietra</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Mercer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Computational Linguistics</title>
+		<imprint>
+			<biblScope unit="volume">19</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="263" to="311" />
+			<date type="published" when="1993">1993</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Anticipation-free training for simultaneous machine translation</title>
+		<author>
+			<persName><forename type="first">Chih-Chiang</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shun-Po</forename><surname>Chuang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hung-Yi</forename><surname>Lee</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2022.iwslt-1.5</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 19th International Conference on Spoken Language Translation (IWSLT 2022)</title>
+		<meeting>the 19th International Conference on Spoken Language Translation (IWSLT 2022)<address><addrLine>Dublin, Ireland</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="43" to="61" />
+		</imprint>
+	</monogr>
+	<note>Association for Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">BERT: Pre-training of deep bidirectional transformers for language understanding</title>
+		<author>
+			<persName><forename type="first">Jacob</forename><surname>Devlin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming-Wei</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kenton</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kristina</forename><surname>Toutanova</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/N19-1423</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</title>
+		<title level="s">Long and Short Papers</title>
+		<meeting>the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies<address><addrLine>Minneapolis, Minnesota</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="4171" to="4186" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Language to logical form with neural attention</title>
+		<author>
+			<persName><forename type="first">Li</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mirella</forename><surname>Lapata</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/P16-1004</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 54th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 54th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Berlin, Germany</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="33" to="43" />
+		</imprint>
+	</monogr>
+	<note>Long Papers)</note>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Jointly learning to embed and predict with multiple languages</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Daniel</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Ferreira</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><forename type="middle">T</forename><surname>André</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mariana</forename><forename type="middle">S C</forename><surname>Martins</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Almeida</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/P16-1190</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 54th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 54th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Berlin, Germany</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="2019" to="2028" />
+		</imprint>
+	</monogr>
+	<note>Long Papers)</note>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Improving textto-SQL evaluation methodology</title>
+		<author>
+			<persName><forename type="first">Catherine</forename><surname>Finegan-Dollak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jonathan</forename><forename type="middle">K</forename><surname>Kummerfeld</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Li</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Karthik</forename><surname>Ramanathan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sesh</forename><surname>Sadasivam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rui</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dragomir</forename><surname>Radev</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/P18-1033</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 56th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 56th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Melbourne, Australia</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="351" to="360" />
+		</imprint>
+	</monogr>
+	<note>Long Papers)</note>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Permutation equivariant models for compositional generalization in language</title>
+		<author>
+			<persName><forename type="first">Jonathan</forename><surname>Gordon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Lopez-Paz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marco</forename><surname>Baroni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Diane</forename><surname>Bouchacourt</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICLR</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Spanbased semantic parsing for compositional generalization</title>
+		<author>
+			<persName><forename type="first">Jonathan</forename><surname>Herzig</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jonathan</forename><surname>Berant</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2021.acl-long.74</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing</title>
+		<meeting>the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing</meeting>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="908" to="921" />
+		</imprint>
+	</monogr>
+	<note>Long Papers)</note>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Data recombination for neural semantic parsing</title>
+		<author>
+			<persName><forename type="first">Robin</forename><surname>Jia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Percy</forename><surname>Liang</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/P16-1002</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 54th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 54th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Berlin, Germany</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="12" to="22" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Learning to transform natural to formal languages</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Rohit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuk</forename><forename type="middle">Wah</forename><surname>Kate</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Raymond</forename><forename type="middle">J</forename><surname>Wong</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Mooney</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 20th National Conference on Artificial Intelligence</title>
+		<meeting>the 20th National Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<publisher>AAAI Press</publisher>
+			<date type="published" when="2005">2005</date>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="page" from="1062" to="1068" />
+		</imprint>
+	</monogr>
+	<note>AAAI&apos;05</note>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Measuring compositional generalization: A comprehensive method on realistic data</title>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Keysers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nathanael</forename><surname>Schärli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nathan</forename><surname>Scales</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hylke</forename><surname>Buisman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Furrer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sergii</forename><surname>Kashubin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nikola</forename><surname>Momchev</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danila</forename><surname>Sinopalnikov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lukasz</forename><surname>Stafiniak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tibor</forename><surname>Tihon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dmitry</forename><surname>Tsarkov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiao</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marc</forename><surname>Van Zee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Olivier</forename><surname>Bousquet</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">COGS: A compositional generalization challenge based on semantic interpretation</title>
+		<author>
+			<persName><forename type="first">Najoung</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tal</forename><surname>Linzen</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.emnlp-main.731</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)</title>
+		<meeting>the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)</meeting>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="9087" to="9105" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Generalization without systematicity: On the compositional skills of sequence-to-sequence recurrent networks</title>
+		<author>
+			<persName><forename type="first">Brenden</forename><surname>Lake</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marco</forename><surname>Baroni</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 35th International Conference on Machine Learning</title>
+		<meeting>the 35th International Conference on Machine Learning</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="volume">80</biblScope>
+			<biblScope unit="page" from="2873" to="2882" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Compositional generalization through meta sequence-to-sequence learning</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Brenden</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Lake</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">32</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Re-examining the role of schema linking in text-to-SQL</title>
+		<author>
+			<persName><forename type="first">Wenqiang</forename><surname>Lei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Weixin</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhixin</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tian</forename><surname>Gan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Min-Yen</forename><surname>Kan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tat-Seng</forename><surname>Chua</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.emnlp-main.564</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)</title>
+		<meeting>the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)</meeting>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="6943" to="6954" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">BART: Denoising sequence-to-sequence pre-training for natural language generation, translation, and comprehension</title>
+		<author>
+			<persName><forename type="first">Mike</forename><surname>Lewis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yinhan</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Naman</forename><surname>Goyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marjan</forename><surname>Ghazvininejad</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abdelrahman</forename><surname>Mohamed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Omer</forename><surname>Levy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Veselin</forename><surname>Stoyanov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luke</forename><surname>Zettlemoyer</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.acl-main.703</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 58th Annual Meeting of the Association for Computational Linguistics</meeting>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="7871" to="7880" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">2021a. Learning algebraic recombination for compositional generalization</title>
+		<author>
+			<persName><forename type="first">Chenyao</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shengnan</forename><surname>An</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zeqi</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qian</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bei</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian-Guang</forename><surname>Lou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lijie</forename><surname>Wen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nanning</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dongmei</forename><surname>Zhang</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2021.findings-acl.97</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Findings of the Association for Computational Linguistics: ACL-IJCNLP 2021</title>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<biblScope unit="page" from="1129" to="1144" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Awakening latent grounding from pretrained language models for semantic parsing</title>
+		<author>
+			<persName><forename type="first">Qian</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dejian</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiahui</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiaqi</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bin</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jian-Guang</forename><surname>Lou</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2021.findings-acl.100</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Findings of the Association for Computational Linguistics: ACL-IJCNLP 2021</title>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="1174" to="1189" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<monogr>
+		<title level="m" type="main">Multilingual denoising pretraining for neural machine translation</title>
+		<author>
+			<persName><forename type="first">Yinhan</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiatao</forename><surname>Gu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Naman</forename><surname>Goyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xian</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sergey</forename><surname>Edunov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marjan</forename><surname>Ghazvininejad</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mike</forename><surname>Lewis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luke</forename><surname>Zettlemoyer</surname></persName>
+		</author>
+		<idno type="DOI">10.1162/tacl_a_00343</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">8</biblScope>
+			<biblScope unit="page" from="726" to="742" />
+		</imprint>
+	</monogr>
+	<note>Transactions of the Association for Computational Linguistics</note>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Measuring alignment bias in neural seq2seq semantic parsers</title>
+		<author>
+			<persName><forename type="first">Davide</forename><surname>Locatelli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ariadna</forename><surname>Quattoni</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2022.starsem-1.17</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 11th Joint Conference on Lexical and Computational Semantics</title>
+		<meeting>the 11th Joint Conference on Lexical and Computational Semantics<address><addrLine>Seattle, Washington</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="200" to="207" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Rearranging the familiar: Testing compositional generalization in recurrent networks</title>
+		<author>
+			<persName><forename type="first">João</forename><surname>Loula</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marco</forename><surname>Baroni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Brenden</forename><surname>Lake</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/W18-5413</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2018 EMNLP Workshop BlackboxNLP: Analyzing and Interpreting Neural Networks for NLP</title>
+		<meeting>the 2018 EMNLP Workshop BlackboxNLP: Analyzing and Interpreting Neural Networks for NLP<address><addrLine>Brussels, Belgium</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="108" to="114" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">A systematic comparison of various statistical alignment models</title>
+		<author>
+			<persName><forename type="first">Josef</forename><surname>Franz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hermann</forename><surname>Och</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Ney</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Computational Linguistics</title>
+		<imprint>
+			<biblScope unit="volume">29</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="19" to="51" />
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Improving compositional generalization in semantic parsing</title>
+		<author>
+			<persName><forename type="first">Inbar</forename><surname>Oren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jonathan</forename><surname>Herzig</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nitish</forename><surname>Gupta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matt</forename><surname>Gardner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jonathan</forename><surname>Berant</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.findings-emnlp.225</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Findings of the Association for Computational Linguistics: EMNLP 2020</title>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="2482" to="2495" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Glove: Global vectors for word representation</title>
+		<author>
+			<persName><forename type="first">Jeffrey</forename><surname>Pennington</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Richard</forename><surname>Socher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><forename type="middle">D</forename><surname>Manning</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Empirical Methods in Natural Language Processing (EMNLP)</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="1532" to="1543" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">2022a. Improving compositional generalization with latent structure and data augmentation</title>
+		<author>
+			<persName><forename type="first">Linlu</forename><surname>Qiu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Shaw</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Panupong</forename><surname>Pasupat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pawel</forename><surname>Nowak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tal</forename><surname>Linzen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fei</forename><surname>Sha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kristina</forename><surname>Toutanova</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2022.naacl-main.323</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2022 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</title>
+		<meeting>the 2022 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies<address><addrLine>Seattle, United States</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<biblScope unit="page" from="4341" to="4362" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<monogr>
+		<title level="m" type="main">2022b. Evaluating the impact of model scale for compositional generalization in semantic parsing</title>
+		<author>
+			<persName><forename type="first">Linlu</forename><surname>Qiu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Shaw</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Panupong</forename><surname>Pasupat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tianze</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jonathan</forename><surname>Herzig</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Emily</forename><surname>Pitler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Fei</forename><surname>Sha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kristina</forename><surname>Toutanova</surname></persName>
+		</author>
+		<idno type="DOI">10.48550/ARXIV.2205.12253</idno>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Exploring the limits of transfer learning with a unified text-to-text transformer</title>
+		<author>
+			<persName><forename type="first">Colin</forename><surname>Raffel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noam</forename><surname>Shazeer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Roberts</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Katherine</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sharan</forename><surname>Narang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Matena</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yanqi</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wei</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><forename type="middle">J</forename><surname>Liu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Machine Learning Research</title>
+		<imprint>
+			<biblScope unit="volume">21</biblScope>
+			<biblScope unit="issue">140</biblScope>
+			<biblScope unit="page" from="1" to="67" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Local string transduction as sequence labeling</title>
+		<author>
+			<persName><forename type="first">Joana</forename><surname>Ribeiro</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shashi</forename><surname>Narayan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shay</forename><forename type="middle">B</forename><surname>Cohen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xavier</forename><surname>Carreras</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 27th International Conference on Computational Linguistics</title>
+		<meeting>the 27th International Conference on Computational Linguistics<address><addrLine>Santa Fe, New Mexico, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="1360" to="1371" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Compositional generalization and natural language variation: Can a semantic parsing approach handle both?</title>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Shaw</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ming-Wei</forename><surname>Chang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Panupong</forename><surname>Pasupat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kristina</forename><surname>Toutanova</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2021.acl-long.75</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing</title>
+		<meeting>the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing</meeting>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="922" to="938" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">On the potential of lexico-logical alignments for semantic parsing to SQL queries</title>
+		<author>
+			<persName><forename type="first">Tianze</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chen</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jordan</forename><surname>Boyd-Graber</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hal</forename><surname>Daumé</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Iii</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lillian</forename><surname>Lee</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.findings-emnlp.167</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Findings of the Association for Computational Linguistics: EMNLP 2020</title>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="1849" to="1864" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Leveraging explicit lexico-logical alignments in text-to-SQL parsing</title>
+		<author>
+			<persName><forename type="first">Runxin</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shizhu</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chong</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yaohan</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jinlong</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jun</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kang</forename><surname>Liu</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2022.acl-short.31</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 60th Annual Meeting of the Association for Computational Linguistics</title>
+		<meeting>the 60th Annual Meeting of the Association for Computational Linguistics<address><addrLine>Dublin, Ireland</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page" from="283" to="289" />
+		</imprint>
+	</monogr>
+	<note>Short Papers)</note>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Structured reordering for modeling latent alignments in sequence transduction</title>
+		<author>
+			<persName><forename type="first">Bailin</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mirella</forename><surname>Lapata</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ivan</forename><surname>Titov</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="page" from="13378" to="13391" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Compositional generalization with a broadcoverage semantic parser</title>
+		<author>
+			<persName><forename type="first">Pia</forename><surname>Weißenhorn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lucia</forename><surname>Donatelli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexander</forename><surname>Koller</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2022.starsem-1.4</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 11th Joint Conference on Lexical and Computational Semantics</title>
+		<meeting>the 11th Joint Conference on Lexical and Computational Semantics<address><addrLine>Seattle, Washington</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="44" to="54" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Transformers: State-of-the-art natural language processing</title>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Wolf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lysandre</forename><surname>Debut</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Victor</forename><surname>Sanh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Julien</forename><surname>Chaumond</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Clement</forename><surname>Delangue</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anthony</forename><surname>Moi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pierric</forename><surname>Cistac</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Rault</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Remi</forename><surname>Louf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Morgan</forename><surname>Funtowicz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joe</forename><surname>Davison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sam</forename><surname>Shleifer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Clara</forename><surname>Patrick Von Platen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yacine</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Julien</forename><surname>Jernite</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Canwen</forename><surname>Plu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Teven</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sylvain</forename><surname>Le Scao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mariama</forename><surname>Gugger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Quentin</forename><surname>Drame</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexander</forename><surname>Lhoest</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Rush</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2020.emnlp-demos.6</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing: System Demonstrations</title>
+		<meeting>the 2020 Conference on Empirical Methods in Natural Language Processing: System Demonstrations</meeting>
+		<imprint>
+			<publisher>Online. Association for Computational Linguistics</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="38" to="45" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Learning for semantic parsing with statistical machine translation</title>
+		<author>
+			<persName><forename type="first">Yuk</forename><forename type="middle">Wah</forename><surname>Wong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Raymond</forename><surname>Mooney</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Human Language Technology Conference of the NAACL, Main Conference</title>
+		<meeting>the Human Language Technology Conference of the NAACL, Main Conference<address><addrLine>New York City, USA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2006">2006</date>
+			<biblScope unit="page" from="439" to="446" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Aditya Barua, and Colin Raffel. 2021. mT5: A massively multilingual pre-trained text-to-text transformer</title>
+		<author>
+			<persName><forename type="first">Linting</forename><surname>Xue</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noah</forename><surname>Constant</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Roberts</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mihir</forename><surname>Kale</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rami</forename><surname>Al-Rfou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aditya</forename><surname>Siddhant</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2021.naacl-main.41</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2021 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</title>
+		<meeting>the 2021 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<biblScope unit="page" from="483" to="498" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">SUBS: Subtree substitution for compositional semantic parsing</title>
+		<author>
+			<persName><forename type="first">Jingfeng</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Le</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Diyi</forename><surname>Yang</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/2022.naacl-main.12</idno>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2022 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies</title>
+		<meeting>the 2022 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies<address><addrLine>Seattle, United States</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="169" to="174" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">Learning to parse database queries using inductive logic programming</title>
+		<author>
+			<persName><forename type="first">John</forename><forename type="middle">M</forename><surname>Zelle</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Raymond</forename><forename type="middle">J</forename><surname>Mooney</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the Thirteenth National Conference on Artificial Intelligence</title>
+		<meeting>the Thirteenth National Conference on Artificial Intelligence</meeting>
+		<imprint>
+			<publisher>AAAI Press</publisher>
+			<date type="published" when="1996">1996</date>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page" from="1050" to="1055" />
+		</imprint>
+	</monogr>
+	<note>AAAI&apos;96</note>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

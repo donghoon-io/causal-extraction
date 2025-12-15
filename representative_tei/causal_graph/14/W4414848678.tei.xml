@@ -1,0 +1,2723 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">IGDA: Interactive Graph Discovery Agent IGDA: INTERACTIVE GRAPH DISCOVERY THROUGH LARGE LANGUAGE MODEL AGENTS</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability  status="unknown">
+					<licence/>
+				</availability>
+				<date type="published" when="2025-04-13">13 Apr 2025</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Alex</forename><surname>Havrilla</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">David</forename><surname>Alvarez-Melis</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Nicolo</forename><surname>Fusi</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Microsoft</forename><surname>Research</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Georgia</forename><surname>Tech</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Harvard</forename><surname>University</surname></persName>
+						</author>
+						<title level="a" type="main">IGDA: Interactive Graph Discovery Agent IGDA: INTERACTIVE GRAPH DISCOVERY THROUGH LARGE LANGUAGE MODEL AGENTS</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2025-04-13">13 Apr 2025</date>
+						</imprint>
+					</monogr>
+					<idno type="arXiv">arXiv:2502.17189v2[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-21T20:23+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Large language models (LLMs) have emerged as a powerful method for discovery. Instead of utilizing numerical data, LLMs utilize associated variable semantic metadata to predict variable relationships. Simultaneously, LLMs demonstrate impressive abilities to act as black-box optimizers when given an objective f and sequence of trials. We study LLMs at the intersection of these two capabilities by applying LLMs to the task of interactive graph discovery: given a ground truth graph G * capturing variable relationships and a budget of I edge experiments over R rounds, minimize the distance between the predicted graph ĜR and G * at the end of the R-th round. To solve this task we propose IGDA, a LLM-based pipeline incorporating two key components: 1) an LLM uncertainty-driven method for edge experiment selection 2) a local graph update strategy utilizing binary feedback from experiments to improve predictions for unselected neighboring edges. Experiments on eight different real-world graphs show our approach often outperforms all baselines including a state-of-the-art numerical method for interactive graph discovery. Further, we conduct a rigorous series of ablations dissecting the impact of each pipeline component. Finally, to assess the impact of memorization, we apply our interactive graph discovery strategy to a complex, new (as of July 2024) causal graph on protein transcription factors, finding strong performance in a setting where memorization is impossible. Overall, our results show IGDA to be a powerful method for graph discovery complementary to existing numerically driven approaches.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">INTRODUCTION</head><p>Given a set of variables X 1 , ..., X n , the graph discovery task involves finding a graph G * on the nodes X 1 , ..., X n whose edges capture causal relationships between the parent (source) and child (target). Often, observational data can be collected for the variables X 1 , ..., X n . This data can then be used to predict an initial graph G 0 using statistical causal discovery techniques <ref type="bibr" target="#b26">(Spirtes &amp; Zhang, 2016)</ref>. Recently, large language models (LLMs) have emerged as a competitive alternative method for predicting causal graphs <ref type="bibr" target="#b12">(Kıcıman et al., 2024;</ref><ref type="bibr" target="#b0">Abdulaal et al., 2024;</ref><ref type="bibr" target="#b2">Chen et al., 2024)</ref>. Unlike pre-existing statistical methods, LLMs require no observational data <ref type="bibr" target="#b12">(Kıcıman et al., 2024)</ref>, instead relying purely on semantic metadata such as variable names and descriptions. Another related line a work <ref type="bibr" target="#b30">(Yang et al., 2024)</ref> investigates the abilities of LLMs to act as in-context black-box optimizers. Given an objective function f and an evaluation budget B, the LLM is tasked with finding a maximizer x * of f by sequentially proposing queries {x i } B i=1 and observing their associated values {f (x i )} B i=1 . Taken together, these directions suggest a powerful new application of LLMs: interactive graph discovery.</p><p>Given an initial predicted graph Ĝ0 and a series of experiment rounds 1, ..., R, the interactive graph discovery problem involves minimizing some distance d( Ĝk , G * ) between the predicted graph Ĝk at round k and the true graph G * (unknown to the learner) through a sequence of targeted experiments on edges e = (X, Y ) testing the effect of the parent variable X on the child variable Y . The edge experiment operation is kept purposefully abstract, requiring only that binary feedback be given indicating the presence or absence of an edge. In practice this operation can be implemented via any number of experimental procedures (e.g. via hard interventions in the formal causal sense <ref type="bibr" target="#b21">(Pearl, 2009)</ref> or empirical methods such as randomized controlled trials <ref type="bibr" target="#b25">(Sibbald &amp; Roland, 1998)</ref>). The IGD problem setup captures the process researchers go through everyday when designing and prioritizing experiments, guided by their prior experience, to study numerous potential relationships between any number of variables.</p><p>The interactive graph discovery problem requires the agent to solve two key sub-tasks:</p><p>1. Experiment selection: Selecting which edges (X i , X j ) to target for experimentation in the next round.</p><p>2. Graph updates: Updating the predicted graph from Ĝk-1 to Ĝk given binary feedback based on the outcome of the previous experiments.</p><p>We propose to solve this task with the Interactive Graph Discovery Agent (IGDA): a novel LLM agent uncertainty-driven approach as an alternative to existing statistical methods <ref type="bibr" target="#b20">(Olko et al., 2024;</ref><ref type="bibr" target="#b24">Scherrer et al., 2022)</ref>. While statistical models can work well in some settings, they crucially rely on the abundance of domain specific observational and interventional numerical data. For many problems, such data might be hard or impossible acquire. LLMs, however, potentially contain relevant latent knowledge derived from vast amounts of variable semantic metadata contained in their pre-training or internet corpora. Further, we find that, via a combination of broad background knowledge and reasoning abilities, advanced LLMs <ref type="bibr" target="#b8">(Grattafiori et al., 2024)</ref> are capable of updating their predictions and confidences when presented with experimental feedback revealing unexpected relationships between a subset of edges. This makes LLM based approaches a powerful alternative to statistical methods when numerical data is not available.</p><p>In particular, IGDA predicts and maintains uncertainty estimates for each unknown edge e ∈ Ĝk . Edges are then selected for experimentation by prioritizing those with the highest uncertainty. When feedback is received on the selected edges, pairwise-local updates on both edge predictions and uncertainty estimates are performed for each edge in Ĝ sharing a parent or child variable with an experimented edge. This process continues for R rounds with I edges selected for experimentation each round. We benchmark IGDA on eight real world graphs, finding uncertainty driven selection with local updates outperforms baselines. In summary, we make the following contributions:</p><p>• The interactive graph discovery problem as a novel setting for evaluating LLM capabilities.</p><p>• LLM-based uncertainty-guided edge experiment selection as a policy for prioritizing edge experimentation.</p><p>• A local update strategy for robustly updating the predicted graph G k with binary experiment feedback.</p><p>• Ablations rigorously evaluating the contribution of each pipeline component and other discovery strategies.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">BACKGROUND AND RELATED WORK</head><p>Causal Discovery and LLMs. The causal discovery task involves learning causal relationships from observed empirical data <ref type="bibr" target="#b22">(Peters et al., 2017;</ref><ref type="bibr" target="#b26">Spirtes &amp; Zhang, 2016)</ref>. Many proposed algorithms exist <ref type="bibr" target="#b27">(Spirtes et al., 1993;</ref><ref type="bibr" target="#b31">Yu et al., 2019;</ref><ref type="bibr" target="#b19">Nauta et al., 2019;</ref><ref type="bibr" target="#b32">Zheng et al., 2018;</ref><ref type="bibr" target="#b4">Chickering, 2002)</ref> attempting to solve the causal discovery problem. However, these methods are known to struggle on real world graphs where observations are noisy or common structural assumptions are violated <ref type="bibr" target="#b3">(Chevalley et al., 2023;</ref><ref type="bibr" target="#b28">Tu et al., 2019)</ref>.</p><p>Recently, LLMs have emerged as an alternative approach to causal discovery <ref type="bibr" target="#b12">(Kıcıman et al., 2024;</ref><ref type="bibr" target="#b0">Abdulaal et al., 2024;</ref><ref type="bibr" target="#b29">Vashishtha et al., 2023;</ref><ref type="bibr" target="#b14">Li et al., 2024;</ref><ref type="bibr" target="#b13">Lampinen et al., 2023)</ref>. <ref type="bibr" target="#b12">Kıcıman et al. (2024)</ref> first investigated the capability of LLMs to act as zero-shot causal discovery agents using only semantic information and pairwise prompting on each variable pair. Follow-up work <ref type="bibr" target="#b0">(Abdulaal et al., 2024)</ref> further improves LLM predictions with observational data by selecting for predictions which maximize data likelihood. <ref type="bibr" target="#b29">Vashishtha et al. (2023)</ref> utilize triplet prompting to prevent cycles when the causal graph is acyclic. They show only a topological ordering on variables is required for many common causal reasoning tasks <ref type="bibr" target="#b5">(Chu et al., 2023)</ref>.</p><p>Other works <ref type="bibr" target="#b33">(Zhou et al., 2024;</ref><ref type="bibr" target="#b2">Chen et al., 2024)</ref> benchmark LLMs across a range of causality related tasks including causal discovery and causal inference confirming that LLMs struggle with integrating numerical data.</p><p>Another line of work more related to our proposed interactive causal discovery problem studies how to incorporate background knowledge into causal discovery algorithms <ref type="bibr" target="#b18">(Meek, 2013)</ref>. Define a set of background knowledge as the tuple K = (F, R), where F specifies a set of "forbidden" graph edges and R specifies a set of "required" graph edges. <ref type="bibr" target="#b18">Meek (2013)</ref> presents an algorithm for constructing a causal graph consistent with K by leveraging an assumed structural directed acyclic graph (DAG) property. Building on <ref type="bibr" target="#b18">Meek (2013)</ref>, <ref type="bibr" target="#b4">Chickering (2002)</ref> proposes a greedy search algorithm that performs well in practice.</p><p>Most related are statistical methods from the causal discovery literature which aim to efficiently choose a sequence of interventions to discover causal structure <ref type="bibr" target="#b24">(Scherrer et al., 2022;</ref><ref type="bibr" target="#b20">Olko et al., 2024)</ref>. In particular, Gradient based Interventional Targeting (GIT) <ref type="bibr" target="#b20">(Olko et al., 2024)</ref> utilizes existing neural causal discovery methods <ref type="bibr" target="#b15">(Lippe et al., 2022)</ref> to learn a distribution over possible graph structures and variable assignments.</p><p>For each round of intervention, GIT prioritizes variables whose simulated interventional distribution have large gradient with respect to the structural training loss.</p><p>In contrast to these works, our proposed algorithm utilizes LLMs to reason about the semantic/physical, as opposed to formal/structural, relationships between variables and edges in causal graphs. For this reason we are not required to make any structural assumptions on an underlying DAG, as is common in the causal discovery literature. This is desirable as in practice many real-world causal graphs are cyclic and poorly structured <ref type="bibr" target="#b14">(Zhu et al., 2024;</ref><ref type="bibr" target="#b10">Huang et al., 2021)</ref>. Additionally our method does not rely on observational or interventional data for real world graphs which may be expensive to acquire but crucial for good performance with statistical methods.</p><p>LLMs as Optimizers. Another growing line of work utilizes LLMs as black-box optimizers <ref type="bibr" target="#b30">(Yang et al., 2024;</ref><ref type="bibr" target="#b23">Roohani et al., 2024)</ref>. <ref type="bibr" target="#b30">Yang et al. (2024)</ref> introduce the notion of an LLM as a generic optimizer and use it to optimize performance objectives stemming from a range of tasks including linear regression and mathematical word problems <ref type="bibr" target="#b6">(Cobbe et al., 2021)</ref>. Other works <ref type="bibr" target="#b16">(Madaan et al., 2023;</ref><ref type="bibr" target="#b9">Havrilla et al., 2024)</ref> examine the self-refinement capabilities of LLMs where the LLM must reason and self-improve on earlier responses. A growing number of papers apply LLMs to optimal experiment design and discovery <ref type="bibr" target="#b23">(Roohani et al., 2024;</ref><ref type="bibr" target="#b1">AI4Science &amp; Quantum, 2023;</ref><ref type="bibr" target="#b7">Gao et al., 2024;</ref><ref type="bibr" target="#b17">Majumder et al., 2024;</ref><ref type="bibr" target="#b11">Jansen et al., 2024)</ref>. <ref type="bibr" target="#b23">Roohani et al. (2024)</ref> apply LLMs to gene discovery tasks which aim to find highly-influential parent genes affecting the regulation of a downstream target gene. <ref type="bibr" target="#b17">Majumder et al. (2024)</ref>; <ref type="bibr" target="#b11">Jansen et al. (2024)</ref> both present benchmarks evaluating the ability of LLMs to perform real-world and synthesized discovery tasks.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">METHOD</head><p>Setup. As input we are given a set of variables X 1 , ..., X n with associated metadata including variable names and variable descriptions. We use the notation Y → X to indicate when variable Y has a direct effect on variable X and the set of parents of a variable X as P a(X) = {X i : X i → X}. We can then consider the directed ground truth graph G * = {(X i , X j ) : X i ∈ P a(X j )} with unlabeled and unweighted edges. The only assumed graph structure is simplicity i.e. no self-edges or multi-edges. No additional structure on the graph (such as acyclicity) is assumed. We can frame the prediction of G * as an edge-wise binary classification problem over the complete graph K n , where an edge (X i , X j ) has the label l ij = 1 if X i → X j and l ij = 0 otherwise. G * can then be written as a collection of ground truth labelings</p><formula xml:id="formula_0">G * = {(X i , X j , l ij ) : 1 ≤ i ̸ = j ≤ n}.</formula><p>The interactive graph discovery task then aims to learn G * by interacting with the discovery environment via experiments on each edge (X i , X j ). We define an experiment on an edge (X i , X j ) as an operation revealing the ground truth label l i,j . This experiment operation is purposefully kept abstract for generality and could correspond to any number of real-world experimental experimental strategies including formal do operations <ref type="bibr" target="#b21">(Pearl, 2009)</ref> or empirical randomized control trials <ref type="bibr" target="#b25">(Sibbald &amp; Roland, 1998)</ref>. Interactive graph discovery then proceeds in two phases:</p><p>Phase 1 (Zero-shot prediction): Produce an initial graph prediction Ĝ0 using available variables X 1 , ..., X n plus semantic metadata.</p><p>Phase 2 (Interactive Discovery): Over a series of R rounds, propose I edge experiments on (X i , X j ) each round and receive binary feedback on l ij . Use this to produce an updated prediction Ĝr-1 → Ĝr</p><p>We evaluate the accuracy of a prediction Ĝ using the F1 objective, i.e.</p><formula xml:id="formula_1">F 1(G * , Ĝ) = 2 • Precision Ĝ • Recall Ĝ Precision Ĝ + Recall Ĝ</formula><p>where Precision Ĝ and Recall Ĝ are computed with the label predictions (X i , X j , lij ) ∈ Ĝ and l ij as ground truth. The goal of the interactive discovery process is then to maximize F 1(G * , ĜR ).</p><p>Method. Our proposed method IGDA begins by generating a zero-shot graph prediction Ĝ0 . A prediction for each variable pair (X i , X j ), 1 ≤ i ̸ = j ≤ n, is generated by prompting an LLM to reason about X i → X j in a manner similar to the pairwise-prompting strategy utilized in <ref type="bibr" target="#b12">Kıcıman et al. (2024)</ref>. In addition, we prompt the LLM to reason about its confidence in the prediction and output a confidence score from 1 -100. Section A shows the exact prompt used. To obtain a reliable confidence estimate we sample the LLM K = 16 </p><formula xml:id="formula_2">a in Ĝ do Ĝ[a]["conf"] ← mean( Ĝ[a]["update confs"]) Ĝ[a]["pred"] ← 1 Ĝ[a]["conf"]&gt;0</formula><p>end for end for return Ĝ end procedure times. We denote the initial confidence for (X i , X j ) as c 0 ij and set it to be the (signed) average over K = 16 output confidences. The initial edge label l 0 ij is then taken as the boolean l 0 ij = 1 c 0 ij ≥0 . This gives us the initial prediction Ĝ0 .</p><p>Next, in each experimentation round r ≤ R, we sort the confidence scores {c r ij : 1 ≤ i, j ≤ n} by absolute value and experiment on the I edges with the lowest absolute confidence (and highest uncertainty). This reveals the ground truth labels l ij for each experimented edge (X i , X j ). Using this feedback, we update the predicted edge labels for experimented edges to l r+1 ij = l ij and the confidences to c r+1 ij = 100. Additionally, we prompt the LLM, conditioned on the ground truth label l ij , to update its prediction and confidence for each edge (X i , X k ) or (X l , X j ), 1 ≤ k, l ≤ n which shares a node with (X i , X j ) and has absolute confidence less than 100. We call each update to an edge (X l , X k ) a local update. It may be that an edge (X l , X k ) is adjacent to multiple experimented edges (X i1 , X j1 ), (X i2 , X j2 ) in a single round and thus receives multiple local updates. To manage these cases we set the next confidence c r+1 lk to the (signed) average of all individual local updates to c r lk . Then we set l r+1 lk = 1 c lk ≥0 as before. This continues until the final round R is reached.</p><p>We call the complete discovery pipeline the Interactive Graph Discovery Agent (IGDA). A diagram of the full pipeline is shown in Figure <ref type="figure" target="#fig_0">1</ref>. We report all prompts in appendix A.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">RESULTS</head><p>We evaluate our approach on seven real-world graphs. The graphs range in size from 8 to 30 nodes (variables) and vary widely in structure (some are acyclic while others are cyclic). Details for each graph can be found in Appendix D. To produce initial zero-shot graph predictions Ĝ0 for all graphs we utilize pairwise causal prompting as in <ref type="bibr" target="#b12">Kıcıman et al. (2024)</ref> with Meta-Llama-3-70B-Instruct <ref type="bibr" target="#b8">(Grattafiori et al., 2024)</ref> as the base LLM. We chose Meta-Llama-3-70B-Instruct as at the time of our experiments it was the best open-source model with advanced reasoning and instruction following capabilities For the interactive discovery phase we then initialize all methods using Ĝ0 . We compare our method against several baselines:</p><p>Random selection: Starting from Ĝ0 we randomly select edges for experimentation. After receiving binary feedback we update incorrect predictions on experiment edges for the next round. We do not allow edges to be selected for experimentation twice.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Static confidence selection:</head><p>We select edges for experimentation based on the initial confidence scores c ij . No updates are performed beyond fixing incorrect predictions in the experimentation set.</p><p>Gradient-based Intervention Targeting (GIT): We adapt the statistical GIT method <ref type="bibr" target="#b20">(Olko et al., 2024)</ref> by selecting the node at each round which has a) not already been selected and b) has the largest loss gradient under a neural causal model <ref type="bibr" target="#b15">(Lippe et al., 2022)</ref> trained with all available observational and interventional training data. We initially train the model with 5000 observational datapoints sampled from the ground-truth graph. 100 additional interventional datapoints on the experiment node are sampled from the ground-truth graph and added to the training set after each round of experimentation.</p><p>Meta-Llama-3-70B-Instruct is used as the base LLM when applicable. To assess performance, we plot the mean F1 score, averaged over five independent runs, against the percentage of edges selected in each graph. Results are shown in Figure <ref type="figure" target="#fig_1">2</ref>.</p><p>Uncertainty driven experiment selection with local updates performs best. Uncertainty driven experiment selection with the LLM utilizing experimental feedback for local updates performs best on nearly all graphs. Further, it outperforms the random selection baselines at nearly every round on every graph, at times by up to 0.5 absolute F1 score. The only exception to this is the Arctic sea ice graph where local updates initially perform poorly. We attribute this to the highly cyclic and thus harder-to-predict graph structure. Additionally, the method significantly outperforms the statistical GIT baseline on both Az and Covid graphs and remains competitive on the rest. Figure <ref type="figure">3</ref> plots the average rank of all methods over all Figure <ref type="figure">3</ref>: Average rank of each method when numbered from 0 to 2 across each timestep on each graph. The full LLM driven update agent consistently achieves rank 0 across all timesteps. Note: lower is better.</p><p>timesteps, confirming IGDA's strong performance. Notably, even on graphs where the LLM proposes a poor zero-shot initial prediction, the LLM is able to recover quickly, converging to the correct structure with local updates. This suggests the LLM is able to effectively utilize experiment feedback even when lacking detailed domain knowledge.</p><p>Local updates can outperform random selection even with few experiments. Allowing the LLM to make local edge updates using experiment feedback quickly improves the predicted graph even when relatively few edges are selected. This behavior is particularly desirable, as in practice it may be expensive to experiment on even a small fraction of all edges. On some graphs, where the initial LLM confidence estimates are good, the static confidence selection baseline without local updates is also able to quickly outperform random selection. Yet, even when the initial confidence estimates are subpar, local updates compensate and allow for the prediction to quickly improve with just a few edge experiments. This again demonstrates the broad effectiveness of local updates even when initial predictions are poor.</p><p>Static uncertainty driven selection performs better than random selection. Despite not fully utilizing experimental feedback, static uncertainty driven selection still outperforms the random selection baseline on five out of seven graphs. This method performs particularly well on AZ and Covid graphs where the initial LLM predictions are already reasonably good. On these graphs static uncertainty selection quickly outperforms randomly selection and is competitive even with local updates. This shows that, on a subset of the graphs, the LLM's confidence in its predictions are well-calibrated, allowing our selection policy to prevent wasting experiments on edges which are most likely already correct. However, we also see the LLM's confidence estimates can be poorly calibrated on graphs for which the initial predictions are inaccurate. See for example the Asphyxia and Neuropathic pain graphs, which start with initial F1 score less than 0.2. On these graphs the static confidence selection component struggles to outperform the random baseline.</p><p>GIT performance heavily depends on availability of both observational and interventional data With ample data (5000 observational samples and 100 interventional samples per node) the statistical GIT methods performs well on most graphs where it is applicable (i.e. the graph is acyclic). However, we find this good performance heavily depends on the availability of such data, with decreases in both observational and interventional sample sizes significantly impacting results. In Figure <ref type="figure" target="#fig_2">4</ref> we plot the performance of GIT on the  Asphyxia graph with varying amounts of data demonstrating this effect. Results on more graphs are presented in the appendix. In contrast, IGDA does not depend at all on the availability of numerical observational or interventional data. Instead, IGDA relies on the complementary availability of semantic metadata of graph variables within either its pretraining dataset or on the internet.</p><p>In an effort to better understand the factors behind IGDA's success we conduct a number of ablations in the following section.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">ABLATIONS</head><p>Impact of experiment improvements versus update improvements As a starting point we define the net graph improvement in a round r as the difference between the number of edges correctly classified in in Ĝr versus in Ĝr-1 . If an edge (X i , X j ) is correctly classified in Ĝr but not in Ĝr-1 we say it has been improved. Recall there are two potential mechanisms of improvement for (X i , X j ): 1) (X i , X j ) was selected for experimentation in the previous round r -1 and feedback on the experiment was received at the start of round r 2) sThe prediction for (X i , X j ) was updated by the LLM after receiving experiment feedback for an adjacent edge (X k , X l ). We call the former improvements experiment improvements and the latter update improvements. In a given round r we are interested in how much of the net improvement for a graph is due to experiment improvements versus update improvements. To examine this, we plot both quantities in Figure <ref type="figure" target="#fig_3">5</ref> for the discovery processes discussed in the previous section. In addition, we plot the net graph improvement and total number of edges changed from each round.</p><p>In all seven graphs we see both the total number of changed edges and the net improved edges peak at the first round and then decay towards zero. Notably, on some graphs there is a significant gap between net improvement and total change, indicating many edges changed during dynamic updates are misclassified after previously being correctly classified. This decline in total and net change is reflected in the number of update improvements which peak early and sharply decline to zero. This observation supports our intuition above that allowing the LLM to dynamically update edge predictions without direct experimental feedback on the edge can dramatically improve performance at small percentages of experiments. In contrast, experiment improvement accounts for a smaller percentage (less than 40%) of edge improvements early on. However, in most graphs the number of experiment improvements stays nearly constant until at least 50% of edges are already selected. As a result, improvement from experiments grows to account for 90% of all edge improvements for rounds performed during this period. This demonstrates improvements from experiment and updates complement each other, with update improvement driving net improvement early and experiment improvement driving net improvement later on.</p><p>Our analysis here also confirms the effectiveness of allowing the LLM agent to update both the prediction and confidence for an edge. Even when only considering improvements from experiments when doing local updates, we see a major improvement over the static confidence baseline. This suggests the updates made to edge confidence scores are equally important in achieving good performance, allowing for sustained experiment improvement throughout the discovery process.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Impact of Confidence Based Selection and Local Prompting</head><p>We now ablate the impact of two key components of our discovery strategy: 1) confidence based edge selection and 2) local update prompting. To ablate 1) we directly prompt the LLM to generate a list of edges to experiment on instead of selecting via confidence. This requires us to put the entire current predicted graph Ĝr in-context. When dynamically updating Ĝr after receiving experimental feedback we remove all confidence estimates but retain the local prompting strategy. To ablate 2) we retain the same confidence edge selection proposed but replace local update prompts after with a single global update prompt containing the current prediction Ĝr and all recently received experiment feedback. We report the results of running the interactive discovery process with these methods in Figure <ref type="figure" target="#fig_4">6</ref>.</p><p>We find both ablations struggle to perform better than the random baseline. Local updates without confidence selection perform well early on but fall off quickly. F1 score on the Covid graph even regresses after the initial improvements, likely due to incorrect local updates and a poor experiment selection policy. This suggests in addition to providing a strong experiment selection procedure, maintaining running confidence estimates for each edge reduces the variance of local updates from experiment feedback. Turning to the ablation for local prompting, we again find performance not much better than the random baseline. Surprisingly, even on Covid where the static confidence selection performs well, confidence based selection + global updates still struggles. This indicates the base LLM is not able to correctly update the predicted graph when giving everything in context at once. This further motivate the practical importance of the local prompting procedure, which greatly simplifies the context the LLM must consider in each model call. Additionally, we note that for  large enough graphs, putting everything in context is simply not feasible. By contrast, local prompting is easily scalable to larger graphs, albeit at a quadratic cost.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Impact of the LLM Model Size</head><p>The above experiments exclusively use a single base LLM ( Meta-Llama-3-70B-Instruct) to perform both the initial round of zero-shot edge predictions and dynamically update edge predictions/confidences using experiment feedback. Now, we examine the impact of changing both the base model size and type. In Figure <ref type="figure" target="#fig_5">7</ref> we initialize the discovery process with zeroshot predictions made by Meta-Llama-3-70B-Instruct and run local updates using the smaller Meta-Llama-3-8B-Instruct as well as two models from the Qwen2 series.</p><p>We find the original Meta-Llama-3-70B-Instruct consistently performs best on all graphs at every time step. The other 70B model, Qwen2-72B-Instruct, performs similarly but consistently worse. In contrast, on the Asia and Covid graphs, both 8B models perform worse than even the random baseline. Surprisingly Meta-Llama-3-8B-Instruct performs reasonably well on the Sangiovese graph, performing similarly even to the 9x larger Qwen2 70B model. Overall however these results indicate performance on the interactive graph discovery task can be substantially improved with model scale.</p><p>We next investigate the performance of different models on the initial zero-shot edge prediction task. Using the pairwise confidence estimation prompt in Section A we prompt each of four models to produce a zero-shot prediction Ĝ0 with edge confidence values. Using the predicted confidence estimates we run greedy static confidence selection procedure as in 4. Ranks for each selection procedure averaged over all graphs are plotted in Figure <ref type="figure" target="#fig_8">11</ref>. F1 scores in each graph are reported in Figure <ref type="figure" target="#fig_0">10</ref> in the Appendix.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Impact of Memorization</head><p>The success of LLMs in discovery stems from their immense background knowledge acquired during pre-training. This background knowledge informs the model during edge prediction and confidence calibration, allowing for strong performance even zero-shot. However, if benchmark graphs are contained verbatim in pre-training data, memorization becomes a significant confounding factor. To Figure <ref type="figure" target="#fig_6">8</ref> shows our confidence driven selection + local update approach performs very well even on graphs with minimal memorization contamination. As previously observed, local prediction updates allow for fast improvement over the random baseline even with a small number of experiments. Surprisingly, the static confidence selection approach also works well here. This indicates zero-shot edge confidence scores can be well calibrated on graphs with no contamination from memorization. We additionally note this graph has a complex structure with many cycles of varying lengths. This shows our method performs well even on graphs which strongly violate often assumed DAG conditions.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">CONCLUSIONS AND FUTURE WORK</head><p>In this work we proposed IGDA as a novel application of LLMs to interactive graph discovery. Our experiments confirm the proposed IGDA method significantly outperforms baselines. Our ablations confirm both uncertainty driven edge selection and local updates using experiment feedback as importantly contributing to the method's good performance. Further, this method is complementary to existing statisical methods for experiment design or causal discovery (e.g. GIT <ref type="bibr" target="#b20">(Olko et al., 2024)</ref>). Statistical methods utilize available observational/interventional numerical data to make predictions and confidence estimates whereas IGDA utilizes available variable semantic metadata to make predictions and confidence estimates. Designing a method leveraging both numerical and semantic variable data is promising future work.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A PROMPTS</head><p>Zero-shot Confidence Estimation Prompt {task description} Your goal is to understand the direct causal parents of {target}. Another variable is a direct causal parent of {target} if an experiment on the variable affects {target} and there are no other causal parents between the variable and {target}. Now, you must determine whether {parent} is a causal parent of {target}. Here is a list of all other variables to consider: {variables info} Do some brainstorming, comparing relevant characteristics of both variables and then print your judgment at the end of your response enclosed in the tags &lt;decision&gt;YES/NO&lt;/decision&gt;. Print YES if {parent} is causal. Otherwise print NO. You should also print your confidence from a scale from 1 -100 (with 100 being most confident) in the tags &lt;confidence&gt;...&lt; /confidence&gt;. Information about {target}: {target info} Information about {parent}: {parent info} Parent Update Prompt You are a causal discovery expert. You have been given the following list of variables and tasked with predicting the true causal graph through a sequence of experiments on edges. {variables info} Note: each edge has an associated confidence value from 1 -100. The presence of an edge is represented as (A-&gt;B,CONFIDENCE) where A is the parent and B is the child. The absence of an edge is represented as (NOT A-&gt;B, CONFIDENCE) From one experiment you have discovered {experiment feedback} Previously you predicted {experiment prediction} Now you should update your belief about the other edges of {parent} based on the results of the experiment. Consider the predicted edge {other edge prediction} Now you should reason about how to update your belief about the above edge based on the experiment. This means you can either keep your confidence the same, update your confidence, or change your prediction entirely. At the end of your response give your updated prediction at the end of your response in the format &lt;decision&gt;PARENT/NOT CAUSAL&lt;/decision&gt; &lt;confidence&gt;CONFIDENCE&lt;/confidence&gt;. Print 'PARENT' if the edge should be present and 'NOT CAUSAL' if the edge should be absent. You should do this in three steps.</p><p>Step 1: Brainstorm what physical causal connection there may be, if any.</p><p>Step 2: Reason about what the experiment feedback tells you. Think carefully about how similar the new child is to the experimental child.</p><p>Step 3: Give your final decision.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Child Update Prompt</head><p>You are a causal discovery expert. You have been given the following list of variables and tasked with predicting the true causal graph through a sequence of experiments on edges. {variables info} Note: each edge has an associated confidence value from 1 -100. The presence of an edge is represented as (A-&gt; B,CONFIDENCE) where A is the parent and B is the child. The absence of an edge is represented as (NOT A-&gt;B, CONFIDENCE) From one experiment you have discovered {experiment feedback} Previously you predicted {experiment prediction} Now you should update your belief about the other edges of {child} based on the results of the experiment. Consider the predicted edge {other edge prediction} Now you should reason about how to update your belief about the above edge based on the experiment. This means you can either keep your confidence the same, update your confidence, or change your prediction entirely. At the end of your response give your updated prediction at the end of your response in the format &lt;decision&gt;PARENT/NOT CAUSAL&lt;/decision&gt; &lt;confidence&gt;CONFIDENCE&lt;/confidence&gt;. Print 'PARENT' if the edge should be present and 'NOT CAUSAL' if the edge should be absent. You should do this in three steps.</p><p>Step 1: Brainstorm what physical causal connection there may be, if any.</p><p>Step 2: Reason about what the experiment feedback tells you. Think carefully about how similar the new parent is to the experiment parent.</p><p>Step 3: Give your final decision.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B GIT ABLATIONS</head><p>Figure <ref type="figure" target="#fig_7">9</ref> plot GIT performance <ref type="bibr" target="#b20">(Olko et al., 2024)</ref> over six causal graphs with varying amounts of observational and interventional data.         </p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: Diagram of the interactive graph discovery process through LLMs. The process begins by predicting edges and confidences for each edge. Interactive discovery then proceeds by selecting the most uncertain edges for experimentation. The LLM then updates its predictions and confidences for edges adjacent to the selected edge. Note: only edges predicted as present are shown.</figDesc><graphic coords="4,91.80,95.03,429.30,165.24" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: Results on real world graphs showing F1 score of the predicted graph against percentage of edges in the graph selected. IGDA almost always outperforms both the random baseline and static selection via uncertainty. Note: static confidence selection without local updates is deterministic and thus has no confidence intervals. Additionally, GIT is not reported on the Arctic graph because the grpah is cyclic.</figDesc><graphic coords="6,96.63,178.21,102.82,78.89" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 4 :</head><label>4</label><figDesc>Figure 4: GIT with varying amounts of observational and interventional data. Decreasing either observational or interventional sample sizes can decrease performance by over 0.2 F1 score.</figDesc><graphic coords="8,198.90,95.04,214.20,160.65" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 5 :</head><label>5</label><figDesc>Figure 5: % Improvement from experiments vs. LLM prediction updates across timesteps. Improvement directly from LLM updates peaks early but then falls off. Improvement from experiments stays constant or improves with more experiments as confidence scores become better calibrated.</figDesc><graphic coords="8,96.63,378.95,102.82,77.11" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 6 :</head><label>6</label><figDesc>Figure 6: Ablating confidence based edge selection and local update prompting.</figDesc><graphic coords="10,97.87,95.96,137.08,103.13" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Figure 7 :</head><label>7</label><figDesc>Figure 7: Performance of LLM driven interactive discovery on different sized models. Small LLMs (8B params) underperform the random baseline.</figDesc><graphic coords="10,96.63,231.58,102.82,77.11" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>Figure 8 :</head><label>8</label><figDesc>Figure 8: Performance curves of uncertainty driven selection + local prompting vs. baselines on the Brain graph (Zhu et al., 2024) recently published in July 2024. Both LLM-driven methods perform well despite the graph not possibly being in the LLM's training data. Note: GIT is not reported because the graph is cyclic.</figDesc><graphic coords="11,198.90,95.04,214.20,163.77" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head>Figure 9 :</head><label>9</label><figDesc>Figure 9: GIT ablations with varying amounts of observational and interventional data.</figDesc><graphic coords="18,97.87,255.53,137.09,102.82" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head>Figure 11 :</head><label>11</label><figDesc>Figure 11: Static confidence based selection ranks for different models averaged across graphs. Meta-Llama-3-70B-Instruct is the only model to consistently outperform random guessing. Note: lower is better.</figDesc><graphic coords="20,198.90,125.16,214.20,162.27" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_9"><head>Figure 12 :</head><label>12</label><figDesc>Figure 12: Arctic sea ice causal graph.</figDesc><graphic coords="20,156.06,398.48,299.88,199.92" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_10"><head>Figure 13 :</head><label>13</label><figDesc>Figure 13: Asia causal graph.</figDesc><graphic coords="21,156.06,121.23,299.88,199.92" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_11"><head>Figure 14 :</head><label>14</label><figDesc>Figure 14: Asphyxia causal graph.</figDesc><graphic coords="21,156.06,402.41,299.88,199.92" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_12"><head>Figure 15 :</head><label>15</label><figDesc>Figure 15: Alzheimers causal graph.</figDesc><graphic coords="22,156.06,121.23,299.88,199.92" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_13"><head>Figure 16 :</head><label>16</label><figDesc>Figure 16: Covid causal graph.</figDesc><graphic coords="22,156.06,402.41,299.88,199.92" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_14"><head>Figure 17 :</head><label>17</label><figDesc>Figure 17: Neuropathic pain causal graph.</figDesc><graphic coords="23,156.06,121.23,299.88,199.92" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_15"><head>Figure 18 :</head><label>18</label><figDesc>Figure 18: Sangiovese causal graph.</figDesc><graphic coords="23,156.06,402.41,299.88,199.92" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0"><head></head><label></label><figDesc></figDesc><graphic coords="24,156.06,261.82,299.88,199.92" type="bitmap" /></figure>
+		</body>
+		<back>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0" />			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Causal modelling agents: Causal graph discovery through synergising metadata-and data-driven reasoning</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Abdulaal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Montana-Brown</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Ijishakin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Drobnjak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">C</forename><surname>Castro</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">C</forename><surname>Alexander</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=pAoqRlTBtY" />
+	</analytic>
+	<monogr>
+		<title level="m">The Twelfth International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<title level="m" type="main">The impact of large language models on scientific discovery: a preliminary study using gpt-4</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">R</forename><surname>Ai4science</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">A</forename><surname>Quantum</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2311.07361" />
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<monogr>
+		<title level="m" type="main">Clear: Can language models really understand causal graphs?</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zeng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Lu</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2406.16605" />
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<title level="m" type="main">Causalbench: A large-scale benchmark for network inference from single-cell perturbation data</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Chevalley</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Roohani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Mehrjou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Schwab</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2210.17283" />
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Optimal structure identification with greedy search</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">M</forename><surname>Chickering</surname></persName>
+		</author>
+		<ptr target="https://api.semanticscholar.org/CorpusID:1191614" />
+	</analytic>
+	<monogr>
+		<title level="j">J. Mach. Learn. Res</title>
+		<imprint>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="page" from="507" to="554" />
+			<date type="published" when="2002">2002</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<monogr>
+		<title level="m" type="main">Causal effect estimation: Recent advances, challenges, and opportunities</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Chu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Chu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Li</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2302.00848" />
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<monogr>
+		<title level="m" type="main">Training verifiers to solve math word problems</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Cobbe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Kosaraju</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Bavarian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Jun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Kaiser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Plappert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tworek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Hilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Nakano</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Hesse</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Schulman</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2110.14168" />
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<title level="m" type="main">Empowering biomedical discovery with ai agents</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Fang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Giunchiglia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Noori</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">R</forename><surname>Schwarz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Ektefaie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kondic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zitnik</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2404.02831" />
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">A</forename><surname>Grattafiori</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Dubey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Jauhri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Pandey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Kadian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Al-Dahle</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Letman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Mathur</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Schelten</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Vaughan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Fan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Goyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Hartshorn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Mitra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Sravankumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Korenev</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Hinsvark</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Rao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Rodriguez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Gregerson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Spataru</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Roziere</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Biron</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Chern</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Caucheteux</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Nayak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Bi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Marra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Mcconnell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Keller</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Touret</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Wong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">C</forename><surname>Ferrer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Nikolaidis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Allonsius</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Pintz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Livshits</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wyatt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Esiobu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Choudhary</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Mahajan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Garcia-Olano</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Perino</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Hupkes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Lakomkin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Albadawy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Lobanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Dinan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">M</forename><surname>Smith</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Radenovic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Guzmán</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Synnaeve</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><forename type="middle">L</forename><surname>Anderson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Thattai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Nail</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Mialon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Pang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Cucurell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Korevaar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Touvron</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Zarov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><forename type="middle">A</forename><surname>Ibarra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Kloumann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Misra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Evtimov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Copet</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Geffert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Vranes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Park</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Mahadeokar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Shah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Van Der Linde</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Billock</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Hong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Fu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Chi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Bitton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Spisak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Park</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Rocca</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Johnstun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Saxe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Jia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">V</forename><surname>Alwala</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Prasad</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Upasani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Plawiak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Heafield</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Stone</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>El-Arini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Iyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Malik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Chiu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Bhalla</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Lakhotia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Rantala-Yeary</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Van Der Maaten</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Tan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Jenkins</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Martin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Madaan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Malo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Blecher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Landzaat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>De Oliveira</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Muzzi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Pasupuleti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Singh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Paluri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Kardas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Tsimpoukelli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Oldham</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Rita</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Pavlova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Kambadur</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Lewis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Si</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">K</forename><surname>Singh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Hassan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Goyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Torabi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Bashlykov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Bogoychev</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Chatterji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Duchenne</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Alrassy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Vasic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Weng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Bhargava</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Dubal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Krishnan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Koura</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">S</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Srinivasan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Ganapathy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Calderer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Cabral</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">S</forename><surname>Stojnic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Raileanu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Maheswari</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Girdhar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Patel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Sauvestre</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Polidoro</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Sumbaly</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Taylor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Silva</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Hou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Hosseini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Chennabasappa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Singh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Bell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">S</forename><surname>Edunov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Nie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Narang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Raparthy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Shen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Wan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Bhosale</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Vandenhende</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Batra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Whitman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Sootla</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Collot</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Gururangan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Borodinsky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Herman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Fowler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Sheasha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Georgiou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Scialom</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Speckbacher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Mihaylov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Xiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Karn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">U</forename><surname>Goswami</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Gupta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Ramanathan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Kerkez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Gonguet</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Do</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Vogeti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Albiero</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Petrovic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Chu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Fu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Meers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Martinet</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Tan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><forename type="middle">E</forename><surname>Xia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Jia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Goldschlag</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Gaur</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Babaei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Mao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Coudert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><forename type="middle">D</forename><surname>Yan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Papakipos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Singh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Srivastava</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Jain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Kelsey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Shajnfeld</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Gangidi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Victoria</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Goldstand</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Menon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Sharma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Boesenberg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Baevski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Feinstein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Kallet</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Sangani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Teo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Yunus</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Lupu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Alvarado</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Caples</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Gu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Ho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Poulton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Ryan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Ramchandani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Dong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Franco</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Goyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Saraf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Chowdhury</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Gabriel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bharambe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Eisenman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Yazdan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>James</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Maurer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Leonhardi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Loyd</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Paola</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">D</forename><surname>Paranjape</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Ni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Hancock</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Wasti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Spence</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Stojkovic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Gamido</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Montalvo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Parker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Burton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Mejia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Chu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C.-H</forename><surname>Cai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Tindal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Feichtenhofer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Civin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Beaty</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Kreymer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Adkins</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Testuggine</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>David</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Parikh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Liskovich</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Foss</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Le</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Holland</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Dowling</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Jamil</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Montgomery</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Presani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Hahn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Wood</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Le</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E.-T</forename><surname>Brinkman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Arcaute</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Dunbar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Smothers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Kreuk</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Tian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Kokkinos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Ozgenel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Caggioni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Kanayet</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Seide</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Florez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><forename type="middle">M</forename><surname>Schwarz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Badeer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Swee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Halpern</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Herman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Sizov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Guangyi</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Lakshminarayanan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Inan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Shojanazeri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Habeeb</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Rudolph</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Suk</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Aspegren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Goldman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zhan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Damlaj</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Molybog</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Tufanov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Leontiadis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I.-E</forename><surname>Veliche</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Gat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Weissman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Geboski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kohli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Asher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J.-B</forename><surname>Gaya</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Marcus</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Chan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Reizenstein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Teboul</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Jin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Cummings</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Carvill</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Shepard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Mcphie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Torres</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ginsburg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">U</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">H</forename><surname>Saxena</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Khandelwal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Zand</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Matosich</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Veeraraghavan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Michelena</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Jagadeesh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Chawla</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Garg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Silva</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Bell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Moshkovich</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Wehrstedt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Khabsa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Avalani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Bhatt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Mankus</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Hasson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Lennie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Reso</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Groshev</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Naumov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Lathi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Keneally</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Seltzer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">L</forename><surname>Valko</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Restrepo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Patel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Vyatskov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Samvelyan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Clark</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Macey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Hermoso</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">J</forename><surname>Metanat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Rastegari</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Bansal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Hart</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Salpekar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Kalinli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Kent</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Parekh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Saab</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Balaji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Rittner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Bontrager</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Roux</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Dollar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Zvyagina</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Ratanchandani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Yuvraj</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Alao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Rodriguez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Ayub</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Murthy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Nayani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Mitra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Parthasarathy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Hogan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Battey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Howes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Rinott</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Mehta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Siby</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Bondu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">J</forename><surname>Datta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Chugh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Hunt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Dhillon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Sidorov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Pan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Mahajan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Verma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Yamamoto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ramaswamy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Lindsay</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Lindsay</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Zha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">C</forename><surname>Patil</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Shankar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Agarwal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Sajuyigbe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Chintala</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Max</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Kehoe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Satterfield</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Govindaprasad</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Gupta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Deng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Cho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Virk</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Subramanian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Choudhury</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Goldman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Remez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Glaser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Best</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Koehler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Robinson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Matthews</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Chou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Shaked</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Vontimitta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Ajayi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Montanez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Mohan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Kumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">S</forename><surname>Mangla</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Ionescu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Poenaru</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Mihailescu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">T</forename><surname>Ivanov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Bouaziz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Constable</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Kleinman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Jia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Qi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Adi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Nam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Hao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Qian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Rait</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Devito</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Rosnbrick</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Wen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Ma</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2407.21783" />
+		<imprint>
+			<date type="published" when="2024">2024</date>
+			<pubPlace>Santhanam, N., Parks, N., White, N., Bawa, N., Singhal, N., Egebo, N., Usunier, N., Mehta, N., Laptev, N. P., Dong, N., Cheng, N., Chernoguz,</pubPlace>
+		</imprint>
+	</monogr>
+	<note>The llama 3 herd of models</note>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<monogr>
+		<title level="m" type="main">Glore: When, where, and how to improve llm reasoning via global and local refinements</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Havrilla</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Raparthy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Nalmpantis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Dwivedi-Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zhuravinskyi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Hambro</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Raileanu</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2402.10963" />
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Benchmarking of data-driven causality discovery approaches in the interactions of arctic sea ice and atmosphere</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Kleindessner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Munishkin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Varshney</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wang</surname></persName>
+		</author>
+		<idno type="DOI">10.3389/fdata.2021.642182</idno>
+		<ptr target="https://www.frontiersin.org/journals/big-data/articles/10.3389/fdata.2021.642182" />
+	</analytic>
+	<monogr>
+		<title level="m">Frontiers in Big Data</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="volume">4</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<title level="m" type="main">Discoveryworld: A virtual environment for developing and evaluating automated scientific discovery agents</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Jansen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M.-A</forename><surname>Côté</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Khot</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Bransom</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">D</forename><surname>Mishra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">P</forename><surname>Majumder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Tafjord</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Clark</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2406.06769" />
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<monogr>
+		<title level="m" type="main">Causal reasoning and large language models: Opening a new frontier for causality</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>Kıcıman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Ness</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Sharma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Tan</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2305.00050" />
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<monogr>
+		<title level="m" type="main">Passive learning of active causal strategies in agents and language models</title>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">K</forename><surname>Lampinen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">C Y</forename><surname>Chan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Dasgupta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">J</forename><surname>Nam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">X</forename><surname>Wang</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2305.16183" />
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<author>
+			<persName><forename type="first">P</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Meng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Shen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Realtcd</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2404.14786" />
+		<title level="m">Temporal causal discovery from interventional data with large language model</title>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<monogr>
+		<title level="m" type="main">Efficient neural causal discovery without acyclicity constraints</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Lippe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Cohen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Gavves</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2107.10483" />
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<monogr>
+		<title level="m" type="main">Self-refine: Iterative refinement with self-feedback</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Madaan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Tandon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Gupta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Hallinan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Wiegreffe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">U</forename><surname>Alon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Dziri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Prabhumoye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Gupta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">P</forename><surname>Majumder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Hermann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Welleck</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Yazdanbakhsh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Clark</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2303.17651" />
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<monogr>
+		<title level="m" type="main">Discoverybench: Towards data-driven discovery with large language models</title>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">P</forename><surname>Majumder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Surana</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Agarwal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">D</forename><surname>Mishra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Meena</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Prakhar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Vora</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Khot</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Sabharwal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Clark</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2407.01725" />
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<monogr>
+		<title level="m" type="main">Causal inference and causal explanation with background knowledge</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Meek</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/1302.4972" />
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Causal discovery with attention-based convolutional neural networks</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Nauta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Bucur</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Seifert</surname></persName>
+		</author>
+		<ptr target="https://api.semanticscholar.org/CorpusID" />
+	</analytic>
+	<monogr>
+		<title level="j">Mach. Learn. Knowl. Extr</title>
+		<imprint>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page">68070067</biblScope>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<monogr>
+		<title level="m" type="main">Trust your gradient: Gradient-based intervention targeting for causal discovery</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Olko</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zajac</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Nowak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Scherrer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Annadani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Bauer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Kucinski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Milos</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2211.13715" />
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<monogr>
+		<title level="m" type="main">Causality: Models, Reasoning and Inference</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Pearl</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+			<publisher>Cambridge University Press</publisher>
+			<pubPlace>USA</pubPlace>
+		</imprint>
+	</monogr>
+	<note>2nd edition. ISBN 052189560X</note>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<monogr>
+		<title level="m" type="main">Elements of Causal Inference: Foundations and Learning Algorithms</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Peters</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Janzing</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Schlkopf</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<publisher>The MIT Press</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<monogr>
+		<title level="m" type="main">Biodiscoveryagent: An ai agent for designing genetic perturbation experiments</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Roohani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Vora</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Steinhart</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Marson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2405.17631" />
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<monogr>
+		<title level="m" type="main">Learning neural causal models with active interventions</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Scherrer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Bilaniuk</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Annadani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Goyal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Schwab</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Schölkopf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">C</forename><surname>Mozer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Bauer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">R</forename><surname>Ke</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2109.02429" />
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Understanding controlled trials: Why are randomised controlled trials important?</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Sibbald</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Roland</surname></persName>
+		</author>
+		<idno type="DOI">10.1136/bmj.316.7126.201</idno>
+	</analytic>
+	<monogr>
+		<title level="j">BMJ</title>
+		<imprint>
+			<biblScope unit="volume">316</biblScope>
+			<biblScope unit="issue">7126</biblScope>
+			<biblScope unit="page">201</biblScope>
+			<date type="published" when="1998-01">jan 1998</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Causal discovery and inference: concepts and recent methodological advances</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Spirtes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Zhang</surname></persName>
+		</author>
+		<idno type="DOI">10.1186/s40535-016-0018-x</idno>
+		<ptr target="https://doi.org/10.1186/s40535-016-0018-x" />
+	</analytic>
+	<monogr>
+		<title level="j">Applied Informatics</title>
+		<idno type="ISSN">2196-0089</idno>
+		<imprint>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<monogr>
+		<title level="m" type="main">Causation, prediction, and search</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Spirtes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Glymour</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Scheines</surname></persName>
+		</author>
+		<ptr target="https://api.semanticscholar.org/CorpusID" />
+		<imprint>
+			<date type="published" when="1993">1993</date>
+			<biblScope unit="page">117765107</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<monogr>
+		<title level="m" type="main">Neuropathic pain diagnosis simulator for causal discovery algorithm evaluation</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Tu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">C</forename><surname>Bertilson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Kjellström</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Zhang</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/1906.01732" />
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<monogr>
+		<title level="m" type="main">Causal inference using llm-guided discovery</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Vashishtha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">G</forename><surname>Reddy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Kumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Bachu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">N</forename><surname>Balasubramanian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Sharma</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2310.15117" />
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<monogr>
+		<title level="m" type="main">Large language models as optimizers</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Q</forename><forename type="middle">V</forename><surname>Le</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Chen</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2309.03409" />
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<monogr>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Dag-Gnn</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/1904.10098" />
+		<title level="m">Dag structure learning with graph neural networks</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<monogr>
+		<title level="m" type="main">Dags with no tears: Continuous optimization for structure learning</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Aragam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Ravikumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">P</forename><surname>Xing</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/1803.01422" />
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<monogr>
+		<title level="m" type="main">Causalbench: A comprehensive benchmark for causal learning capability of llms</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">C</forename><surname>Tan</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2404.06349" />
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">A hybrid constrained continuous optimization approach for optimal causal discovery from biological data</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">V</forename><surname>Benos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Chikina</surname></persName>
+		</author>
+		<idno type="DOI">10.1093/bioinformatics/btae411</idno>
+		<ptr target="https://doi.org/10.1093/bioinformatics/btae411" />
+	</analytic>
+	<monogr>
+		<title level="m">):ii87-ii97, 09 2024</title>
+		<imprint>
+			<biblScope unit="volume">40</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

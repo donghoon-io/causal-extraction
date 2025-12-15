@@ -1,0 +1,1495 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Hierarchical Few-Shot Generative Models</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Giorgio</forename><surname>Giannone</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department" key="dep1">Section for Cognitive Systems Technical</orgName>
+								<orgName type="department" key="dep2">Section for Cognitive Systems</orgName>
+								<orgName type="department" key="dep3">Department of Biology and Rigshospitalet</orgName>
+								<orgName type="institution" key="instit1">University of Denmark</orgName>
+								<orgName type="institution" key="instit2">Technical University of Denmark</orgName>
+								<orgName type="institution" key="instit3">University of Copenhagen</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Ole</forename><surname>Winther</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="department" key="dep1">Section for Cognitive Systems Technical</orgName>
+								<orgName type="department" key="dep2">Section for Cognitive Systems</orgName>
+								<orgName type="department" key="dep3">Department of Biology and Rigshospitalet</orgName>
+								<orgName type="institution" key="instit1">University of Denmark</orgName>
+								<orgName type="institution" key="instit2">Technical University of Denmark</orgName>
+								<orgName type="institution" key="instit3">University of Copenhagen</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Hierarchical Few-Shot Generative Models</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-28T23:12+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>A few-shot generative model should be able to generate data from a distribution by only observing a limited set of examples. In few-shot learning the model is trained on data from many sets from different distributions sharing some underlying properties such as sets of characters from different alphabets or sets of images of different type objects. We study a latent variables approach that extends the Neural Statistician [8] to a fully hierarchical approach with an attention-based point to set-level aggregation. We extend the previous work to iterative data sampling, likelihood-based model comparison, and adaptation-free out of distribution generalization. Our results show that the hierarchical formulation better captures the intrinsic variability within the sets in the small data regime. With this work we generalize deep latent variable approaches to few-shot learning, taking a step towards large-scale few-shot generation with a formulation that readily can work with current state-of-the-art deep generative models.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Humans are exceptional few-shot learners able to grasp concepts and function of objects never encountered before <ref type="bibr" target="#b22">[23]</ref>. This is because we build internal models of the world so we can combine our prior knowledge about object appearance and function to make well educated inferences from very little data <ref type="bibr" target="#b46">[47,</ref><ref type="bibr" target="#b24">25,</ref><ref type="bibr" target="#b48">49]</ref>. In contrast, traditional machine learning systems have to be trained tabula rasa and therefore need orders of magnitude more data. In the landmark paper on modern few-shot learning Lake et al. <ref type="bibr" target="#b23">[24]</ref> demonstrated how hand-written symbols from different alphabets can be distinguished one-shot, i.e. when a letter is shown for the first time. Few-shot learning <ref type="bibr" target="#b52">[53,</ref><ref type="bibr" target="#b42">43,</ref><ref type="bibr" target="#b9">10]</ref> and related approaches aiming at learning from little labelled data at test time (meta and transfer learning <ref type="bibr" target="#b18">[19]</ref>) have recently gained new interest thanks to modeling advances, availability of large diverse datasets and computational resources. Building efficient learning systems that can adapt at inference time is a prerequisite to deploy such systems in realistic settings. Much attention has been devoted to supervised few-shot learning. The problem is typically cast in terms of an adaptive conditional task, where a small support set is used to condition explicitly <ref type="bibr" target="#b10">[11]</ref> or implicitly <ref type="bibr" target="#b9">[10]</ref> a learner, with the goal to perform well on a query set. The high-level idea is to train the model with a large number of small sets, and inject in the model the capacity to adapt to new concepts from few-samples at test time. Comparatively less work has been developed on few-shot adaptation in generative models <ref type="bibr" target="#b7">[8,</ref><ref type="bibr" target="#b35">36,</ref><ref type="bibr" target="#b1">2]</ref>. This is partially because of the challenging nature of learning joint distributions in an unsupervised way from few-samples and difficulties in evaluating such models. Few-shot generation has been limited to simple tasks, shallow and handcrafted conditioning mechanisms and as pretraining for supervised few-shot learning. Consequently there is a lack of quantitative evaluation and progress in the field.</p><p>5th Workshop on Meta-Learning at NeurIPS 2021, held virtually.</p><p>In this work we aim to solve these issues for few-shot generation in latent variable models. This class of models is promising because provides a principle way to include adaptive conditioning using latent variables. The setting we consider is that of learning from a large quantity of homogeneous sets, where each set is an un-ordered collections of samples of one concept or class. At test time, the model will be provided with sets of concepts never encountered during training and sets of different cardinality. We consider explicit conditioning in a hierarchical bayesian formulation, where a global latent variable carries information about the set at hand. A pooling mechanism aggregates information from the set using a hard-coded (mean, max) or learned (attention) operator. The conditioning mechanism is implemented in a shallow or hierarchical way: the hierarchical approach helps to learn better representations for the input set and gradually merges global and local information between the aggregated set and samples in the set. To handle input sets of any size the mechanism has to be permutation invariant and non-parametric. Conditional hierarchical model can naturally represent families of distributions where each conditioning set-level latent variable defines a different generative model. Learning a full distribution over the input set increases the flexibility of the model. Our contributions are the following:</p><p>1. We study latent variable models in the few-shot generation scenario. We perform quantitative evaluation of previous proposed methods.</p><p>2. We explore forward and iterative sampling strategies for the marginal and the predictive distributions implicitly defined by few-shot generative models. 3. We organize previously proposed latent variable models in the general class of hierarchical few-shot generative models, increasing the input set expressivity through convolutions, a learnable aggregation mechanism and hierarchical inference.</p><p>The paper is organized as follow: in Section 2 we summarize the Neural Statistician (NS). In Section 3 we extend the NS proposing a new class of hierarchical models -Hierarchical Few-Shot Generative Models (HFSGM). In this section we also discuss sampling strategies and aggregation mechanisms for the input set. In Section 4 we present empirical results on benchmark datasets, focusing on I) few-shot generative capacities varying the input set cardinality, II) strategies for unconditional, conditional and refined sampling and III) transfer properties on datasets of increasing complexity. In Section 5 we survey related work and in Section 6 we conclude this work.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Neural Statistician</head><p>In this section we present the modeling background for the proposed few-shot generative models. The Neural Statistician (NS, <ref type="bibr" target="#b7">[8]</ref>) is a latent variable model for few-shot learning. Based on this model, many other approaches have been developed <ref type="bibr" target="#b11">[12,</ref><ref type="bibr" target="#b1">2]</ref>. The NS is a hierarchical model where two collections of latent variable are learned: a task-specific summary statistic c with prior p(c) and a per-sample latent variable z with prior p(z|c):</p><formula xml:id="formula_0">p(X) = p(c) S s=1 p(x s |z s , c)p(z s |c)dz s dc ,<label>(1)</label></formula><p>where X = {x 1 , . . . , x S } assuming the data set size is S and p(z|c) in general is a hierarchy of latent variables <ref type="bibr" target="#b43">[44,</ref><ref type="bibr" target="#b28">29]</ref>:</p><formula xml:id="formula_1">p(z|c) = p(z L |c) L-1 l=1 p(z l |z l+1 , c) with z = {z 1 , . . . , z L }.</formula><p>In the original NS model, the authors factorize the lower-bound wrt c and z as:</p><formula xml:id="formula_2">q(c, Z|X) = q(c|X) S s=1 q(z s |c, x s ) ,<label>(2)</label></formula><p>where Z = {z 1 , . . . , z S } and q(z s |x s , c) is in general a hierarchy of latent variables. In the NS the moments of the conditioning distribution over c are computed using a simple sum/average based formulation r = S s=1 h(x s ),; and then r is used to condition q(c|r). This idea is simple and straightforward, enabling efficient learning and a clean lower-bound factorization. But it has limitations: I) with such formulation the model expressivity and capacity to extract information from the set are limited. II) The invariance of q(c|X) with respect set permutation is achieved by simple aggregation. The pooling mechanism assumes strong homogeneity in the context set and the generative process. However the model formulation allows more advanced invariant aggregations based on attention <ref type="bibr" target="#b50">[51]</ref> and graph approaches <ref type="bibr" target="#b51">[52]</ref>). In the general case we want to be able to learn more expressive few-shot generative models able to deal with variety and complexity in the conditioning set. To go beyond these models in the next section we propose: I) a learnable non-parametric representation for the context set; and II) a hierarchical merging of information between conditioning c and sample z representations.</p><p>3 Hierarchical Few-Shot Generative Models Notation.</p><formula xml:id="formula_3">Top Prior c: p θ (c L ) Top Prior z: p θ (z L | c L ) Prior c: p θ (c l | c l+1 , Z l+1 ) Prior z: p θ (z l | z l+1 , c l ) Observation x: p θ (x | z 1:L , c 1:L ) Top Posterior c: q φ (c L | X) Top Posterior z: q φ (z L | c L , x) Posterior c: q φ (c l | c l+1 , Z l+1 , X) Posterior z: q φ (z l | z l+1 , c l , x) Set Representation: h l</formula><p>Our goal is to learn a generative model over sets, i.e. unordered collections of observations, able to generalize to new datasets given few samples. In this model, c is a collection of latent variables that represent a set X. We learn a posterior over z conditioned on c, able to generate samples accordingly to queries x s . The model has to be expressive: I) hierarchical -to increase the functions that the model can represent and improve the joint merging of set-level information c and sample information z, and II) non-parametric -to handle input sets of any size and complexity, improving the way the model extracts and organizes information in the conditioning set. A fundamental difference between our proposal and previous models is the intrinsically hierarchical inference procedure over c and z. Generative Model. The generative model factorizes the joint distribution p(X, Z, c). In particular can be written as:</p><formula xml:id="formula_4">p(X|Z, c)p(c L ) p(Z L |c L ) L-1 l=1 p(Z l , c l |Z l+1 , c l+1 )<label>(3)</label></formula><p>where Z l = {z 1 l , . . . , z S l } are latent for layer l in the model and sample s in the input set X = {x s } S s=1 ; c l is a latent for layer l in the model and the input set X. We factorize the likelihood and prior terms over the set as:</p><formula xml:id="formula_5">p(X|Z, c) = S s=1 p(x s |z s , c) p(Z l , c l |Z l+1 , c l+1 ) = S s=1 p(z s l |z s l+1 , c l ) p(c l |c l+1 , Z l+1 ).</formula><p>In this formulation the context p(c l |c l+1 , Z l+1 ) is a distribution of the previous context representation c l+1 and the previous latent representation for the samples Z l+1 as illustrated in Figure <ref type="figure" target="#fig_0">1</ref>. Approximate Inference. Learning in the model is achieved by amortized variational inference <ref type="bibr" target="#b19">[20,</ref><ref type="bibr" target="#b17">18]</ref>. The hierarchical formulation leverages structured mean-field approximation to increase inference flexibility. The approximate posterior parameterizes a joint distribution between latent representation for context and samples. We factorize q(c, Z|X) following the generative model:</p><formula xml:id="formula_6">q(c L |X) q(Z L |c L , X) L-1 l=1 q(Z l , c l |Z l+1 , c l+1 , X)<label>(4)</label></formula><p>where we factorize the posterior using a top-down inference formulation <ref type="bibr" target="#b43">[44]</ref>, merging top-down stochastic inference with bottom-up deterministic inference from the data. We factorize the posterior terms over the set as:</p><formula xml:id="formula_7">q(Z l , c l |Z l+1 , c l+1 , X) = S s=1 q(z s l |z s l+1 , c l , x s ) q(c l |c l+1 , Z l+1 , X).</formula><p>Lower-bound. In latent variable models <ref type="bibr" target="#b36">[37,</ref><ref type="bibr" target="#b21">22]</ref> we maximize a per-sample lower-bound over a large dataset. In few-shot generative models we maximize a lower-bound over a large collection of small sets. This detail is important because, even if the dataset of sets is iid by construction, learning in the few-shot scenario relies explicitly on common structure within a small set. For example, each small set can be an unordered collection of observations for a specific class or concept, like a character or face; and we rely on common structure between these observations using aggregation and conditioning on c. The variational lower bound for log p(X) is obtained using the variational distribution q = q(c, Z|X):</p><formula xml:id="formula_8">log p(X) ≥ E q S s=1 log p(x s |z s , c) + E q L-1 l=1 S s=1 log p(z s l |z s l+1 , c l ) q(z s l |z s l+1 , c l , x s ) + E q S s=1 log p(z s L |c L ) q(z s L |c L , x s ) + E q L-1 l=1 log p(c l |c l+1 , Z l+1 ) q(c l |c l+1 , Z l+1 , X) -KL(q(c L |X), p(c L )) .<label>(5)</label></formula><p>The lower-bound can be split in three main components: an expected log likelihood term, divergences over Z and over c. The final per-sample loss for T sets of size</p><formula xml:id="formula_9">S then is L = E p(X S ) l(X) = 1/N T t=1 l(X t )</formula><p>, where l(X t ) is the negated lower-bound for set X t and N = T S.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Sampling Algorithm 1: Sampling</head><formula xml:id="formula_10">Data: Input set X; single pass c L ∼ q(c L |X); z, c &lt;L ∼ p(z, c &lt;L |c L ); x ∼ p(x|z, c); repeat X = [X, x]; Z, c ∼ q( Z, c| X); X ∼ p( X | Z, c); x = x ; until converged; return x;</formula><p>We may be interested in either sampling unconditionally x ∼ p(x) or from the predictive distribution x ∼ p(x|X). Unconditional sampling may be performed exactly using the generative model as illustrated in Figure <ref type="figure" target="#fig_0">1</ref>: first sample the hierarchical prior z, c ∼ p(z, c) and then sample the likelihood x ∼ p(x|z, c). Conditional sampling x ∼ p(x|X) can be done approximately using the variational posterior q(Z, c|X) as a replacement for the exact posterior p(Z, c|X) as outlined in Algorithm 1. In the single pass approach (adapted from the NS) a sample from:</p><formula xml:id="formula_11">p(x|z, c)p(z, c &lt;L |c L )q(c L |X)dzdc ≈ p(x|X) (6)</formula><p>is generated. This approach is not ideal because c &lt;L is only modeled jointly with the latent z for the new sample while omitting the latent Z for X. We can introduce this dependence in a Markov chain approach adapted from the missing data imputation framework proposed in Appendix F of <ref type="bibr" target="#b36">[37]</ref>. We augment X with the sample x generated in the single pass approach: X = [X, x]. From this we can construct a distribution p( Z, c| X), where Z = [Z, z] is the corresponding augmented latent. From this distribution and the likelihood we can construct a transition kernel:</p><formula xml:id="formula_12">p(x |x, X) = p( X | Z, c)p( Z, c| X)dX d Zdc .</formula><p>If p( Z, c| X) = p( Z, c| X) then we can show that p(x|X) is an eigen-distribution for the transition kernel and thus sampling the transition kernel will under mild conditions converge to a sample from p(x|X). There are several ways to construct p( Z, c| X) from the hierarchical variational and prior distributions. One possibility is shown in Algorithm 1. Alternatively, one may sample c L , ZL ∼ q(c L , ZL | X), generate the remainder of the latent from the prior hierarchy and new samples X , x from the likelihood. If the variational is exact, these approaches are equivalent and exact. In the experimental section we report results for the different approaches.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Learnable aggregation (LAG)</head><p>Algorithm 2: LAG</p><formula xml:id="formula_13">Data: Input set X = {x s } S s=1 ; compute {h(x s )} S s=1 ; r = 1/S S s=1 h(x s ); α(r, x s ) ∝ sim(q(r), k(h s )); aggregate r LAG = S s=1 α(r, x s ) v(h s ); sample c ∼ q(c|r LAG );</formula><p>A central idea in few-shot generative models is to condition the generative model with a permutation invariant representation of the input set. For a NS such operator is a hard-coded per-set statistic. This approach <ref type="bibr" target="#b7">[8,</ref><ref type="bibr" target="#b11">12]</ref> maps each sample in X independently using {h(x s )} S s=1 and then aggregating r L = S s=1 h(x s ) to generate the moments for q(c L |r L ). This idea is simple and effective when using homogeneous and small sets for conditioning. Another choice is a relation network <ref type="bibr" target="#b45">[46,</ref><ref type="bibr" target="#b38">39]</ref> followed by aggregation. However, the adaptation capacities of the model are a function of how we represent the input set and a more expressive learnable aggregation mechanism can be useful. In the general scenario, a few-shot generative model should be able to extract information from any conditioning set X in terms of variety and size. In this paper we consider a multi-head attention-based learnable aggregation (LAG) inspired by <ref type="bibr" target="#b26">[27]</ref> that can be used in each block of the hierarchy over c (Figure <ref type="figure" target="#fig_2">3</ref>). Using LAG we can account for statistical dependencies in the set, handle variety between samples in the set and generalize better to input set dimensions. In the experimental section we provide extensive empirical analysis of how using LAG improves the generative and transfer capacity of the model.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Experiments</head><p>In this section we discuss experimental setup and results for our model. In particular for all the models our interests are: I) Quantitative evaluation of few-shot generative capacities. II) Conditional sampling from the model. III) Transfer of generative capacities to new datasets and input set size. We perform experiments on binarized Omniglot <ref type="bibr" target="#b23">[24]</ref> and CelebA <ref type="bibr" target="#b27">[28]</ref>. We perform quantitative evaluation on Omniglot, MNIST <ref type="bibr" target="#b25">[26]</ref>, DOUBLE-MNIST <ref type="bibr" target="#b44">[45]</ref>, TRIPLE-MNIST <ref type="bibr" target="#b44">[45]</ref> and CelebA. We follow the approach proposed in <ref type="bibr" target="#b7">[8]</ref> for set creation. We create a large collection of small sets, where each set contains all the occurrences for a specific class or concept in a dataset: a character for Omniglot; the face of an identity for CelebA. Both datasets contain thousands of characters/identities with an average number of 20 occurrences per class. For this reason they are a natural choice for few-shot generation. Then we split the sets in train/val/test sets. Using these splits we can dynamically create sets of different dimensions (2-5-10 samples per set from the same class), generating a new collection of training sets at each epoch during training. For training we use the episodic approach proposed in <ref type="bibr" target="#b52">[53]</ref>. Our architecture is a close approximation of <ref type="bibr" target="#b7">[8]</ref>. We describe relevant details in Appendix C. We use a VAE -which does not explore set information -and the Neural Statistician (NS) as baselines. We propose two main model variants. Such variants are characterized by different design choices for the conditioning mechanism. A Convolutional Neural Statistician (CNS) where the latent space is shaped with convolutions at a given resolution; and a Convolutional Hierarchical Few-shot Generative Model (CHFSGM) where an additional hierarchy over c is employed. For all the models we consider standard aggregation mechanism (MEAN, MAX pooling) and learnable ones (LAG). Each input set is a homogeneous (one concept or class) collection of samples. During training the input set size is always between 2 and 10.</p><p>Generative. With these experiments we test the generalization properties of the model on few-shot generation. We explore the behavior of the model increasing the input size. Evaluation of generative properties is performed using the lower-bound and approximating the log-marginal likelihood with 1000 importance samples. In Table <ref type="table">1</ref> we compare generalization in Omniglot on disjoint classes with a set size of 5. Our focus is on improving the model through c. In Table <ref type="table">1</ref>, NS-MEAN is the original Table <ref type="table">1</ref>: Generalization on disjoint Omniglot classes trained on set size 5 for a VAE, NSs with mean/max/learnable aggregation (MEAN/MAX/LAG) convolutional variants (C) and for a HFSGM with a hierarchy over c. We report minus the 1-sample lower-bound (NELBO), minus expected log likelihood (minus term 1 in Equation ( <ref type="formula" target="#formula_8">5</ref>)), z KL terms (minus term 2 and 3), c KL terms (minus term 4 and 5) and minus the 1k importance sample lower bound (MLL).  from sets and more generally from permutation invariant data. All the aggregation mechanisms (hard-coded and learned in a shallow or hierarchical fashion) respects this property and can exploit additional data in input.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>MODEL</head><p>Sampling. In latent variable models like VAEs we can only perform unconditional sampling. In a NS we have different ways of sampling as explained in Section 3.1. In particular two main sampling approaches can be used: I) conditional sampling, where we sample the predictive distribution p(x|X) relying on the inference model. II) unconditional sampling, sampling p(X) through c ∼ p(c) and then p(z|c). In Figure <ref type="figure" target="#fig_1">4</ref> we show (from left to right) stochastic reconstructions, input sets, samples obtained sampling like in a NS, refined samples, and unconditional samples. For simple characters there is almost no difference between conditional and refinement sampling. However when the model is challenged with a new complex character (third and ninth row) the refinement procedure greatly improves the adaptation capacities and visual quality of the generated samples. In the rightmost column we see fully unconditional samples. The model, given a set representation c, generates consistent symbols, corroborating the assumption that the model learns a different distribution for each c, greatly increasing the model flexibility and representation capacities.</p><p>Transfer. With these experiments we explore few-shot generation in the context of transfer learning. We use the same models we trained on Omniglot and we test on unseen classes in a different dataset. We use MNIST test set (10 classes), DOUBLE-MNIST test set (20 classes) and TRIPLE-MNIST test set (200 classes). The datasets increase in complexity and in size. We expect relatively good performance on the simple one and worse performance on the more complex one. We resize all the datasets to 28x28 pixels using BOX resizing. In Table <ref type="table" target="#tab_1">2</ref> we report likelihoods for input set 5 on the three datasets. Our models perform better on all three datasets. Attention-based aggregation is essential for good performance on few-shot transfer. The same general behavior can be seen in Figure <ref type="figure" target="#fig_3">5</ref> where we explore transfer increasing the input set size. Again our models perform better than the baselines and attention-based aggregation is important for good performance on concepts from different datasets. In Appendix B, we report out of distribution classification performance MNIST Double-MNIST Triple-MNIST We can see how our models perform better than a plain CNS. In particular models with learnable aggregation (LAG) can adapt better to the new datasets. for the three approaches described in Section 3. The models are trained on Omniglot for context size 5 and tested on MNIST also for context size 5 (so in total 50 data points) without adapting the distributions to the MNIST data.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Conclusion</head><p>Leveraging recent advances in deep latent variable models, we propose a new class of hierarchical latent variable models for few-shot generation. We ground our formulation in hierarchical inference and a learnable non-parametric aggregation. We show how simple hierarchical inference is a viable adaptation strategy. We perform extensive empirical evaluation in terms of generative metrics, sampling capacities and transfer properties. The proposed formulation is completely general and we expect there is large potential for improving performance by combining it with state of the art VAE architectures. Since benchmarks often come with grouping information, using a hierarchical formulation is a generic approach to improve generative capabilities.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A Related Work</head><p>Learning from Sets. In recent years a large corpus of work studied the problem of learning from sets <ref type="bibr" target="#b55">[56]</ref>, and more generally learning in exchangeable deep models <ref type="bibr" target="#b6">[7,</ref><ref type="bibr" target="#b3">4,</ref><ref type="bibr" target="#b2">3]</ref>. These models can be formulated in a variety of ways, but they all have in common a form of permutation invariant aggregation (or pooling mechanism) over the input set. Deep Sets <ref type="bibr" target="#b55">[56]</ref> formalized the framework of exchangeable models. The Neural Statistician <ref type="bibr" target="#b7">[8]</ref> was the first model proposing to learn from sets in the variational autoencoder framework and used a simple and effective mean pooling mechanism for aggregation. The authors explored the representation capacities of such model for clustering and few-shot supervised learning. Generative Query Networks performs neural rendering <ref type="bibr" target="#b8">[9]</ref> where the problem of pooling views arises. The Neural process family <ref type="bibr" target="#b11">[12,</ref><ref type="bibr" target="#b20">21]</ref>, where a set of point is used to learn a context set and solve downstream tasks like image completion and few-shot learning. Set Transformers <ref type="bibr" target="#b26">[27]</ref> leverages attention to solve problems involving sets. PointNet <ref type="bibr" target="#b32">[33]</ref> models point clouds as a set of points. Graph Attention Networks <ref type="bibr" target="#b51">[52]</ref> aggregate information from related nodes using attention. Associate Compression Network <ref type="bibr" target="#b13">[14]</ref> can be interpreted in this framework, where a prior for a VAE is learned using the top-knn retrieved in latent space. In this work we build on ideas and intuitions in these works, with a focus on generative models for sets. Few-Shot Generative Models. Historically the machine learning community has focused its attention on supervised few-shot learning, solving a classification or regression task on new classes at test time given a small number of labeled examples. The problem can be tackled using metric based approaches <ref type="bibr" target="#b52">[53,</ref><ref type="bibr" target="#b42">43,</ref><ref type="bibr" target="#b30">31]</ref>, gradient-based adaptation <ref type="bibr" target="#b9">[10]</ref>, optimization <ref type="bibr" target="#b34">[35]</ref> and more. More generally, the few-shot learning task can be recast as bayesian inference in hierarchical modelling <ref type="bibr" target="#b12">[13,</ref><ref type="bibr" target="#b33">34]</ref>.</p><p>In such models, typically parameters or representation are conditioned on the task, and conditional predictors are learned for such task. In <ref type="bibr" target="#b54">[55]</ref> an iterative attention mechanism is used to learn a query-dependent task representation for supervised few-shot learning. Modern few-shot generation in machine learning was introduced in <ref type="bibr" target="#b23">[24]</ref>. The Neural Statistician <ref type="bibr" target="#b7">[8]</ref> is one of the first few-shot learning models in the context of VAEs. However the authors focused on downstream tasks and not on generative modeling. The model has been improved further increasing expressivity for the conditional prior using powerful autoregressive models <ref type="bibr" target="#b15">[16]</ref>, a non-parametric formulation for the context <ref type="bibr" target="#b53">[54]</ref> and exploiting supervision <ref type="bibr" target="#b11">[12]</ref>. <ref type="bibr" target="#b37">[38]</ref> proposed a recurrent and attentive sequential generative model for one-shot learning based on <ref type="bibr" target="#b14">[15]</ref>. Powerful autoregressive decoders and gradient-based adaptation are employed in <ref type="bibr" target="#b35">[36]</ref> for one-shot generation. The context c in this model is a deterministic variable.</p><p>In GMN <ref type="bibr" target="#b1">[2]</ref> a variational recurrent model learns a per-sample context-aware latent variable. Similar to our approach, GMN learns a non-parametric context, learning an attention based kernel that can handle generic datasets. However the context-aware representation scales linearly with the input size, there is no separation between global and local information in latent space, The input set is processed in an arbitrary autoregressive order, and not in a permutation invariant manner. They use recurrent models where we use hierarchical models. Finally, recent large-scale autoregressive language models <ref type="bibr" target="#b4">[5]</ref> exhibit non-trivial few-shot capacities. Adaptation as Inference. A large corpus of works has been proposed for learning to learn techniques and fast adaptation in multitask learning <ref type="bibr" target="#b40">[41,</ref><ref type="bibr" target="#b41">42,</ref><ref type="bibr" target="#b16">17,</ref><ref type="bibr" target="#b47">48,</ref><ref type="bibr" target="#b0">1]</ref>. Currently gradient-based adaptation <ref type="bibr" target="#b9">[10]</ref> dominates the field of meta-learning. As shown by <ref type="bibr" target="#b12">[13]</ref>, such approaches can be seen as maximum a posteriori inference in a hierarchical model, where the global parameters of a model are adapted by few-steps of gradient descent on a support set. In this setting, meta-learning is a local weight update around a global set of parameters. Following these ideas, <ref type="bibr" target="#b33">[34]</ref> proposed a fully amortized bayesian formulation, where the posterior distribution is adapted by gradient-based optimization and outputs a distribution over per-task model parameters. It is not obvious that few-shot generalization can be achieved through hierarchical amortized inference. In this work we focus mostly on exploring adaptation through the lens of hierarchical inference using amortized variational Bayes <ref type="bibr" target="#b11">[12]</ref>. However the problem can be approached in a completely different way, and in particular in terms of gradientbased weight updates <ref type="bibr" target="#b9">[10]</ref>. The outer and inner loop present in such methods can be seen as the conditioning q(c|X) and hierarchical inference steps q(z|x, c) in our formulation. The parallel between hierarchical inference and gradient-based adaptation is clearer when we partition the task dataset in a support set for conditioning q(c|X s ) and a query set for inference and generation q(Z q |X q , c). Each inference layer in the hierarchy can be seen as changing the base conditional distribution. A relevant difference between the approaches is that we adapt representations and latent variables, where gradient-based adaptation is typically focused on the model parameters. Page : <ref type="url" target="https://georgosgeorgos.github.io/hierarchical-few-shot-generative-models/">https://georgosgeorgos.github.io/hierarchical-few-shot-generative-models/</ref> Notation :</p><p>• Bold → all layers</p><formula xml:id="formula_14">• CAPITALIZED → ALL SAMPLES • Bold CAPITALIZED: all layers, ALL SAMPLES Z = {z s l } S,L s=1,l=1 . • Bold: all layers, one sample zs = {z s l } L l=1 . • CAPITALIZED: one layer, ALL SAMPLES Z l = {z s l } S s=1 .</formula><p>Top Prior c: </p><formula xml:id="formula_15">p θ (c L ) Top Prior z: p θ (z L | c L ) Prior c: p θ (c l | c l+1 , Z l+1 ) Prior z: p θ (z l | z l+1 , c l ) Observation x: p θ (x | z 1:L , c 1:L ) Top Posterior c: q φ (c L | X) Top Posterior z: q φ (z L | c L , x) Posterior c: q φ (c l | c l+1 , Z l+1 , X) Posterior z: q φ (z l | z l+1 , c l , x) Set Representation: h l</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B Model Derivation</head><p>In this section we derive the generative model, inference model and lower-bound for a Basic Neural Statistician (bNS), a Neural Statistician (with hierarchy over z, this is the model used as baseline in the paper) (NS), and a Hierarchical Few-Shot Generative Model (HFSGM) with hierarchy over z and c. Doing so we can underline similarities and differences among the formulations.</p><p>Per-Set Marginal. Our goal is to model a distribution p(X) = S s=1 p(x s ) where X{x s } S s=1 is in general a small set ranging from 1 to 20 samples. We sample these sets from a common process. The Neural Statistician <ref type="bibr" target="#b7">[8]</ref> introduces a global latent variable c for a set X: </p><p>where X = {x s } S s=1 is a set of images, c is a latent variable for the set, Z = {z s } S s=1 are latent variable for the samples in the set. The formula above is the basic marginal for all the NS-like model.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B.1 Generative Model</head><p>We can think of the model as composed of three components: a hierarchical prior over z, a hierarchical prior over c, and a render for x. For each hierarchical prior, the top distribution is not autoregressive and act as an unconditional prior for c and a conditional prior for z. In the following all the latent distributions are normal distributions with diagonal covariance. Given the hierarchical nature of our model, these assumptions are not restrictive, because from top to down in the hierarchy we build an expressive structured mean field approximation. The decoder is Bernoulli distributed for binary datasets. In the following equation we use Z = {z s } S s=1 , Z = {z s } S s=1 , z s = {z s l } L l=1 , c = {c l } L l=1 . Each of these equation can be written per-set or per-sample (similar to Eq.2 in the Appendix). We choose to write everything in a compact format writing per-set equations. bNS. In this setting both z and c are shallow latent variables. p(X, Z, c) = p(X|Z, c)p(c) p(Z|c)</p><p>NS. z is a hierarchy.</p><formula xml:id="formula_18">p(X, Z, c) = p(X|Z, c)p(c) p(Z L |c) L-1 l=1 p(Z l |Z l+1 , c)<label>(10)</label></formula><p>HFSGM. Both z and c are a hierarchy. We increase the model flexibility.</p><p>Using such hierarchy we can:</p><p>• learn a structured mean field approximation for c;</p><p>• jointly learn c and Z, informing different stages of the learning process;</p><p>• incrementally improve c through layers of inference.</p><formula xml:id="formula_19">p(X, Z, c) = p(X|Z, c)p(c L ) p(Z L |c L ) L-1 l=1 p(Z l , c l |Z l+1 , c l+1 ) p(Z l , c l |Z l+1 , c l+1 ) = p(Z l |Z l+1 , c l ) p(c l |c l+1 , Z l+1 ).<label>(11)</label></formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B.2 Inference Model</head><p>We learn the model using Amortized Variational Inference. In a NS-like model, inference is intrinsically hierarchical: the model encodes global set-level information in c using q(c|X). bNS.</p><p>q(c, Z|X) = q(c|X) q(Z|c, X)</p><p>NS.</p><p>q(c, Z|X) = q(c|X) q(Z|c, X)</p><p>HFSGM.</p><formula xml:id="formula_22">q(c, Z|X) = q(c L |X) q(Z L |c L , X) L-1 l=1 q(Z l , c l |Z l+1 , c l+1 , X) q(Z l , c l |Z l+1 , c l+1 , X) = q(Z l |Z l+1 , c l , X) q(c l |c l+1 , Z l+1 , X).<label>(14)</label></formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B.3 Lower-bound</head><p>We learn the model by Amortized Variational Inference similarly to recent methods. However we are in presence of two different latent variables, and we need to lower-bound wrt both. bNS.</p><formula xml:id="formula_23">log p(X) ≥ E q(c,Z|X) log p(X, Z, c) q(c, Z|X) = E q S s=1 log p(x s |z s , c) + E q S s=1 log p(z s |c) q(z s |c, x s ) -KL(q(c|X), p(c)) = -L(X).<label>(15)</label></formula><p>NS.</p><formula xml:id="formula_24">log p(X) ≥ E q(c,Z|X) log p(X, Z, c) q(c, Z|X) = E q S s=1 log p(x s |z s , c) + E q L-1 l=1 S s=1 log p(z s l |z s l+1 , c) q(z s l |z s l+1 , c, x s ) + E q S s=1 log p(z L |c) q(z L |c, x s ) -KL(q(c|X), p(c)) = -L(X).<label>(16)</label></formula><p>HFSGM.</p><formula xml:id="formula_25">log p(X) ≥ E q(c,Z|X) log p(X, Z, c) q(c, Z|X) = E q S s=1 log p(x s |z s , c) + E q L-1 l=1 S s=1 log p(z s l |z s l+1 , c l ) q(z s l |z s l+1 , c l , x s ) + E q S s=1 log p(z L |c L ) q(z L |c L , x s ) + E q L-1 l=1 log p(c l |c l+1 , Z l+1 ) q(c l |c l+1 , Z l+1 , X) -KL(q(c L |X), p(c L )) = -L(X).<label>(17)</label></formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B.4 Loss</head><p>The final loss for all the models is computed per-sample. Given a distribution of T sets (or tasks) of size S, the training loss is: L = 1 ST T L(X t ).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B.5 Evaluation</head><p>For VAEs we evaluate the models approximating the log marginal likelihood using S importance samples:</p><formula xml:id="formula_26">MLL(x) = log 1 IS IS is=1 p(x, z s ) q(z is |x) z is ∼ q(z|x).<label>(18)</label></formula><p>For hierarchical models like the NS we use:</p><formula xml:id="formula_27">MLL(X) = log 1 IS IS is=1 p(X, Z is , c is ) q(Z is , c is |X) Z is ∼ q(Z|c, X), c is ∼ q(c|X).<label>(19)</label></formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B.6 Learnable Aggregation</head><p>In this subsection we describe more explicitly the aggregation mechanism. Given a set X, embeddings for samples in the set h s = f φ (x s ), and aggregated statistics r = 1 S S s=1 h s , we can compute attention weights for a NS-LAG as follows:</p><formula xml:id="formula_28">α(r, h s ) = exp(sim(q(r), k(h s ))) s exp(sim(q(r), k(h s ))) r LAG = S s=1 α(r, h s ) v(h s ) q φ (c|X) = N (c|µ(r LAG ), Σ(r LAG )),<label>(20)</label></formula><p>where q, k and v are linear layers and sim is the dot-product scaled by the square root of the representations dimensionality. This approach is inspired by <ref type="bibr" target="#b26">[27]</ref> and resembles self-attention with a fundamental difference: instead to map from S samples to S samples, we map from S samples to a per-task learnable aggregation. The query input is a handcrafted aggregation (mean, max pooling). We improve the query scoring the handcrafted aggregation with the samples in the set. For a full HFSGM-LAG, we can similarly write:</p><formula xml:id="formula_29">r = 1 S S s=1 f φ (h s , z s , c) α(r, h s , z s , c) = exp(sim(q(r), k(h s , z s , c))) s exp(sim(q(r), k(h s , z s , c))) r l LAG = S s=1 α(r, h s , z s , c) v(h s , z s , c) q φ (c l |c l+1 , Z l+1 , X) = N (c l |µ(r l LAG ), Σ(r l LAG )),<label>(21)</label></formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C Additional Experiments C.1 Generative Metrics</head><p>In the paper we follow the approach suggested in the NS for sets creation. We report additional experiments on the original Omniglot test set in Table <ref type="table" target="#tab_2">3</ref>. In this setting test time sets are from new characters and unknown alphabets. This setting is even harder and a good generalization benchmark for our approach. We use the preprocessed and statically binarized version proposed in <ref type="bibr" target="#b1">[2]</ref>. Again our approaches using learnable aggregation and hierarchical inference perform consistently better in terms of likelihood and reconstruction. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.2 KLs vs Input Set Cardinality</head><p>In Figure <ref type="figure" target="#fig_5">7</ref> we report KLs behaviour varying the input set dimension from 1 to 20 on Omniglot. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.3 Classification</head><p>In this paper our main interest is in improving few-shot generation specifically through the lens of hierarchical inference and learnable aggregation. However is natural to ask how the model perform on downstream tasks, in particular on the supervised few-shot learning task. Here we focus on a simple experiment: we train the models on Omniglot and test on MNIST without any form of adaptation. We consider different ways to approximate a classifier.</p><p>Adaptation-free Bayes classifier. We can use the fitted generative model as part of a few-shot Bayes classifier: p(y|x, X) = p(y)p(x|Xy) y p(y )p(x|X y ) , where X = {X 1 , . . . , X C } is the set of datasets for the C classes. In Appendix B we investigate two approaches that approximate the predictive distribution p(x|X y ) and one based on q(c|X): I) ELBO difference: log p(x|X y ) = log p(x, X y ) -log p(X y ) ≈ ELBO(x, X y ) -ELBO(X y ). II) Equation ( <ref type="formula">6</ref>): Sample q(c L |X y ) and hierarchy p(z, c &lt;L |c L ) and evaluate p(x|z, c) and III) The classification approach of <ref type="bibr" target="#b7">[8]</ref>: argmax y KL(q(c y |X y ), q(c|x)).</p><p>In Table <ref type="table" target="#tab_3">4</ref> we report preliminary results for a simple few-shot classification task. In Figure <ref type="figure" target="#fig_7">8</ref> and 9 we plot the KL contribution for baselines and our models through the hierarchy for Omniglot and CelebA. We notice how models with hierarchy over c and learnable aggregation can better distribute information in latent space.  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.5 In-homogeneous Sets</head><p>In the paper we considered only small homogeneous sets, i.e. one class (character, face, concept) per set, where the set has dimension between 2 and 20. In Figure <ref type="figure" target="#fig_0">10</ref> we test the model behavior when presented with an in-homogeneous input set, i.e. sets with multiple characters.</p><p>i.e. γ(c) = I and β(c) = c. For simple tasks with a unique concept, like sets of characters and sets of faces, this approach is good enough. For more complex sets with multiple concepts or more variability, a more expressive adaptive conditioning mechanism based on FiLM or attention can be useful.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: Generation and inference for a Neural Statistician (left) and a Hierarchical Few-Shot Generative Model (right). The generative model is composed by two collections of hierarchical latent variables, c for the sets X = {xs} S s=1 and zs for the samples xs. The generative process is repeated S times and the full model is run on T different sets or tasks. The two variables are learned jointly, increasing expressivity and improving sampling. The generative and inference models can share parameters.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 4 :</head><label>4</label><figDesc>Figure 4: Sampling. Different ways to sample the model.(Top): Refined samples obtained using Algorithm 1. Given a small set from an unknown character (right on black background), we sample the model and then refine iteratively using the inference model. We show 20 iterations from left to right. We can see how the generative process refines its guess at each iteration improving c and z in a joint manner. (Middle and Bottom): Stochastic reconstruction, input sets, conditional sampling using the NS approach, conditional sampling using refinement, and unconditional sampling (sometimes referred to as imagination). The models are trained on subsets of Omniglot and CelebA and tested on disjoint identities.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 3 :</head><label>3</label><figDesc>Figure 3: Attention. Sample formation in a Convolutional Neural Statistician with learnable aggregation. For each sample (black background) we plot the attention bars over the input sets (in white background) for four different heads.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 5 :</head><label>5</label><figDesc>Figure 5: Transfer. Model trained on Omniglot with set size 5 and tested on MNIST, DOUBLE-MNIST and TRIPLE-MNIST (from left to right) with different set size.We can see how our models perform better than a plain CNS. In particular models with learnable aggregation (LAG) can adapt better to the new datasets.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 6 :</head><label>6</label><figDesc>Figure 6: Generation and Inference for a Neural Statistician (left) and a Hierarchical Few-Shot Generative Model (right)</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>7 )</head><label>7</label><figDesc>p(X) = p(X, c) dc = p(c) p(X|c) dc = p(c) S s=1 p(x s |c) dc. (Then we can introduce a per-sample latent variable z: p(X) = p(c) p(X, Z|c)dZ dc = p(c) S s=1 p(x s , z s |c)dz s dc = p(c) S s=1 p(x s |z s , c)p(z s |c)dz s dc,</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>Figure 7 :</head><label>7</label><figDesc>Figure 7: Set Cardinality. Lower-bound and average KL c increasing the set cardinality. Models trained with homogeneous (one concept) sets. All the models improve the generative properties with more data available and learn a better posterior for c.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head>Figure 8 :</head><label>8</label><figDesc>Figure 8: KL per layer for Omniglot</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head>Figure 9 :</head><label>9</label><figDesc>Figure 9: KL per layer for CelebA</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head></head><label></label><figDesc>Set Cardinality. All models are trained with homogeneous (one concept) sets. (Left): Lower-bounds for models trained with input set size 5 varying the test set cardinality from 1 to 20 on Omniglot. All the models improve the generative properties increasing the input set size. We see how the convolutional latent space is fundamental for performance improvement, increasing the expressivity of the model. Adding learnable attention and hierarchical inference over c improves the generative metrics in a monotonic way, showing how our proposed models can effectively adapt to different input set size. (Center): Lower-bounds for models trained with varying input set size<ref type="bibr" target="#b1">(2,</ref><ref type="bibr" target="#b4">5,</ref><ref type="bibr" target="#b9">10)</ref>. We notice how training a CNS with input set size 2 gives better performance than a VAE for size 1 and tends to plateau and slightly decrease performance for larger context<ref type="bibr" target="#b9">(10)</ref><ref type="bibr" target="#b10">(11)</ref><ref type="bibr" target="#b11">(12)</ref><ref type="bibr" target="#b12">(13)</ref><ref type="bibr" target="#b13">(14)</ref><ref type="bibr" target="#b14">(15)</ref><ref type="bibr" target="#b15">(16)</ref><ref type="bibr" target="#b16">(17)</ref><ref type="bibr" target="#b17">(18)</ref><ref type="bibr" target="#b18">(19)</ref><ref type="bibr" target="#b19">(20)</ref>. The model trained with input set size 10 under-performs for small context size. The model trained with input set 5 gives us the best balance between expressivity and adaptability to different input set size. (Right): Lower-bounds for models trained with input set size 5 varying the test set cardinality from 1 to 20 on CelebA. All the models struggle with set size larger than 10 because of the large variety in each set (age, perspective, general look). We can see that learnable aggregation and hierarchical inference both help in modeling the dataset.</figDesc><table><row><cell>AGG -MAX MEAN MEAN MEAN LAG CHFSGM (ours) MEAN VAE NS NS NS CNS CNS (ours) CHFSGM (ours) LAG Omniglot 1 2 5 10 15 20 set size 98 97 96 95 94 93 92 91 90 vlb NS CNS CNS-LAG CHFSGM Sets Figure 2: Reconstruction Reconstruction Sets</cell><cell>NELBO NLL 102.54 68.49 34.05 KLz KLc MLL PARAMS (M) -97.47 7.5 97.52 66.82 26.29 4.41 90.23 7.9 97.52 67.04 25.75 4.73 90.21 7.9 96.28 65.64 25.95 4.87 90.07 14.9 93.71 59.83 28.97 5.22 88.15 7.3 93.24 58.97 29.23 5.04 88.21 7.4 92.58 59.04 28.72 4.81 87.37 9.2 92.59 58.14 30.00 4.44 87.43 9.5 Omniglot CelebA 1 2 5 10 15 20 set size 102 100 98 96 94 92 90 vlb CNS_2 CNS_5 CNS_10 VAE 1 2 5 10 15 20 set size 36000 35900 35800 35700 35600 35500 35400 vlb CNS CNS-LAG CHFSGM Conditional Refined Unconditional Conditional Refined Unconditional</cell></row></table><note><p><p><p>NS with mean aggregation. The NS-MAX is the same model with max aggregation. NS-LAG uses an attention-based learnable aggregation, that builds an adaptive aggregation mechanism for each set. Then we report results for a hierarchical formulation over c with CHFSGM and we use the same two aggregation mechanisms. The proposed methods improve perform in terms of likelihood and reconstruction with a gain in performance for the learnable aggregation mechanism and the hierarchical formulation for c. In Figure</p>2</p>we show the models behavior increasing the input set cardinality at test time. All the models are trained with input sets of size 5 on Omniglot. Then at test time we vary the size of the context set between 1 and 20. All the models improve performance in terms of ELBO (left plot) and learn a better posterior for c with KL(c) (right plot). For small input sets (1-2 samples) a VAE baseline performs better because there is no enough information to aggregate in c. Increasing the set (2-20), the NS-style models can aggregate more and more information learning a better model for the data. This is the desired behavior for a model learning</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 2 :</head><label>2</label><figDesc>Transfer. We test the model transfer capacities on scenarios of increasing complexity, using a subset of disjoint classes from simple out-distribution on MNIST and more challenging out-distribution generalization on MNIST variants with 20 and 200 classes. Lower is better. Models trained on Omniglot with input set size 5.</figDesc><table><row><cell>MODEL</cell><cell>AGG</cell><cell cols="3">MNIST DOUBLE-MNIST TRIPLE-MNIST</cell></row><row><cell>VAE</cell><cell>-</cell><cell>124.71</cell><cell>98.13</cell><cell>104.75</cell></row><row><cell>NS</cell><cell cols="2">MEAN 119.92</cell><cell>96.28</cell><cell>100.71</cell></row><row><cell>CNS</cell><cell cols="2">MEAN 115.76</cell><cell>91.85</cell><cell>97.24</cell></row><row><cell>CNS (ours)</cell><cell>LAG</cell><cell>115.22</cell><cell>91.63</cell><cell>96.68</cell></row><row><cell cols="3">CHFSGM (ours) MEAN 114.72</cell><cell>91.84</cell><cell>97.83</cell></row><row><cell>CHFSGM (ours)</cell><cell>LAG</cell><cell>114.27</cell><cell>91.09</cell><cell>97.48</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 3 :</head><label>3</label><figDesc>Generative Metrics. Omniglot testing on new characters from unknown alphabets. Static binarization. All models share the same architecture.</figDesc><table><row><cell>MODEL</cell><cell>AGG</cell><cell cols="2">NELBO NLL</cell><cell cols="3">KLz KLc MLL PARAMS (M)</cell></row><row><cell>VAE</cell><cell>-</cell><cell cols="3">102.56 54.86 47.71</cell><cell>-</cell><cell>91.90</cell><cell>7.5</cell></row><row><cell>NS</cell><cell>MEAN</cell><cell>91.98</cell><cell cols="4">47.88 39.00 5.10 80.85</cell><cell>14.9</cell></row><row><cell>CNS</cell><cell>MEAN</cell><cell>84.96</cell><cell cols="4">39.90 39.72 5.35 75.32</cell><cell>7.3</cell></row><row><cell>CNS (Ours)</cell><cell>LAG</cell><cell>83.67</cell><cell cols="4">37.97 40.55 5.16 74.87</cell><cell>7.4</cell></row><row><cell cols="2">CHFSGM (Ours) MEAN</cell><cell>83.03</cell><cell cols="4">35.95 42.54 4.54 74.01</cell><cell>9.2</cell></row><row><cell cols="2">CHFSGM (Ours) LAG</cell><cell>83.80</cell><cell cols="4">36.86 42.34 4.60 74.15</cell><cell>9.5</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 4 :</head><label>4</label><figDesc>Metrics on few-shot classification. Models trained on Omniglot and tested on binarized MNIST. Input set dimension 5. For consistency with the KL classifier used in NS, we use only one layer of posterior, the one closer to the data.AGGELBO [x|X] KL [q X , q x ] E q [log p(x|c, z)]</figDesc><table><row><cell>NS</cell><cell>MEAN</cell><cell>0.46</cell><cell>0.73</cell><cell>0.74</cell></row><row><cell>CNS</cell><cell>MEAN</cell><cell>0.41</cell><cell>0.76</cell><cell>0.76</cell></row><row><cell>CNS</cell><cell>LAG</cell><cell>0.33</cell><cell>0.75</cell><cell>0.76</cell></row><row><cell cols="2">CHFSGM MEAN</cell><cell>0.52</cell><cell>0.71</cell><cell>0.75</cell></row><row><cell>CHFSGM</cell><cell>LAG</cell><cell>0.29</cell><cell>0.71</cell><cell>0.74</cell></row><row><cell cols="2">C.4 Layer-wise KL contribution</cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>Acknowledgement</head><p>We would like to thank <rs type="person">Marco Ciccone</rs>, <rs type="person">Andrea Dittadi</rs>, <rs type="person">Pierluca D'Oro</rs>, <rs type="person">Søren Hauberg</rs>, <rs type="person">Valentin Liévin</rs>, <rs type="person">Didrik Nielsen</rs>, <rs type="person">Timon Willi</rs>, <rs type="person">Max Wilson</rs> for insightful comments and useful discussions.</p></div>
+			</div>			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B.7 Sampling Algorithms</head><p>Algorithm 3: Conditional Sampling NS Data: Input set X; c ∼ q(c|X); z ∼ p(z|c); x ∼ p(x|z, c); return x; Algorithm 4: Refined Sampling NS Data: Input set X; single pass c ∼ q(c|X); z ∼ p(z|c); x ∼ p(x|z, c); repeat X = [X, x]; Z, c ∼ q( Z, c| X); X ∼ p( X | Z, c); x = x ; until converged; return x; Algorithm 5: Conditional Sampling HFSGM Data: Input set X; single pass c L ∼ q(c L |X); z, c &lt;L ∼ p(z, c &lt;L |c L ); x ∼ p(x|z, c); return x;</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Sets</head><p>Conditional Samples Refined Samples Unconditional Samples </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.5.1 Qualitative Transfer</head><p>Another interesting property for a NS-like model is the possibility to condition on samples and classes from different datasets. In the paper we reported quantitative evaluation for generative metrics on transfer. In Figure <ref type="figure">11</ref> we report qualitative results on MNIST using a CHFSGM-LAG. We see that the posterior over c can extract relevant information from the set and sample consistently with the conditioning set. The refinement process still helps to improve sample consistency and quality. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Reconstruction Sets Conditional Samples Refined Samples Unconditional Samples</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C.6 Additional Samples</head><p>In Figure <ref type="figure">12</ref> 13 and we show stochastic reconstruction, input sets, conditional sampling using the NS approach, conditional sampling using mcmc refinement, and unconditional sampling (sometimes referred as imagination). The model is trained on binarized Omniglot and tested on disjoint classes. We can see how the refinement is particularly effective with complex signs and concept, better extracting the global structure of the concept at hand.  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>NS</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D Details</head><p>The base model is a close approximation of the Neural Statistician adapted from: <ref type="url" target="https://github.com/conormdurkan/neural-statistician">https://github. com/conormdurkan/neural-statistician</ref>. The images are encoded using a shared encoder with 3x3 convolutions plus batch normalization. resolution is halved using stride 2. The decoder is the same, with resolution doubled using transposed convolutions. More powerful and expressive decoders can be employed <ref type="bibr" target="#b29">[30,</ref><ref type="bibr" target="#b39">40]</ref> or multi-resolution deep latent variable models <ref type="bibr" target="#b28">[29,</ref><ref type="bibr" target="#b49">50,</ref><ref type="bibr" target="#b5">6]</ref>. However our goal is to improve c for a generic architecture. We do not use sample dropout (removing random samples from the input set and use the set statistics as additional features). For our model the latent space is convolutional with a resolution of 4. Latent space with multiple resolutions in the latent space can be used to improve sample quality and learn from high-dimension images. However to reduce training time and isolate the source of complexity in the model (how to improve c) we decided to use a latent space with single resolution. This approach simplifies merging information between c, z and x.</p><p>The loss is a weighted negative lower-bound:</p><p>where alpha is annealed decreasing at each epoch α = α * α step , with α step &lt; 1 at the beginning of training. This re-weighting tends to magnify the importance of the likelihood term and reduce the risk of posterior collapse at the beginning of training. Learning is slower but typically the model and posterior learned are better.</p><p>Modulation. The way we condition the prior and generative model greatly enhances the adaptation capacities of the model. Other than conditioning the representations through direct concatenation or summation, we can condition directly the features and activations in the residual blocks. FiLM is a modulation module used in transfer learning and large-scale class conditional generation. Given an input c and a feature map f with H channels, FiLM <ref type="bibr" target="#b31">[32]</ref> learns an affine transformation with 2H modulation parameters (γ h , β h ) H h=1 for each input c: FiLM(z, c) = γ(c)f (z) + β(c). This affine transformation can be applied in different part of the prior and generative model. In the main paper we use a simplification of such approach, applying c to z using only the bias term,</p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Learning to learn by gradient descent by gradient descent</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Andrychowicz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Denil</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Gomez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">W</forename><surname>Hoffman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Pfau</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Schaul</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Shillingford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">De</forename><surname>Freitas</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="3981" to="3989" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Few-shot generative modelling with generative matching networks</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Bartunov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Vetrov</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Artificial Intelligence and Statistics</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="670" to="678" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<monogr>
+		<author>
+			<persName><forename type="first">B</forename><surname>Bloem-Reddy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><forename type="middle">W</forename><surname>Teh</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1901.06082</idno>
+		<title level="m">Probabilistic symmetry and invariant neural networks</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Probabilistic symmetries and invariant neural networks</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Bloem-Reddy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><forename type="middle">W</forename><surname>Teh</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Machine Learning Research</title>
+		<imprint>
+			<biblScope unit="volume">21</biblScope>
+			<biblScope unit="issue">90</biblScope>
+			<biblScope unit="page" from="1" to="61" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<monogr>
+		<title level="m" type="main">Language models are few-shot learners</title>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">B</forename><surname>Brown</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Mann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Ryder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Subbiah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kaplan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Dhariwal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Neelakantan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Shyam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Sastry</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Askell</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2005.14165</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<monogr>
+		<title level="m" type="main">Very deep vaes generalize autoregressive models and can outperform them on images</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Child</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2011.10650</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">on the condition of partial exchangeability</title>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">De</forename><surname>Finetti</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Studies in Inductive Logic and Probability</title>
+		<imprint>
+			<publisher>University of California Press</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="page" from="193" to="206" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<author>
+			<persName><forename type="first">H</forename><surname>Edwards</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Storkey</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1606.02185</idno>
+		<title level="m">Towards a neural statistician</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Neural scene representation and rendering</title>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">A</forename><surname>Eslami</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">J</forename><surname>Rezende</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Besse</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Viola</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">S</forename><surname>Morcos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Garnelo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Ruderman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">A</forename><surname>Rusu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Danihelka</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Gregor</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Science</title>
+		<imprint>
+			<biblScope unit="volume">360</biblScope>
+			<biblScope unit="issue">6394</biblScope>
+			<biblScope unit="page" from="1204" to="1210" />
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<monogr>
+		<title level="m" type="main">Model-agnostic meta-learning for fast adaptation of deep networks</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Finn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Abbeel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Levine</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1703.03400</idno>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<author>
+			<persName><forename type="first">M</forename><surname>Garnelo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Rosenbaum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">J</forename><surname>Maddison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Ramalho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Saxton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Shanahan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><forename type="middle">W</forename><surname>Teh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">J</forename><surname>Rezende</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Eslami</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1807.01613</idno>
+		<title level="m">Conditional neural processes</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">M</forename><surname>Garnelo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Schwarz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Rosenbaum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Viola</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">J</forename><surname>Rezende</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Eslami</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><forename type="middle">W</forename><surname>Teh</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1807.01622</idno>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">Neural processes. arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<monogr>
+		<author>
+			<persName><forename type="first">E</forename><surname>Grant</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Finn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Levine</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Darrell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Griffiths</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1801.08930</idno>
+		<title level="m">Recasting gradient-based meta-learning as hierarchical bayes</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<monogr>
+		<title level="m" type="main">Associative compression networks for representation learning</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Graves</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Menick</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Van Den Oord</surname></persName>
+		</author>
+		<idno>CoRR, abs/1804.02476</idno>
+		<ptr target="http://arxiv.org/abs/1804.02476" />
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<title level="m" type="main">Draw: A recurrent neural network for image generation</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Gregor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Danihelka</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Graves</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">J</forename><surname>Rezende</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wierstra</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1502.04623</idno>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<monogr>
+		<title level="m" type="main">The variational homoencoder: Learning to learn high capacity generative models from few examples</title>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">B</forename><surname>Hewitt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">I</forename><surname>Nye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Gane</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Jaakkola</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">B</forename><surname>Tenenbaum</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1807.08919</idno>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Learning to learn using gradient descent</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Hochreiter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">S</forename><surname>Younger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">R</forename><surname>Conwell</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Artificial Neural Networks</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2001">2001</date>
+			<biblScope unit="page" from="87" to="94" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Stochastic variational inference</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">D</forename><surname>Hoffman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">M</forename><surname>Blei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Paisley</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">The Journal of Machine Learning Research</title>
+		<imprint>
+			<biblScope unit="volume">14</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="1303" to="1347" />
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<monogr>
+		<author>
+			<persName><forename type="first">T</forename><surname>Hospedales</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Antoniou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Micaelli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Storkey</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2004.05439</idno>
+		<title level="m">Meta-learning in neural networks: A survey</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">An introduction to variational methods for graphical models</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">I</forename><surname>Jordan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Ghahramani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">S</forename><surname>Jaakkola</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">K</forename><surname>Saul</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Machine learning</title>
+		<imprint>
+			<biblScope unit="volume">37</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="183" to="233" />
+			<date type="published" when="1999">1999</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<monogr>
+		<author>
+			<persName><forename type="first">H</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Mnih</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Schwarz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Garnelo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Eslami</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Rosenbaum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Vinyals</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><forename type="middle">W</forename><surname>Teh</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1901.05761</idno>
+		<title level="m">Attentive neural processes</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<monogr>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">P</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1312.6114</idno>
+		<title level="m">Auto-encoding variational bayes</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">One shot learning of simple visual concepts</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Lake</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Salakhutdinov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Gross</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tenenbaum</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the annual meeting of the cognitive science society</title>
+		<meeting>the annual meeting of the cognitive science society</meeting>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="volume">33</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Human-level concept learning through probabilistic program induction</title>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">M</forename><surname>Lake</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Salakhutdinov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">B</forename><surname>Tenenbaum</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Science</title>
+		<imprint>
+			<biblScope unit="volume">350</biblScope>
+			<biblScope unit="issue">6266</biblScope>
+			<biblScope unit="page" from="1332" to="1338" />
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Building machines that learn and think like people</title>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">M</forename><surname>Lake</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">D</forename><surname>Ullman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">B</forename><surname>Tenenbaum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">J</forename><surname>Gershman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Behavioral and brain sciences</title>
+		<imprint>
+			<biblScope unit="volume">40</biblScope>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<monogr>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Lecun</surname></persName>
+		</author>
+		<ptr target="http://yann.lecun.com/exdb/mnist/" />
+		<title level="m">The mnist database of handwritten digits</title>
+		<imprint>
+			<date type="published" when="1998">1998</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Set transformer: A framework for attention-based permutation-invariant neural networks</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Kosiorek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Choi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><forename type="middle">W</forename><surname>Teh</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<publisher>PMLR</publisher>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="3744" to="3753" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Deep learning face attributes in the wild</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Luo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Tang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of International Conference on Computer Vision (ICCV)</title>
+		<meeting>International Conference on Computer Vision (ICCV)</meeting>
+		<imprint>
+			<date type="published" when="2015-12">December 2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<monogr>
+		<title level="m" type="main">Biva: A very deep hierarchy of latent variables for generative modeling</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Maaløe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Fraccaro</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Liévin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Winther</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1902.02102</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<monogr>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">V D</forename><surname>Oord</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Kalchbrenner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Kavukcuoglu</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1601.06759</idno>
+		<title level="m">Pixel recurrent neural networks</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Tadam: Task dependent adaptive metric for improved few-shot learning</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Oreshkin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">Rodríguez</forename><surname>López</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Lacoste</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">31</biblScope>
+			<biblScope unit="page" from="721" to="731" />
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<monogr>
+		<author>
+			<persName><forename type="first">E</forename><surname>Perez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Strub</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><forename type="middle">De</forename><surname>Vries</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Dumoulin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Courville</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1709.07871</idno>
+		<title level="m">Film: Visual reasoning with a general conditioning layer</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Pointnet: Deep learning on point sets for 3d classification and segmentation</title>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">R</forename><surname>Qi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Su</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Mo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">J</forename><surname>Guibas</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE conference on computer vision and pattern recognition</title>
+		<meeting>the IEEE conference on computer vision and pattern recognition</meeting>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="652" to="660" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Amortized bayesian meta-learning</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ravi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Beatson</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<monogr>
+		<title level="m" type="main">Optimization as a model for few-shot learning</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ravi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Larochelle</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<monogr>
+		<author>
+			<persName><forename type="first">S</forename><surname>Reed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Paine</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">V D</forename><surname>Oord</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Eslami</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Rezende</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Vinyals</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>De Freitas</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1710.10304</idno>
+		<title level="m">Few-shot autoregressive density estimation: Towards learning to learn distributions</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<monogr>
+		<title level="m" type="main">Stochastic backpropagation and approximate inference in deep generative models</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">J</forename><surname>Rezende</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Mohamed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wierstra</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1401.4082</idno>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<monogr>
+		<title level="m" type="main">One-shot generalization in deep generative models</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">J</forename><surname>Rezende</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Mohamed</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Danihelka</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Gregor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wierstra</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1603.05106</idno>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<monogr>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">A</forename><surname>Rusu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Rao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Sygnowski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Vinyals</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Pascanu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Osindero</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Hadsell</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1807.05960</idno>
+		<title level="m">Meta-learning with latent embedding optimization</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<monogr>
+		<title level="m" type="main">Pixelcnn++: Improving the pixelcnn with discretized logistic mixture likelihood and other modifications</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Salimans</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Karpathy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">P</forename><surname>Kingma</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1701.05517</idno>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<monogr>
+		<title level="m" type="main">Evolutionary principles in self-referential learning, or on learning how to learn: the meta-meta</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Schmidhuber</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1987">1987</date>
+		</imprint>
+		<respStmt>
+			<orgName>Technische Universität München</orgName>
+		</respStmt>
+	</monogr>
+	<note type="report_type">PhD thesis</note>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Learning factorial codes by predictability minimization</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Schmidhuber</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Neural Computation</title>
+		<imprint>
+			<biblScope unit="volume">4</biblScope>
+			<biblScope unit="issue">6</biblScope>
+			<biblScope unit="page" from="863" to="879" />
+			<date type="published" when="1992">1992</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">Prototypical networks for few-shot learning</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Snell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Swersky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Zemel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="4077" to="4087" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">Ladder variational autoencoders</title>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">K</forename><surname>Sønderby</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Raiko</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Maaløe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">K</forename><surname>Sønderby</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Winther</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="3738" to="3746" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<monogr>
+		<title level="m" type="main">Multi-digit mnist for few-shot learning</title>
+		<author>
+			<persName><forename type="first">S.-H</forename><surname>Sun</surname></persName>
+		</author>
+		<ptr target="https://github.com/shaohua0116/MultiDigitMNIST" />
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<title level="a" type="main">Learning to compare: Relation network for few-shot learning</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Sung</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Xiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">H</forename><surname>Torr</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">M</forename><surname>Hospedales</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition</title>
+		<meeting>the IEEE Conference on Computer Vision and Pattern Recognition</meeting>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="1199" to="1208" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<monogr>
+		<title level="m" type="main">A Bayesian framework for concept learning</title>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">B</forename><surname>Tenenbaum</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1999">1999</date>
+		</imprint>
+		<respStmt>
+			<orgName>Massachusetts Institute of Technology</orgName>
+		</respStmt>
+	</monogr>
+	<note type="report_type">PhD thesis</note>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<monogr>
+		<title level="m" type="main">Learning to learn</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Thrun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Pratt</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2012">2012</date>
+			<publisher>Springer Science &amp; Business Media</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<analytic>
+		<title level="a" type="main">models of conceptual development: Learning as building models of the world</title>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">D</forename><surname>Ullman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">B</forename><surname>Tenenbaum</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Annual Review of Developmental Psychology</title>
+		<imprint>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page" from="533" to="558" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<analytic>
+		<title level="a" type="main">NVAE: A deep hierarchical variational autoencoder</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Vahdat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kautz</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Neural Information Processing Systems (NeurIPS)</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<analytic>
+		<title level="a" type="main">Attention is all you need</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Vaswani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Shazeer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Parmar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Uszkoreit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Jones</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">N</forename><surname>Gomez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ł</forename><surname>Kaiser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Polosukhin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="5998" to="6008" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b51">
+	<monogr>
+		<title level="m" type="main">Graph attention networks</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Velickovic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Cucurull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Casanova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Romero</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Lio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1710.10903</idno>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="volume">1</biblScope>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b52">
+	<analytic>
+		<title level="a" type="main">Matching networks for one shot learning</title>
+		<author>
+			<persName><forename type="first">O</forename><surname>Vinyals</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Blundell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Lillicrap</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wierstra</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="3630" to="3638" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b53">
+	<analytic>
+		<title level="a" type="main">Meta-amortized variational inference and learning</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Choi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">D</forename><surname>Goodman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ermon</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">AAAI</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="6404" to="6412" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b54">
+	<monogr>
+		<author>
+			<persName><forename type="first">J</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J.-F</forename><surname>Ton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">R</forename><surname>Kosiorek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><forename type="middle">W</forename><surname>Teh</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Metafun</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1912.02738</idno>
+		<title level="m">Meta-learning with iterative functional updates</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b55">
+	<analytic>
+		<title level="a" type="main">Deep sets</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zaheer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Kottur</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ravanbakhsh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Poczos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">R</forename><surname>Salakhutdinov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">J</forename><surname>Smola</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="3391" to="3401" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

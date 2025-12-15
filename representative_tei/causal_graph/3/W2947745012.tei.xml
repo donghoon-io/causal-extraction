@@ -1,0 +1,1475 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">NODOZE: Combatting Threat Alert Fatigue with Automated Provenance Triage</title>
+				<funder ref="#_qYvH6Vd #_v6xbVp2">
+					<orgName type="full">National Science Foundation</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Wajih</forename><forename type="middle">Ul</forename><surname>Hassan</surname></persName>
+							<email>whassan3@illinois.edu</email>
+						</author>
+						<author>
+							<persName><forename type="first">Shengjian</forename><surname>Guo</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Ding</forename><surname>Li</surname></persName>
+							<email>dingli@nec-labs.com</email>
+							<affiliation key="aff1">
+								<orgName type="institution">NEC Laboratories America, Inc</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Zhengzhang</forename><surname>Chen</surname></persName>
+							<email>zchen@nec-labs.com</email>
+							<affiliation key="aff1">
+								<orgName type="institution">NEC Laboratories America, Inc</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Kangkook</forename><surname>Jee</surname></persName>
+							<email>kjee@nec-labs.com</email>
+							<affiliation key="aff1">
+								<orgName type="institution">NEC Laboratories America, Inc</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Zhichun</forename><surname>Li</surname></persName>
+							<email>zhichun@nec-labs.com</email>
+						</author>
+						<author>
+							<persName><forename type="first">Adam</forename><surname>Bates</surname></persName>
+							<email>batesa@illinois.edu</email>
+							<affiliation key="aff1">
+								<orgName type="institution">NEC Laboratories America, Inc</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff0">
+								<orgName type="institution">University of Illinois at Urbana-Champaign</orgName>
+								<address>
+									<country>Virginia Tech</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">NODOZE: Combatting Threat Alert Fatigue with Automated Provenance Triage</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+					<idno type="DOI">10.14722/ndss.2019.23349</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-14T18:21+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Large enterprises are increasingly relying on threat detection softwares (e.g., Intrusion Detection Systems) to allow them to spot suspicious activities. These softwares generate alerts which must be investigated by cyber analysts to figure out if they are true attacks. Unfortunately, in practice, there are more alerts than cyber analysts can properly investigate. This leads to a "threat alert fatigue" or information overload problem where cyber analysts miss true attack alerts in the noise of false alarms.</p><p>In this paper, we present NODOZE to combat this challenge using contextual and historical information of generated threat alert. NODOZE first generates a causal dependency graph of an alert event. Then, it assigns an anomaly score to each edge in the dependency graph based on the frequency with which related events have happened before in the enterprise. NODOZE then propagates those scores along the neighboring edges of the graph using a novel network diffusion algorithm and generates an aggregate anomaly score which is used for triaging. We deployed and evaluated NODOZE at NEC Labs America. Evaluation on our dataset of 364 threat alerts shows that NODOZE consistently ranked the true alerts higher than the false alerts based on aggregate anomaly scores. Further, through the introduction of a cutoff threshold for anomaly scores, we estimate that our system decreases the volume of false alarms by 84%, saving analysts' more than 90 hours of investigation time per week. NODOZE generates alert dependency graphs that are two orders of magnitude smaller than those generated by traditional tools without sacrificing the vital information needed for the investigation. Our system has a low average runtime overhead and can be deployed with any threat detection software.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>I. INTRODUCTION</head><p>Large enterprises are increasingly being targeted by Advanced Persistent Threats (APTs). To combat these threats, enterprises are deploying threat detection softwares (TDS) such as intrusion detection system and security information and event management (SIEM) tools. These softwares constantly monitor the enterprise-wide activities and generate a threat alert if a suspicious activity happens. Cyber analysts then manually sift through these alerts to find a signal that indicates a true attack. Unfortunately, these automated systems are notorious for generating high rates of false alarms <ref type="bibr" target="#b56">[59]</ref>, <ref type="bibr" target="#b1">[2]</ref>, <ref type="bibr" target="#b5">[6]</ref>. According to a recent study conducted by FireEye, most organizations receive 17,000 alerts per week where more than 51% of the alerts are false positives and only 4% of the alerts get properly investigated <ref type="bibr" target="#b3">[4]</ref>. Due to an enormous number of alerts, cyber analyst face "threat alert fatigue" <ref type="foot" target="#foot_0">1</ref> problem and important alerts get lost in the noise of unimportant alerts, allowing attacks to breach the security of the enterprise. One example of this is Target's disastrous 2013 data breach <ref type="bibr" target="#b13">[15]</ref>, when 40 million card records were stolen. Despite numerous alerts, the staff at Target did not react to this threat in time because similar alerts were commonplace and the security team incorrectly classified them as false positives. In Fig. <ref type="figure" target="#fig_0">1</ref>, we demonstrate the growth of alerts generated by a commercial TDS <ref type="bibr" target="#b7">[8]</ref> at NEC Labs America comprising 191 hosts.</p><p>The threat alert fatigue problem is, at least partially, caused by the fact that existing academic <ref type="bibr" target="#b40">[43]</ref>, <ref type="bibr" target="#b26">[29]</ref> and commercial <ref type="bibr" target="#b2">[3]</ref>, <ref type="bibr" target="#b4">[5]</ref> TDS use heuristics or approaches based on single event matching such as an anomalous process execution event to generate an alert. Unfortunately, in many cases, a false alert may look very similar to true alert if the investigator only checks a single event. For example, since both ransomware and ZIP programs read and write many files in a short period of time, a simple ransomware detector that only checks the behavior of a single process can easily classify ZIP as ransomware <ref type="bibr" target="#b37">[40]</ref>. Even though contextual alerting has proven to be most effective in the alert triage process <ref type="bibr" target="#b24">[27]</ref>, existing TDS usually do not provide enough contextual information about alerts (e.g., entry point of invasion) which also increases investigators' mean-time-to-know. <ref type="foot" target="#foot_1">2</ref>Data provenance analysis <ref type="bibr" target="#b38">[41]</ref>, <ref type="bibr" target="#b23">[26]</ref> is one possible remedy for the threat alert fatigue problem. Data provenance can provide the contextual information about the generated alert through reconstructing the chain of events that lead to an alert event (backward tracing) and the ramifications of the alert event (forward tracing). Such knowledge can better separate a benign system event from a malicious event even though they may look very similar when viewed in isolation. For example, by considering the provenance of an alert event, it is possible to distinguish ransomware from ZIP: the entry point of ransomware (e.g., email attachment) is different from the ZIP program.</p><p>Although a provenance-based approach sounds promising, leveraging data provenance for triaging alerts suffers from two critical limitations: 1) labor intensive -using existing techniques still require a cyber analyst to manually evaluate provenance data of each alert in order to eliminate false alarms, and 2) dependency explosion problem -due to the complexity of modern system, current provenance tracking techniques will include false dependencies because an output event is assumed to be causally dependent on all preceding input events <ref type="bibr" target="#b43">[46]</ref>. In our scenario, due to this problem, a dependency graph of a true attack alert will include dependencies with benign events which might not be causally related to the attack. This problem makes the graph very huge (with thousands or even millions of nodes). Such a huge graph is very hard for security experts to understand <ref type="bibr" target="#b33">[36]</ref>, making the diagnosis of attacks prohibitively difficult.</p><p>In this paper, we propose NODOZE, an automatic alert triage and investigation system based on provenance graph analysis. NODOZE leverages the historical context to automatically reduce the false alert rate of existing TDS. NODOZE achieves this by addressing the aforementioned two limitations of existing provenance analysis techniques: it is fully automated and can substantially reduce the size of the dependency graphs while keeping the true attack scenarios. Such concise dependency graphs enable security experts to better understand the attacks, discover vulnerabilities quickly, accelerating incident response.</p><p>Our approach is based on the insight that the suspiciousness of each event in the provenance graph should be adjusted based on the suspiciousness of neighboring events in the graph. A process created by another suspicious process is more suspicious than a process created by a benign process. To this end, our anomaly score assignment algorithm is an unsupervised algorithm with no training phase. To assign anomaly scores to the events, NODOZE builds an Event Frequency Database which stores the frequencies of all the events that have happened before in the enterprise. After anomaly score assignment, NODOZE uses a novel network diffusion algorithm to efficiently propagate and aggregate the scores along the neighboring edges (events) of the alert dependency graph. Finally, it generates an aggregate anomaly score for the candidate alert which is used for triaging.</p><p>To tackle the dependency explosion problem in the alert investigation process, we propose the notion of behavioural execution partitioning. The idea is to partition a program execution based on normal and anomalous behaviour and generate most anomalous dependency graph of a true alert. This allows cyber analyst to focus on most anomalous events which are causally related to the true alert which accelerates the alert investigation process.</p><p>We implement NODOZE and event frequency database in 9K and 4K lines of Java code respectively. We deployed and evaluated our system at NEC Labs America. For evaluation we used 1 billion system events spanning 5 days which generated 364 alerts using an exemplar TDS <ref type="bibr" target="#b7">[8]</ref>. These alerts include 10 APT attack cases and 40 recent malware simulation while all the other alerts are false alarms. Experimental results show that NODOZE improves the accuracy of existing TDS by reducing the false alarms by 84%. Moreover, NODOZE generates dependency graphs for true alerts that are two orders of magnitude smaller than those generated by traditional tools.</p><p>In summary, this paper makes the following contributions:</p><p>• We propose NODOZE, an automated threat alert triage system for enterprise settings. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>II. BACKGROUND &amp; MOTIVATION</head><p>In this section, we use an attack example to illustrate the effectiveness and utility of NODOZE as an alert triage system with two aspects: 1) filtering out false alarms to reduce alert fatigue, and 2) concise explanation of the true alerts using dependency graphs to accelerate alert investigation process. We will use the example of a WannaCry ransomware attack <ref type="bibr" target="#b15">[18]</ref> in an enterprise environment. This attack was simulated as a live exercise at NEC Labs America; we describe the experimental setup used for the simulation in §VIII.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Motivating Attack Example</head><p>WannaCry ransomware is a popular attack that affected around 0.2 million systems across 150 countries in May 2017 <ref type="bibr" target="#b11">[12]</ref>. It is essentially a cryptoworm which targets computers running the Microsoft Windows OS with vulnerable EternalBlue <ref type="bibr" target="#b12">[14]</ref>. It exploits this vulnerability to gain access to the machines and encrypts data on those machines.</p><p>Scenario. Consider a front desk person in an enterprise who one day visits several websites using Internet Explorer to search for pdf reader software. After visiting several links, the front desk person accidentally downloads a malware (springs.7zip) from a malicious website and then runs the malware thinking of it as pdf reader software. This malware opens a backdoor to the attacker's server and then searches for EternalBlue vulnerable machines in the front desk's enterprise network. Once vulnerable machines are found the attacker downloads the file encryptor and starts to encrypt files on those vulnerable machines. After some time the front desk person's PC starts to run very slow so front desk person calls technical support. The technical support person downloads and executes a diagnostic tool (collect-info.ps1) on front desk person's PC from an internal software repository, which runs some diagnostic commands including Tasklist and Ipconfig. All of the output is copied to a file sys-report.txt, which is then transferred to a remote machine for further investigation. On the remote machine, the technical support person runs several bash commands to check the file contents and figure out the issue with the front desk person's computer.</p><p>Alerts Investigation. During the above attack scenario, two threat alerts were generated by the underlying TDS while over 100 total threat alerts were generated over the course of the day. The first alert event E 1 , was generated when malware made several connections to remote machines in the enterprise. The second alert event E 2 was generated when technical support diagnostic tool initiated a remote connection to a secure machine. Note that, at a single event level, both alert events E 1 and E 2 look very similar; both processes making an unusual connection to a remote machine in the network.</p><p>To investigate the alerts and prepare a response, the cyber analyst performs a causality analysis. Provenance-based tools <ref type="bibr" target="#b38">[41]</ref>, <ref type="bibr" target="#b23">[26]</ref> process individual events between system objects (e.g.,, files and network sockets) and subjects (e.g.,, processes) to construct a causal dependency graph. Note that cyber analysts can use these graphs to understand the context of the alert by using a backward tracing query which starts from the given symptom event (alert) and then identifies all the subjects and objects that the symptom directly and indirectly depends on. Using a forward tracing query, the analyst can then identifies all the effects induced by the root cause of the alert. Fig. <ref type="figure" target="#fig_1">2a</ref> shows the simplified dependency graph generated by existing tools for alert events E 1 and E 2 . In this graph and also the rest of the paper, we use diamonds, ovals, boxes, and dashed arrows to represent sockets, files, processes, and alert events respectively.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Existing Tools Limitations</head><p>Existing provenance trackers when combined with TDS for alert triage and investigation process suffer from following limitations:</p><p>Alert Explosion &amp; Manual Labor. Even if the TDS identifies an anomalous event related to the attack, cyber analysts are barraged with alerts on a daily basis and face the problem of finding a "needle in a haystack". Existing automated TDS are notorious for generating a high amount of false alarms <ref type="bibr" target="#b56">[59]</ref>, <ref type="bibr" target="#b1">[2]</ref>, <ref type="bibr" target="#b5">[6]</ref>, <ref type="bibr" target="#b31">[34]</ref>, <ref type="bibr" target="#b18">[21]</ref>. Cyber analysts are in short supply, so organizations face a key challenge in managing the enormous volume of alerts they receive using the limited time of analysts <ref type="bibr" target="#b3">[4]</ref>. Many heuristic-and rule-based static approaches have been proposed to mitigate this problem <ref type="bibr" target="#b65">[68]</ref>, <ref type="bibr" target="#b19">[22]</ref>, <ref type="bibr" target="#b42">[45]</ref>, <ref type="bibr" target="#b29">[32]</ref>. However, there are still too many threat alerts for the analysts to manually investigate in sufficient depth using alerts' dependency graphs which are also usually very complex. During the day of the attack, the TDS generated over 100 threat alerts with an average of 2K vertices in each alert's dependency graph; and only 1 threat alert was related to WannaCry attack while all other were false alarms.</p><p>Dependency Explosion. Most existing provenance trackers suffer from the dependency explosion problem, generating graphs similar to Fig. <ref type="figure" target="#fig_1">2a</ref>. The dependency inaccuracy is mainly caused by long running processes that interact with many subjects/objects during their lifetime. Existing approaches consider the entire process execution as a single node so that all input/output interactions become edges to/from the process node. This results in considerably large and inaccurate graphs. Consider the Internet Explorer IExplorer.exe vertex in our example dependency graph which is shown in Fig. <ref type="figure" target="#fig_1">2a</ref>. When cyber analysts try to find the ancestry of the downloaded malware file (springs.7zip) and diagnostic tool file (collect-info.ps1), they will unable to determine which incoming IP/socket connection vertex is related to the malware file and which one belongs to the diagnostic tool file. Prior solutions to the dependency explosion problem <ref type="bibr" target="#b43">[46]</ref>, <ref type="bibr" target="#b48">[51]</ref>, <ref type="bibr" target="#b47">[50]</ref>, <ref type="bibr" target="#b41">[44]</ref> propose to partition the execution of a long running process into autonomous "units" in order to provide more precise causal dependency between input and output events. However, these systems require end-user involvement and system changes through source code instrumentation, training runs of application with typical workloads, and modifying the kernel. Due to proprietary software and licensing agreements, code instrumentation is not often possible in an enterprise. Furthermore, these systems are only implemented for Linux, and their designs are inapplicable to commodity-offthe-shelf operating systems like Microsoft Windows. Finally, acquiring typical application workloads in a heterogeneous large enterprise is not practically feasible.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Goals</head><p>The aforementioned limitations motivate the following design goals for the NODOZE system: </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>III. NODOZE OVERVIEW &amp; APPROACH</head><p>The overall workflow of NODOZE system to triage alerts based on anomaly scores is shown in Fig. <ref type="figure" target="#fig_2">3</ref>. NODOZE acts as an add-on to an existing TDS in order to reduce false alarms and provide contextual explanations of generated threat alerts. To triage alerts, NODOZE first assigns an anomaly score to each event in the generated alerts provenance graph. Anomaly scores are calculated using frequencies with which related events have happened before in the enterprise. NODOZE then uses a novel network diffusion algorithm to propagate and aggregate anomaly scores along the neighboring events. Finally, it generates an aggregate anomaly score for the generated alert which is used for triaging -escalating the most critical incidents for remediation and response.</p><p>As mentioned previously, existing execution partitioning techniques <ref type="bibr" target="#b43">[46]</ref>, <ref type="bibr" target="#b48">[51]</ref>, <ref type="bibr" target="#b47">[50]</ref>, <ref type="bibr" target="#b41">[44]</ref> for precise dependencies are not feasible in an enterprise. In the case of true alerts, NODOZE solves this problem by leveraging the observation that the attack's dependencies will be readily apparent because the true path will have much higher anomaly score. We call this approach as behavioural execution partitioning for alert investigation. In our attack example, since IExplorer.exe has only two socket connections from anomalous websites (one of them is a malicious website from which malware was downloaded) while all the other socket connections were to websites common (normal) in the enterprise. Hence, we can get rid of all the common IP connection vertices and partition the execution of IExplorer.exe based on its abnormal behaviour. Fig. <ref type="figure" target="#fig_1">2b</ref> shows the dependency graph generated by NODOZE for our motivating example. It concisely captures the minimal causal path between the root cause (initial socket connection to IExplorer.exe) the threat alert (dropper.exe socket connection to another host), and all other ramifications (encryptor.exe encrypting several files). Observe that in Fig. <ref type="figure" target="#fig_1">2a</ref> there are two threat alert events annotated by E 1 and E 2 shown with dashed arrows. Looking at these alert events in isolation, they look similar (both make socket connection to important internal hosts). However, when we consider the ancestry and progeny of each these alert events using backward and forward tracing, we can see that the behaviour of each of them is markedly different.</p><p>In order to identify if a threat alert is a true attack or a false alarm, NODOZE uses anomaly scores which quantify the "rareness", or transition probability, of relevant events that have happened in the past. For example, the progeny of alert event E 1 i.e. dropper.exe → y.y.y.y:445 consists of several events that are more rare i.e., have low transition probability. For example, in the progeny of Spoolsv.exe (print service), spawning another process that reads/writes several files happened 0 times in the organization earning this behaviour a high anomaly score. Similarly, in the ancestry of E 1 , a chain of events in which an executable is downloaded using Internet Explorer and then connects to a large number of hosts in a short period of times is very rare and thus has a high anomaly score. As a result, when we combine the ancestry and progeny behaviours of E 1 , we get a high aggregate anomaly score for the alert.</p><p>In contrast, when we consider the progeny of alert event E 2 i.e. Powershell → z.z.z.z:445, we see a chain of events that are quite common in an enterprise because these behaviours are exhibited by common Linux utilities (e.g. diff and cut). Moreover, the ancestry of alert event E 2 contains diagnostic events such as Tasklist and Ipconfig which are regularly performed to check the health of computers in the enterprise. Therefore, the aggregate anomaly score of E 2 will be quite lower than the anomaly score of E 2 .</p><p>Once NODOZE has assigned an aggregate anomaly score to the alert event, it extracts the subgraph from the dependency graph that has the highest anomaly score. The dependency graph for true alert E 1 is shown in Fig. <ref type="figure" target="#fig_1">2b</ref>. Observe that in Fig. <ref type="figure" target="#fig_1">2a</ref>, Spoolsv.exe has created many other socket connections (total 130 sockets); however, the NODOZE generated graph has only encrypt.exe process since this behaviour was more anomalous than the other events. Similarly, while IExplorer.exe received several socket connections, NODOZE only picked rare IP addresses a.a.a.a (malicious website from which malware was downloaded) and b.b.b.b since these have higher anomaly scores than the other normal socket connections.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>IV. THREAT MODEL &amp; ASSUMPTIONS</head><p>Our threat model is similar to existing provenance-based systems <ref type="bibr" target="#b53">[56]</ref>, <ref type="bibr" target="#b23">[26]</ref>, <ref type="bibr" target="#b51">[54]</ref>, <ref type="bibr" target="#b46">[49]</ref>, <ref type="bibr" target="#b60">[63]</ref>, <ref type="bibr" target="#b21">[24]</ref>, <ref type="bibr" target="#b48">[51]</ref>, <ref type="bibr" target="#b33">[36]</ref> i.e., the underlying OS; and provenance tracker are in our trusted computing base (TCB). In this work, we consider an attacker whose goal is to exfiltrate sensitive data, manipulate information present on a system, or to move laterally to other hosts on the network. To achieve this goal the attacker may install malware on the targeted system, exploit a running process, or inject a backdoor.</p><p>We make the following assumptions about our system. We assume that the attacker cannot manipulate or delete the provenance record i.e., log integrity is maintained all the time. While log integrity is an important goal, it is orthogonal to the aims of this system and can be ensured by using existing secure provenance systems <ref type="bibr" target="#b32">[35]</ref>, <ref type="bibr" target="#b22">[25]</ref>. We also do not consider the attacks performed using implicit flows (side channels) that do not go through the syscall interface and thus cannot be captured by the underlying provenance tracker. Finally, we do not track attacks exploiting kernel vulnerabilities.</p><p>The only underlying TDS's feature that NODOZE relies on is threat alerts. We assume that underlying TDS's detection rate is complete i.e. threats related to true attacks are always detected. We also assume that there is at least one event that is anomalous in the ancestry or progeny of alert to categorize it as a true attack. We do not consider Mimicry attacks <ref type="bibr" target="#b59">[62]</ref> where attacker evades detection using a sequence of events which are normal in an enterprise. While mimicry is an important consideration, it is out of scope for this work because their detection is actually a limitation of the underlying TDS.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>V. PROBLEM DEFINITION</head><p>In this section, we first introduce several formal definitions which are required to understand NODOZE's anomaly propagation algorithm and then we formulate the problem statement for NODOZE.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Definitions</head><p>Dependency Event. OS-level system logs refer to two kinds of entities: subjects and objects. Subjects are processes, while objects correspond to files, socket connections, IPC etc. A dependency (causal) event E is defined as a 3tuple &lt; SRC, DST, REL &gt; where SRC ∈ {process} entity that initiates the information flow whereas DST ∈ {process, f ile, socket} entities which receive information flow, while REL represents information flow relationship. The  various kinds of dependency event relationships we consider in this work are shown in Table <ref type="table" target="#tab_2">I</ref>. For example, in Fig. <ref type="figure" target="#fig_1">2a</ref> a dependency event E 1 is represented as &lt;dropper.exe, y.y.y.y:445, IP Write&gt;. Dependency Path. A dependency path P of a dependency event E a represents a chain of events that led to E a and chain of events induced by E a . It is an ordered sequence of dependency events and represented as P := {E 1 , E i , ... , E a , ... E n } of length n. Each dependency event can have multiple dependency paths where each path represents one possible flow of information through E a . Dependency path may contain overlapping events, making it possible to represent any dependency graph as a set of dependency paths.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>We further divide dependency paths into two categories:</head><p>-A control dependency path (CD) of an event ε is a dependency path P CD = {ε 1 , ε 2 , ..., ε n } such that ∀ REL ∈ {P ro Start, P ro End}. -A data dependency path (DD) of an an event ε is a dependency path</p><formula xml:id="formula_0">P DD = {ε 1 , ε 2 , ..., ε n } such that ∀ REL / ∈ {P ro Start, P ro End}.</formula><p>From the motivating attack example, two possible dependency paths {P 1 , P 2 } of length 5, one control dependency path P CD1 and one data dependency path P DD1 for the alert event E 2 are shown in Fig. <ref type="figure" target="#fig_3">4</ref>.</p><p>Dependency Graph. All the dependency paths of an event when merged together constitute one single dependency graph. For example, the dependency graph of alert events E 1 and E 2 is shown in Fig. <ref type="figure" target="#fig_1">2a</ref>.</p><p>True Alert Dependency Graph. As we discussed in §II, due to long running programs there are false dependency events in the dependency graph. Due to false dependencies, there will be unrelated benign events in the dependency graph of a true alert event which might not be causally related to the attack. So we partition the long running programs based on their normal and anomalous behaviour. We call this technique as behavioural execution partitioning. This technique will generate a true alert dependency graph, which will contain most anomalous dependency paths. True alert dependency graphs are concise as compared to complete dependency graphs and accelerate the investigation process without losing vital contextual information about the attack.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Problem Statement</head><p>Given a list of n alert events {E 1 , E 2 , ..., E n } and userspecified threshold parameters τ l and τ d , we aim to rank these alerts based on their anomaly scores and filter out all the alerts whose anomaly score is less than τ d as false alarms. Furthermore, we also aim to generate true alert dependency graphs with dependency paths of atmost τ l length.</p><p>There are two key challenges in this problem: 1) assigning anomaly scores to dependency paths of different lengths using historical and contextual information and 2) generating true alert dependency graphs that completely capture attack behaviors. In the next section, we will present a concrete algorithm to assign scores to threat alerts and generate true alert dependency graphs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>VI. ALGORITHM</head><p>In this section, we present a concrete network diffusion algorithm to assign anomaly score to each event in an alert dependency path using historical information, then generate a true alert dependency graph.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Roadmap</head><p>An anomaly score quantifies the degree of suspiciousness of an event in a dependency path. A naïve way to assign anomaly score is to use frequency of the system events that have happened in the past such that events that are rare in the organization are considered more anomalous. However, sometimes this assumption may not hold since attacks may involve events that happen a lot. From the motivating attack ( §II), unzipping a file (springs.7zip) is a common event in an organization; however, it was one of the events that led to the attack. Thus, simple frequency-based approach to find anomaly cannot catch such attacks. However, if we consider the chain of events that were informed by springs.7zip file, such as initiating a large number of IP connections in a short period of time, we can find out that this is not common behaviour after someone unzips the springs.7zip file. Therefore, our objective is to define the anomaly score not just based on a single event in the dependency path but based on the whole path. Next, we discuss how to calculate the anomaly scores for each dependency path based on the whole path.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Anomaly Score Propagation</head><p>In order to calculate a dependency path's anomaly score, we first need to find dependency paths of an alert event. Given a complete dependency graph G of an alert event E α , we find all the dependency paths of length τ l for the E α . To do so, we run depth-first traversal in a backward and forward fashion from the alert event and then we combine those backward and forward paths to generate unified paths such that each unified path contains both the ancestry and progeny causal events of alert. In Algorithm 1, Lines 2 to Lines 6 show the dependency path search algorithm. Function GETDEPENDENCYGRAPH generates a complete dependency graph of an input event, functions GETSRCVERTEX and GETDSTVERTEX return SRC and DST entities of input event respectively, functions DFS-TRAVERSALBACKWARD and DFSTRAVERSALFORWARD return backward and forward dependency paths for input event respectively, and function COMBINEPATHS combine backward and forward paths.</p><p>After generation of dependency paths for candidate alert event, NODOZE assigns anomaly scores to each event in the dependency paths. In Algorithm 1, Lines 7 to Lines 10 show this process. To calculate the anomaly scores, we first construct a N × N transition probability matrix M for the given dependency graph G of alert event, where N is the total number of vertices in G. Each matrix entry M ε is computed by the following equation:</p><formula xml:id="formula_1">Mε = probability(ε) = |F req(ε)| |F req src rel (ε)|<label>(1)</label></formula><p>Here, F req(ε) represents how many times the causal event ε has happened in the historic time window with all 3-tuple of ε exactly same, while F req src rel (ε) represents how many times event ε where only SRC and REL from 3-tuple are exactly same. Hence, M ε means the happening probability of this specific event. If ε event never happened before in historical information, then its value is 0. On the other hand, if ε is the only event between SRC and any other entity with REL in our historical information then its value 1. Note that this anomaly score assignment algorithm is an unsupervised algorithm with no training phase. To count the frequency of events that have happened in the past we built an Event Frequency Database that periodically stores and updates events frequency in the whole enterprise. A detailed discussion regarding the construction of such database will be provided in §VII.</p><p>Let's consider an alert event E 1 :=&lt;dropper.exe, y.y.y.y:445, IP Write&gt; from Fig. <ref type="figure" target="#fig_1">2a</ref>. We first calculate F req(E 1 ) by counting the number of events that have happened in our frequency event database where SRC ∈ dropper.exe , DST ∈ y.y.y.y:445 and REL is IP Write. Then, we will calculate F req src rel (E 1 ) by counting the number of events where SRC ∈ dropper.exe and REL is IP Write while DST could be any entity node. Details regarding how these functions are implemented will be provided in §VII.</p><p>Transition probability for a given event tells us the frequency with which a particular source flows to a particular destination; however, we are ultimately going to propagate this value through the graph, but when we do so we want to account for the total amount of data flowing out of the source, and the total amount of data flowing into the destination. For this, we calculate IN and OU T score vectors for each entity in the dependency graph G. The IN and OU T scores represent the importance of an entity as an information receiver and sender respectively. In other words, IN and OU T scores measure the degree of fanout in either direction for each entity in the graph. For example, in the motivating attack ( §II), the IExplorer.exe process entity has both high IN and OU T scores, as it frequently reads and writes to socket connections. On the other hand, dropper.exe process entity has a high OU T score as it frequently writes to socket connections but has low IN since it does not read anything. We provide a detailed algorithm to calculate these vectors in §VI-C. Max Path Length Threshold τ l Output: List L &lt;P,AS&gt; of dependency path and score pairs. Once the transition probability matrix and IN and OU T scores calculation are done, we calculate the regularity (normal) score of each dependency path. Given a dependency path P = (ε 1 , ..., ε l ) of length l, the regularity score RS(P ) is calculated as follows:</p><formula xml:id="formula_2">1 Gα = GETDEPENDENCYGRAPH(Eα) 2 Vsrc ← GETSRCVERTEX(Eα) 3 V dst ← GETDSTVERTEX(Eα) 4 L b ← DFSTRAVERSALBACKWARD(Gα,Vsrc,τ l ) 5 L f ← DFSTRAVERSALFORWARD(Gα,V dst ,τ l ) /*</formula><formula xml:id="formula_3">RS(P ) = l i=1 IN (SRC i ) × M (ε i ) × OU T (DST i )<label>(2)</label></formula><p>where IN and OU T are the sender and receiver vectors, and M is calculated by Equation <ref type="formula" target="#formula_1">1</ref>. In Equation <ref type="formula" target="#formula_3">2</ref>,</p><formula xml:id="formula_4">IN (SRC i ) × M (ε i ) × OU T (DST i</formula><p>) measures the regularity of the event ε that SRC i sends information to DST i entities. After calculating regularity score, we calculate the anomaly score as follows:</p><formula xml:id="formula_5">AS(P ) = 1 -RS(P )<label>(3)</label></formula><p>According to this equation, if any path that involves at least one abnormal event, it will be assigned a high anomaly score as it will be propagated to the final score. In Algorithm 1, function CALCULATESCORE generates anomaly scores of given dependency paths.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. IN and OUT Scores Calculation</head><p>As mentioned above, Equation 2 requires the IN and OU T score vectors for each entity in the dependency graph. We populate IN and OU T score for each entity, based on its type as follows:</p><p>Process Entity Type. To assign IN and OU T score to a candidate process entity we check the historical behaviour of candidate process entity globally in the enterprise and calculate its scores as follows: Let v be the candidate process entity in the dependency graph and m is a fixed time window length. The period from the time v is added to the dependency graph (T 0 ) to the current timestamp (T n ) is partitioned into a sequence of time windows T = {T 0 , T 1 , ..., T n }, where T i is a time window of length m. If there is no new edge from/to vertex v in window T i , then T i is defined as a stable window. The vertex v's IN and OU T score is calculated using Equation <ref type="formula">4</ref>and Equation <ref type="formula" target="#formula_6">5</ref>respectively where |T f rom | is the count of stable windows in which no edge connects from v, |T to | is the count of stable windows in which no edge connects to v, and |T | is the total number of windows.</p><formula xml:id="formula_6">IN (v) = |T to | |T | (4) OU T (v) = |T f rom | |T |<label>(5)</label></formula><p>To understand the intuition of these equations, consider an example where a process vertex constantly have new edges going out from it while there is no edge going in. In such a case, the vertex has very low IN score, its OU T score will be high. If there is suddenly an edge going in the vertex, it is abnormal. The range of process entity IN and OU T score ∈ [0, 1], when a node has no stable window, i.e., the node always has new edges in every window, its score is 0. If all the windows are stable, the node stability is 1. Through repeated experimentation, we typically set the window length 24 hours. Hence the stability of a node is determined by the days that the node has no new edges and the total number of days.</p><p>Data Entities. Data entity type consists of file and socket entities. Data entities cannot be assigned global scores like Process entity as mentioned-above because the behaviour of data entity various from host to host in the enterprise. We define local values in terms of low and high IN and OU T scores for data entities. To assign IN and OU T scores for file entity vertices, we divide the file entities into three types and based on the type, we assign IN and OU T scores. 1) Temporary Files: All the file entities which are only written and never read in the dependency graph are considered as temporary files as suggested by <ref type="bibr" target="#b44">[47]</ref>. We give temporary files as high IN and OU T scores since they usually do not contribute much in attack anomaly score. 2) Executable Files: Files which are executable (execute bit is 1) are given low IN and OU T since they are usually used in the attack vector thus important sender and receiver of information. 3) Known malicious extensions: We use an online database <ref type="bibr" target="#b8">[9]</ref> of known malicious file extensions to assign low IN and OU T to such files since they are highly anomalous. All the other files are given IN and OU T score of 0.5. To assign IN and OU T scores for socket connection entities, we use domain-knowledge. We use an online database of malicious IP <ref type="bibr" target="#b9">[10]</ref> address to assign low IN and OU T score.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D. Anomaly Score Normalization</head><p>For each alert causal path P , we calculate the anomaly score using Eq. 2 and Eq. 3. However, it is easy to see that longer paths would tend to have higher anomaly scores than the shorter paths. To eliminate the scoring bias from the path length, we normalize the anomaly scores so that the scores of paths of different lengths have the same distribution.</p><p>We use a sampling-based approach to find the decay factor which will progressively decrease the score in Equation 2. To calculate decay factor α, we first take a large sample of false alert events. Then, for each alert we generate the dependency paths of different max lengths τ l and generate anomaly score for those paths. Then we generate a map M which contains average anomaly scores for each path length. Using this map, we calculate the ratio at which the score increases with increasing length from the baseline length k and use this ratio decay factor α. The complete algorithm to calculate the decay factor α using the sampling method is shown in Algorithm 2. Once the decay factor is calculated, the regularity score Equation 2 becomes as follows:</p><formula xml:id="formula_7">RS(P ) = l i=1 IN (SRC i ) × M (ε i ) × OU T (DST i ) × α<label>(6)</label></formula><p>This equation returns a normalized anomaly score for a given dependency path P of length l.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E. Paths Merge</head><p>As attacks are usually performed in multiple steps, it is not possible to capture the complete causality of a true alert event by returning the single dependency path that is most anomalous. Likewise, returning the full dependency graph (comprised of all paths) to cyber analysts is inaccurate because it contains both anomalous paths as well as benign paths that are unrelated to the true alert. To strike a balance between these two extremes, we introduce a merging step that attempts to build an accurate true alert dependency graph by including only dependency paths with high anomaly scores.</p><p>A naïve approach to this problem would be to return the top k paths when ranked by anomaly score; this solution is not acceptable because not all attacks contain the same number of steps, which could lead to the admission of benign paths or the exclusion of truly anomalous paths. Instead, we present an algorithm that uses a best effort approach to merge paths together in order to create an optimally anomalous subgraph. Through experimentation with NODOZE, we found that there is an orders of magnitude difference between the scores of benign paths and truly anomalous paths. Because of this, we are able to introduce a merge threshold τ m which quantifies the difference between the two. Algorithm 3 shows how to merge dependency paths based on the merge threshold τ m . At a high level, this algorithm keeps merging high anomaly score paths until the difference is greater than τ m . In order to calculate an acceptable value for τ m , we use a training phase to calculate the average difference between anomalous and benign paths. While the availability of labeled training data that features true attacks may seem prohibitive, recall that NODOZE is designed for enterprise environments that already employ trained cyber analysts; thus, the availability of training 2 for i ← 0 to SIZEOF(L P S ) -1 do /* Path and its anomaly score pair */</p><formula xml:id="formula_8">3 &lt; P 1 , S 1 &gt; ← L P S [i] 4 &lt; P 2 , S 2 &gt; ← L P S [i + 1] 5 if S 1 -S 2 &lt; τm then 6 G ← G ∪ P 1 7 G ← G ∪ P 2 8 end 9 end</formula><p>10 return G data is a natural artifact of their work. We also note that, based on our experience, the τ m threshold only needs to be calculated once per deployment.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>F. Decision</head><p>The main goal of NODOZE is to rank all the alerts in a given timeline. However, we can also calculate a decision or a cut-off threshold τ d , which can be used to decide if a candidate threat alert is a true attack or a false alarm with high confidence. If anomaly score of a threat alert is greater than the decision threshold than it is categorized as a true alert otherwise a false alarm. To this end, calculating τ d require training dataset with true attacks and false alarms and its value depends on the current enterprise configuration such as the number of hosts and system monitoring events.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>G. Time Complexity of our Algorithm</head><p>The dependency paths search for an alert event is done with D depth-bounded Depth-first search traversal. We execute DFS twice for each alert, once forward and once backward to generate both forward tracing and backward tracing dependency paths. So time complexity is O(|b D |) where b is the branching factor of the input dependency graph. Equation 2 runs for each path so time complexity is O(|P D|) where P is the total number of dependency paths for the alert event.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>VII. IMPLEMENTATION</head><p>We implement NODOZE for an enterprise environment. We collected system event logs in PostgreSQL database using Windows ETW <ref type="bibr" target="#b0">[1]</ref> and Linux Auditd <ref type="bibr" target="#b10">[11]</ref>. Our implementation consists of 3 major modules: a) Event Frequency Database Generator, b) Alert Triage &amp; Graph Generator, and c) Visualization Module.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Event Frequency Database</head><p>In order to calculate the transition probability matrix M , IN score vector, and OU T score vector for Equation <ref type="formula" target="#formula_3">2</ref>, we implemented Event Frequency Database in 4K lines of Java code. For a given a time period, this module counts the number of events that have happened in an enterprise network, then stores these counts in an external database. During runtime, NODOZE queries this database to calculate event frequencies.</p><p>Users of NODOZE can periodically run this module to update the enterprise-wide event frequencies. To remove nondeterministic and instance specific information in each event's SRC and DST entities such as timestamp and process id, we abstract/remove such fields before storing these events. Our abstraction rules for each of the entity types are similar to previous works <ref type="bibr" target="#b33">[36]</ref>, <ref type="bibr" target="#b46">[49]</ref> with some changes to fit our analysis:</p><p>-Process Entity. We remove all the information in the process entities except the process path, commandline arguments and gid (group identification number). -File Entity. We remove the inode and timestamps fields from the file entities while abstract file paths by removing user specific details. For example, /home/user/mediaplayer will be changed to /home/*/mediaplayer. -Socket Entity. Each socket connection entity has two addresses i.e. source ip and destination ip each with port number. connection is outgoing we remove the source IP and its port which is chosen randomly by the machine when initiating the connection. If the connection is incoming we the remove destination IP and its port. The end result is that external IP of the connection is preserved while the internal address is abstracted.</p><p>The final equations to calculate the frequencies of an event E i =&lt; SRC i , DST i , REL i &gt; which are used in transition probability matrix generation (Eq. 1) are as follows:</p><formula xml:id="formula_9">F req(E i ) = hosts h checkEvent(SRC i , DST i , REL i , h, t)<label>(7)</label></formula><p>F req src rel</p><formula xml:id="formula_10">(E i ) = hosts h checkEvent(SRC i , * , REL i , h, t)<label>(8)</label></formula><p>where hosts are hosts in the enterprise environment while checkEvent function returns the number of times event E i has occurred on the host. We only count event E i once in time window t for a host to prevent poisoning attacks <ref type="bibr" target="#b39">[42]</ref>. Note that in our experiments t is set to stable window size (discussed in §VI-C) which is 1 day. Finally, in Eq. 8 " * " means any DST entity.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Alert Triage and Graph Generation</head><p>We implemented NODOZE's network diffusion algorithm and concise alert dependency graph generation in 9K lines of Java code. We also implemented several optimizations such as an event frequency cache to minimize the NODOZE overhead.</p><p>We implement a basic dependency graph generator that, given an event parses the audit logs from Linux and Windows stored in PostgreSQL and generates the dependency graph onthe-fly. We also introduced several summarization techniques that make a graph more suitable for NODOZE analysis without affecting the correctness of causality analysis:</p><p>-Merge Transient Processes. There are processes in the provenance graph whose sole purpose is to create another process. We merge such processes into one node since this does not affect our analysis. Consider the dependency graph in Fig. <ref type="figure" target="#fig_1">2a</ref>, IExplorer.exe process entity spawns another IExplorer.exe process entity. We merge these two IExplorer.exe process entities together.</p><p>-Merge Similar Sockets Connection. Socket connections going out to same address from the same process vertex have multiple vertices in the raw dependency graphs. We merge such socket connections into a single vertex. From the perspective of alert event causality analysis, this does not affect correctness but saves NODOZE's time during dependency path generation.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Visualization Module</head><p>We have built a front-end which helps cyber analysts to visualize NODOZE's concise dependency graphs. We use GraphViz <ref type="bibr" target="#b30">[33]</ref> to generate causal graph in a dot format and then convert the dot file into html format. Cyber analysts can use these html-based graphs to visualize the most anomalous dependency paths with their anomaly scores.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>VIII. EVALUATION</head><p>In this section, we focus on evaluating the efficacy of NODOZE as an automatic threat alert triage and investigation system in an enterprise setting. In particular, we investigated the following research questions (RQs): RQ1 How accurate is NODOZE over existing TDS? ( §VIII-C) RQ2 How much can NODOZE reduce the dependency graph of a true alert without sacrificing the vital information needed for investigation? ( §VIII-D) RQ3 How much of investigator's time can NODOZE save when used in an enterprise setting? ( §VIII-E) RQ4 What is the runtime overhead of NODOZE? ( §VIII-F)</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Experiment Setup</head><p>We monitored and collected OS-level system events and threat alerts at NEC Labs America. In total, we monitored 191 hosts (51 Linux and 140 Windows OS) for 5 days which were used daily for product development, research and administration at NEC Labs America. During this time span, we also simulated 50 attacks which include 10 real-world APT attacks and 40 recent malwares downloaded from VirusTotal <ref type="bibr" target="#b16">[19]</ref>. A short description of each APT attack with generated threat alert is shown in Table <ref type="table" target="#tab_4">II</ref>.</p><p>We deployed NODOZE on a server with Intel ® Core(TM) i7-6700 CPU @ 3.40GHz and 32 GB memory running Ubuntu 16.04 OS. We used the baseline TDS <ref type="bibr" target="#b7">[8]</ref> to generate threat alerts. In summary, our experiment contains 400 GB of system monitoring data with around 1 billion OS-level log events and 364 threat alerts. The Event Frequency Database in our experiments was populated using 10 days of OS-level system events. Note that our evaluation dataset of 364 labeled alert scenarios was generated after the event frequency database was populated.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Baseline TDS</head><p>The baseline TDS we used to generate threat event alerts is a commercial tool <ref type="bibr" target="#b7">[8]</ref>. Details regarding anomaly detection models used in this tool can be found here <ref type="bibr" target="#b28">[31]</ref>. At a very high level, this TDS applies an embedding based technique to detect anomalies. It first embeds security events as vectors. Then, it models the likelihood of each event based on the embedding vectors. Finally, it detects the events with low likelihood as anomalies. An attack stole user account information from passwd file, compressed it using gzip and transferred the data to a remote machine &lt;scp, x.x.x.x:22, IP Write&gt;</p><p>VPNFilter <ref type="bibr" target="#b17">[20]</ref> An attacker used known vulnerabilities [13] to penetrate into an IoT device and overwrite system files for persistence. It then connected to outside to connect to C2 host and download attack modules.</p><p>&lt;/var/vpnfiler, x.x.x.x:80, IP Read&gt;</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Improvement Over Existing TDS</head><p>The first research question of our evaluation is how much NODOZE improves the accuracy of existing TDS <ref type="bibr" target="#b28">[31]</ref>, <ref type="bibr" target="#b40">[43]</ref>, <ref type="bibr" target="#b26">[29]</ref>, <ref type="bibr" target="#b57">[60]</ref> which are based on heuristics and single event matching rules. To answer this question, we used NODOZE along with the baseline TDS <ref type="bibr" target="#b7">[8]</ref>. In our experiment, we used the baseline TDS to monitor the system activities of the enterprise for anomalies and generate threat alerts. We then manually labeled these alerts as true positives and false positives and use them as the ground truth to evaluate NODOZE. Lastly, we used NODOZE to automatically label the alerts and compared the results with the ground truth.</p><p>In our experiments, the baseline TDS generated a total of 364 alerts (50 true alerts and 314 false alarms). The detection accuracy of NODOZE is measured using true positive rate (TPR) and false positive rate (FPR). Intuitively, the FPR measures the total number of false alerts that were categorized as true attacks by NODOZE. By adjusting the decision threshold τ d , NODOZE can achieve different TPR and FPR as shown in the ROC graph in Fig. <ref type="figure">5</ref>. When the threshold is set to detect 100% of true positives, NODOZE has a 16% FPR. In other words, NODOZE can reduce the number of false alerts of the baseline TDS by more than 84% while maintaining the same capability to detect real attacks. Fig. <ref type="figure">6</ref> shows the cumulative distribution function for ranked true and false alerts based on aggregate anomaly scores. The decision threshold (shown with red line), when set to 100% of true positives, removes the large portion of false alerts because the true positives are substantially ranked higher than false alerts.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D. Accuracy of Capturing Attack Scenarios</head><p>To answer RQ2, we used NODOZE to capture the attack scenarios of 10 APT attacks from their complex provenance graphs. We evaluate NODOZE on the APT attacks because we know the precise ground truth dependency graphs of the attacks. The results are summarized in Table <ref type="table" target="#tab_5">III</ref>. The duration columns represent the time taken in seconds by underlying provenance tracker to generate a complete dependency graph and time taken by NODOZE to run its analysis and generate a concise graph. Our experiment shows that our system accurately extracts the APT attack scenarios from the complex provenance graphs generated by the underlying provenance tracker. NODOZE can reduce the size of the provenance graph by two orders of magnitude. Such a reduction may substantially reduce the work load of cyber analyst when investigating the threat alerts and planning incident responses.</p><p>We also measured the completeness of the NODOZE generated dependency graph for each attack. We measured completeness in terms of two metrics: control dependency (CD) and data dependency (DD) (discussed in §V) with their true positive (TP) and false positive (FP) rates. Intuitively, the TP means the number of truly attack related edges present  <ref type="bibr" target="#b23">[26]</ref>, <ref type="bibr" target="#b38">[41]</ref>. Completeness means how much our graph able to capture the attack dependency graph in terms of CD and DD with their true positive (TP) and false positive (FP) rates.  in the concise graph generated by NODOZE. For all 10 APT attacks, we were able to recover the alert's expected control dependency graph except for Netcat attack where the expected length of control dependency path was larger than user-defined τ l . Note, this does not affect the correctness of causality analysis since cyber analysts can increase the depth of the path by increasing τ l during the alert investigation. In some cases, we were not able to completely recover the data dependency graph because incorporating those data dependencies required larger merge threshold τ m than set in our experiments. However, increasing the merge threshold also increases the number of FP in the data dependencies. Thus, finding the best possible thresholds which strike a balance between TP and FP require training run once before deployment in an enterprise.</p><p>Nevertheless, NODOZE decreases the size of original graph by two orders of magnitude which accelerates the alert investigation without losing vital information about attack. To further explain how well can NODOZE capture the attack scenarios, we will discuss two attack cases from Table II in §IX.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E. Time Saved Using NODOZE</head><p>Recent studies <ref type="bibr" target="#b1">[2]</ref>, <ref type="bibr" target="#b5">[6]</ref> have shown that it takes around 10-40 mins to manually investigate a single threat alert in an enterprise. This time spent on an investigation is also known as Mean-Time-To-Know in industry. Note that these studies have also confirmed that cyber analysts receive around 60-80% false alarms using existing TDS, which was also the false alarm rate of the baseline TDS used in our experiments.</p><p>If we conservatively assume cyber analysts spend 20 mins on average on each false alarm in our experiments they would have to waste around 104 employee-hours on investigating those false alarms. However, NODOZE reduces false alarms of existing TDS by 84%, which saves around 90 employeehours in an enterprise setting.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>F. Runtime Performance of NODOZE</head><p>To answer RQ4, we measured the runtime overhead of NODOZE for all the alerts in our dataset. NODOZE's response time for all the 364 alerts events is shown as a CDF in Fig. <ref type="figure" target="#fig_8">7a</ref>. This response time includes running anomaly propagation algorithm and generating a concise dependency graph for given alerts. Results show that 95% of all the alerts are responded by NODOZE in less than 40 seconds. There are few cases where NODOZE took a long time to respond. In these cases, most time was spent on constructing a large transition probability matrix for a large input dependency graph.</p><p>To further understand why NODOZE has large response times in some cases, we also measured the dependency graph generation query response times for all 364 alerts in our dataset. The results are shown in Fig. <ref type="figure" target="#fig_8">7b</ref>. Complete graph generation also has long response times because of extra large dependency graph construction. For these large dependency graphs, NODOZE also incurs larger overhead due to the reasons mentioned above. However, because we rarely encountered this issue in our experiments and other provenance tracking techniques <ref type="bibr" target="#b46">[49]</ref>, <ref type="bibr" target="#b49">[52]</ref> also suffer from this performance problem, we leave solving this problem for future work. CDF for end-to-end response time starting from the time alert is received until the alert is triaged is shown in Fig. <ref type="figure" target="#fig_8">7c</ref>. 95% of the threat alerts are responded in less than 200 seconds. Note that right now NODOZE analysis framework runs on a single machine using single thread; however, NODOZE can be parallelized easily using existing distributed graph processing frameworks (details in §X).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>IX. CASE STUDIES</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Data Theft Attack</head><p>Threat Alerts. Once the bash script is executed many threat alerts are generated by TDS in a short period of time, which are investigated by cyber analyst one by one. The dependency graph of these threat alert is shown in Fig. <ref type="figure" target="#fig_9">8a</ref> where dashed edges show threat alert events.</p><p>Alert Investigation. Without NODOZE, an investigator will generate a complete dependency graph for each of the threat alerts generated by TDS and manually inspect them only to see that just 1 of the 4 threat alerts was true attack. However, by the time investigator has examined all the false alerts (∼1.6 hours), all the app designs may have already been posted online.</p><p>On the other hand, NODOZE will ingest all these threat alerts and rank them based on their anomaly score. In this scenario, all the false alerts intentionally created by the attacker will be ranked lower while the true alert will be ranked higher. The threat alert events which led to data theft will be ranked on the top because of various rare events in its progeny. For example, using cp utility to copy data.tar to the ftp serving directory and using ftp to make a connection outside the organization. This chain of events has never happened in the organization. Contrary to this, events in the progeny of all the false threat alerts were quite common such as running g++ and Linux utilities. NODOZE also generates a concise dependency graph with only data theft dependency paths, while all the benign paths have been removed as shown in Fig. <ref type="figure" target="#fig_9">8b</ref>. Observe that in Fig. <ref type="figure" target="#fig_9">8a</ref>, the progeny of the true threat alert event has various operations such as run-parts and dpkg, which are removed in the NODOZE generated graph because their anomaly score is lower than the data theft dependency path. Note that NODOZE generated graph has some socket vertices connected to chromium and sshd which are unrelated to attack but they are included in NODOZE's graph because they were rare. Note that Table <ref type="table" target="#tab_5">III</ref> shows the FP rate higher than 0 due to these unrelated socket connections. Nevertheless, NODOZE decreases the original graph size by 2 orders of magnitude.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. ShellShock Attack</head><p>Scenario. In this attack scenario, attacker targets a ShellShock vulnerable Apache webserver to open several reverse shells and steals sensitive files. The attacker launches the attack in two phases. In the first phase, the attacker runs some Linux utilities (e.g.,ls, top) without doing serious damage. In the second phase, the attacker tries to discover sensitive data on webserver using commands such as '/bin/cat /etc/passwd' and '/bin/cat /var/log/access logs' . Once the sensitive files are found, the attacker archived (tar) and compressed (bzip2) the sensitive files and transferred (cp) it to Apache hosting directory so that attacker can download (wget) it from another machine. Once this phase is done, the attacker erased the history of bash commands by removing .bash history. Later, noises were introduced when a normal user opened new bash terminals. These terminals read the modified .bash history creating a false causal link to the attack.</p><p>Threat Alerts. This attack scenario simulation generated various threat alerts events because spawning a nc.traditional from bash process is considered as anomalous behaviour by TDS. These threat alert events are indicated by dashed arrows in Fig. <ref type="figure" target="#fig_10">9a</ref>.</p><p>Alert Investigation. The forward dependency graph of all the threat alert events consists of bash commands which are quite common in the enterprise such as ls and cat. However, alert event E 3 consist of other commands which are not common in an organization such as '/bin/cat /etc/passwd' and 'cp data.tar.bz2 /var/www/'. All the threat alert events will be ranked lower than alert event E 3 because the progeny graph of alert event E 3 contains most anomalous dependency paths as compared to other alert events.</p><p>Fig. <ref type="figure" target="#fig_10">9b</ref> shows the concise dependency graph generated by NODOZE. NODOZE's graph only has data exfiltration while all the common terminal commands are excluded from this graph because of our behavioural execution partitioning technique. This technique chooses alert dependency paths that have data exfiltration events over other dependency paths that launched common terminal commands due to two reasons: 1) creation and transfer of new files have low frequency in our event database since these do not happen very often as compared to running Linux utilities; 2) the dependency path for data exfiltration also wget's sensitive files on other machines while benign paths do not include any more anomalous behaviour.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>X. LIMITATIONS &amp; DISCUSSIONS</head><p>We outline the limitations of NODOZE through a series of questions. We also discuss how NODOZE can be extended under different scenarios.</p><p>What happens if an attacker uses benign process and file names for an attack? NODOZE is resilient to changes in the file and process names. At first glance, it may seem surprising; however, NODOZE inherits this from the use of data provenance, which captures true causality, not merely correlations. Even if the attacker starts a malware with a benign program name such as Notepad, the causality of the program such as how it was spawned and what changes it induced differentiates its behaviour from the normal behaviour of Notepad. Note that this property sets our work apart from heuristics-based TDS (e.g., <ref type="bibr" target="#b65">[68]</ref>, <ref type="bibr" target="#b29">[32]</ref>).</p><p>Can NODOZE be extended to incorporate distributed graph processing frameworks for improved performance? NODOZE uses a novel network diffusion algorithm to propagate the anomaly scores on the edges of a large dependency graph to generate an aggregate anomaly score. One can potentially parallelize this algorithm using existing large-scale vertexcentric graph processing frameworks <ref type="bibr" target="#b50">[53]</ref>. In this work, we do not enable distributed graph processing; however, we will explore this option in future work.</p><p>Can NODOZE run anomaly propagation algorithm while generating the dependency graph from audit logs? Currently, NODOZE first generates a complete dependency graph and then it propagates the anomaly score on that dependency graph. However, one can design a framework which propagates the anomaly score while generating the large dependency graph using iterative deepening depth first search and stop the analysis if anomaly scores do not increase in next iteration. In this way additional step of generating a large dependency graph first can be removed completely.</p><p>What is the role of underlying TDS in NODOZE's effectiveness? NODOZE is essentially an add-on to existing TDS for false alarm reduction. Thus, NODOZE can detect true attack only if it was detected by the underlying TDS first. If underlying TDS misses true attack and does not generate an alert, then NODOZE will not be helpful. Improving the true detection rate of underlying TDS is orthogonal to our work; however, our findings suggest that path-based context could be a powerful new primitive in the design of new TDS. Does the choice of underlying TDS affect the accuracy of NODOZE? NODOZE is independent to the choice of underlying TDS, we used this TDS <ref type="bibr" target="#b7">[8]</ref> in particular because it was licensed by our enterprise; licensing additional TDS for our evaluation, which was conducted on hundreds of hosts, was prohibitively costly. However, this tool is a state-of-the-art commercial TDS that is based on a reputable peer-reviewed detection algorithm <ref type="bibr" target="#b28">[31]</ref> and is similar to existing commercial and academic TDS <ref type="bibr" target="#b2">[3]</ref>, <ref type="bibr" target="#b4">[5]</ref>, <ref type="bibr" target="#b40">[43]</ref>, <ref type="bibr" target="#b26">[29]</ref>, <ref type="bibr" target="#b18">[21]</ref> in FPR.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>XI. RELATED WORK</head><p>In §II, we described the limitations of combining TDS with provenance tracker that NODOZE addresses, and complement the discussion on related work here.</p><p>Threat Detection. Existing threat detection approaches can be classified as online and offline approaches. Online detection approaches often look for a specific sequence of syscalls to detect malicious programs in a running system <ref type="bibr" target="#b34">[37]</ref>, <ref type="bibr" target="#b45">[48]</ref>. While offline approaches leverage forensic analysis on audit log to find the root cause of intrusion. Due to performance and space constraints, online approaches do not keep audit logs to support forensic analysis. On the other hand, existing offline approaches are labor intensive which makes them prohibitively impractical in an enterprise.</p><p>To improve syscall based methods, Tandon et al. <ref type="bibr" target="#b58">[61]</ref> considered syscall arguments in addition to syscall sequences for malicious program detection. Sekar et al. <ref type="bibr" target="#b54">[57]</ref> further added more complex structures such as loops and branches in the syscall sequences. However, all these syscall based systems suffer from a high false alarm rate due to the lack of contextual information. NODOZE use historical contextual information of system activities with more domain information such as process names and commandline arguments to achieve better accuracy. Researchers have also proposed to automatically detect attacks using machine learning <ref type="bibr" target="#b35">[38]</ref>, <ref type="bibr" target="#b61">[64]</ref>. However, these methods also have significant detection error and suffer from generating too many false alerts <ref type="bibr" target="#b55">[58]</ref>, <ref type="bibr" target="#b31">[34]</ref>.</p><p>Threat Alert Triage. Ben-Asher et al. <ref type="bibr" target="#b24">[27]</ref> did a study to investigate the effects of knowledge in detecting true attacks. They found that contextual knowledge about alert was more helpful in detection than cyber analysts experience and prior knowledge. Zhong et al. <ref type="bibr" target="#b65">[68]</ref> mined past analysts' operation traces to generate a state machine for automated alert triage. Chyssler et al. <ref type="bibr" target="#b29">[32]</ref> used a static filter with aggregation to reduce false alarm in IP network with the help of end-user involvement to adjust filter rules. There are many other proposed approaches to reduce the number of alerts such as careful configuration and improved classification methods <ref type="bibr" target="#b19">[22]</ref>, <ref type="bibr" target="#b42">[45]</ref>; however, there are still too many threat alerts for the analysts to properly investigate <ref type="bibr" target="#b29">[32]</ref>. To the best of our knowledge, NODOZE is the first system to leverage data provenance to automate the alert triage process in an enterprise without analysts involvement.</p><p>Provenance Analysis. A lot of work has been done to leverage data provenance for forensic analysis <ref type="bibr" target="#b23">[26]</ref>, <ref type="bibr" target="#b43">[46]</ref>, <ref type="bibr" target="#b53">[56]</ref>, <ref type="bibr" target="#b60">[63]</ref>, network debugging <ref type="bibr" target="#b20">[23]</ref>, <ref type="bibr" target="#b62">[65]</ref>, and access control <ref type="bibr" target="#b52">[55]</ref>. Jiang et al. <ref type="bibr" target="#b36">[39]</ref> used process coloring approach to identify the intrusion entry point and then use taint propagation approach to reduce log entries. Xie et al. <ref type="bibr" target="#b63">[66]</ref> used high-level dependency information to detect malicious behaviour. However, this system only considered one event at a time without malicious behaviour propagation i.e. if ftp connects to some socket address which is not in their normal event database they will mark it as malicious. However, NODOZE considered the whole path i.e. the creation and ramification ftp-socket event for categorization by using anomaly score propagation algorithm. PrioTracker <ref type="bibr" target="#b46">[49]</ref> accelerates the forward tracing by prioritizing abnormal events. Unlike PrioTracker, NODOZE focuses on triaging alerts and generating a more precise provenance graph. Furthermore, Priotracker only considers the abnormality of single events, it is not capable to distinguish similar events with different contexts in the dependency graph, such as E 1 and E 2 in our motivating example in Figure <ref type="figure" target="#fig_1">2a</ref>.</p><p>Dependency graph compression techniques <ref type="bibr" target="#b44">[47]</ref>, <ref type="bibr" target="#b33">[36]</ref>, <ref type="bibr" target="#b27">[30]</ref> are proposed to reduce the space overhead of provenance tracking. Provenance visualization <ref type="bibr" target="#b25">[28]</ref> technique is also proposed to facilitate data provenance analysis. As such, these techniques do not remove any benign events for the efficient alert triage and investigation; however, NODOZE can use these techniques to further decrease the overhead of backward and forward tracing by removing redundant event.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>XII. CONCLUSION</head><p>We develop NODOZE, a threat alert triage system that features historical and contextual information of generated alerts to automatically triage alerts. NODOZE uses a novel network diffusion algorithm to propagate anomaly scores in the dependency graphs of alerts and generates aggregate anomaly scores for each alert. These aggregate anomaly scores are then used by NODOZE to triage alerts. Our evaluation results show that our system substantially reduces the slog of investigating false alarms and accelerates the incident investigation with concise contextual alerting. NODOZE runtime overhead is low enough to be practical and can be deployed with any threat detection software.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Fig. 1 :</head><label>1</label><figDesc>Fig. 1: Growth of alerts in an enterprise during a given month.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Fig. 2 :</head><label>2</label><figDesc>Fig. 2: WannaCry attack scenario described in §II-A. (a) Part of the threat alerts' dependency graph generated by prior approaches [26], [41]. Some edges have been omitted for clarity. (b) Concise dependency graph generated by NODOZE.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Fig. 3 :</head><label>3</label><figDesc>Fig. 3: Overview of NODOZE. Alerts generated by threat detector are provided to NODOZE, which ranks the alerts based on their aggregate anomaly scores and produces concise alert dependency graphs for investigation.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>F1:Fig. 4 :</head><label>4</label><figDesc>Fig. 4: Example dependency paths of length 5 for alert event E2 from the motivating example ( §II).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Algorithm 1 :</head><label>1</label><figDesc>GETPATHANOMALYSCOREInputs : Alert Event Eα;</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Algorithm 2 : 4 L 5 M</head><label>245</label><figDesc>CALCULATEDECAYFACTOR Inputs : List of false alert causal events L E ; Baseline length k; Max. Path Length Threshold τ l Output: Decay Factor α 1 M = KeyValue Store of Path Length and Avg. Anomaly Score 2 foreach E ∈ L E do 3 for i ← 0 to τ l do /* Use Algorithm 1 to generate anomaly score for given event and max path length */ &lt;P,AS&gt; = GETPATHANOMALYSCORE(E,i) /* Takes the average of anomaly scores for each path length and store in map */ [i] ← AVERAGESCORE(L &lt;P,AS&gt; ,M [i]) the ratio at which score increases with length from the baseline */ 8 α ← GETDECAYFROMBASELINE(M ,k) 9 return α</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head>Algorithm 3 : 1 L</head><label>31</label><figDesc>DEPENDENCY PATHS MERGE Inputs : L P S List of dependency path P and score S pairs; Merge Threshold τm Output: Alert Dependency Graph G /* Sort list by anomaly scores */ P S = SORTBYSCORE(L P S )</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head>Fig. 5 :Fig. 6 :</head><label>56</label><figDesc>Fig. 5: ROC curve for our experiments using NODOZE along with TDS.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head>Fig. 7 :</head><label>7</label><figDesc>Fig.7: CDF of query response times for all the 364 threat alerts in our dataset.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_9"><head>Fig. 8 :</head><label>8</label><figDesc>Fig. 8: Data theft attack scenario discussed in §IX-A. (a) Part of dependency graph generated by traditional tools. (b) Concise true alert dependency graph generated by NODOZE.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_10"><head>Fig. 9 :</head><label>9</label><figDesc>Fig. 9: ShellShock attack scenario discussed in §IX-B. (a) Part of dependency graph generated by traditional tools. (b) Concise true alert dependency graph generated by NODOZE.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head></head><label></label><figDesc>• We present a novel network diffusion algorithm to propagate anomaly scores in dependency graphs enabling the calculation of aggregate anomaly scores for threat alerts.• We introduce the notion of behavioural execution partitioning, a new technique for combating dependency explosion in provenance graph that is applicable to threat alerts.</figDesc><table /><note><p>• We present a concrete implementation and thorough evaluation of NODOZE. The results show that NODOZE consistently ranked the true alerts higher than false alarms and generates concise dependency graphs for true alerts.</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>TABLE I :</head><label>I</label><figDesc>Dependency Event Relationships</figDesc><table><row><cell>SRC</cell><cell>DST</cell><cell></cell><cell></cell><cell>REL</cell></row><row><cell></cell><cell>Process</cell><cell></cell><cell cols="2">Pro Start; Pro End</cell></row><row><cell>Process</cell><cell>File</cell><cell cols="3">File Write; File Read; File Execute</cell></row><row><cell></cell><cell>Socket</cell><cell></cell><cell cols="2">IP Write; IP Read</cell></row><row><cell>F1</cell><cell>P1</cell><cell>P1</cell><cell>S1</cell><cell>P2</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell>F2</cell></row><row><cell></cell><cell></cell><cell></cell><cell cols="2">P1: Powershell</cell></row><row><cell></cell><cell></cell><cell></cell><cell cols="2">P2: smbd</cell></row><row><cell></cell><cell></cell><cell></cell><cell cols="2">P3: check-file</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head></head><label></label><figDesc>Combine Backward and Forward Dependency Paths */ 6 Lp ← COMBINEPATHS(L b ,L f )</figDesc><table><row><cell cols="2">/* Generate a transition matrix of an input graph using Eq. 1</cell><cell>*/</cell></row><row><cell cols="2">7 M = GETTRANSITIONMATRIX(G)</cell></row><row><cell cols="2">8 foreach P ∈ Lp do</cell></row><row><cell></cell><cell>/* Calculate Path anomaly score using Eq. 2 and Eq. 3</cell><cell>*/</cell></row><row><cell>9</cell><cell>AS ← CALCULATESCORE(P ,M )</cell></row><row><cell></cell><cell>/* Append path and its anomaly score to a list</cell><cell>*/</cell></row><row><cell>10</cell><cell>L &lt;P,AS&gt; ← L &lt;P,AS&gt; ∪ &lt; P, AS &gt;</cell></row><row><cell>11 end</cell><cell></cell></row><row><cell cols="2">12 return L &lt;P,AS&gt;</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>TABLE II :</head><label>II</label><figDesc>Real-world attack scenarios with short descriptions and generated threat alerts by underlying TDS. Trojan was downloaded as an Outlook attachment and the enclosed macro was triggered by Excel to create a fake java.exe, and the malicious java.exe further SQL exploited a vulnerable server to start cmd.exe in order to create an info-stealer &lt;Excel.exe, java.exe, Pro Start&gt;</figDesc><table><row><cell>Attacks</cell><cell>Short Description</cell><cell>True Threat Alert</cell></row><row><cell>WannaCry [18]</cell><cell>Motivating example discussed in  §II</cell><cell>See  §II</cell></row><row><cell cols="2">Phishing Email [16] A malicious Data Theft [49] An attacker downloaded a malicious bash script on the data server and used it to exfiltrate all the</cell><cell>&lt;ftp, y.y.y.y:21, IP Write&gt;</cell></row><row><cell></cell><cell>confidential documents on the server.</cell><cell></cell></row><row><cell>ShellShock [13]</cell><cell>An attacker utilized an Apache server to trigger the Shellshock vulnerability in Bash multiple times.</cell><cell>&lt;bash, nc.traditional, Pro Start&gt;</cell></row><row><cell>Netcat Backdoor [17]</cell><cell>An attack downloaded the netcat utility and used it to open a Backdoor, from which a Persistent</cell><cell>&lt;nc.exe, cmd.exe, Pro Start&gt;</cell></row><row><cell></cell><cell>Netcat port scanner was then downloaded and executed using PowerShell</cell><cell></cell></row><row><cell>Cheating Student [51]</cell><cell>A student downloaded midterm scores from Apache and uploaded a modified version.</cell><cell>&lt;Apache2, /www/newscores, File Write&gt;</cell></row><row><cell>Passing the Hash [7]</cell><cell>An attack connected to Windows domain Controller using PsExec and run credential dumper (e.g.,</cell><cell>&lt;gsecdump.exe, g64-v2b5.exe,</cell></row><row><cell></cell><cell>gsecdump.exe).</cell><cell>Pro Start&gt;</cell></row><row><cell>wget-gcc [67]</cell><cell>Malicious source files were downloaded and then compiled.</cell><cell>&lt;wget, x.x.x.x:80, IP Read&gt;</cell></row><row><cell>passwd-gzip-scp [67]</cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>TABLE III :</head><label>III</label><figDesc>Comparison of dependency graphs generated by NODOZE against prior tools</figDesc><table /></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>A phenomenon when cyber analysts do not respond to threat alerts because they receive so many each day.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_1"><p>Mean-time-to-know measures how fast cyber analysts can sort true threats from noise when they get threat alerts.</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>ACKNOWLEDGMENTS</head><p>We would like to thank the anonymous reviewers for their helpful feedback. This work was supported in part by the <rs type="funder">National Science Foundation</rs> under contracts <rs type="grantNumber">CNS-16-57534</rs> and <rs type="grantNumber">CNS-17-50024</rs>. This work was done while <rs type="person">Wajih Ul Hassan</rs> and <rs type="person">Shengjian Guo</rs> were interns under the supervision of <rs type="person">Ding Li</rs> at <rs type="institution">NEC Labs America</rs>. <rs type="person">Ding Li</rs> is the corresponding author of this paper. Any opinions, findings, conclusions, or recommendations expressed in this material are those of the authors and do not necessarily reflect the views of their employers or the sponsors.</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funding" xml:id="_qYvH6Vd">
+					<idno type="grant-number">CNS-16-57534</idno>
+				</org>
+				<org type="funding" xml:id="_v6xbVp2">
+					<idno type="grant-number">CNS-17-50024</idno>
+				</org>
+			</listOrg>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<title level="m" type="main">Event Tracing</title>
+		<ptr target="https://docs.microsoft.com/en-us/windows/desktop/ETW/event-tracing-portal" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<title level="m" type="main">Automated Incident Response: Respond to Every Alert</title>
+		<ptr target="https://swimlane.com/blog/automated-incident-response-respond-every-alert/" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<monogr>
+		<title level="m" type="main">Endpoint Monitoring &amp; Security</title>
+		<ptr target="https://logrhythm.com/solutions/security/endpoint-threat-detection/" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<title level="m" type="main">How Many Alerts is Too Many to Handle</title>
+		<ptr target="https://www2.fireeye.com/StopTheNoise-IDC-Numbers-Game-Special-Report.html" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<monogr>
+		<title level="m" type="main">Insider Threat Detection</title>
+		<ptr target="https://www.netwrix.com/insiderthreatdetection.html" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<monogr>
+		<title level="m" type="main">New Research from Advanced Threat Analytics</title>
+		<ptr target="https://prn.to/2uTiaK6" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<monogr>
+		<title level="m" type="main">Pass-the-hash attacks: Tools and Mitigation</title>
+		<ptr target="https://www.sans.org/reading-room/whitepapers/testing/pass-the-hash-attacks-tools-mitigation-33283" />
+		<imprint>
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<title level="m" type="main">Automated Security Intelligence (ASI)</title>
+		<ptr target="https://www.nec.com/en/global/techrep/journal/g16/n01/160110.html" />
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<monogr>
+		<title level="m" type="main">Dangerous and malicious file extensions</title>
+		<ptr target="https://www.file-extensions.org/filetype/extension/name/dangerous-malicious-files" />
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<monogr>
+		<title level="m" type="main">Google Safe Browsing</title>
+		<ptr target="https://developers.google.com/safe-browsing/v4/" />
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<title level="m" type="main">System administration utilities</title>
+		<ptr target="man7.org/linux/man-pages/man8/auditd.8.html/" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<ptr target="https://www.statista.com/chart/9399/wannacry-cyber-attack-in-numbers/" />
+		<title level="m">200,000+ Systems Affected by WannaCry Ransom Attack</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<monogr>
+		<title level="m" type="main">MS17-010 EternalBlue SMB Remote Windows Kernel Pool Corruption</title>
+		<ptr target="https://www.rapid7.com/db/modules/exploit/windows/smb/ms17010eternalblue" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<monogr>
+		<title level="m" type="main">Target Missed Warnings in Epic Hack of Credit Card Data</title>
+		<ptr target="https://bloom.bg/2KjElxM" />
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<title level="m" type="main">Persistent netcat backdoor</title>
+		<ptr target="https://www.offensive-security.com/metasploit-unleashed/persistent-netcat-backdoor/" />
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<monogr>
+		<title/>
+		<author>
+			<persName><surname>Ransom</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Wannacry</surname></persName>
+		</author>
+		<ptr target="https://symc.ly/2NSK5Rg" />
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<monogr>
+		<title level="m" type="main">VirusTotal</title>
+		<ptr target="https://www.virustotal.com/" />
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<monogr>
+		<title level="m" type="main">VPNFilter: New Router Malware with Destructive Capabilities</title>
+		<ptr target="https://symc.ly/2IPGGVE" />
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">The base-rate fallacy and the difficulty of intrusion detection</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Axelsson</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Trans. Inf. Syst. Secur</title>
+		<imprint>
+			<date type="published" when="2000">2000</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<monogr>
+		<title level="m" type="main">Applications of data mining in computer security</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Barbará</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Jajodia</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2002">2002</date>
+			<publisher>Springer Science &amp; Business Media</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Let SDN Be Your Eyes: Secure Forensics in Data Center Networks</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bates</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Butler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Haeberlen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Sherr</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zhou</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">SENT</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<monogr>
+		<title level="m" type="main">Transparent web service auditing via network provenance functions</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bates</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">U</forename><surname>Hassan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Butler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Dobra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Reaves</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Cable</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Moyer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Schear</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<publisher>WWW</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Towards secure provenance-based access control in cloud environments</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bates</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Mood</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Valafar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Butler</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">CODASPY</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<monogr>
+		<title level="m" type="main">Trustworthy wholesystem provenance for the linux kernel</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bates</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Tian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">R B</forename><surname>Butler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Moyer</surname></persName>
+		</author>
+		<editor>USENIX Security</editor>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Effects of cyber security knowledge on attack detection</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Ben-Asher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Gonzalez</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Computers in Human Behavior</title>
+		<imprint>
+			<biblScope unit="volume">48</biblScope>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Vistrails: Visualization meets data management</title>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">P</forename><surname>Callahan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Freire</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Santos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">E</forename><surname>Scheidegger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">T</forename><surname>Silva</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><forename type="middle">T</forename><surname>Vo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">SIGMOD</title>
+		<imprint>
+			<publisher>ACM</publisher>
+			<date type="published" when="2006">2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Anomaly detection: A survey</title>
+		<author>
+			<persName><forename type="first">V</forename><surname>Chandola</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Banerjee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Kumar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACM Comput. Surv</title>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">C</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><forename type="middle">T</forename><surname>Lehri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">Kuan</forename><surname>Loh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Alur</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Jia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">T</forename><surname>Loo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zhou</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note>Distributed provenance compression,&quot; in SIGMOD</note>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Entity embedding-based anomaly detection for heterogeneous categorical events</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L.-A</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IJCAI</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Alarm reduction and correlation in intrusion detection systems</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Chyssler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Burschka</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Semling</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Lingvall</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Burbeck</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">DIMVA</title>
+		<imprint>
+			<date type="published" when="2004">2004</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Graphvizopen source graph drawing tools</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ellson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Gansner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Koutsofios</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">C</forename><surname>North</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Woodhull</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Symposium on Graph Drawing</title>
+		<imprint>
+			<publisher>Springer</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Burstiness of intrusion detection process: Empirical evidence and a modeling approach</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Harang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Kott</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Information Forensics and Security</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Preventing History Forgery with Secure Provenance</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Hasan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Sion</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Winslett</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Trans. Storage</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Towards Scalable Cluster Auditing through Grammatical Inference over Provenance Graphs</title>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">U</forename><surname>Hassan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Lemay</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Aguse</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bates</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Moyer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NDSS</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Intrusion detection using sequences of system calls</title>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">A</forename><surname>Hofmeyr</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Forrest</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Somayaji</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">J. Comput. Secur</title>
+		<imprint>
+			<date type="published" when="1998">1998</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Robust anomaly detection using support vector machines</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Hu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Liao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">R</forename><surname>Vemuri</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICML</title>
+		<imprint>
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Provenance-aware tracing ofworm break-in and contaminations: A process coloring approach</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Walters</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">H</forename><surname>Spafford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Buchholz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y.-M</forename><surname>Wang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ICDCS</title>
+		<imprint>
+			<date type="published" when="2006">2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Unveil: A large-scale, automated approach to detecting ransomware</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Kharraz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Arshad</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Mulliner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">K</forename><surname>Robertson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Kirda</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">USENIX Security Symposium</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Backtracking intrusions</title>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">T</forename><surname>King</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">M</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">SOSP</title>
+		<imprint>
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">A poisoning attack against online anomaly detection</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Kloft</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Laskov</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NIPS Workshop on Machine Learning in Adversarial Environments for Computer Security</title>
+		<imprint>
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<monogr>
+		<title level="m" type="main">Intrusion Detection and Correlation: Challenges and Solutions</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Kruegel</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2004">2004</date>
+			<publisher>Springer-Verlag TELOS</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">MCI: Modeling-based causality inference in audit logging for attack investigation</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Kwon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">H</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W.-C</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Jha</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Ciocarlie</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NDSS</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">Multi-defender strategic filtering against spear-phishing attacks</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Laszka</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Vorobeychik</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">AAAI</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">High Accuracy Attack Provenance via Binary-based Execution Partition</title>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">H</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Xu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">NDSS</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<monogr>
+		<title level="m">LogGC: garbage collecting audit log</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+	<note>CCS</note>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<title level="a" type="main">Data mining approaches for intrusion detection</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">J</forename><surname>Stolfo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">USENIX Security Symposium</title>
+		<imprint>
+			<date type="published" when="1998">1998</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<analytic>
+		<title level="a" type="main">Towards a timely causality analysisfor enterprise security</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Jee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Rhee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Mittal</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NDSS</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<analytic>
+		<title level="a" type="main">MPI: Multiple perspective attack investigation with semantic aware execution partitioning</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">H</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Xu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">USENIX Security Symposium</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<analytic>
+		<title level="a" type="main">ProTracer: Towards Practical Provenance Tracing by Alternating Between Logging and Tainting</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Xu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">NDSS</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<analytic>
+		<title level="a" type="main">Provenance map orbiter: Interactive exploration of large provenance graphs</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Macko</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Seltzer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">TaPP</title>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<analytic>
+		<title level="a" type="main">Pregel: a system for large-scale graph processing</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Malewicz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">H</forename><surname>Austern</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">J</forename><surname>Bik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">C</forename><surname>Dehnert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Horn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Leiser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Czajkowski</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">ACM SIGMOD</title>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b51">
+	<analytic>
+		<title level="a" type="main">Provenance-aware storage systems</title>
+		<author>
+			<persName><forename type="first">K.-K</forename><surname>Muniswamy-Reddy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">A</forename><surname>Holland</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">U</forename><surname>Braun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Seltzer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ATC</title>
+		<imprint>
+			<date type="published" when="2006">2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b52">
+	<analytic>
+		<title level="a" type="main">A provenance-based access control model</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Park</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Sandhu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE PST</title>
+		<imprint>
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b53">
+	<analytic>
+		<title level="a" type="main">Hi-Fi: Collecting High-Fidelity Whole-System Provenance</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Pohly</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Mclaughlin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Mcdaniel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Butler</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACSAC</title>
+		<imprint>
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b54">
+	<analytic>
+		<title level="a" type="main">A fast automatonbased method for detecting anomalous program behaviors</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Sekar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Bendre</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Dhurjati</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Bollineni</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE S&amp;P</title>
+		<imprint>
+			<date type="published" when="2001">2001</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b55">
+	<analytic>
+		<title level="a" type="main">Outside the closed world: On using machine learning for network intrusion detection</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Sommer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Paxson</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE Symposium on Security and Privacy</title>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b56">
+	<analytic>
+		<title level="a" type="main">Using a fuzzy inference system to reduce false positives in intrusion detection</title>
+		<author>
+			<persName><forename type="first">G</forename><forename type="middle">P</forename><surname>Spathoulas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">K</forename><surname>Katsikas</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Systems, Signals and Image Processing</title>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b57">
+	<analytic>
+		<title level="a" type="main">Anomaly detection in computer security and an application to file system accesses</title>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">J</forename><surname>Stolfo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Hershkop</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">H</forename><surname>Bui</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Ferster</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Wang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Symposium on Methodologies for Intelligent Systems</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b58">
+	<analytic>
+		<title level="a" type="main">On the learning of system call attributes for host-based anomaly detection</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Tandon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">K</forename><surname>Chan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">International Journal on Artificial Intelligence Tools</title>
+		<imprint>
+			<date type="published" when="2006">2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b59">
+	<analytic>
+		<title level="a" type="main">Mimicry attacks on host-based intrusion detection systems</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wagner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Soto</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">CCS</title>
+		<imprint>
+			<date type="published" when="2002">2002</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b60">
+	<analytic>
+		<title level="a" type="main">Fear and logging in the internet of things</title>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">U</forename><surname>Hassan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Bates</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Gunter</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">NDSS</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b61">
+	<analytic>
+		<title level="a" type="main">Network intrusion detection based on a general regression neural network optimized by an improved artificial immune algorithm</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Peng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Ling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">PloS one</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b62">
+	<analytic>
+		<title level="a" type="main">Automated network repair with meta provenance</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Haeberlen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">T</forename><surname>Loo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">NSDI</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b63">
+	<analytic>
+		<title level="a" type="main">Unifying intrusion detection and forensic analysis via provenance awareness</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Xie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Feng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Tan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhou</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Future Gener. Comput. Syst</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b64">
+	<analytic>
+		<title level="a" type="main">High fidelity data reduction for big data security dependency analyses</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Jee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Rhee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Xiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Jiang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">CCS</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b65">
+	<monogr>
+		<title level="m" type="main">Automate cybersecurity data triage by leveraging human analysts&apos; cognitive process</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Zhong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Yen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">F</forename><surname>Erbacher</surname></persName>
+		</author>
+		<editor>IEEE BigDataSecurity</editor>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

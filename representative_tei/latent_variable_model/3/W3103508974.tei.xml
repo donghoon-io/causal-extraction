@@ -1,0 +1,820 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Contextual Policy Search for Micro-Data Robot Motion Learning through Covariate Gaussian Process Latent Variable Models</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Juan</forename><forename type="middle">Antonio</forename><surname>Delgado-Guerrero</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Adrià</forename><surname>Colomé</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Carme</forename><surname>Torras</surname></persName>
+						</author>
+						<title level="a" type="main">Contextual Policy Search for Micro-Data Robot Motion Learning through Covariate Gaussian Process Latent Variable Models</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-14T17:26+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>In the next few years, the amount and variety of context-aware robotic manipulator applications is expected to increase significantly, especially in household environments. In such spaces, thanks to programming by demonstration, nonexpert people will be able to teach robots how to perform specific tasks, for which the adaptation to the environment is imperative, for the sake of effectiveness and users safety. These robot motion learning procedures allow the encoding of such tasks by means of parameterized trajectory generators, usually a Movement Primitive (MP) conditioned on contextual variables. However, naively sampled solutions from these MPs are generally suboptimal/inefficient, according to a given reward function. Hence, Policy Search (PS) algorithms leverage the information of the experienced rewards to improve the robot performance over executions, even for new context configurations. Given the complexity of the aforementioned tasks, PS methods face the challenge of exploring in high-dimensional parameter search spaces. In this work, a solution combining Bayesian Optimization, a data-efficient PS algorithm, with covariate Gaussian Process Latent Variable Models, a recent Dimensionality Reduction technique, is presented. It enables reducing dimensionality and exploiting prior demonstrations to converge in few iterations, while also being compliant with context requirements. Thus, contextual variables are considered in the latent search space, from which a surrogate model for the reward function is built. Then, samples are generated in a low-dimensional latent space, and mapped to a contextdependent trajectory. This allows us to drastically reduce the search space with the covariate GPLVM, e.g. from 105 to 2 parameters, plus a few contextual features. Experimentation in two different scenarios proves the data-efficiency and the power of dimensionality reduction of our approach.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>I. INTRODUCTION</head><p>Generalizing previous learned robot motion knowledge and adapting to multiple context configurations are inherent challenges of the forthcoming robotic applications, particularly in household environments. Robot programming by demonstration through kinesthetic teaching can be useful in such scenarios <ref type="bibr" target="#b0">[1]</ref>, as it allows lay people to instruct robots different tasks directly, without explicitly programming each detail. Each task can be modelled with a Movement Primitive (MP), i.e., a parameterized generative model which is initially fitted with the user demonstrations. Subsequently, This work has been developed in the context of the project CLOTHILDE ("CLOTH manIpulation Learning from DEmonstrations"), which has received funding from the European Research Council (ERC) under the European Union's Horizon 2020 research and innovation programme (Advanced Grant agreement No 741930). This work is also supported by the Spanish State Research Agency through the María de Maeztu Seal of Excellence to IRI MDM-2016-0656. 1 Institut de Robòtica i Informàtica Industrial (IRI), CSIC-UPC, Barcelona, Spain. [jdelgado,acolome,torras]@iri.upc.edu. the robot skills can be honed by updating the MP parameters through trial-and-error within the framework of Policy Search (PS), a branch of Reinforcement Learning (RL) <ref type="bibr" target="#b1">[2]</ref> responsible for resolving which trajectories to evaluate in consideration of the rewards of each execution. Thus, PS algorithms have proved successful in several robotic applications <ref type="bibr" target="#b2">[3]</ref>, including the contextual case, in which robots are required to adapt to changing environments <ref type="bibr" target="#b3">[4]</ref>, <ref type="bibr" target="#b4">[5]</ref>, <ref type="bibr" target="#b5">[6]</ref>, <ref type="bibr" target="#b6">[7]</ref>.</p><p>However, model-free PS algorithms, such as Relative Entropy Policy Search (REPS) <ref type="bibr" target="#b7">[8]</ref>, can struggle with highdimensional parameter spaces, requiring of numerous samples until convergence and hence becoming technically unfeasible for some robotic uses. Thus, several approaches exist to overcome this data inefficiency. The so-called Micro-Data PS methods <ref type="bibr" target="#b8">[9]</ref> focus on reducing the number of robot trials, by building surrogate models of the robot/environment dynamics, the reward function, or leveraging prior knowledge. These strategies are often combined. For example, PILCO <ref type="bibr" target="#b9">[10]</ref> and Black-DROPS <ref type="bibr" target="#b10">[11]</ref> are model-based PS methods that use models of both the dynamics and the reward functions. Nevertheless, the majority of the proposed methods in <ref type="bibr" target="#b8">[9]</ref> are not suitable for task generalization or do not deal with it, as context variations typically incur additional robot interaction. Moreover, most of the existing contextual PS methods are model-free, such as contextual REPS, a special case of Hierarchical REPS <ref type="bibr" target="#b11">[12]</ref>, learn models of the robot and its environment, like GPREPS <ref type="bibr" target="#b3">[4]</ref>, or learn models of the reward function through active learning, occasionaly querying an expert user to rate the robot task performance, as in <ref type="bibr" target="#b12">[13]</ref>.</p><p>In this paper, we assume that tasks at hand can be modelled as MPs, physically executed and evaluated by means of a reward function considered as a black box, and prior information on parameters is available through initial demonstrations, but instead, we cannot model their dynamics. On this basis, the proposed solution continues along the research line presented in <ref type="bibr" target="#b13">[14]</ref>. Therefore, to speed up convergence, we build a surrogate model of reward and apply Bayesian Optimization (BO) in the latent space arisen from a Dimensionality Reduction (DR) of the PS parameter space, since BO algorithms do not perform well with high-dimensional search spaces. This enhanced method is implemented in a convenient manner to ensure contextual adaptation, and it significantly increments the DR power and data efficiency with respect to <ref type="bibr" target="#b13">[14]</ref>. In particular, Upper Confidence Bound (UCB) <ref type="bibr" target="#b14">[15]</ref>, <ref type="bibr" target="#b15">[16]</ref> and Gaussian Process (GP) regression <ref type="bibr" target="#b16">[17]</ref> have been used to learn the model of the expected return, and covariate Gaussian Process Latent Variable Models (c-GPVLM) <ref type="bibr" target="#b17">[18]</ref> have been applied for context-aware DR.</p><p>Several methods on robot motion learning in latent spaces through DR have proved to be successful <ref type="bibr" target="#b18">[19]</ref>, <ref type="bibr" target="#b19">[20]</ref>, <ref type="bibr" target="#b20">[21]</ref>, <ref type="bibr" target="#b21">[22]</ref>, including the contextual case <ref type="bibr" target="#b22">[23]</ref>, but the capacity of linear models for DR is limited for higher-dimensional spaces. Therefore, in this work we applied c-GPLVM, a novel extension of GPLVM <ref type="bibr" target="#b23">[24]</ref>, which are non-linear.</p><p>After this DR is completed, we make use of UCB in the resulting latent space to decide which samples to evaluate, according to the context requirements. Next, we reproject those samples to the high-dimensional space, execute and evaluate them, and then update the surrogate model of the reward function. This last idea has proved to be very useful. For example, in <ref type="bibr" target="#b12">[13]</ref>, UCB and GP regression are successfully used to learn the model of the expected return from an outcome space, although, in that case, those outcomes, which represent relevant features of the trajectories, are assumed to be known. Instead, in our proposal, such relevant features are found through latent variables that encode the trajectories and the context specifications. For this reason, arbitrary outcomes can be sampled and the policy search space is highly reduced.</p><p>This paper is organized as follows: Section II briefly introduces the concepts used in the paper, such as Movement Primitives and contextual Policy Search, Gaussian Processes (GP), Gaussian Process Latent Variable Models (GPLVM), covariate Gaussian Process Latent Variable Models (c-GPLVM), Bayesian Optimization (BO) and Upper Confidence Bound (UCB). Section III defines the proposed approach and Section IV presents the results obtained with this method. Section V concludes the paper and proposes future directions.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>II. PRELIMINARIES A. Movement Primitives and contextual Policy Search</head><p>MPs are a standard approach to model, encode and learn similar motion trajectories, they being widely used as parameterized trajectory generators in PS. In this paper, linear basis function models with uniformly distributed normalized Gaussian kernels over time have been used for this encoding <ref type="bibr" target="#b24">[25]</ref>. Thus, given a number of basis functions per degrees of freedom (DoF), N f , the position and/or velocity state vector z t can be represented as</p><formula xml:id="formula_0">z t " Ψ T t ω ` z ,<label>(1)</label></formula><p>where Ψ T t " I N d b Φ T t , I N d being the N d -dimensional identity matrix, with N d the number of DoFs of the robot, Φ t an N f -dimensional column vector with the Gaussian kernels associated to one DoF at time t, and z a zero-mean Gaussian noise. Therefore, given a set of demonstration trajectories τ n " tz n t u t"1..Nt , n " 1..N , the weights ω n of each demonstration can be computed through least squares.</p><p>This approach is convenient for robot PS, as it provides a compact representation of complex tasks, and it allows correlated local exploration by varying parameters ω n , thus generating smooth trajectories. The policy is then defined as the trajectory tracking controller that follows τ n , whose motion is represented by ω n . The aim of contextual PS is to learn how to vary ω n , depending on the context variables s n .</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Gaussian Processes</head><p>Gaussian Processes (GP) <ref type="bibr" target="#b16">[17]</ref> are the generalization of multivariate Gaussian distributions, over finite-dimension vectors, to infinite-dimension, over functions. Otherwise said, a GP f is an infinite-dimension stochastic process such that, for any finite set of indices x 1 , ..., x n , the random variables f px 1 q, ..., f px n q have a joint Gaussian distribution completely defined by its mean function m and covariance function k, which is symmetric and positive semi-definite:</p><formula xml:id="formula_1">f pxq " GPpmpxq, kpx, x 1 qq (2)</formula><p>Usually, the mean function is chosen to be the zero function, mpxq " 0. On the contrary, many options are available in literature for defining the covariance function k. In this paper, the popular squared exponential kernel combined with a vector of automatic relevance determination has been used for this purpose:</p><formula xml:id="formula_2">kpx i , x j q " σ 2 exp ˆ´1 2 px i ´xj q T diagp q ´2px i ´xj q ˙, (<label>3</label></formula><formula xml:id="formula_3">)</formula><p>where σ is the kernel variance parameter and is the lengthscale vector parameter. Moreover, regression models can be built from GPs, y " f pxq ` , being a noise Gaussian distribution. Thus, considering a set of N observations in matrix form tX, Yu, with X P R N ˆQ, Y P R N ˆD , f can be used to predict the value of y N `1, given x N `1. From the properties of f and the Gaussian identities, the following expressions are derived:</p><formula xml:id="formula_4">P py N `1|X, Y, x N `1q " " N pµ t px N `1q, σ 2 t px N `1q `σ2 noise q,<label>(4)</label></formula><p>where</p><formula xml:id="formula_5">µ t px N `1q " k T rK `σ2 noise I N s ´1Y<label>(5)</label></formula><formula xml:id="formula_6">σ 2 t px N `1q " kpx N `1, x N `1q ´kT rK `σ2 noise I N s ´1k (6) K i,j " kpx i , x j q i, j " 1..N (7) k i " kpx N `1, x i q i " 1..N<label>(8)</label></formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Gaussian Process Latent Variable Models</head><p>Initially conceived for the visualization of highdimensional spaces <ref type="bibr" target="#b25">[26]</ref>, GPLVM are a feature extraction method that can be considered as multiple-output GP regression models, outlined in Sec. II-B, built from the output data only. By optimization of certain parameters, these models learn a low-dimensional representation X P R N ˆQ, from a set of observed data, Y P R N ˆD , being ideally Q ! D for the purpose of DR. As a result of the optimization, GPLVM provide a mapping from the latent space to the observation space, whose variables are assumed to be determined by the latent ones.</p><p>The formulation of GPVLM derives from Probabilistic Principal Component Analysis (PPCA), being a non-linear generalization of it, in particular from Dual PPCA models. Thus, in GPVLMs, the inner product kernel is substituted for a non-linear covariance function, and the marginal likelihood function ppY|X, θq can be expressed as:</p><formula xml:id="formula_7">ppY|X, θq " D ź d"1 ppy :,d |X, θq,<label>(9)</label></formula><p>where y :,d is the d´th column of the data matrix Y, corresponding to the d´th dimension, and y :,d |X, θ " N py :,d |0, K `σ2 noise Iq. In order to train the GPLVM, a maximum a posteriori estimation of X must be performed, maximizing Eq. ( <ref type="formula" target="#formula_7">9</ref>) with respect to the latent variable values, and to kernel and noise parameters θ. As a result, GPLVM allows for predicting higher-dimensional variables y from lower dimensional ones x, by using Eq. (4).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D. Covariate Gaussian Process Latent Variable Models</head><p>Contextual GPLVM <ref type="bibr" target="#b17">[18]</ref> is an extension of GPLVM specially thought for cases in which there exists meaningful varying contextual information, registered in a covariate matrix S P R N ˆC , for each observation y. In such cases, c-GPLVM is aimed at learning a covariate-adjusted representation of y, and hence can be used to modulate the response of the regression model according to the covariate data, which can be continuous as well as discrete. Therefore, c-GPLVM mappings are defined on the joint space of X and S.</p><p>Thus, the GPVLM formulation is adapted to fix the input components that concern the context variables. For this purpose, different joint kernels are available in literature, depending on the form of interaction assumed between latent and covariate inputs. In this work, we considered the additive and product kernels defined on the joint space, detailed in <ref type="bibr" target="#b17">[18]</ref>: k add ppx i , s i q, px j , s j qq " k x px i , x j q `ks ps i , s j q (10)</p><formula xml:id="formula_8">k pro ppx i , s i q, px j , s j qq " σ 2 xs σ 2 x σ 2</formula><p>s ¨kx px i , x j q ¨ks ps i , s j q (11)</p><p>where k x and k s are squared exponential ARD kernels, see Eq. ( <ref type="formula" target="#formula_2">3</ref>), and σ 2 x , σ 2 s , σ 2 xs are defined accordingly. This construction makes it possible to work with very low dimensional spaces, given the advantage of using known covariate information. This result is crucial, as it allows to search solutions in significantly lower spaces, speeding convergence, as well as to impose covariate conditions on proposed solutions. Furthermore, it makes also possible to handle data with partially missing or censored covariate information.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E. Bayesian Optimization and Upper Confidence Bound</head><p>BO approaches focus on finding the extrema of objective functions that are either expensive to evaluate, present no closed-form expression, or have unknown derivatives and convexity properties. Under these assumptions, these methods have proved to be among the most sample-efficient approaches <ref type="bibr" target="#b26">[27]</ref>, which is a main goal of our work, and have been successfully used for several robotics applications, e.g. in <ref type="bibr" target="#b27">[28]</ref>.</p><p>These techniques comprise two elements: a stochastic surrogate model fitting the target function, and an acquisition function defined in a search space Ω X Ă R N ˆQ . On the one hand, the surrogate model leverages the information of collected observations to derive a posterior distribution from a prior distribution by means, for example, of GPs, as in Sec. II-B. Thus, surrogate models provide also useful information about prediction uncertainty, the predictive variance, typically higher in unexplored areas.</p><p>On the other hand, the acquisition function uses the surrogate model results to assess the usefulness of evaluating each point of the search space, placing value on both unexplored and promising areas, as they are more likely to have higher objective function values, involving a trade-off between exploration and exploitation. Therefore, as a result of the maximization of the acquisition function, a point of the search space is proposed to be the next sample to evaluate through the objective function.</p><p>Upper Confidence Bound is a very straightforward <ref type="bibr" target="#b8">[9]</ref> and practical acquisition function method <ref type="bibr" target="#b28">[29]</ref>, defined by:</p><formula xml:id="formula_9">UCBpxq " µpxq `κσpxq, (<label>12</label></formula><formula xml:id="formula_10">)</formula><p>where κ is a parameter (left to the user) that sets the importance of exploration versus exploitation. The new samples x new are then generated as:</p><p>x new " argmax xPΩ X UCBpxq <ref type="bibr" target="#b12">(13)</ref> This method results in choosing to sample the point that presents the highest mean plus κ standard deviation values on the surrogate function model.  <ref type="formula">2</ref>) finds a latent data representation with variables L data , including free latent variables X data and fixed context variables S data . These data, together with their corresponding reward values, are used to build a surrogate model of the reward function in the latent space, which can estimate the reward directly from the latent space. Moreover, UCB exploration is used (3) to generate new samples in the latent space, which are then used to predict (4) their respective high-dimensional space projection, and then executed (5) as trajectories and evaluated. The outputs of these evaluations and their generators in the latent space are sent back to the surrogate model of the reward, which will be updated.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>III. PROPOSED METHOD</head><p>As mentioned in the introduction, we propose an approach that combines c-GPLVM <ref type="bibr" target="#b17">[18]</ref>, applied to the parameter space of a linear policy controller model such as an MP, with BO in the joint latent space, consisting of free latent and fixed context variables, in order to learn high-dimensional robot motion policies within very few samples.</p><p>In the first place, given a set of N trajectory demonstrations τ n " tz n j u and covariate vectors s n , with indexes n " 1..N and timesteps j " 1..N t , we fit each trajectory to MP parameters ω n using least-squares according to Eq. (1). These weighting vectors are then put together as the rows of our data matrix Y, so D " N f ¨Nd . As a PS algorithm, we aim at learning a surrogate of a black-box reward function from the evaluations of trajectories by means of BO:</p><formula xml:id="formula_11">R : Y Ă R D ÝÑ R y Þ ÝÑ Rpyq<label>(14)</label></formula><p>However, BO does not work properly with highdimensional search spaces, and hence we make use of DR.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Algorithm 1 Input:</head><p>Trajectory data τ n jl , n " 1..N , j " 1..N t , l " 1..N d Covariate data s n c , n " 1..N , c " 1..C Demonstrated trajectories rewards R n , n " 1..N c-GPLVM free latent space dimension Q MPs' kernel matrix Ψ Desired context data s des c , c " 1..C 1: Compute weights ω n with Eq.( <ref type="formula" target="#formula_0">1</ref>) 2: Assign Y n Ð Ý ω n 3: Perform c-GPLVMpY n , S n q, fixing S n , and obtain X n 4: Build L-R Regression Model f " GPpmp¨q, kp¨, ¨qq 5: Define search region Ω L Ă R Q ˆts des u 6: for k " 1..N new do 7:</p><p>Define UCBpx, sq " µ k´1 px, sq `κσ k´1 px, sq 8:</p><p>Find new sample px k , s des q " arg max</p><formula xml:id="formula_12">xPΩ X UCBpx, s des q 9:</formula><p>Project px k , s des q to ỹk with Eq. ( <ref type="formula" target="#formula_4">4</ref>) 10:</p><p>Execute ỹk and evaluate Rpỹ k px k , s des qq 11:</p><p>Update f , µ k , and σ k with px k , s des q and Rpx k , s des q 12: end for Contrary to other methods that perform DR directly in the space of degrees of freedom of the robot, as <ref type="bibr" target="#b19">[20]</ref>, <ref type="bibr" target="#b21">[22]</ref>, in our approach DR is applied in the parameter space of the MP. While the first approach is advantageous in that it provides qualitative information that is directly interpretable, our alternative enables to reduce further the dimensionality of the latent space, which is one of our main goals.</p><p>Therefore, a c-GPLVM is then fitted that maps the joint latent space of free latent variables and context variables L :" XˆS of low dimension Q+C, to the high-dimensional observations space Y, by fixing the context variables and optimizing the marginal log-likelihood function with respect to free latent variables, and to noise and kernel parameters. Thus, from Eq. ( <ref type="formula" target="#formula_7">9</ref>) and Gaussian distribution properties, we can derive, (as in <ref type="bibr" target="#b23">[24]</ref>):</p><formula xml:id="formula_13">log ppY|L, θq " log D ź d"1 ppy :,d |L, θq " D ÿ d"1 ´N 2 log 2π ´log |K| ´1 2 y T :,d K ´1y T :,d " " Dp´N 2 log 2π ´log |K|q ´D ÿ d"1 y T :,d K ´1y :,d " " C ´D ÿ d"1 tr `YT K ´1Y T ˘(<label>15</label></formula><formula xml:id="formula_14">)</formula><p>where C is a constant. This optimization has been performed making use of tools provided by the GPy software framework, including the limited-memory BFGS optimizer. Once having performed this optimization, not only the set of parameters θ are fitted, but also the c-GPLVM provides a proper latent space representation of data, from which we build a surrogate model for the reward function, by means of a Gaussian </p><formula xml:id="formula_15">R : X ˆS Ă R Q`C ÝÑ R px, sq Þ ÝÑ Rpx, sq<label>(16)</label></formula><p>Subsequently, we make use of UCB (see Sec. II-E) to generate new sample candidates, according to the context requirement. For this purpose, the UCB uses the mean and variance provided by the GP surrogate model R. As already mentioned in Sec. II-E, UCB suggests to evaluate points, according to the maximization of Eq. ( <ref type="formula" target="#formula_9">12</ref>), in a certain search space Ω L .</p><p>In this work, given a desired context vector s des , this search space has been defined as the Cartesian product of the minimum axis-aligned hyperrectangle that contains all free latent variables Ω X Ă R Q , as suggested in <ref type="bibr" target="#b14">[15]</ref>, and the desired context vector, i.e., Ω L " Ω X ˆts des u. Thus, given some context requirements we fix the covariate vector s des , reducing the initial latent search space Ω L to a Qdimensional subspace.</p><p>Furthermore, the exploration parameter κ in Eq. ( <ref type="formula" target="#formula_9">12</ref>) has been fixed for simplification purposes (κ " 1q although less naive methods for selecting this parameter can be found in literature <ref type="bibr" target="#b15">[16]</ref>, <ref type="bibr" target="#b29">[30]</ref>.</p><p>Finally, the candidate selected by UCB px, s des q new is reprojected to Y space, obtaining ỹpx, s des q new , and then decoded to a trajectory with Eq. ( <ref type="formula" target="#formula_0">1</ref>), executed and evaluated, giving us the real value of the reward function Rpx, sq . This new sample, and the associated reward, will then be added to the surrogate model, that will be updated before generating new samples.</p><p>The process is repeated until convergence or a certain number of samples have been executed. From a computational point of view, it is noteworthy that the entire process runs in few seconds on a standard computer, therefore being negligible compared to real robot times of execution. Algorithm 1 displays the procedure of the proposed method, while Fig. <ref type="figure" target="#fig_1">2</ref> shows a more schematic view. In blue, data corresponding to first instructor. In red, data corresponding to second instructor.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>IV. EXPERIMENTATION</head><p>We tested our method with two different experiments performed with a Barrett's WAM robot manipulator:</p><p>A. Feeding task In this experiment, 100 feeding trajectories were demonstrated to the robot by two different instructors, each of them performing 50. Teachers guided the robot differently, from opposite positions, which involves one first categorical covariate variable s 1 P t0, 1u relative to style. In both cases, the robot goes from one initial to a final position, where a mannequin head is placed, getting food from one varying middle position on the table. The trajectories of its endeffector are showed in Fig. <ref type="figure" target="#fig_2">3</ref>. Then, we complete the desired context vector with the coordinates of a specific middle point, by positioning the bowl at a particular place on the table, which is the objective point ts 2 , s 3 , s 4 u " o p . Moreover, we define a reward function by calculating the Euclidean distance between the lowest-height point of each trajectory, the contact point c p , and o p :</p><formula xml:id="formula_16">R " ´distpc p , o p q 2<label>(17)</label></formula><p>As input data, we used, asides from the covariate data matrix including style and contact points, the positions tx, y, zu t"1..30 of the robot's end-effector to represent each trajectory, and 15 Gaussians per Cartesian dimension, resulting in a 45-dimensional parameter space. From this space, our c-GPLVM reduces dimension to 2+4 (free latent + context). A 2-D projection of these data can be visualized in Fig. <ref type="figure" target="#fig_3">4</ref>, corresponding to free latent variables.</p><p>After that, we start the learning process by fitting the reward's surrogate model with a naive initial sample px, sq 0 " p0, ts 1 , o p uq, and let the algorithm work to iteratively update the model by processing 50 new samples and evaluations through UCB. In Fig. <ref type="figure" target="#fig_4">5</ref>, an example of learning curve for a random covariate vector is presented, compared with the results obtained with REPS. The plot shows that our method is impressively data-efficient, given that after only a dozen trials ´log 10 p´Rq ą 4, which means a sub-centimeter precision for the contact point. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Shoe fitting</head><p>Shoe fitting (see Fig. <ref type="figure" target="#fig_0">1</ref>) is the most complex task in which our algorithm that has been tested, as it implies learning in a 105-dimensional space, since we worked with 7 degrees of freedom and N f " 15. Furthermore, here not only a final objective point position is important, but also the path matters, as the foot has to physically enter the shoe without colliding. For the same reason, the orientation of the end-effector, which holds the shoe, must also be considered. In this work, orientations have been encoded through quaternions of the form q " tq i , q j , q k , q r u as well as rotation matrices, changing between both equivalent systems when needed.</p><p>Therefore, we have made use of an HTC Vive Virtual Reality tracker system, which provides information on the leg pose, i.e., position and orientation, with respect to the robot base reference frame. This information is fixed during each robot trajectory, and hence it has been used as covariate vector s " tx, y, z, q i , q j , q k , q r u leg , being C " 7 in this case. Thus, 40 trajectories with different leg poses were demonstrated and the 105-dimensional MP parameter space could be reduced to 2 free latent plus 7 covariate dimensions, i.e., Q " 2 and C " 7.</p><p>Moreover, the tracker is not placed on the foot for obvious reasons, but rather on the other side of the leg, as shown in Fig. <ref type="figure" target="#fig_0">1</ref>. Therefore, we needed to perform a reference change to know the desired pose of the end-effector, according to tracker signals. This was done with homogeneous transformation matrices <ref type="bibr" target="#b30">[31]</ref>: Firstly, we manually fitted the shoe and measured the poses of the HTC tracker, which was previously calibrated, and the robot end-effector, by means of forward kinematics, to find the transformation between them after a successful shoe-fitting action. Such transform allows us to find the end-effector's desired pose given the leg pose, for any reading of the tracker attached to the leg. As a result, we can compute the desired final pose of the end-effector p des F , leveraging the expression in transformation matrix form: p des F pM des tracker|base q " M des tracker|base ¨rM fitted tracker|base s ´1 ¨Mfitted e-e|base (18) where M ref.1|ref.2 is the transformation matrix from reference 1 to reference 2. In Eq. ( <ref type="formula">18</ref>), rM fitted tracker|base s ´1 ¨Mfitted e-e|base is fixed and it was measured only once for a fitted shoe. Similarly, we computed a desired approaching pose of the end-effector p des A , in order to make possible the entrance of the feet in the shoe. Such via-point p des</p><p>A was imposed at a certain moment of the trajectory in order to make sure the foot is inserted into the shoe. Therefore, the reward function has been calculated with the Euclidean distances between desired and real, approaching and final poses:</p><formula xml:id="formula_17">R " ´distpp des F , p real F q 2 ´distpp des A , p real A q 2 " ´7 ÿ i"1 pp des F,i ´preal F,i q 2 ´7 ÿ i"1 pp des A,i ´preal A,i q 2<label>(19)</label></formula><p>In this experiment, we generated 40 new trajectories for 5 new random context goals. Logically, these new goals should not be too different to those demonstrated. The resulting average learning curve is presented in Fig. <ref type="figure" target="#fig_5">6</ref>. For safety reasons, not all the new created trajectories were physically performed, as it might cause damage to the robot or the leg. However, once the algorithm had converged, we physically executed the resulting optimized trajectories with the WAM robot and proved that the shoe fitting is then successful, as shown in the attached video, which can be also found in <ref type="url" target="https://youtu.be/Og71l6jb-04">https://youtu.be/Og71l6jb-04</ref>.</p><p>In this video, it is also shown that the robot does even learn to fit the heel tab of the shoe, i.e. its posterior border, which, curiously, was not an easy task for some instructors using only one hand. Moreover, in Fig. <ref type="figure" target="#fig_5">6</ref>, we can appreciate how fast the algorithm learns despite the high-dimensionality of the task, as it takes only about ten attempts to reach reward values such that ´log 10 p´Rq ą 1.5, which are empirically proved to be successful.</p><p>V. CONCLUSION In this paper, we presented an approach at learning context-adaptive robot motion in a efficient manner. By using c-GPLVM, a non-linear DR technique, we reduce the dimension of the MP parameter space by more than one order of magnitude, allowing the learning agent to sample in a low-dimensional manifold, and thus converging to a contextadaptable good solution with very few samples. Fig. <ref type="figure" target="#fig_4">5</ref> and<ref type="figure" target="#fig_5">6</ref> show that, after a given set of samples, the agent is capable of generalizing the model to any context after few real-robot samples. These samples, chosen by the UCB method, fill the gaps in the collected data in order to a better generalization.</p><p>As a future work, we intend to perform updates of c-GPLVM during the learning process, to consider task modulation according to time-varying context data, to create artificial data when needed by means of random variations of the context vector, to complete reward information with user ratings, and to use GPLVM extensions such as Bayesian GPLVM <ref type="bibr" target="#b31">[32]</ref>, <ref type="bibr" target="#b32">[33]</ref>. Furthermore, this work, together with the one presented in <ref type="bibr" target="#b13">[14]</ref>, is planned to be extended and improved, including a more exhaustive evaluation of the algorithm, comparing it with several of the aforementioned state-of-the-art methods.</p><p>In conclusion, while other contextual policy search methods require hundreds or more real robot executions until converging to high quality policies, and other data-efficient state-of-the-art approaches are model-based or cannot deal with contextual case, in this paper we proposed a microdata method specially devised for contextual case, without modelling the dynamics of the robot, which is proved to be useful for learning in some complex robotic tasks.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Fig. 1 :</head><label>1</label><figDesc>Fig. 1: Barrett's WAM robot inserting a shoe into a mannequin's foot (which changes its position and orientation) after learning a policy with our proposed method.</figDesc><graphic coords="1,310.40,159.05,247.01,179.65" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Fig. 2 :</head><label>2</label><figDesc>Fig.2: Global scheme of the proposed approach. Trajectories are evaluated (0) and fitted (1) into data vectors Y data as MP parameters. C-GPLVM (2) finds a latent data representation with variables L data , including free latent variables X data and fixed context variables S data . These data, together with their corresponding reward values, are used to build a surrogate model of the reward function in the latent space, which can estimate the reward directly from the latent space. Moreover, UCB exploration is used (3) to generate new samples in the latent space, which are then used to predict (4) their respective high-dimensional space projection, and then executed<ref type="bibr" target="#b4">(5)</ref> as trajectories and evaluated. The outputs of these evaluations and their generators in the latent space are sent back to the surrogate model of the reward, which will be updated.</figDesc><graphic coords="4,55.44,54.00,241.92,299.97" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Fig. 3 :</head><label>3</label><figDesc>Fig. 3: Robot feeding trajectories obtained through kinesthetic teaching in the 3D space by two different instructors, represented in blue and red. Trajectories start at the points marked with a dot.</figDesc><graphic coords="5,9.33,6.14,306.46,229.68" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Fig. 4 :</head><label>4</label><figDesc>Fig. 4: Feeding data visualization in the latent space for first experiment.</figDesc><graphic coords="5,318.47,32.85,234.27,175.58" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Fig. 5 :</head><label>5</label><figDesc>Fig. 5: A learning curve example of the first experiment, In red, the performance of our method, which is compared with REPS, in black.</figDesc><graphic coords="6,54.71,44.48,243.38,182.40" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Fig. 6 :</head><label>6</label><figDesc>Fig. 6: Average learning curve for the second experiment, performed with five different leg poses. It shows the mean and the standard deviation of the performance. The fluctuations in both mean and standard deviation are totally justified by the fact that the algorithm is constantly exploring.</figDesc><graphic coords="6,313.91,44.51,242.64,181.85" type="bitmap" /></figure>
+		</body>
+		<back>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">A survey of robot learning from demonstration</title>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">D</forename><surname>Argall</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Chernova</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Veloso</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Browning</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">The International Journal of Robotics Research</title>
+		<imprint>
+			<biblScope unit="volume">32</biblScope>
+			<biblScope unit="page" from="1238" to="1274" />
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Reinforcement Learning in Robotics: A Survey</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kober</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">A</forename><surname>Bagnell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Peters</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Robotics and Autonomous Systems</title>
+		<imprint>
+			<biblScope unit="volume">57</biblScope>
+			<biblScope unit="page" from="469" to="483" />
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">A survey on Policy Search for Robotics</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">P</forename><surname>Deisenroth</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Neumann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Peters</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Foundations and Trends in Robotics</title>
+		<imprint>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page" from="1" to="142" />
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Model-based contextual policy search for data-efficient generalization of robot skills</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Kupcsik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">P</forename><surname>Deisenroth</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Peters</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">P</forename><surname>Loh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Vadakkepat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Neumann</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Artificial Intelligence</title>
+		<imprint>
+			<biblScope unit="volume">247</biblScope>
+			<biblScope unit="page" from="415" to="439" />
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Active Contextual Policy Search</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Fabisch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">H</forename><surname>Metzen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Machine Learning Research</title>
+		<imprint>
+			<biblScope unit="volume">15</biblScope>
+			<biblScope unit="issue">97</biblScope>
+			<biblScope unit="page" from="3371" to="3399" />
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Factored Contextual Policy Search with Bayesian optimization</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Pinslerk</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Karkus</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Kupcsik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Hsu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">S</forename><surname>Lee</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Robotics and Automation (ICRA)</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="7242" to="7248" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Self-Paced Contextual Reinforcement Learning</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Klink</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Abdulsamad</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Belousov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Peters</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Conference on Robot Learning (CoRL)</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<author>
+			<persName><forename type="first">J</forename><surname>Peters</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Mülling</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Altün</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Relative Entropy Policy Search</title>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="volume">15</biblScope>
+			<biblScope unit="page" from="182" to="189" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<monogr>
+		<title level="m" type="main">A survey on policy search algorithms for learning robot controllers in a handful of trials</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Chatzilygeroudis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Vassiliades</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Stulp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Calinon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">B</forename><surname>Mouret</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1807.02303</idno>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">PILCO: A model-based and data-efficient approach to policy search</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Deisenroth</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">E</forename><surname>Rasmussen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 28th International Conference on machine learning (ICML-11)</title>
+		<meeting>the 28th International Conference on machine learning (ICML-11)</meeting>
+		<imprint>
+			<date type="published" when="2011">2011</date>
+			<biblScope unit="page" from="465" to="472" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Black-box data-efficient policy search for robotics</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Chatzilygeroudis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Rama</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Kaushik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Goepp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Vassiliades</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">B</forename><surname>Mouret</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="51" to="58" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Hierarchical relative entropy policy search</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Daniel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Neumann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Kroemer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Peters</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Machine Learning Research</title>
+		<imprint>
+			<biblScope unit="volume">17</biblScope>
+			<biblScope unit="page" from="1" to="50" />
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Active Reward Learning</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Daniel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Viering</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Metz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Kroemer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Peters</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of Robotics: Science and Systems (RSS)</title>
+		<meeting>Robotics: Science and Systems (RSS)</meeting>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Sample-efficient robot motion learning using Gaussian process latent variable models</title>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">A</forename><surname>Delgado-Guerrero</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Colomé</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Torras</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE International Conference on Robotics and Automation (ICRA)</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<title level="m" type="main">A Tutorial on Bayesian Optimization of Expensive Cost Functions, with Application to Active User Modeling and Hierarchical Reinforcement Learning</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>Brochu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">M</forename><surname>Cora</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Freitas</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1012.2599</idno>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Gaussian process optimization in the bandit setting: no regret and experimental design</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Srinivas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Krause</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Kakade</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Seeger</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning (ICML)</title>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+			<biblScope unit="page" from="1015" to="1022" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<monogr>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">E</forename><surname>Rasmussen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">K I</forename><surname>Williams</surname></persName>
+		</author>
+		<title level="m">Gaussian Processes for Machine Learning</title>
+		<imprint>
+			<publisher>MIT Press</publisher>
+			<date type="published" when="2006">2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Decomposing feature-level variation with Covariate Gaussian Process Latent Variable Models</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Märtens</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">R</forename><surname>Campbell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Yau</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 36th International Conference on Machine Learning (PLMR-97)</title>
+		<meeting>the 36th International Conference on Machine Learning (PLMR-97)</meeting>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="4372" to="4381" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Latent spaces for dynamic movement primitives</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Bitzer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Vijayakumar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE-RAS Int. Conf. on Humanoid Robots</title>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+			<biblScope unit="page" from="574" to="581" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Dimensionality reduction for dynamic movement primitives and application to bimanual manipulation of clothes</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Colomé</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Torras</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Robotics</title>
+		<imprint>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="602" to="615" />
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<monogr>
+		<title level="m" type="main">Dimensionality reduction for probabilistic movement primitives</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Colomé</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Neumann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Peters</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Torras</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<publisher>IEEE-RAS Humanoid Robots</publisher>
+			<biblScope unit="page" from="794" to="800" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Latent space policy search for robotics</title>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">S</forename><surname>Luck</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Neumann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Berger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Peters</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Ben Amor</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IEEE/RSJ Int. Conf. on Intelligent Robots (IROS)</title>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+			<biblScope unit="page" from="1434" to="1440" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Dimensionality reduction in learning Gaussian mixture models of movement primitives for contextualized action selection and adaptation</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Colomé</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Torras</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Robotics and Automation Letters</title>
+		<imprint>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="3922" to="3929" />
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Probabilistic non-linear principal component analysis with Gaussian process latent variable models</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Lawrence</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of machine learning research</title>
+		<imprint>
+			<biblScope unit="volume">6</biblScope>
+			<biblScope unit="page" from="1783" to="1816" />
+			<date type="published" when="2005-11">Nov. 2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<monogr>
+		<title level="m" type="main">Pattern recognition and machine learning</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Bishop</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2007">2007</date>
+			<publisher>Springer</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<monogr>
+		<author>
+			<persName><forename type="first">N</forename><surname>Lawrence</surname></persName>
+		</author>
+		<title level="m">Gaussian Process Latent Variable Models for Visualisation of High Dimensional&quot; International Conference on Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2004">2004</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Application of Bayesian approach to numerical methods of global and stochastic optimization</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Mockus</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Global Optimization</title>
+		<imprint>
+			<biblScope unit="volume">4</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="347" to="365" />
+			<date type="published" when="1994">1994</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Automatic gait optimization with gaussian process regression</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">J</forename><surname>Lizotte</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">H</forename><surname>Bowling</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Schuurmans</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 20th International Joint Conference on Artificial Intelligence (IJCAI-07)</title>
+		<meeting>the 20th International Joint Conference on Artificial Intelligence (IJCAI-07)</meeting>
+		<imprint>
+			<date type="published" when="2007">2007</date>
+			<biblScope unit="page" from="944" to="949" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Entropy search for information-efficient global optimization</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Hennig</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">J</forename><surname>Schuler</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Machine Learning Research</title>
+		<imprint>
+			<biblScope unit="volume">13</biblScope>
+			<biblScope unit="page" from="1809" to="1837" />
+			<date type="published" when="2012-06">Jun. 2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Regret Bounds for Gaussian Process Bandit Problems</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Grünewälder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J.-Y</forename><surname>Audibert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Opper</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Shawe-Taylor</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Machine Learning Research</title>
+		<imprint>
+			<biblScope unit="issue">9</biblScope>
+			<biblScope unit="page" from="273" to="280" />
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<monogr>
+		<author>
+			<persName><forename type="first">B</forename><surname>Siciliano</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Sciavicco</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Villani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Oriolo</surname></persName>
+		</author>
+		<title level="m">Robotics: Modelling, Planning and Control</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Bayesian Gaussian Process Latent Variable Model</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">K</forename><surname>Titsias</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">D</forename><surname>Lawrence</surname></persName>
+		</author>
+		<idno>JMLR:W&amp;CP 9</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Artificial Intelligence and Statistics</title>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+			<biblScope unit="volume">9</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">A review on Gaussian Process Latent Variable Models</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Chen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">CAAI Transactions on Intelligence Technology</title>
+		<imprint>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="issue">4</biblScope>
+			<biblScope unit="page" from="366" to="376" />
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

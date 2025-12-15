@@ -1,0 +1,1580 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">LMDM:Latent Molecular Diffusion Model For 3D Molecule Generation</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability  status="unknown">
+					<licence/>
+				</availability>
+				<date type="published" when="2024-12-05">5 Dec 2024</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Xiang</forename><surname>Chen</surname></persName>
+						</author>
+						<title level="a" type="main">LMDM:Latent Molecular Diffusion Model For 3D Molecule Generation</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2024-12-05">5 Dec 2024</date>
+						</imprint>
+					</monogr>
+					<idno type="arXiv">arXiv:2412.04242v1[cs.LG]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1" ident="GROBID" when="2025-10-28T22:24+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>In this work, we propose a latent molecular diffusion model that can make the generated 3D molecules rich in diversity and maintain rich geometric features. The model captures the information of the forces and local constraints between atoms so that the generated molecules can maintain Euclidean transformation and high level of effectiveness and diversity. We also use the lowerrank manifold advantage of the latent variables of the latent model to fuse the information of the forces between atoms to better maintain the geometric equivariant properties of the molecules. Because there is no need to perform information fusion encoding in stages like traditional encoders and decoders, this reduces the amount of calculation in the back-propagation process. The model keeps the forces and local constraints of particle bonds in the latent variable space, reducing the impact of underfitting on the surface of the network on the large position drift of the particle geometry, so that our model can converge earlier. We introduce a distribution control variable in each backward step to strengthen exploration and improve the diversity of generation. In the experiment, the quality of the samples we generated and the convergence speed of the model have been significantly improved.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1.">Introduction</head><p>In the field of 3D molecular generation, we expect to obtain richer particle information, in which the interatomic forces and geometric feature representation information play a vital role in maintaining the stability and richness of molecular geometric structure. In the research process, we generally represent the geometric structure in the form of Cartesian coordinates, the molecule as a 3D atomic graph <ref type="bibr" target="#b34">(Schütt et al., 2017)</ref>, the protein as a neighboring spatial graph on amino acids <ref type="bibr" target="#b14">(Jing et al., 2021)</ref>, and use a dual equivariant fracxyz, a, b. c 1, 2. Copyright 2025 by the author(s). tional network to fuse the relative distance and the force between particles into particle score information <ref type="bibr" target="#b33">(Satorras et al., 2022)</ref>. Therefore, the geometric feature generation model that simulates the covalent bonds formed by intermolecular forces at close range and the van der Waals forces at long distances has great potential for accelerating new drug discovery, catalyst design, and materials science <ref type="bibr" target="#b28">(Pereira et al., 2016;</ref><ref type="bibr" target="#b44">van den Oord et al., 2016;</ref><ref type="bibr" target="#b42">Townshend et al., 2021)</ref>. After Alphafold's success in protein folding prediction <ref type="bibr" target="#b16">(Jumper et al., 2021)</ref>, more and more researchers are developing deep learning models to analyze or synthesize 3D molecules <ref type="bibr" target="#b36">(Simonovsky &amp; Komodakis, 2018;</ref><ref type="bibr" target="#b7">Gebauer et al., 2020;</ref><ref type="bibr" target="#b19">Klicpera et al., 2020)</ref>.</p><p>They have all made progress in effectiveness. Nevertheless, the diffusion-based 3D generative model still has two non-negligible shortcomings: First, unlike the chemical bonds of 2D generated molecules represented as graphic edges, the geometric shapes of 3D generated molecules are represented as point clouds <ref type="bibr" target="#b32">(Satorras et al., 2021;</ref><ref type="bibr" target="#b6">Gebauer et al., 2019;</ref><ref type="bibr">Hoogeboom et al., 2022a)</ref>. Therefore, there is no clear indication of chemical bonds when generating 3D molecules, which makes it difficult for both EDM and GeoLDM to capture the rich local constraint relationships between neighboring atoms. This defect leads to unsatisfactory training results on large molecular datasets, such as the GEOMDrugs dataset <ref type="bibr" target="#b2">(Axelrod &amp; Gomez-Bombarelli, 2022)</ref>. The diffusion model moves along the data density gradient at each time step. Therefore, the generation dynamics of a given fixed initialization noise may also be concentrated around common trajectories, resulting in similar generation results, which greatly reduces the diversity of generated molecules.</p><p>In addition, we also map the features to a regularized latent space, maintaining the key 3D rotation and translation equivariance constraints, which will model a smoother distribution, reduce the difficulty of directly modeling complex structures, and play a role in encoding geometric features, making the model more expressive. At the same time, the latent diffusion model can better control the generation process, which is a promising result in text-guided image generation <ref type="bibr" target="#b31">(Rombach et al., 2022)</ref>. This enables users to generate specific types of molecules with desired properties. Our model can be extended to many downstream tasks, such as targeted drug design <ref type="bibr" target="#b23">(Lin et al., 2022)</ref> and antigen-specific We gradually add noise through the latent diffusion transformation q(Gt | Gt-1) until the latent variable distribution converges to a Gaussian distribution. Similarly, for the reverse generation process, the initial state GT ∼ N (0, I) is gradually denoised by using the Markov kernel p θ (Gt-1 | Gt) and gradually refined by the equivariant denoising dynamics ϵ θ (Gt, t). The final latent variables R, A are further decoded by the decoder Dϵ to generate the molecular point cloud.</p><p>antibody generation <ref type="bibr" target="#b25">(Luo et al., 2022)</ref>.</p><p>In experiments, we show that our proposed LMDM outperforms the state-of-the-art models EDM and GeoLDM on two molecular datasets (i.e., QM9 <ref type="bibr" target="#b29">(Ramakrishnan et al., 2014)</ref>) and GEOM-Drugs <ref type="bibr" target="#b2">(Axelrod &amp; Gomez-Bombarelli, 2022)</ref>), especially on the drug-like GEOM-Drugs dataset, which has a large number of atoms in the molecular composition (46 atoms on average, compared to 18 atoms in QM9). We improve the effectiveness and diversity of characterizing the generated molecules by 4.8% and 30.2%, respectively, without compromising the effectiveness and stability of the generated molecules in conditional generation.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.">Relate work</head><p>Latent Molecular Diffusion Models. In order to improve the modeling ability of the model, predecessors have conducted a lot of research, and the model can learn stronger expressiveness in the latent space <ref type="bibr" target="#b4">(Dai &amp; Wipf, 2019;</ref><ref type="bibr" target="#b50">Yu et al., 2022)</ref>. e.g., VQ-VAE <ref type="bibr" target="#b30">(Razavi et al., 2019)</ref> proposed discretized latent variables and learned the prior distribution of images through autoregression. <ref type="bibr" target="#b26">(Ma et al., 2019)</ref> uses a flow-based model as a latent prior and applies it to non-autoregressive text generation. Superior to the simple Gaussian prior that cannot accurately match the encoded posterior, inspired by the variational autoencoder (VAE), <ref type="bibr" target="#b4">(Dai &amp; Wipf, 2019;</ref><ref type="bibr" target="#b1">Aneja et al., 2021)</ref> proposed to use VAE and energy-based models to learn the latent distribution respectively. These works seem to indicate that by combining the diffusion model with VAE, the model can learn a more accurate latent distribution. In recent years, latent diffusion models have been widely used in various fields and have achieved encouraging results, such as image <ref type="bibr" target="#b43">(Vahdat et al., 2021)</ref>, point cloud <ref type="bibr" target="#b52">(Zeng et al., 2022</ref>) and text <ref type="bibr" target="#b22">(Li et al., 2022)</ref> generation, which shows amazing text-guided image generation capabilities. However, unlike traditional tasks, 3D molecular generation requires us to model and constrain the potential interatomic forces on the target, and also consider the equivariance property. Therefore, we study that the latent space contains equivariant tensors to ensure the equicontrast property, and then model the global and local forces in the latent space.</p><p>Modeling Interatomic Constraints. Some methods consider generating molecules in two dimensions, e.g., <ref type="bibr" target="#b4">(Dai &amp; Wipf, 2019;</ref><ref type="bibr" target="#b8">Gómez-Bombarelli et al., 2018;</ref><ref type="bibr" target="#b9">Grisoni et al., 2020)</ref> use sequence models such as RNN to generate molecular strings SMILES <ref type="bibr" target="#b45">(Weininger, 1988)</ref>, while other models tend to generate molecular graphs composed of atoms, in which chemical bonds are represented by nodes and edges. However, it only uses the fully connected adjacent matrix, thus ignoring the intrinsic topology of the molecular graph. These models all ignore the 3D structural information of molecules, which is particularly critical for the effectiveness and novelty of molecules. Inspired by the success of diffusion models <ref type="bibr" target="#b37">(Sohl-Dickstein et al., 2015)</ref> in various tasks <ref type="bibr" target="#b10">(Ho et al., 2020;</ref><ref type="bibr">Song et al., 2021a;</ref><ref type="bibr" target="#b21">Kong et al., 2021)</ref>, <ref type="bibr">(Hoogeboom et al., 2022a)</ref> uses diffusion models to generate novel molecular structures in 3D space. However, this only utilizes the fully connected adjacency matrix, ignoring the local constraints between atoms (i.e., chemical bonds (covalent bonds) or van der Waals forces formed between atoms) <ref type="bibr" target="#b13">(Huang et al., 2022)</ref>, and does not integrate the intrinsic topological relationships of the molecular graph and intermolecular forces information, which will greatly reduce the effectiveness and novelty. Our task will consider the above factors to achieve higher expressiveness of the model.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.">Background</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1.">Problem Definition</head><p>We consider generative modeling of spatial molecular geometry in this paper. Define d as the node feature dimension, which contains a dataset of each molecule represented by G = ⟨x, h⟩, where x = (x 1 , . . . , </p><formula xml:id="formula_0">x N ) ∈ R N ×3 is the atomic coordinate matrix, h = (h 1 , . . . , h N ) ∈ R N</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2.">Diffussion Process</head><p>Given a molecular geometry G 0 , the data is gradually diffused into a predefined noise distribution during the forward diffusion process, and the time is set to 1,. . . ,T. The diffusion model is like more and more particles making increasingly chaotic and irregular motion in space. The process of gradual noise addition in the diffusion model can be formulated as a Markov chain process, which is expressed by the variance table β 1 , . . . , β T (β t ∈ (0, 1)):</p><formula xml:id="formula_1">q(G 1:T |G 0 ) = T t=1 q(G t |G t-1 ), q(G t |G t-1 ) = N (G t ; 1 -β t G t-1 , β t I),<label>(1)</label></formula><p>In the formula, G t-1 is mixed with Gaussian noise to form G t , where β t is used to control the degree of mixing. In order to simplify the derivation, we set ᾱ = t s=1 1 -β s , so that for any time step t, data sampling can be obtained by reparameterization technique with a closed form formula, which is a very important property in the diffusion model:</p><formula xml:id="formula_2">q (G t |G 0 ) = N G t ; √ ᾱt G 0 , (1 -ᾱt ) I ,<label>(2)</label></formula><p>With the increase of the number of steps, t gradually increases, and the final data distribution will be closer to the standard Gaussian distribution, because when √ ᾱt → 0, then (1 -ᾱt ) → 1. The reverse sampling process of DMs is defined as learning a parameterized reverse denoising process, which aims to gradually denoise the noise variable G T :1 to approximate the initial data distribution G 0 in the target data distribution:</p><formula xml:id="formula_3">p θ (G 0:T -1 |G T ) = T t-1 p θ (G t-1 |G t ) , p θ (G t-1 |G t ) = N G t-1 ; µ θ (G t , t) , σ 2 I ,<label>(3)</label></formula><p>Where µ θ represents the parameterized neural network to approximate the mean of the initial data distribution, σ 2 represents the user-defined variance, which is generally predefined as 1. As a latent variable model, the forward process q(G 1:T |G 0 ) can be regarded as a fixed posterior, and the backward process p θ (G 0:T ) is trained to maximize the variational lower bound of the likelihood of the data</p><formula xml:id="formula_4">L vlb = E q(G 1:T |G0) log q(G T |G0) p θ (G T ) + T t=2 log q(Gt-1|G0,Gt) p θ (Gt-1|Gt) -log p θ (G 0 |G 1 )</formula><p>. However, we can see that direct optimization of this formula will lead to serious training instability <ref type="bibr" target="#b27">(Nichol &amp; Dhariwal, 2021)</ref>. Instead, <ref type="bibr" target="#b39">Song &amp; Ermon (2019)</ref>; <ref type="bibr" target="#b10">Ho et al. (2020)</ref> gives a simple alternative objective that simplifies to no irrelevant constants:</p><formula xml:id="formula_5">L DM = E G0,ϵ∼N (0,I),t w(t)||ϵ -ϵ θ (G t , t) || 2 , (4)</formula><p>From another perspective, this inverse process predicts the noise part of the data added during the diffusion process at each time step, which is equivalent to the process of moving from low-density areas to high-density areas in the data distribution. The noise-eliminating part is also called score <ref type="bibr" target="#b24">(Liu et al., 2016)</ref>, e.g., the logarithmic density of the data distribution at different time points, which appears in the work of <ref type="bibr">(Song et al., 2021b)</ref>. In order to conveniently reflect score, we use s θ below:</p><formula xml:id="formula_6">µ θ (G t , t) = 1 √ 1 -β t G t + β t √ 1 -α t s θ (G t , t) . (5)</formula><p>The sampling process of the diffusion model is similar to Langevin dynamics, and s θ is used as the learning gradient of data density.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3.">Equivariance</head><p>The equivariance of Euclidean space is universal for spatial structures, especially molecular structures. Properties of molecular structures, where vector features such as atomic forces or dipole moments should be transformed with respect to the atomic space coordinates <ref type="bibr" target="#b41">(Thomas et al., 2018;</ref><ref type="bibr" target="#b5">Fuchs et al., 2020;</ref><ref type="bibr" target="#b3">Batzner et al., 2021)</ref>. We can formally express this as follows: the function F is equivariant with respect to the actions of the group G if F •S g (x) = T g •F(x), ∀g ∈ G, where S g and T g are transformations of the group element g <ref type="bibr" target="#b35">(Serre et al., 1977)</ref>. For the special Euclidean group SE(3), i.e. the rotation and translation group in 3D space, its group element g transforms T g and S g , which can be represented by the translation t and the orthogonal rotation matrix R.</p><p>We can intuitively understand that the property characteristics of molecules are invariant in the spatial Euclidean SE(3) group, while the coordinates will be affected by the SE(3) group action transformation, such as the transformation Rx + t = (Rx 1 + t, . . . , Rx N + t) after the rotation matrix R and translation t. However, we require that this transformation will not affect the properties of the generated molecules, so we must ensure that the learned possibilities are invariant to rotation and translation, which is very important for improving the generalization ability of 3D molecular generative modeling <ref type="bibr" target="#b32">(Satorras et al., 2021;</ref><ref type="bibr" target="#b48">Xu et al., 2022)</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.">Method</head><p>In this article, we give a detailed description of LMDM.</p><p>As mentioned in the experiment of LDM (Latten Diffusion Model) <ref type="bibr" target="#b31">(Rombach et al., 2022)</ref>, in the encoder and decoder, the purpose is to reduce the perceptual loss of the original data distribution, and in the diffusion process, it is more about optimizing the semantic loss of the data. Similarly, in the process of molecular generation, in order to further reduce the loss caused by the equivariant properties of molecular geometry, we can first perform equivariant encoding and then perform equivariant decoding; in the intermediate diffusion process, we can model richer "semantic" information (in molecular generation, we think of it as the force between atoms (e.g., covalent bonds or van der Waals forces)), which will make the molecules generated by the model more effective and stable. We use dual equivariant fractional neural networks to model two (long-distance and short-distance) molecular constraints, that is, to reduce the "semantic" information we mentioned earlier, which will help us better maintain the potential properties of the molecule. We provide the overall architecture of the model in 1.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1.">Molecular Autoencoder</head><p>We first want to compress the 3D point cloud G = ⟨x, h⟩ ∈ R (3+d) into a low-dimensional space. In the general autoencoder (AE) framework, the encoder E ϕ maps G to a low-dimensional latent domain z = E ϕ (x, h), and the decoder D ξ maps z back to the data domain x, ĥ = D ξ (z) through training. Figure <ref type="figure" target="#fig_1">2</ref> shows the overall architecture and pipeline of the molecular variational encoder. The entire model minimizes the objective loss function:</p><formula xml:id="formula_7">L V AE = d (D(E(G)), G) + D KL (q ϕ (z 0 | x, h)||p(z 0 )),<label>(6</label></formula><p>) where d represents the p norm e.g.,L p , and D KL refers to the Kullback-Leibler Divergence. In the formula, q ϕ represents the encoded potential distribution, and p ∼ N (0, I) is the standard normal distribution.</p><p>In order to maintain the SE(3) group, i.e., rotation and trans- lation equivariance, we usually parameterize the latent space variables into invariant scalar-valued features <ref type="bibr" target="#b18">(Kingma &amp; Welling, 2013)</ref>, which is a considerable difficulty: Proposition 1. <ref type="bibr" target="#b46">(Winter et al., 2022)</ref>Learning autoencoding functions E and D to represent geometries G in scalarvalued (i.e., invariant) latent space necessarily requires an additional equivariant function ψ to store suitable group actions such that</p><formula xml:id="formula_8">D(ψ(G), E(G)) = T ψ(G) • D(E(G)) = G.</formula><p>The method proposed by this proposition is to implement the function ψ in the autoencoder to represent the appropriate group action for encoding, and align the input and output positions for decoding, so as to achieve the purpose of structural reconstruction. In Appendix B we give a more detailed explanation and examples. In order to keep the Euclidean group SE(n) action equivariant, <ref type="bibr" target="#b46">(Winter et al., 2022)</ref> proposed to set the ψ function to the equivariant orthogonal normal vector of the unit n-dimensional sphere S n .</p><p>In our model, we follow the approach used by <ref type="bibr" target="#b49">(Xu et al., 2023)</ref>, constructing latent features into point-structured variables z = ⟨z x , z h ⟩, incorporating equivariance into E and D instead of applying ψ separately, and jointly representing z x and z h , which preserves the 3-d equivariant and k-d invariant latent features z x and z h . In the specific implementation, we parameterize E and D by using an equivariant graph neural network EGNN <ref type="bibr" target="#b32">(Satorras et al., 2021)</ref>, which has special properties that make the extracted embeddings invariant and equivariant:</p><formula xml:id="formula_9">Rz x +t, z h = E ϕ (Rx+t, h); Rx+t, h = D ξ (Rz x +t, z h ),</formula><p>(7) which applies to all orthogonal rotation matrices R and translations t. We provide more details on EGNN parameterization in the appendix C. After encoding with E ϕ , the latent variables z x are obtained. The latent coordinate variables can play the equivariant effect of the SE(3) group action of the ψ function, maintain the equivariant property of the embedded output, and align the output direction with the input direction. In addition, since the distribution of the latent point variables conforms well to the characteristics of the original distribution, the feature reconstruction of the data can be well achieved.</p><p>We are also constraining and optimizing in the objective function of training MVAE. 6 the reconstruction loss is composed of two parts, one is the L 2 norm of the atomic coordinate x, and the cross entropy of evaluating the atomic type h. For the regularization term, we use ES-reg (Rombach et al., 2022), adding a little Kullback-Leibler penalty to q ϕ to make it closer to the standard Gaussian distribution; and use ES-reg, a regularization of early stopping strategy, to avoid scattered latent space. ES-reg also prevents the latent variables from having arbitrarily high variance, so it is more suitable for learning latent distributions <ref type="bibr" target="#b49">(Xu et al., 2023)</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2.">Latent Molecular Diffusion Model</head><p>We then use a dual equivariant fractional neural network <ref type="bibr" target="#b13">(Huang et al., 2022)</ref> as a fractional denoising network to model two levels of edges: local edges within a predefined radius are used to simulate intramolecular forces (e.g. covalent bonds) and global edges are used to capture van der Waals forces. And in order to explore the diversity of generation in the network, we add conditional noise, which avoids determining the output of the entire model and improves the diversity of generation. We will describe how the training and sampling phases of LMDM work.</p><p>As shown in the figure <ref type="figure" target="#fig_0">1</ref>, we first use the 4.1 mentioned in the previous section to encode the original data into latent space variables, which reduces the dimension of the data while still maintaining the SE(3) group action equivariant property. Then use the dual equivariant fractional neural network <ref type="bibr" target="#b13">(Huang et al., 2022)</ref> as a fractional denoising network to model two levels of edges: local edges within a predefined radius are used to simulate intramolecular forces (e.g. covalent bonds) and global edges are used to capture van der Waals forces. And in order to explore the diversity of generation in the network, we add conditional noise, which avoids determining the output of the entire model and improves the diversity of generation. We will describe how the training and sampling stages of LMDM work.</p><p>The Equivariant Markov Kernels. Since molecular geometry is rotationally and translationally invariant, this property needs to be taken into account when implementing the Markov kernel in the network. The overall architecture is shown in figure3. In fact, <ref type="bibr" target="#b20">(Köhler et al., 2020)</ref> proposed an equivariant reversible function that transforms one invariant distribution into another invariant distribution. This theorem also applies to the diffusion model <ref type="bibr" target="#b48">(Xu et al., 2022)</ref>. If p(G T ) is invariant and the denoising neural network that learns the parameterization p(G t-1 |G t ) is equivariant, then the marginal distribution p(G) is also invariant. We use a double equivariant fractional neural network to implement the equivariant Markov kernel, which satisfies this property. More implementation details will be described in the appendix D.</p><p>Edge Construction. We also need to construct the edges of the atomic nodes in the molecule. In previous work <ref type="bibr" target="#b20">(Köhler et al., 2020;</ref><ref type="bibr">Hoogeboom et al., 2022a)</ref>, the fully connected adjacency matrix is input into the equivariant graph neural network. However, this will treat the interatomic effects indiscriminately, but this will ignore the influence of covalent bonds. Therefore, we define the edges within the radius τ as local edges to simulate covalent bonds, and the remaining edges as global edges to capture the long-range information of van der Waals forces. We generally set the local radius τ to 2 Å, because chemical bonds generally do not exceed 2 Å. In the experiment, we found that if the radius is set too small, this will cause the target distance score to be very close to the diffusion distance score predicted by the score network, but this does not make the generated molecules have good effectiveness and stability, and makes the training of the diffusion process converge more slowly.</p><p>The atomic features and the coordinates of the local and global edges are input into the dual equivariant network respectively. The local equivariant network simulates the intramolecular forces, such as real chemical bonds, through local edges, while the global equivariant network captures the interaction information between distant atoms, such as van der Waals forces, through global edges.</p><p>Enhance diversity through variational noise. We extend the diffusion model to conditional generation by imitating it, and use variational noise to guide the model to learn stronger molecular diversity, that is, adding noise ϵ v for conditional generation p θ (G 0:T -1 | G T , ϵ v ) to improve diversity. We also use Schnet as the encoder, which outputs the mean µ v and the standard deviation σ v . We then </p><formula xml:id="formula_10">µ x , µ h , σ x , σ h ← E ϕ (x, h) {Encoding} 6:</formula><p>ϵ ∈ N (0, I)</p><formula xml:id="formula_11">7:</formula><p>Subtract center of gravity from ϵ in ϵ = [ϵ x , ϵ h ] 8:</p><formula xml:id="formula_12">z x , z h ← ϵ ⊙ σ + µ {Reparameterization} 9:</formula><p>x, ĥ ← D ξ (z x , z h ) {Decoding} 10: </p><formula xml:id="formula_13">L mvae = reconstruction([x,</formula><formula xml:id="formula_14">z x,0 , z h,0 ∼ q ϕ (z x , z h | x, h)</formula><p>{As lines 5-8} 17:</p><p>t ∼ U(1, . . . , T ), ϵ ∈ N (0, I)</p><p>18:</p><p>Substract center of gravity from</p><formula xml:id="formula_15">ϵ x in ϵ = [ϵ x , ϵ h ] 19: z t = √ ᾱt z 0 + (1 -ᾱ)ϵ 20: σ v , µ v = Φ v (z t ) 21: Sample η ∈ N (0, I), var noise η v = µ v + σ 2 v η 22:</formula><p>Regulate:</p><p>23:</p><formula xml:id="formula_16">L vae = E q ϕ (ηv|zt) (-D KL (q ϕ (η v | z t )) || p(η)) 24:</formula><p>Prepare gloabl edges e g and local edges e l 25:</p><p>s θ (z t , η v , t) = Φ g (z t , η v , t, e g ) + Φ l (z t , η v , t, e l )</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>26:</head><p>Take gradient descent step on 27: <ref type="formula" target="#formula_18">8</ref>, in the inverse process of the diffusion model, becomes:</p><formula xml:id="formula_17">∇ θ || s θ (z t , η v , t) -∇ zt logq Φ (z t | z 0 ) || 2 +L vae 28: until Φ v , Φ g , Φ l have Converged use the reparameterization technique to obtain the noise ϵ v = µ v + σ 2 v z, z ∈ N (0, I). Equation</formula><formula xml:id="formula_18">p θ (G 0:T -1 | G T , ϵ v ) = T t-1 p θ (G t-1 | G t , ϵ v ) , p θ (G t-1 | G t , ϵ v ) = N G t-1 ; µ θ (G t , ϵ v , t) , σ 2 t .<label>(8)</label></formula><p>In the inverse process of the diffusion model, we apply an special sampling strategy. In the experiment, when sampling z v from the uniform distribution U(-1, +1), the generation effect of the model is significantly improved.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3.">Taining And Sampling</head><p>In the experiment, we found that the training method of previous work <ref type="bibr" target="#b49">(Xu et al., 2023)</ref>, in our LMDM, makes the model difficult to generalize on the validation set and the convergence speed is reduced. Therefore, we still use a twostage approach, first training the molecular autoencoder, Algorithm 2 Sampling Algorithm of LMDM 1: input: decoder network D ξ , learned global and local equivariant network Φ g , Φ l 2: Sample z T ∼ N (0, I)</p><formula xml:id="formula_19">3: for t in T, T -1, • • • , 1 do 4: Sample ϵ ∼ N (0, I) if t &gt; 1, else ϵ = 0 5: Shift x t to zero COM in z t = [x t , h t ] 6:</formula><p>Prepare gloabl edges e g and local edges e l 7:</p><p>Sample η v ∼ N (0, I)</p><formula xml:id="formula_20">8: s θ (z t , η v , t) = Φ g (z t , η v , t, e g ) + Φ l (z t , η v , t, e l ) 9: µ θ (z t , η v , t) = 1 √ 1-βt z t + βt √ 1-ᾱt s θ (z t , η v , t) 10: z t-1 = µ θ (z t , η v , t) + σ t ϵ 11: end for 12: x, h ∼ p ξ (x, h | z x,0 , z h,0 )</formula><p>{Decoding} 13: return G 0 to obtain x, h then fixing the encoder and training the diffusion process.</p><p>During the sampling process, the atomic coordinates x t may violate the equal variance requirement <ref type="bibr" target="#b13">(Huang et al., 2022)</ref>, so we need to better estimate the gradient target of the potential distribution of molecular coordinates. We sample x t at the pairwise distance d ij :</p><formula xml:id="formula_21">∇ x log q Φ (x i |x i ) = j∈N (i) ∇ dij q Φ ( dij | d ij ) • (x i -x j ) d ij ,<label>(9)</label></formula><p>where x refers to the coordinate of the diffusing atom at z t and d denotes the corresponding diffusion distance. We make an approximate estimate of the diffusion distance gradient of the potential distribution as:</p><formula xml:id="formula_22">∇ d log q Φ ( d | d) ∼ - √ αt ( d -d) 1 -ᾱt . (<label>10</label></formula><formula xml:id="formula_23">)</formula><p>Just like the diffusion model <ref type="bibr" target="#b10">(Ho et al., 2020)</ref>, our training objective is obtained by optimizing the variational lower bound of the negative log-likelihood (ELBO). We obtain our objective function in the same way and simplify the training objective:</p><formula xml:id="formula_24">L t = E G0 [γ || s θ (z t , η v , t) -∇ zt log(z t | z 0 ) || 2 ],<label>(11)</label></formula><p>Where γ =</p><formula xml:id="formula_25">β 2 t 2(1-βt)(1-ᾱt)σ 2 t</formula><p>represents the weight and σ 2 t denotes the user-defined variance. However, based on experience, we ignore γ and the simplified objective performs better. we provide more information on the derivation of the training objective in the AppendixA.</p><p>Combined with our previous variational noise KL loss, we get the final training objective: This simplified objective is equivalent to learning s θ by sampling the diffusing molecules z t with a time step of t and using the logarithmic density gradient of the data distribution.</p><formula xml:id="formula_26">L = T t=2 (L t + L vae ),<label>(12)</label></formula><p>Algorithm 1 shows the complete training process. We first train the AE to add regularization, and then train the latent diffusion process using the latent code encoded by the pretrained encoder. Each numerator of the fused random time step t ∼ U(1, T ) will be perturbed by the noise ϵ. To ensure the invariance of ϵ, we use the zero center of mass (COM) method of <ref type="bibr" target="#b20">(Köhler et al., 2020)</ref> to ensure that p(G T ) remains unchanged. And extend p(G T ) to an isotropic Gaussian, ϵ is invariant to rotation and translation around the zero COM.</p><p>The potential code distribution obtained by the diffusion process is defined as the residual distribution <ref type="bibr" target="#b49">(Xu et al., 2023)</ref>:</p><formula xml:id="formula_27">p θ,ξ (x, h, z x , z h ) = p θ (z x , z h )p ξ (x, h | z x , z h ).</formula><p>where p θ represents the diffusion model that models the potential code distribution, and p ξ represents the decoder. We can first sample equivariant potential codes from p θ , and then use p ξ to convert them to the molecular structure of the original space. The algorithm 2 provides pseudo code for the sampling process.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.">Experiments</head><p>In this section, we report the training results of the LMDM model on two benchmark datasets (QM9 <ref type="bibr" target="#b29">(Ramakrishnan et al., 2014)</ref> and GEOM <ref type="bibr" target="#b2">(Axelrod &amp; Gomez-Bombarelli, 2022)</ref>), which show that the proposed LMDM significantly outperforms multiple state-of-the-art -the-art (SOTA) 3D molecule generation method. We conducted unconditional generation experiments on two data sets, as well as conditional control generation experiments, to evaluate the ability of LMDM to generate molecules with desired properties. I also conducted ablation experiments in the appendixF to compare the performance of the encoder in modeling covalent bonds or van der Waals forces between molecules in the latent diffusion process with or without KL regularization.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.1.">Molecular Geometry Generation.</head><p>Dataset We use QM9 <ref type="bibr" target="#b29">(Ramakrishnan et al., 2014)</ref> and GE-OMDrug <ref type="bibr" target="#b2">(Axelrod &amp; Gomez-Bombarelli, 2022)</ref> to evaluate the performance of LMDM. QM9 contains more than 130k molecules, each containing an average of 18 atoms. GEOM-Drug contains 290K molecules, each containing an average of 46 atoms. We will introduce more details about these two datasets and the division settings of the training set and the validation set in the appendixE.</p><p>Baselines and setup. We compare LMDM with two generative models, including EDM <ref type="bibr">(Hoogeboom et al., 2022a)</ref> and GeoLDM <ref type="bibr" target="#b49">(Xu et al., 2023)</ref>, and an autoregressive model G-Schnet <ref type="bibr" target="#b6">(Gebauer et al., 2019)</ref>. For these three models, we use the published pre-trained models for evaluation and comparison. Due to the data processing script and corresponding configuration file of G-Schnet on the GEOM-Drug dataset, it is impossible to reproduce G-Schnet on GEOM-Drug. We also studied the impact of whether the potential code distribution is aligned with the standard normal distribution on model performance, and removed D KL in the MVAE stage to study its impact.</p><p>Evaluation Metrics. Following previous work on 3D molecule generation <ref type="bibr" target="#b6">(Gebauer et al., 2019;</ref><ref type="bibr" target="#b32">Satorras et al., 2021;</ref><ref type="bibr">Hoogeboom et al., 2022a;</ref><ref type="bibr" target="#b47">Wu et al., 2022)</ref>, We measure the generation performance of our model using four metrics:</p><p>• Validity: The percentage of molecules generated by the model that follow the chemical valence rules specified by RDkit;</p><p>• Uniqueness: the percentage of unique and valid molecules among the molecules generated by the model;</p><p>• Novelty: the percentage of unique molecules generated that are not in the training set;</p><p>• Stability: the percentage of molecules generated without ions in the total number of all generated molecules.</p><p>Results and Analysis From Table1, we can see that LMDM outperforms all baseline models by generating 10k molecular samples from the above models to calculate the evaluation indicators. Note that on the GEOM-Drug dataset, the atomic-level stability of the dataset itself is as high as 86.5%, but the molecular-level stability is close to 0%. This is because GEOM-Drug is a drug molecule, which usually contains larger and more complex physical structures, and will accumulate larger errors in predictions based on interatomic Table <ref type="table">1</ref>. The comparison over 10k generated molecules of LMDM and baseline models on molecular geometry generation task. ↑ means that higher the values, better the performance of the model. distances and atom pair types. our proposed method demonstrates its advantage in generating high-quality molecules, which is more evident when the generated molecules contain a large number of atoms. The reason behind the advantages of the model is largely due to the fact that we perform equivariant latent encoding on the original molecular data, keep the distribution of the original data as much as possible and make the latent variable distribution regular and smooth, and use a dual equivariant fractional neural network to capture the interatomic forces (e.g., chemical bonds and van der Waals forces) during the diffusion process. With these advantages, the latent diffusion process successfully captures the structural patterns between atoms at different distances, so that the model can make progress in the stability modeling of large molecules such as GEOM-Drug.</p><formula xml:id="formula_28">QM9 GEOM Validity (%) ↑ Uniqueness (%) ↑ Novelty (%) ↑ Stability (%) ↑ Validity (%) ↑ Uniqueness (%) ↑ Novelty (%) ↑ Stability (%) ↑ G-</formula><p>We also noticed that the model trained with the KL term did not perform as well as the LMDM in terms of results. This is because the restriction of the KL term may cause the output latent variable distribution to deviate from the data prior distribution, which will lead to distribution deviations when constructing intermolecular forces. For example, the distance distribution of the atomic pair 2 Å may be forcibly controlled to a distance distribution that conforms to the standard normal distribution.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.2.">Conditional Molecular Generation</head><p>Baseline and SetupIn this section, we control various properties about the molecule as conditions to generate molecules with our target properties. We train a model with six properties on the QM9 dataset: polarizability α, HOMO ϵ HOMO , LUMO ϵ LUMO , HOMO-LUMO gap ϵ gap , Dipole moment µ and C v . We achieve conditional probability generation by connecting these conditions c with atomic fea-tures to obtain p(G t-1 |G t , c). Evaluation Metrics Following previous work <ref type="bibr">(Hoogeboom et al., 2022b)</ref>, we train a property classifier (PC) <ref type="bibr" target="#b32">(Satorras et al., 2021)</ref>. The QM9 dataset is divided into two parts, each containing 50k samples. The first half D 1 is used to train the property classifier, and the other half D 2 is used to train the generative model. The classifier ϕ c then evaluates the conditional generated samples by the mean absolute error (MAE) between the predicted attribute values and the true attribute values.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Result and Analysis</head><p>The conditional generation results of LMDM are given in Table <ref type="table" target="#tab_4">2</ref>. We can notice that, except for the indicators µ and C v , almost all attributes can exceed "Naive", "#Atoms" and GeoLDM. This result shows that LMDM can well integrate the conditional attribute information into the generated samples, our model can well fit the distribution of D 2 , and can generate molecules with target attributes. We also interpolate the molecules generated by conditional LMDM when different polarizabilities α in Figure <ref type="figure" target="#fig_4">5</ref>, which is consistent with the expectation that larger polarizabilities α have smaller isotropic shapes.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.">Conclusion</head><p>In this study, we proposed a new latent diffusion model LMDM. Instead of operating on high-dimensional, multimodal atomic features, we learn the diffusion process through continuous, latent space to overcome the limitations of excessive time and space complexity in the original space. By constructing a point structure with invariant and equivariant tensors to form molecular latent variables that preserve rotation and translation, and modeling molecular topology at long and short distances, covalent bonds or van der Waals forces between molecules are captured. Our experimental results show that it has significantly better capabilities in simulating chemically real molecules and can generate molecules with desired properties. In the future, our model can be applied to more complex scenarios, such as protein and drug discovery.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Proof of the diffusion model</head><p>We provide proofs for the derivation of several properties of the diffusion process in our model. For detailed explanation and discussion see <ref type="bibr" target="#b10">(Ho et al., 2020)</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.1. Marginal distribution of the diffusion process</head><p>In the diffusion process, we have the marginal distribution of the data at any arbitrary time step t in a closed form:</p><formula xml:id="formula_29">q (G t | G 0 ) = N G t ; √ ᾱt G 0 , (1 -ᾱt ) I .<label>(13)</label></formula><p>Recall the posterior q (G t | G 0 ) in Eq.2 (main document), we can obtain G t using the reparameterization trick. A property of the Gaussian distribution is that if we add N (0, σ 2 1 I) and N (0, σ 2 2 I), the new distribution is N (0, (σ</p><formula xml:id="formula_30">2 1 + σ 2 2 )I) G t = √ α t G t-1 + √ 1 -α t ϵ t-1 = √ α t α t-1 G t-2 + α t (1 -α t-1 )ϵ t-2 + √ 1 -α t ϵ t-1 = √ α t α t-1 G t-2 + 1 -α t α t-1 εt-2 = . . . = √ ᾱt G 0 + √ 1 -ᾱt ε,<label>(14)</label></formula><p>where α t = 1 -β t , ϵ and ε are sampled from independent standard Gaussian distributions.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.2. The parameterized mean µ</head><formula xml:id="formula_31">θ A learned Gaussian transitions p θ (G t-1 | G t ) is devised to approximate the q (G t-1 | G t ) of every time step: p θ (G t-1 | G t ) = N G t-1 ; µ θ (G t , t) , σ 2 t I . µ θ is parameterized as follows: µ θ (G t , t) = 1 √ α t G t - β t √ 1 -ᾱt ϵ θ (G t , t) .<label>(15)</label></formula><p>The distribution q (G t-1 | G t ) can be expanded by Bayes' rule:</p><formula xml:id="formula_32">q (G t-1 | G t ) = q (G t-1 | G t , G 0 , ) = q (G t | G t-1 , G 0 ) q (G t-1 | G 0 ) q (G t | G 0 ) = q (G t | G t-1 ) q (G t-1 G 0 ) q (G t | G 0 ) ∝ exp - 1 2 G t - √ α t G t-1 2 β t + G t-1 - √ α t-1 G 0 2 1 -ᾱt-1 - G t - √ α t G 0 2 1 -ᾱt = exp - 1 2 α t β t + 1 1 -ᾱt-1 G 2 t-1 - 2 √ α t β t G t + 2 √ α t-1 1 -ᾱt-1 G 0 G t-1 + C (G t , G 0 ) ∝ exp(-G 2 t-1 + ( √ α t (1 -ᾱt-1 ) 1 -ᾱt G t + √ ᾱt-1 β t 1 -ᾱt G 0 )G t-1 ),<label>(16)</label></formula><p>where C (G t , G 0 ) is a constant. We can find that q (G t-1 | G t ) is also a Gaussian distribution. We assume that:</p><formula xml:id="formula_33">q (G t-1 | G t , G 0 ) = N G t-1 ; μ (G t , G 0 ) , βt I ,<label>(17)</label></formula><p>where βt = 1/ αt βt +</p><formula xml:id="formula_34">1 1-ᾱt-1 = 1-ᾱt-1 1-ᾱt • β t and μt (G t , G 0 ) = √ αt βt G t + √ ᾱt-1 1-ᾱt-1 G 0 / αt βt + 1 1-ᾱt-1 = √ αt(1-ᾱt-1) 1-ᾱt G t + √ ᾱt-1βt 1-ᾱt G 0 . From Eq. 14, we have G t == √ ᾱt G 0 + √ 1 -ᾱt ε.</formula><p>We take this into μ:</p><formula xml:id="formula_35">μt = √ α t (1 -ᾱt-1 ) 1 -ᾱt x t + √ ᾱt-1 β t 1 -ᾱt 1 √ ᾱt x t - √ 1 -ᾱt ϵ t = 1 √ α t x t - β t √ 1 -ᾱt ϵ t . (<label>18</label></formula><formula xml:id="formula_36">)</formula><p>µ θ is designed to model μ. Therefore, µ θ has the same formulation as μ but parameterizes ϵ:</p><formula xml:id="formula_37">µ θ (G t , t) = 1 √ α t G t - β t √ 1 -ᾱt ϵ θ (G t , t) .<label>(19)</label></formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.3. The ELBO objective</head><p>It is hard to directly calculate log likelihood of the data. Instead, we can derive its ELBO objective for optimizing.</p><formula xml:id="formula_38">E [-log p θ (G)] = -E q(G0) log p θ (G 0:T , z v ) dG 1:T = -E q(G0) log q (G 1:T | G 0 ) p θ (G 0:T , z v ) q (G 1:T | G 0 ) dG 1:T = -E q(G0) log E q(G 1:T |G0) p θ (G 0:T , z v ) q (G 1:T | G 0 ) ≤ -E q(G 0:T ) log p θ (G 0:T , z v ) q (G 1:T | G 0 ) = E q(G 0:T ) log q (G 1:T | G 0 ) p θ (G 0:T , z v ) . (<label>20</label></formula><formula xml:id="formula_39">)</formula><p>Then we further derive the ELBO objective:</p><formula xml:id="formula_40">E q(G 0:T ) log q (G 1:T | G 0 ) p θ (G 0:T , z v ) = E q log T t=1 q (G t | G t-1 ) p θ (G T , z v ) T t=1 p θ (G t-1 | G t , z v ) = E q -log p θ (G T , z v ) + T t=1 log q (G t | G t-1 ) p θ (G t-1 | G t , z v ) = E q -log p θ (G T , z v ) + T t=2 log q (G t | G t-1 ) p θ (G t-1 | G t , z v ) + log q (G 1 | G 0 ) p θ (G 0 | G 1 , z v ) = E q -log p θ (G T , z v ) + T t=2 log q (G t-1 | G t , G 0 ) p θ (G t-1 | G t , z v ) • q (G t | G 0 ) q (G t-1 | G 0 ) + log q (G 1 | G 0 ) p θ (G 0 | G 1 , z v ) = E q -log p θ (G T , z v ) + T t=2 log q (G t-1 | G t , G 0 ) p θ (G t-1 | G t , z v ) + T t=2 log q (G t | G 0 ) q (G t-1 | G 0 ) + log q (G 1 | G 0 ) p θ (G 0 | G 1 , z v ) = E q -log p θ (G T , z v ) + T t=2 log q (G t-1 | G t , G 0 ) p θ (G t-1 | G t , z v ) + log q (G T | G 0 ) q (G 1 | G 0 ) + log q (G 1 | G 0 ) p θ (G 0 | G 1 , z v ) = E q log q (G T | G 0 ) p θ (G T , z v ) + T t=2 log q (G t-1 | G t , G 0 ) p θ (G t-1 | G t , z v ) -log p θ (G 0 | G 1 , z v ) = E q D KL (q (G T | G 0 ) ∥p θ (G T , z v )) L T + T t=2 D KL (q (G t-1 | G t , G 0 ) ∥p θ (G t-1 | G t , z v )) Lt -log p θ (G 0 | G 1 , z v ) L0 .<label>(21)</label></formula><p>B. Explanation of Proposition 4.1</p><p>Consider a geometric graph G = ⟨x, h⟩, encoder E and decoder D, such that G = D(E(G)). Then we assume that the action transformation is g, and through g, G is transformed from the SE(3) group to Ĝ = T g G = ⟨h, Rx + t⟩, and input it into the autoencoder. Since the encoding function is unchanged, we can deduce E(G) = E( Ĝ), so the geometric shape reconstructed by the decoder is still G = D(E( Ĝ)), instead of Ĝ. This makes it impossible to calculate the reconstruction error based on G and Ĝ. The solution is to add a function ψ to extract the group action g. Then send it to the decoder, we can apply the group action to the generated G to recover Ĝ, solving the above problem.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. MVAE Architecture Details</head><p>In the MVAE we proposed, they are all parameterized with EGNN <ref type="bibr" target="#b32">(Satorras et al., 2021)</ref> as the backbone. EGNN is a type of graph neural network that satisfies the equivariance properties in 7 and 4.2. In EGNN, the molecular geometry is usually regarded as a point cloud structure without specifying the connecting bonds between atoms. However, in practice, we use the interatomic distance 2 Å as the close distance criterion to construct close covalent bonds and long-range van der Waals forces. The point cloud structure symbol is G, and the interactions between all atoms v i ∈ V are modeled. Each node v i is embedded with coordinates x i ∈ R 3 and atomic features</p><formula xml:id="formula_41">h i ∈ R d . Then EGNN consists of multiple equivariant convolutional layers x l+1 , h l+1 , v l+1 = EGCL[x l , h l , v l ],</formula><p>and each single layer is defined as:</p><formula xml:id="formula_42">m ij = ϕ e h l i , h l j , d 2 ij , a ij , h l+1 i = ϕ h (h l i , j̸ =i ẽij ), v l+1 i = ϕ v (h l i )v l i + C j̸ =i x l i -x l j ϕ x (m ij ), x l+1 i = x l i + v l+1 i ,<label>(22)</label></formula><p>where l represents the layer index. ẽij = ϕ inf (m ij ) serves as the attention weight to re-weight the information passed from different edges. d ij =|| x l i -x l j || represents the pairwise distance between atoms v i and v j , and a ij is an optional edge feature. We also incorporate velocity features in each layer. We generally set the initial velocity v (0) i to 0, and we update the position x l+1 i by the velocity v l+1 i . The velocity is updated by the function ϕ v : R N → R 1 , and the function is equivariant. We give the proof below. First, we prove that the velocity update, that is, the third line of the formula, maintains equivariance, that is, we want to prove:</p><formula xml:id="formula_43">Qv l+1 i = ϕ v (h l i )Qv init i + C j̸ =i (Qx l i + g -[Qx l j + g])ϕ x (m ij )</formula><p>Derivation.</p><formula xml:id="formula_44">Qv l+1 i = ϕ v (h l i )Qv init i + C j̸ =i (Qx l i + g -[Qx l j + g])ϕ x (m ij ) = Qϕ v (h l i )v iniit i + QC j̸ =i (x l i -x l j )ϕ x (m ij ) = Q(ϕ v (h l i )v iniit i + C j̸ =i (x l i -x l j )ϕ x (m ij )) = Qv l+1 i (23)</formula><p>Finally, it is straightforward to show the second equation is also equivariant, that is we want to show</p><formula xml:id="formula_45">Qx l+1 i + g = Qx l i + g + Qv l+1 i : Derivation. Qx l i + g + Qv l+1 i = Q(x l i + v l+1 i ) = Qx l+1 i + g<label>(24)</label></formula><p>The above proof ensures that the E(n) transformation on our input point cloud will output the same transformation, so that h l+1 , Qx l+1 + g, Qv l+1 = EGCL[h l , Qx l + g, Qv init , E] holds.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D. Equivariant Markov Kernels Details</head><p>First, keep the invariance of feature h. We use EdgeMLP to obtain edge embedding as follows:</p><formula xml:id="formula_46">h eij = MLP(d ij , e ij )<label>(25)</label></formula><p>Where d ij =|| x i -x j || 2 represents the Euclidean distance between the coordinates of atom i and atom j, and e ij represents the edge feature between the ith atom and the jth atom. We use a to represent the atomic feature, and then use the L layer of Schnet <ref type="bibr" target="#b34">(Schütt et al., 2017)</ref> to achieve the invariance effect:</p><formula xml:id="formula_47">h 0 i,a = MLP(a i ), h 0 i,x = MLP(x i ), h 0 i = [h 0 i,a , h i,x ], h l+1 i = σ   W l 0 h l i + j∈N (i) W l 1 ϕ w (d ij ) ⊙ W l 2 h l j   ,<label>(26)</label></formula><p>Where l ∈ (0, 1, . . . , L) represents the lth layer of Schnet, W l represents the learned weights. Then, we regard h i output by Schnet as node embedding, σ(•) represents a nonlinear activation function, such as ReLU, and ϕ w (•) represents the weight network. Then, the final output of Schnet is represented as a node embedding.</p><p>To estimate the gradient of the log density of atomic features, we use a layer of Node MLP to map the latent vector output by schnet to a score vector.</p><formula xml:id="formula_48">s θ (a i ) = MLP(h i )<label>(27)</label></formula><p>The equivariance of the coordinate x in 3D space is achieved, decomposed into pairwise distances, and the product of the learned edge information and the end node vector of the same edge is connected into a Pairwise Block, which is then input into the Distance MLP to obtain the distance gradient between pairs of atoms.</p><formula xml:id="formula_49">s θ (d ij ) = MLP([h i , h j , h eij ])<label>(28)</label></formula><p>here, we omit the time coordinate t of s θ and only perform the analysis on a single time step for simplicity.</p><p>Then, the Dist-transition Block is used for transformation to integrate the information of the pairwise distance and the fractional vector of the atomic coordinates x, as shown below:</p><formula xml:id="formula_50">s θ (x i ) = j∈N (i) 1 d ij • s θ (d ij ) • (x i -x j )<label>(29)</label></formula><p>where s θ (x i ) is invariant to translation because it only depends on the symmetry invariant element d, and x i -x j is rotationally and translationally equivariant, so s θ (x i ) is equivariant.</p><p>We proceed to prove that our diffusion model composed of Markov Kernels is equivariant. Following previous work <ref type="bibr" target="#b48">(Xu et al., 2022;</ref><ref type="bibr">Hoogeboom et al., 2022a)</ref>, we will omit the trivial scalar feature a and focus on analyzing the latent variable Z.</p><p>The proof shows that when the initial distribution p(z T ) is invariant and the transfer distribution p(z t-1</p><p>x | z t x ) is equivariant, then the marginal distribution p(z T x ) will be time-invariant, in particular, including p(z 0 x ). Similarly, since the decoder (EGN N ) output distribution p(x | z 0</p><p>x ) is equivariant, we can obtain that our final data distribution p(x) is unchanged everywhere.</p><p>Proof.The justification formally can be derived as follow:</p><p>Condition: We know that p(z T</p><p>x ) = N (0, I) is invariant under rotation, e.g., p(z T x ) = p(Rz T x ). Derivation: For t ∈ 1, . . . , T , let p(z t-1 x | z t</p><p>x ) be an equivariant distribution, i.e., p(z  </p><p>Therefore, p(z t-1 x ) is invariant. By induction, p(z T-1 x ), . . . , p(z 0 x ) is invariant. In addition, since the decoder p(x | z 0 x ) is also equivariant. By the same derivation, we can also conclude that the distribution of our generated molecules p(x) is also invariant.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>E. Dataset</head><p>QM9 QM9 dataset contains over 130K small molecules with quantum chemical properties which each consist of up to 9 heavy atoms or 29 atoms including hydrogens. On average, each molecule contains 18 atoms. For a fair comparison, we follow the previous work <ref type="bibr" target="#b0">(Anderson et al., 2019)</ref> to split the data into training, validation and test set, which each partition contains 100K, 18K and 13K molecules respectively. LMDM is trained by Adam <ref type="bibr" target="#b17">(Kingma &amp; Ba, 2015)</ref> optimizer for 200K iterations (about 512 epochs) with a batch size of 256 and a learning rate of 0.001.</p><p>Geom Following previous work <ref type="bibr">(Hoogeboom et al., 2022a)</ref>, we evaluate MDM on a larger scale dataset GEOM <ref type="bibr" target="#b2">(Axelrod &amp; Gomez-Bombarelli, 2022)</ref>. Compared to QM9, the size of molecules in GEOM is much larger, in which is up to 181 atoms and 46 atoms on average (including hydrogens). We obtain the lowest energy conformation for each molecule, and finally we have 290K samples for training. LMDM is trained by Adam <ref type="bibr" target="#b17">(Kingma &amp; Ba, 2015)</ref> optimizer for 200K iterations (about 170 epochs) with a batch size of 256 and a learning rate of 0.001.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>F. Ablation Studies</head><p>In this section, we provide additional experimental results on QM9 to demonstrate the effect of the model design. We perform ablation experiments on two variables, latent dimension k and regularization square, and the results are reported in Table <ref type="table" target="#tab_6">3</ref>. We first discuss different regularization methods for autoencoders, i.e., KL-reg and ES-reg, where the invariant feature dimension of the latent variable is fixed to 1. Following previous work <ref type="bibr" target="#b31">(Rombach et al., 2022)</ref>, for KL-reg, we use a weight parameter of 1 in our experiments. However, we observe unexpected failures and extremely poor performance in our experiments. As shown in Table <ref type="table" target="#tab_6">3</ref>, the performance of all models with KL is very different from that of models with ES.</p><p>The models with KL terms are also extremely unstable during training, often making numerical errors and causing model</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 .</head><label>1</label><figDesc>Figure1. Illustration of LMDM. We outline the training process of the proposed LMDM model. The encoder E ϕ coordinates x and molecular features h are encoded into equivariant latent variables R,A, and the time step encoding is used to incorporate the sequential information into the molecular information. We gradually add noise through the latent diffusion transformation q(Gt | Gt-1) until the latent variable distribution converges to a Gaussian distribution. Similarly, for the reverse generation process, the initial state GT ∼ N (0, I) is gradually denoised by using the Markov kernel p θ (Gt-1 | Gt) and gradually refined by the equivariant denoising dynamics ϵ θ (Gt, t). The final latent variables R, A are further decoded by the decoder Dϵ to generate the molecular point cloud.</figDesc><graphic coords="2,48.65,106.89,105.32,103.40" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2 .</head><label>2</label><figDesc>Figure 2. An overview of the one-stage molecular variational autoencoder. We encode the molecular structure through the encoder E ϕ . Due to the unique properties of EGNN, the encoded latent variables still maintain equivariance on the SE(3) group action.The latent variables are sampled by reparameterization and then decoded by the decoder Dϵ to restore the latent variables to the original molecular structure. As in the first term of 6, we use d(G, Ĝ) to achieve the reconstruction loss, and in order to make the distribution of the latent variable z x,h closer to the prior distribution, making the distribution more regular and smooth, we added the KL regularization term.</figDesc><graphic coords="4,359.01,70.15,125.77,75.59" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 3 .</head><label>3</label><figDesc>Figure 3. Illustration of the specific implementation of the Markov kernel (double equivariant denoising score network). In fact, depending on the local and global edges of the input, we can use it as a local or global equivariant encoder to capture the molecular internal forces in the model and output the expected target score.The implementation of Schnet comes from<ref type="bibr" target="#b34">(Schütt et al., 2017)</ref>.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 4 .</head><label>4</label><figDesc>Figure 4. Molecules generated by LMDM trained on QM9 (left four) and DRUG (right two).</figDesc><graphic coords="7,392.40,69.75,62.26,67.47" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Figure 5 .</head><label>5</label><figDesc>Figure 5. Molecules generated by conditional LMDM. We conduct controllable generation with interpolation among different Polarizability α values with the same reparametrization noise ϵ. The given α values are provided at the bottom.</figDesc><graphic coords="8,94.54,68.95,54.67,50.80" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head></head><label></label><figDesc>Algorithm 1 Training Algorithm of LMDM 1: Input:molecular geometry G⟨x, h⟩ 2: Initial:encoder network E ϕ , decoder network D ξ , noise encoder Φ v , global equivariant networks Φ g , local equivariant networks Φ l 3: first Stage: Autoencoder Training 4: while ϕ, ξ have not converged do</figDesc><table><row><cell>5:</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 2 .</head><label>2</label><figDesc>The results of conditional molecular generation on QM9 dataset. ↓ means the lower the values, the better the model incorporates the targeted properties.</figDesc><table><row><cell>Methods</cell><cell>α ↓</cell><cell cols="3">ϵgap ↓ ϵHOMO ↓ ϵLUMO ↓</cell><cell>µ ↓</cell><cell>Cv ↓</cell></row><row><cell cols="3">Naive (U-bound) 9.013 1.472</cell><cell>0.645</cell><cell>1.457</cell><cell>1.616 6.857</cell></row><row><cell>#Atoms</cell><cell cols="2">3.862 0.866</cell><cell>0.426</cell><cell>0.813</cell><cell>1.053 1.971</cell></row><row><cell>GeoLDM</cell><cell cols="2">2.370 0.587</cell><cell>0.340</cell><cell>0.522</cell><cell>1.108 1.025</cell></row><row><cell>LMDM</cell><cell cols="2">1.621 0.068</cell><cell>0.041</cell><cell>0.047</cell><cell>1.249 1.726</cell></row><row><cell>QM9(L-bound)</cell><cell cols="2">0.100 0.064</cell><cell>0.039</cell><cell>0.036</cell><cell>0.043 0.040</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>Table 3 .</head><label>3</label><figDesc>Results of ablation study with different model designs. Metrics are calculated with 10000 samples generated from each setting.QM9Validity (%) ↑ Uniqueness (%) ↑ Novelty (%) ↑ Stability (%) ↑ Note that this reported result is already the best result we achieved for KL.</figDesc><table><row><cell>LMDM(k = 2,KL)*</cell><cell>86.3</cell><cell>95.9</cell><cell>79.3</cell><cell>82.1</cell></row><row><cell>LMDM(k = 2,ES)</cell><cell>97.7</cell><cell>93.5</cell><cell>87.9</cell><cell>89.2</cell></row><row><cell>LMDM(k = 1,KL)</cell><cell>87.4</cell><cell>93.7</cell><cell>78.5</cell><cell>85.4</cell></row><row><cell>LMDM(k = 1,ES)</cell><cell>98.8</cell><cell>95.2</cell><cell>92.1</cell><cell>90.8</cell></row></table><note><p>*</p></note></figure>
+		</body>
+		<back>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>training failures. We observe in the generated molecules in our experiments that equivariant latent features often tend to converge to highly dispersed means and very small variances, which may be the cause of numerical problems in the KL term calculation. We therefore turn to using ES to constrain the encoder by early stopping the encoder training, which can limit the numerical range of the latent features. We will learn more about the other effects of KL regularization.</p><p>From Table <ref type="table">3</ref>, we also observe that LMDM performs better when k = 1. This also shows that lower dimensions can reduce the complexity of generative modeling and facilitate training LMDM. The performance of LMDM on QM9 is very similar when k is set to 1 or 2. In practice, we set k to 1 for the QM9 dataset, and set k to 2 for the GEOM-Drug dataset, which contains more atoms.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>G. Visualization Results</head><p>In this section, we show the visualization of molecules generated by LMDM. As shown in Figure6 and Figure7, they are samples generated by sampling from the models trained on the QM9 and GEOM-Drug datasets, respectively. These samples are generated by random sampling, and we can see that the perspective of observing the molecular structure may not be perfect, but this can to some extent reflect the diversity of the spatial structure of the generated molecules, because it extends as much as possible in all directions of the zero center of mass (COM) <ref type="bibr" target="#b20">(Köhler et al., 2020)</ref> space in the random process. In the figure <ref type="figure">7</ref>, we can see that there are two GEOM-Drug molecules composed of small molecules. This phenomenon is usually caused by the instability of the molecular spatial structure due to the large molecular weight, but it is not actually a problem. After all, the molecular-level stability of the original dataset is only 86.5%, and it is very common in non-autoregressive molecular generation models <ref type="bibr" target="#b51">(Zang &amp; Wang, 2020;</ref><ref type="bibr" target="#b15">Jo et al., 2022)</ref>. Removing the small molecular weight components can achieve a repair effect <ref type="bibr" target="#b49">(Xu et al., 2023)</ref>.  </p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Cormorant: Covariant molecular neural networks</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Anderson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">S</forename><surname>Hy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Kondor</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in neural information processing systems</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">32</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">A contrastive learning approach for training variational autoencoder priors</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Aneja</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Schwing</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kautz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Vahdat</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in neural information processing systems</title>
+		<imprint>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="page" from="480" to="493" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Geom, energyannotated molecular conformations for property prediction and molecular generation</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Axelrod</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Gomez-Bombarelli</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Scientific Data</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="1" to="14" />
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<title level="m" type="main">Se (3)-equivariant graph neural networks for data-efficient and accurate interatomic potentials</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Batzner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">E</forename><surname>Smidt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">P</forename><surname>Mailoa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Kornbluth</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Molinari</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Kozinsky</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2101.03164</idno>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Diagnosing and enhancing VAE models</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Dai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Wipf</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note>id=B1e0X3C9tQ</note>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">)transformers: 3d roto-translation equivariant attention networks</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Fuchs</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">E</forename><surname>Worrall</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Fischer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Se</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems 33: Annual Conference on Neural Information Processing Systems</title>
+		<meeting><address><addrLine>NeurIPS</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2020">2020. 2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Symmetryadapted generation of 3d point sets for the targeted discovery of molecules</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Gebauer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Gastegger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Schütt</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in neural information processing systems</title>
+		<imprint>
+			<biblScope unit="volume">32</biblScope>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<title level="m" type="main">Symmetry-adapted generation of 3d point sets for the targeted discovery of molecules</title>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">W A</forename><surname>Gebauer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Gastegger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">T</forename><surname>Schütt</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/1906.00957" />
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Automatic chemical design using a data-driven continuous representation of molecules</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Gómez-Bombarelli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">N</forename><surname>Wei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Duvenaud</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">M</forename><surname>Hernández-Lobato</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Sánchez-Lengeling</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Sheberla</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Aguilera-Iparraguirre</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">D</forename><surname>Hirzel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">P</forename><surname>Adams</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Aspuru-Guzik</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">ACS central science</title>
+		<imprint>
+			<biblScope unit="volume">4</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="268" to="276" />
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Bidirectional molecule generation with recurrent neural networks</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Grisoni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Moret</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Lingwood</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Schneider</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of chemical information and modeling</title>
+		<imprint>
+			<biblScope unit="volume">60</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="1175" to="1183" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<title level="m" type="main">Denoising diffusion probabilistic models</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ho</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Jain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Abbeel</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2006.11239</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Equivariant diffusion for molecule generation in 3d</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>Hoogeboom</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">G</forename><surname>Satorras</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Vignac</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="8867" to="8887" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<monogr>
+		<title level="m" type="main">Equivariant diffusion for molecule generation in 3d</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>Hoogeboom</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">G</forename><surname>Satorras</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Vignac</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2203.17003" />
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<monogr>
+		<author>
+			<persName><forename type="first">L</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K.-C</forename><surname>Wong</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Mdm</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2209.05710</idno>
+		<title level="m">Molecular diffusion model for 3d molecule generation</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<title level="m" type="main">Learning from protein structure with geometric vector perceptrons</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Jing</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Eismann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Suriana</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">J L</forename><surname>Townshend</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Dror</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2009.01411" />
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<monogr>
+		<title level="m" type="main">Score-based generative modeling of graphs via the system of stochastic differential equations</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Jo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">J</forename><surname>Hwang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2202.02514</idno>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Highly accurate protein structure prediction with alphafold</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Jumper</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Evans</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Pritzel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Green</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Figurnov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Ronneberger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Tunyasuvunakool</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Bates</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Žídek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Potapenko</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Nature</title>
+		<imprint>
+			<biblScope unit="volume">596</biblScope>
+			<biblScope unit="issue">7873</biblScope>
+			<biblScope unit="page" from="583" to="589" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">A method for stochastic optimization</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">P</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ba</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Adam</surname></persName>
+		</author>
+		<ptr target="http://arxiv.org/abs/1412.6980" />
+	</analytic>
+	<monogr>
+		<title level="m">3rd International Conference on Learning Representations, ICLR 2015</title>
+		<editor>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">Y</forename><surname>Lecun</surname></persName>
+		</editor>
+		<meeting><address><addrLine>San Diego, CA, USA</addrLine></address></meeting>
+		<imprint>
+			<date type="published" when="2015">May 7-9, 2015. 2015</date>
+		</imprint>
+	</monogr>
+	<note>Conference Track Proceedings</note>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Auto-encoding variational bayes</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">P</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2nd International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Directional message passing for molecular graphs</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Klicpera</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Groß</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Günnemann</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">8th International Conference on Learning Representations, ICLR</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Equivariant flows: exact likelihood generative learning for symmetric densities</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Köhler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Klein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Noé</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International conference on machine learning</title>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="5361" to="5370" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Diffwave: A versatile diffusion model for audio synthesis</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Kong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Ping</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Catanzaro</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=a-xFK8Ymz5J" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Diffusion-LM improves controllable text generation</title>
+		<author>
+			<persName><forename type="first">X</forename><forename type="middle">L</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Thickstun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Gulrajani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Hashimoto</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=3s9IrEsjLyk" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">A</forename><forename type="middle">H</forename><surname>Oh</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">A</forename><surname>Agarwal</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">D</forename><surname>Belgrave</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">K</forename><surname>Cho</surname></persName>
+		</editor>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<monogr>
+		<author>
+			<persName><forename type="first">H</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">Z</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Diffbp</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2211.11214</idno>
+		<title level="m">Generative diffusion of 3d molecules for target protein binding</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">A kernelized stein discrepancy for goodness-of-fit tests</title>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Jordan</surname></persName>
+		</author>
+		<idno>PMLR</idno>
+	</analytic>
+	<monogr>
+		<title level="m">International conference on machine learning</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="276" to="284" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Antigen-specific antibody design and optimization with diffusion-based generative models for protein structures</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Luo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Su</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Peng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Peng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ma</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=jSorGn2Tjg" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">A</forename><forename type="middle">H</forename><surname>Oh</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">A</forename><surname>Agarwal</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">D</forename><surname>Belgrave</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">K</forename><surname>Cho</surname></persName>
+		</editor>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">FlowSeq: Non-autoregressive conditional sequence generation with generative flow</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Neubig</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Hovy</surname></persName>
+		</author>
+		<idno type="DOI">10.18653/v1/D19-1437</idno>
+		<ptr target="https://aclanthology.org/D19-1437" />
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)</title>
+		<meeting>the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)<address><addrLine>Hong Kong, China</addrLine></address></meeting>
+		<imprint>
+			<publisher>Association for Computational Linguistics</publisher>
+			<date type="published" when="2019-11">November 2019</date>
+			<biblScope unit="page" from="4282" to="4292" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Improved denoising diffusion probabilistic models</title>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">Q</forename><surname>Nichol</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Dhariwal</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<biblScope unit="page" from="8162" to="8171" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Boosting docking-based virtual screening with deep learning</title>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">C</forename><surname>Pereira</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">R</forename><surname>Caffarena</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dos</forename><surname>Santos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">N</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of chemical information and modeling</title>
+		<imprint>
+			<biblScope unit="volume">56</biblScope>
+			<biblScope unit="issue">12</biblScope>
+			<biblScope unit="page" from="2495" to="2506" />
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Quantum chemistry structures and properties of 134 kilo molecules</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Ramakrishnan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">O</forename><surname>Dral</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Rupp</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Von</forename><surname>Lilienfeld</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><forename type="middle">A</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Scientific data</title>
+		<imprint>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="1" to="7" />
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<monogr>
+		<title level="m" type="main">Generating diverse high-fidelity images with vq-vae-2. Advances in neural information processing systems</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Razavi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Van Den Oord</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Vinyals</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="volume">32</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">High-resolution image synthesis with latent diffusion models</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Rombach</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Blattmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Lorenz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Esser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Ommer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition</title>
+		<meeting>the IEEE/CVF Conference on Computer Vision and Pattern Recognition</meeting>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+			<biblScope unit="page" from="10684" to="10695" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<monogr>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">G</forename><surname>Satorras</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Hoogeboom</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><forename type="middle">B</forename><surname>Fuchs</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Posner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2105.09016</idno>
+		<title level="m">E (n) equivariant normalizing flows for molecule generation in 3d</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<monogr>
+		<title level="m" type="main">E(n) equivariant graph neural networks</title>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">G</forename><surname>Satorras</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Hoogeboom</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+		<ptr target="https://arxiv.org/abs/2102.09844" />
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">A continuous-filter convolutional neural network for modeling quantum interactions</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Schütt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P.-J</forename><surname>Kindermans</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><forename type="middle">E</forename><surname>Sauceda Felix</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Chmiela</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Tkatchenko</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K.-R</forename><surname>Müller</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Schnet</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<publisher>Curran Associates, Inc</publisher>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="page" from="991" to="1001" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<monogr>
+		<title level="m" type="main">Linear representations of finite groups</title>
+		<author>
+			<persName><forename type="first">J.-P</forename><surname>Serre</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1977">1977</date>
+			<publisher>Springer</publisher>
+			<biblScope unit="volume">42</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Graphvae: Towards generation of small graphs using variational autoencoders</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Simonovsky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Komodakis</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International conference on artificial neural networks</title>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2018">2018</date>
+			<biblScope unit="page" from="412" to="422" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Deep unsupervised learning using nonequilibrium thermodynamics</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Sohl-Dickstein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Weiss</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Maheswaranathan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ganguli</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<date type="published" when="2015">2015</date>
+			<biblScope unit="page" from="2256" to="2265" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Denoising diffusion implicit models</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Meng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ermon</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=St1giarCHLP" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations, 2021a</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Generative modeling by estimating gradients of the data distribution</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ermon</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+			<biblScope unit="page" from="11918" to="11930" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Score-based generative modeling through stochastic differential equations</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Sohl-Dickstein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">P</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Kumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ermon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Poole</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<monogr>
+		<title level="m" type="main">Tensor field networks: Rotation-and translation-equivariant neural networks for 3d point clouds</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Thomas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Smidt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">M</forename><surname>Kearnes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Kohlhoff</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Riley</surname></persName>
+		</author>
+		<idno>CoRR, abs/1802.08219</idno>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">ATOM3d: Tasks on molecules in three dimensions</title>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">J L</forename><surname>Townshend</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Vögele</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">A</forename><surname>Suriana</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Derry</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Powers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Laloudakis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Balachandar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Jing</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">M</forename><surname>Anderson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Eismann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Kondor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Altman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">O</forename><surname>Dror</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=FkDZLpK1Ml2" />
+	</analytic>
+	<monogr>
+		<title level="m">Thirty-fifth Conference on Neural Information Processing Systems Datasets and Benchmarks Track (Round 1)</title>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">Score-based generative modeling in latent space</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Vahdat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Kreis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kautz</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="page" from="11287" to="11302" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<monogr>
+		<author>
+			<persName><forename type="first">A</forename><surname>Van Den Oord</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Dieleman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Simonyan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Vinyals</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Graves</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Kalchbrenner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Senior</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Kavukcuoglu</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Wavenet</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1609.03499</idno>
+		<title level="m">A generative model for raw audio</title>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<title level="a" type="main">Smiles, a chemical language and information system. 1. introduction to methodology and encoding rules</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Weininger</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of chemical information and computer sciences</title>
+		<imprint>
+			<biblScope unit="volume">28</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="31" to="36" />
+			<date type="published" when="1988">1988</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<analytic>
+		<title level="a" type="main">Unsupervised learning of group invariant and equivariant representations</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Winter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Bertolini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Le</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Noe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D.-A</forename><surname>Clevert</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=47lpv23LDPr" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">A</forename><forename type="middle">H</forename><surname>Oh</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">A</forename><surname>Agarwal</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">D</forename><surname>Belgrave</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">K</forename><surname>Cho</surname></persName>
+		</editor>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<analytic>
+		<title level="a" type="main">Diffusionbased molecule generation with informative prior bridges</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Gong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Ye</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Liu</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=TJUNtiZiTKE" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">A</forename><forename type="middle">H</forename><surname>Oh</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">A</forename><surname>Agarwal</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">D</forename><surname>Belgrave</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">K</forename><surname>Cho</surname></persName>
+		</editor>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<monogr>
+		<author>
+			<persName><forename type="first">M</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ermon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Geodiff</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2203.02923</idno>
+		<title level="m">A geometric diffusion model for molecular conformation generation</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<analytic>
+		<title level="a" type="main">Geometric latent diffusion models for 3d molecule generation</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Powers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Dror</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Ermon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Leskovec</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<publisher>PMLR</publisher>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<analytic>
+		<title level="a" type="main">Vectorquantized image modeling with improved VQGAN</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">Y</forename><surname>Koh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Pang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Qin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Ku</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Baldridge</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wu</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=pfNyExj7z2" />
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b51">
+	<analytic>
+		<title level="a" type="main">Moflow: an invertible flow model for generating molecular graphs</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Zang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Wang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Proceedings of the 26th ACM SIGKDD International Conference on Knowledge Discovery &amp; Data Mining</title>
+		<meeting>the 26th ACM SIGKDD International Conference on Knowledge Discovery &amp; Data Mining</meeting>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="617" to="626" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b52">
+	<analytic>
+		<title level="a" type="main">Latent point diffusion models for 3d shape generation</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Zeng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Vahdat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Williams</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Gojcic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Litany</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Fidler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Kreis</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Lion</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=tHK5ntjp-5K" />
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<editor>
+			<persName><forename type="first">A</forename><forename type="middle">H</forename><surname>Oh</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">A</forename><surname>Agarwal</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">D</forename><surname>Belgrave</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">K</forename><surname>Cho</surname></persName>
+		</editor>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>
